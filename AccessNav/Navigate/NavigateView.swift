@@ -18,13 +18,26 @@ struct NavigateView: View {
                 }
             } else {
                 ViewContainer(view: controller.arView).ignoresSafeArea()
-                VStack {
-                    HStack {
+                VStack(spacing: 12) {
+                    HStack(alignment: .top) {
                         CloseButton {
                             controller.stop()
                             dismiss()
                         }
                         Spacer()
+                        LiveBadge(status: controller.liveStatus)
+                    }
+                    if let caption = controller.caption {
+                        Text(caption)
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .foregroundStyle(.white)
+                            .transition(.opacity)
+                            .id(caption)
+                            .accessibilityHidden(true)
                     }
                     Spacer()
                     panel
@@ -33,6 +46,7 @@ struct NavigateView: View {
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
                 }
                 .padding()
+                .animation(.easeInOut(duration: 0.25), value: controller.caption)
             }
         }
         .onAppear { controller.start() }
@@ -64,7 +78,7 @@ struct NavigateView: View {
                     .font(.title2.bold())
                     .foregroundStyle(.green)
                 if let route = controller.route {
-                    Text(route.destination.kind.title).font(.title3)
+                    Text(route.destination.name).font(.title3)
                 }
                 Button("Done", action: controller.endNavigation)
                     .buttonStyle(.bordered)
@@ -126,13 +140,18 @@ private struct RouteCard: View {
                     .font(.system(size: 40))
                     .foregroundStyle(route.destination.kind.tint)
                 VStack(alignment: .leading) {
-                    Text(route.destination.kind.title).font(.title2.bold())
-                    Text("\(Int(route.length.rounded())) m · step-free").font(.title3).foregroundStyle(.secondary)
+                    Text(route.destination.name).font(.title2.bold())
+                    Text(details).font(.title3).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("End", action: onEnd)
                     .buttonStyle(.bordered)
                     .controlSize(.large)
+            }
+            if route.destination.isTooSteep {
+                Label("Steeper than the ADA allows; it's the only reachable option", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
             }
             if route.isNarrow {
                 Label("Some passages on this route are narrow", systemImage: "arrow.left.and.right")
@@ -141,6 +160,31 @@ private struct RouteCard: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var details: String {
+        var parts = ["\(Int(route.length.rounded())) m", "step-free"]
+        if let slope = route.destination.slopeDegrees {
+            parts.append(String(format: "%.1f° slope", slope))
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// Shows whether crew outage reports are reaching this phone.
+private struct LiveBadge: View {
+    @ObservedObject var status: LiveStatus
+
+    var body: some View {
+        if status.isConfigured {
+            Label(status.isReachable ? "Live" : "Offline", systemImage: "dot.radiowaves.left.and.right")
+                .font(.caption.bold())
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(status.isReachable ? Color.green.opacity(0.85) : Color.gray.opacity(0.7), in: Capsule())
+                .foregroundStyle(.white)
+                .accessibilityLabel(status.isReachable ? "Live outage updates on" : "Live outage updates offline")
+        }
     }
 }
 
