@@ -186,23 +186,55 @@ private final class PointMarker {
     }
 }
 
-/// A translucent red zone over stairs, with a floating warning, so riders see them from across the room.
+/// Stairs outlined in red, the way the scanning view outlines them: a translucent floor zone, a box of
+/// red edges around the steps, and a floating warning, so riders see them from across the room.
 @MainActor
 private final class StairsMarker {
+    /// Height of the outline box: roughly the first few steps.
+    private static let height: Float = 0.8
+    private static let edgeThickness: Float = 0.02
+
     let entity = Entity()
 
     init(stairs: Footprint, floorY: Float) {
         entity.position = SIMD3(stairs.center.x, floorY + 0.02, stairs.center.y)
         entity.orientation = simd_quatf(angle: -stairs.yaw, axis: [0, 1, 0])
 
-        var material = UnlitMaterial(color: .systemRed)
-        material.blending = .transparent(opacity: 0.35)
-        let zone = ModelEntity(mesh: .generatePlane(width: stairs.size.x, depth: stairs.size.y, cornerRadius: 0.05), materials: [material])
+        var zoneMaterial = UnlitMaterial(color: .systemRed)
+        zoneMaterial.blending = .transparent(opacity: 0.3)
+        let zone = ModelEntity(mesh: .generatePlane(width: stairs.size.x, depth: stairs.size.y, cornerRadius: 0.05), materials: [zoneMaterial])
         entity.addChild(zone)
+        addOutline(width: stairs.size.x, depth: stairs.size.y)
 
         let label = BillboardLabel()
         label.set("Stairs", background: .systemRed)
-        label.entity.position.y = 1.2
+        label.entity.position.y = Self.height + 0.35
         entity.addChild(label.entity)
+    }
+
+    /// The 12 edges of the box, as thin red bars.
+    private func addOutline(width: Float, depth: Float) {
+        let material = UnlitMaterial(color: .systemRed)
+        let t = Self.edgeThickness, h = Self.height
+        let x = width / 2, z = depth / 2
+        for y in [Float(0), h] {
+            for zSide in [-z, z] {
+                addBar(size: [width, t, t], at: [0, y, zSide], material: material)
+            }
+            for xSide in [-x, x] {
+                addBar(size: [t, t, depth], at: [xSide, y, 0], material: material)
+            }
+        }
+        for xSide in [-x, x] {
+            for zSide in [-z, z] {
+                addBar(size: [t, h, t], at: [xSide, h / 2, zSide], material: material)
+            }
+        }
+    }
+
+    private func addBar(size: SIMD3<Float>, at position: SIMD3<Float>, material: UnlitMaterial) {
+        let bar = ModelEntity(mesh: .generateBox(size: size), materials: [material])
+        bar.position = position
+        entity.addChild(bar)
     }
 }
