@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -47,10 +48,40 @@ class Observation:
         return x / width, y / height, w / width, h / height
 
 
+UPRIGHT_FROM_SENSOR = "upright_rotated_right_from_sensor"
+
+
+def _finite(values, count: int) -> list[float]:
+    """Exactly `count` finite floats, or ValueError (rejects NaN/inf, which survive `float()`)."""
+    numbers = [float(v) for v in values]
+    if len(numbers) != count or not all(math.isfinite(v) for v in numbers):
+        raise ValueError("expected finite numbers")
+    return numbers
+
+
+def _upright_box(item: dict) -> list[float]:
+    """Normalized top-left box in the upright image the iPhone OCR'd.
+
+    `image_orientation` names how that image relates to the sensor-native frame. Today the iPhone only
+    exports `upright_rotated_right_from_sensor`; files from before the field existed are the same. Any
+    other orientation is accepted only with `bbox_sensor_norm`, which is rotated into upright coordinates
+    (the inverse of `geometry.jpeg_to_sensor_uv`) so all engines share one representation.
+    """
+    orientation = item.get("image_orientation", UPRIGHT_FROM_SENSOR)
+    if orientation == UPRIGHT_FROM_SENSOR:
+        return _finite(item["bbox_norm"], 4)
+    if "bbox_sensor_norm" in item and orientation == "sensor_native":
+        u, v, w, h = _finite(item["bbox_sensor_norm"], 4)
+        return [1.0 - v - h, u, h, w]
+    raise ValueError(f"unsupported image orientation {orientation!r}")
+
+
 def parse_vision(raw: bytes | None) -> tuple[list[Observation], int]:
     """Apple Vision OCR observations (`text-observations.json`, schema 1); returns (observations, skipped).
 
     `bbox_norm` is [x, y, w, h] with a top-left origin on the upright image, `image_size_px` [w, h].
+    Entries with non-finite or empty geometry, non-finite confidence, or an unknown orientation are
+    skipped individually.
     """
     if not raw:
         return [], 0
@@ -64,19 +95,22 @@ def parse_vision(raw: bytes | None) -> tuple[list[Observation], int]:
     found, skipped = [], 0
     for item in items:
         try:
-            width, height = (int(v) for v in item["image_size_px"])
-            x, y, w, h = (float(v) for v in item["bbox_norm"])
+            width, height = (int(v) for v in _finite(item["image_size_px"], 2))
+            x, y, w, h = _upright_box(item)
+            confidence = _finite([item.get("confidence", 0.5)], 1)[0]
             text = " ".join(str(item["text"]).split())
-            if width <= 0 or height <= 0 or w <= 0 or h <= 0 or not text:
-                raise ValueError("empty box or text")
-            x0, y0 = max(0.0, x) * width, max(0.0, y) * height
-            x1, y1 = min(1.0, x + w) * width, min(1.0, y + h) * height
+            if width <= 0 or height <= 0 or not text:
+                raise ValueError("empty image or text")
+            x0, y0 = min(max(x, 0.0), 1.0) * width, min(max(y, 0.0), 1.0) * height
+            x1, y1 = min(max(x + w, 0.0), 1.0) * width, min(max(y + h, 0.0), 1.0) * height
+            if x1 - x0 < 1 or y1 - y0 < 1:
+                raise ValueError("box is empty after clipping to the image")
             quad = np.array([[x0, y1], [x0, y0], [x1, y0], [x1, y1]], np.float32)
             languages = [str(language) for language in item.get("languages") or []]
             found.append(Observation(str(item["frame_id"]), item.get("image_asset"), (width, height), quad, text,
-                                     float(np.clip(float(item.get("confidence", 0.5)), 0.0, 1.0)), "apple_vision",
+                                     float(np.clip(confidence, 0.0, 1.0)), "apple_vision",
                                      "apple_vision", None, languages))
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             skipped += 1
     return found, skipped
 

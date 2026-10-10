@@ -90,3 +90,46 @@ def test_fusion_prefers_text_then_confidence():
     weak = box_obs("f0", (100, 100), (10, 10, 40, 20), "EXT", 0.5, "apple_vision")
     merged, _ = fuse([strong], [weak])
     assert merged[0].engine == "opencv_dnn" and len(merged[0].readings) == 2
+
+
+def _vision(*items):
+    return json.dumps({"schema_version": 1, "engine": "apple_vision", "observations": list(items)}).encode()
+
+
+def _item(**overrides):
+    item = {"frame_id": "f0", "image_asset": "f0.color.jpg", "image_size_px": [480, 640], "text": "EXIT",
+            "confidence": 0.9, "bbox_norm": [0.25, 0.25, 0.5, 0.25], "languages": ["en"]}
+    item.update(overrides)
+    return item
+
+
+@pytest.mark.parametrize("bad", [
+    {"bbox_norm": [float("nan"), 0.25, 0.5, 0.25]},
+    {"bbox_norm": [0.25, 0.25, float("inf"), 0.25]},
+    {"bbox_norm": [0.25, 0.25, 0.5]},
+    {"confidence": float("nan")},
+    {"confidence": float("-inf")},
+    {"image_size_px": [float("inf"), 640]},
+    {"bbox_norm": [1.2, 0.25, 0.5, 0.25]},      # entirely right of the image: empty after clipping
+    {"bbox_norm": [0.25, -0.5, 0.5, 0.2]},      # entirely above the image
+    {"bbox_norm": [0.25, 0.25, 0.0005, 0.25]},  # under one pixel wide
+    {"image_orientation": "upside_down"},
+])
+def test_vision_rejects_non_finite_empty_or_unknown_geometry(bad):
+    found, skipped = parse_vision(_vision(_item(**bad), _item(text="KEEP")))
+    assert [o.text for o in found] == ["KEEP"] and skipped == 1
+
+
+def test_vision_nan_from_raw_json_tokens_is_rejected():
+    raw = b'{"observations":[{"frame_id":"f0","image_size_px":[480,640],"text":"X","confidence":NaN,"bbox_norm":[0.1,0.1,0.2,0.2]}]}'
+    assert parse_vision(raw) == ([], 1)
+
+
+def test_vision_orientation_and_sensor_box_agree():
+    upright = _item(image_orientation="upright_rotated_right_from_sensor",
+                    bbox_sensor_norm=[0.25, 0.25, 0.25, 0.5])
+    sensor_only = _item(image_orientation="sensor_native", bbox_norm=None, bbox_sensor_norm=[0.25, 0.25, 0.25, 0.5])
+    legacy = _item()
+    boxes = [parse_vision(_vision(i))[0][0].bbox_norm for i in (upright, sensor_only, legacy)]
+    for box in boxes:
+        assert box == pytest.approx((0.25, 0.25, 0.5, 0.25), abs=1 / 480)
