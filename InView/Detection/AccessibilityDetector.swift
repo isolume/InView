@@ -37,6 +37,8 @@ final class AccessibilityDetector: ObservableObject {
         /// A bounded window of recent slope measurements; the median is reported.
         var slopes: [Float] = []
         var evidence: Evidence?
+        /// Time of the measurement used for position, so backend pose corrections can follow it.
+        var measurementTimestamp: TimeInterval?
 
         var slopeDegrees: Float? {
             slopes.isEmpty ? nil : slopes.sorted()[slopes.count / 2]
@@ -194,7 +196,7 @@ final class AccessibilityDetector: ObservableObject {
     /// For ramps, aim at the middle of the ramp so its slope can be measured; for stairs, at the bottom step.
     func addManual(_ kind: VisionDetection.Kind) {
         guard isScanning, let session, let frame = session.currentFrame else { return }
-        let camera = CameraSnapshot(frame.camera)
+        let camera = CameraSnapshot(frame.camera, timestamp: frame.timestamp)
         let center = CGPoint(x: 0.5, y: 0.5)
         let slope = kind == .ramp ? measureSlope(around: center, camera: camera, in: session) : nil
         // Rapid taps still create every requested pin, but cannot queue sensor-sized photo copies.
@@ -333,7 +335,7 @@ final class AccessibilityDetector: ObservableObject {
     /// Copies what's needed out of the frame and lets it go before anything asynchronous starts.
     private func analyze(_ frame: ARFrame) {
         guard let client, let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return }
-        let camera = CameraSnapshot(frame.camera)
+        let camera = CameraSnapshot(frame.camera, timestamp: frame.timestamp)
         requestsInFlight += 1
         stats.framesSent += 1
         let number = stats.framesSent
@@ -582,6 +584,7 @@ final class AccessibilityDetector: ObservableObject {
             }
         guard let match else {
             var sighting = Sighting(kind: kind, name: name, position: position, facing: facing, confidence: confidence, isManual: isManual)
+            sighting.measurementTimestamp = camera.timestamp
             sighting.verifiedFrames = verified ? 1 : 0
             if let slope { sighting.addSlope(slope) }
             sighting.evidence = evidence
@@ -596,13 +599,24 @@ final class AccessibilityDetector: ObservableObject {
         if isManual {
             // A volunteer's mark beats the model's estimate.
             sighting.position = position
+            sighting.measurementTimestamp = camera.timestamp
             sighting.isManual = true
         } else if !sighting.isManual {
             if kind == .stairs {
                 // The lowest point seen is the bottom step.
-                if position.y < sighting.position.y { sighting.position = position }
+                if position.y < sighting.position.y {
+                    sighting.position = position
+                    sighting.measurementTimestamp = camera.timestamp
+                }
             } else {
-                sighting.position += (position - sighting.position) / Float(sighting.frames + 1)
+                if AppConfig.continuousScanning {
+                    // A point belongs to a single observation's pose; averaging poses with drift
+                    // would prevent the backend correction from being applied consistently.
+                    sighting.position = position
+                    sighting.measurementTimestamp = camera.timestamp
+                } else {
+                    sighting.position += (position - sighting.position) / Float(sighting.frames + 1)
+                }
             }
         }
         let blended = sighting.facing * Float(sighting.frames) + facing
@@ -632,11 +646,13 @@ struct CameraSnapshot {
     let transform: simd_float4x4
     let intrinsics: simd_float3x3
     let imageResolution: CGSize
+    let timestamp: TimeInterval?
 
-    init(_ camera: ARCamera) {
+    init(_ camera: ARCamera, timestamp: TimeInterval? = nil) {
         transform = camera.transform
         intrinsics = camera.intrinsics
         imageResolution = camera.imageResolution
+        self.timestamp = timestamp
     }
 
     /// World-space ray through a normalized point of the captured image.

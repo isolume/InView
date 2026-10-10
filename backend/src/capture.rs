@@ -6,7 +6,7 @@ use crate::geometry::{Transform, Vec3, finite};
 
 /// Portable interchange draft, not Apple's native CapturedRoom Codable layout.
 /// The store retains the original JSON including fields this projection does not use.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScanBundle {
     pub schema_version: u32,
     pub id: String,
@@ -30,7 +30,7 @@ pub struct Coordinates {
     pub handedness: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MeshCapture {
     pub id: String,
     pub map_from_anchor: Transform,
@@ -50,7 +50,7 @@ pub enum Confidence {
     High,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DetectedObject {
     pub id: String,
     pub category: String,
@@ -61,7 +61,7 @@ pub struct DetectedObject {
     pub dimensions_m: Vec3,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CapturedSurface {
     pub id: String,
     pub kind: String,
@@ -73,7 +73,7 @@ pub struct CapturedSurface {
     pub polygon_corners: Option<Vec<Vec3>>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DepthFrame {
     pub id: String,
     pub timestamp_seconds: f64,
@@ -86,7 +86,7 @@ pub struct DepthFrame {
     pub color_asset: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CameraCalibration {
     pub image_width: usize,
     pub image_height: usize,
@@ -96,7 +96,7 @@ pub struct CameraCalibration {
     pub cy: f64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DepthImage {
     pub width: usize,
     pub height: usize,
@@ -233,7 +233,7 @@ fn valid_surface_polygon(corners: &[Vec3]) -> bool {
 }
 
 impl DepthFrame {
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         self.map_from_camera.validate()?;
         if !self.timestamp_seconds.is_finite() || self.timestamp_seconds < 0.0 {
             return Err("Frame timestamps must be finite nonnegative seconds.".into());

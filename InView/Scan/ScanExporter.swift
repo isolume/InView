@@ -5,6 +5,11 @@ import simd
 
 /// Projects RoomPlan into the portable capture draft without changing its session origin.
 enum ScanExporter {
+    static func streamingMeasurements(_ footprints: [Footprint]) -> (surfaces: [CaptureSurface], objects: [CaptureObject]) {
+        (footprints.enumerated().compactMap { observedSurface($0.element, index: $0.offset) },
+         footprints.enumerated().compactMap { observedObject($0.element, index: $0.offset) })
+    }
+
     static func nativeRoomPlanData(rooms: [CapturedRoom]) throws -> Data {
         try JSONEncoder().encode(rooms)
     }

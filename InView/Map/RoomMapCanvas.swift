@@ -90,6 +90,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private var destination: SIMD2<Float>?
     private var destinationTitle: String?
     private var destinationLabel: RoomObjectLabel?
+    /// Unit-size templates share geometry and materials; each instance owns its pose and scale.
+    private var catalogGeometries: [String: [SCNGeometry]] = [:]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -232,7 +234,9 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         canvas.accessibilityHint = isNavigating ? "Drag to rotate or pinch to zoom" : "Drag to rotate, pinch to zoom, or tap an item"
         updateNavigation(routePoints: routePoints, userPosition: userPosition, userHeading: userHeading,
                          floorY: floorY, destination: destination, destinationTitle: destinationTitle)
-        details.isHidden = !(showsDetails || (source.objects.isEmpty && source.surfaces.isEmpty))
+        // Reconstructed stream geometry is the model, including when compact floor measurements exist.
+        let streamModel = source.meshes.contains { $0.sourceID == "stream-depth-fusion" }
+        details.isHidden = !(streamModel || showsDetails || (source.objects.isEmpty && source.surfaces.isEmpty))
         if !details.isHidden && !detailsBuilt { buildDetails(source); detailsBuilt = true }
         fitBounds(source)
         updateShellIfNeeded()
@@ -320,6 +324,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                         parent.addChildNode(SCNNode(geometry: geometry))
                     }
                 }
+            } else if let size = vector(object.measuredDimensionsM), size.min() > 0,
+                      let geometries = catalogGeometry(for: object.modelKey) {
+                parent.simdScale = size
+                for geometry in geometries { parent.addChildNode(SCNNode(geometry: geometry)) }
             } else {
                 for part in object.parts {
                     guard let size = vector(part.dimensionsM), let center = vector(part.center), size.min() > 0 else { continue }
@@ -330,6 +338,24 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             }
             room.addChildNode(parent)
         }
+    }
+
+    private func catalogGeometry(for key: String) -> [SCNGeometry]? {
+        if let cached = catalogGeometries[key] { return cached.isEmpty ? nil : cached }
+        guard let meshes = try? FurnitureModelCatalog.meshes(for: key, dimensions: [1, 1, 1]),
+              !meshes.isEmpty else {
+            catalogGeometries[key] = []
+            return nil
+        }
+        let geometries = meshes.compactMap {
+            meshGeometry(vertices: $0.vertices, normals: $0.normals, triangles: $0.triangles, color: "#c4cac8")
+        }
+        guard geometries.count == meshes.count else {
+            catalogGeometries[key] = []
+            return nil
+        }
+        catalogGeometries[key] = geometries
+        return geometries
     }
 
     private func meshGeometry(vertices: [[Float]], normals: [[Float]], triangles: [[Int]], color: String) -> SCNGeometry? {
@@ -548,6 +574,28 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func buildDetails(_ source: ProcessedScene) {
+        if let mesh = source.meshes.first(where: { $0.sourceID == "stream-depth-fusion" }) {
+            // Keep the indexed measured surface intact; skipping arbitrary triangles leaves holes.
+            let positions = mesh.vertices.compactMap(vector)
+            guard positions.count == mesh.vertices.count else { return }
+            var normals = [SIMD3<Float>](repeating: .zero, count: positions.count)
+            for triangle in mesh.triangles where triangle.count == 3 {
+                guard triangle.allSatisfy({ positions.indices.contains($0) }) else { continue }
+                let a = positions[triangle[0]], b = positions[triangle[1]], c = positions[triangle[2]]
+                let normal = simd_cross(b - a, c - a)
+                for index in triangle { normals[index] += normal }
+            }
+            let normalized = normals.map { array(simd_length_squared($0) > 1e-10 ? simd_normalize($0) : [0, 1, 0]) }
+            if let geometry = meshGeometry(vertices: mesh.vertices, normals: normalized,
+                                           triangles: mesh.triangles, color: "#b3bcba") {
+                geometry.materials.first?.isDoubleSided = true
+                let node = SCNNode(geometry: geometry)
+                node.categoryBitMask = 8
+                node.castsShadow = false
+                details.addChildNode(node)
+            }
+            return
+        }
         let total = source.meshes.reduce(0) { $0 + $1.triangles.count }
         let step = max(1, (total + 39_999) / 40_000)
         var index = 0

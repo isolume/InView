@@ -1,6 +1,7 @@
 import ARKit
 import AccessCore
 import Combine
+import RealityKit
 import RoomPlan
 import SwiftUI
 
@@ -8,6 +9,9 @@ import SwiftUI
 /// then an ARWorldMap snapshot that navigation sessions relocalize against, so they share the scan's coordinates.
 @MainActor
 final class ScanController: ObservableObject {
+    enum SceneStage: Equatable {
+        case preparing, uploading, reconstructing, saving
+    }
     enum Phase: Equatable {
         case unsupported
         case choosingFloor
@@ -32,8 +36,15 @@ final class ScanController: ObservableObject {
     @Published private(set) var scene: ProcessedScene?
     @Published private(set) var sceneError: String?
     @Published private(set) var isProcessingScene = false
+    @Published private(set) var sceneStage: SceneStage = .preparing
     @Published private(set) var scanNotice: String?
+    @Published private(set) var trackingNotice: String?
     @Published private(set) var captureView: RoomCaptureView?
+    @Published private(set) var streamingView: ARView?
+    @Published private(set) var streamStatus: StreamingCaptureStatus?
+    @Published private(set) var scanCoverage = DepthScanCoverage().snapshot()
+    @Published private(set) var hasSelectedLocalStreamMap = false
+    let isContinuous = AppConfig.continuousScanning
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
     /// The volunteer just walked through a doorway: RoomPlan keeps one room per section, so suggest a new one.
@@ -55,9 +66,80 @@ final class ScanController: ObservableObject {
     private var captureBundle: CaptureBundle?
     private var localScene: ProcessedScene?
     private var sceneTask: Task<Void, Never>?
+    private var streamingCapture: StreamingScanCapture?
+    var streamEvidenceID: String? { streamingCapture?.queue.manifest.id }
+    private var streamStartTask: Task<Void, Never>?
+    private var streamStatusTimer: Timer?
+    private var streamStatusTask: Task<Void, Never>?
+    private var streamBackendURL: URL?
+    private var streamAlignmentApplied = false
 
-    var canRetryScene: Bool { captureBundle != nil }
-    var canUseLocalScene: Bool { scene == nil && localScene != nil && !isProcessingScene }
+    var streamStatusLine: String {
+        guard let streamStatus else { return "Starting scan…" }
+        if streamStatus.captured == 0 { return "Move slowly to start scanning" }
+        if streamStatus.lastError != nil { return "Upload paused · scan saved on phone" }
+        if streamBackendURL == nil { return "Scan saved on phone" }
+        return streamStatus.pending > 0
+            ? "Uploaded \(streamStatus.uploaded) of \(streamStatus.captured) samples" : "Scan uploaded"
+    }
+
+    var sceneStatusLine: String {
+        guard isContinuous else { return "Building map…" }
+        switch sceneStage {
+        case .preparing: return "Preparing scan…"
+        case .uploading:
+            guard let streamStatus, streamStatus.captured > 0 else { return "Uploading scan…" }
+            if streamStatus.pending == 0 { return "Finishing upload…" }
+            return "Uploading \(streamStatus.uploaded) of \(streamStatus.captured) samples…"
+        case .reconstructing: return "Building map…"
+        case .saving: return "Saving map…"
+        }
+    }
+
+    var sceneUploadProgress: Double? {
+        guard isContinuous, sceneStage == .uploading,
+              let streamStatus, streamStatus.captured > 0 else { return nil }
+        return min(1, Double(streamStatus.uploaded) / Double(streamStatus.captured))
+    }
+
+    var canFinishContinuousScan: Bool { (streamStatus?.captured ?? 0) > 0 }
+    var canMoveStreamToSelectedServer: Bool {
+        isContinuous && !hasSelectedLocalStreamMap && streamBackendURL != nil && AppConfig.backendURL != nil
+            && !matchesStreamServer(AppConfig.backendURL!)
+    }
+
+    private func matchesStreamServer(_ url: URL) -> Bool {
+        streamBackendURL?.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            == url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    func moveStreamToSelectedServer() {
+        guard !hasSelectedLocalStreamMap, !isProcessingScene,
+              let streamingCapture, let backend = AppConfig.backendURL else { return }
+        isProcessingScene = true
+        sceneTask = Task { [weak self] in
+            await streamingCapture.queue.stopUploads()
+            do {
+                try await streamingCapture.queue.configureBackend(backend)
+                guard let self, self.isActive, !Task.isCancelled else { return }
+                self.streamBackendURL = backend
+                self.isProcessingScene = false
+                self.retryScene()
+            } catch {
+                self?.sceneError = error.localizedDescription
+                self?.isProcessingScene = false
+            }
+        }
+    }
+
+    var canRetryScene: Bool { captureBundle != nil && !hasSelectedLocalStreamMap }
+    var canUseLocalScene: Bool {
+        localScene != nil && !isProcessingScene && (isContinuous
+            ? !streamAlignmentApplied && !hasSelectedLocalStreamMap : scene == nil)
+    }
+    var canPlaceReviewPoints: Bool {
+        scene != nil && !isProcessingScene && (!isContinuous || streamAlignmentApplied || hasSelectedLocalStreamMap)
+    }
 
     private func makeCaptureView() -> RoomCaptureView {
         rawCapture.prepare(session: session)
@@ -114,7 +196,11 @@ final class ScanController: ObservableObject {
     private var reportTask: Task<Void, Never>?
 
     init() {
-        phase = RoomCaptureSession.isSupported ? .choosingFloor : .unsupported
+        rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
+        let supported = isContinuous
+            ? ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+            : RoomCaptureSession.isSupported
+        phase = supported ? .choosingFloor : .unsupported
         elevationMonitor.onMovement = { [weak self] in self?.pauseForFloorChange() }
         elevationMonitor.onLanding = { [weak self] proposal in
             guard let self, let currentFloor = self.currentFloor,
@@ -139,9 +225,19 @@ final class ScanController: ObservableObject {
         guard phase == .scanning, !hasStarted else { return }
         hasStarted = true
         isActive = true
-        let view = makeCaptureView()
-        captureView = view
-        beginSection()
+        if isContinuous {
+            rawCapture.prepare(session: session)
+            let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+            view.session = session
+            view.environment.sceneUnderstanding.options = []
+            streamingView = view
+            streamBackendURL = AppConfig.backendURL
+            beginStreamingCapture()
+        } else {
+            let view = makeCaptureView()
+            captureView = view
+            beginSection()
+        }
         beginResourceMonitoring()
         rawCapture.start(session: session)
         detector.start(session: session)
@@ -155,10 +251,19 @@ final class ScanController: ObservableObject {
     func addSection() { endSection(thenFinish: false) }
 
     func finish() {
+        guard phase == .scanning || phase == .interrupted else { return }
         if pendingFloor == nil {
             elevationMonitor.stop()
             isChangingFloors = false
             proposedFloorLevel = nil
+        }
+        if isContinuous {
+            guard canFinishContinuousScan else { return }
+            streamingCapture?.pause()
+            rawCapture.pause()
+            detector.pause()
+            saveWorldMap()
+            return
         }
         // After an interruption there's no section to stop; RoomPlan already processed it.
         if phase == .interrupted {
@@ -176,7 +281,14 @@ final class ScanController: ObservableObject {
             return
         }
         errorMessage = nil
-        startSection()
+        if isContinuous {
+            if let configuration = session.configuration { session.run(configuration, options: []) }
+            phase = .scanning
+            rawCapture.resume()
+            detector.resume()
+            if streamingCapture != nil { streamingCapture?.resume() }
+            else { beginStreamingCapture() }
+        } else { startSection() }
     }
 
     func requestFloorChange() {
@@ -214,7 +326,8 @@ final class ScanController: ObservableObject {
         isChangingFloors = true
         if phase == .scanning {
             floorChangePausedCapture = true
-            endSection(thenFinish: false, pauseAfter: true)
+            if isContinuous { pauseContinuousCapture() }
+            else { endSection(thenFinish: false, pauseAfter: true) }
         } else if phase == .processing {
             floorChangePausedCapture = !pauseAfterProcessing
             pauseAfterProcessing = true
@@ -264,17 +377,24 @@ final class ScanController: ObservableObject {
         doorMonitor = nil
         detector.pause()
         rawCapture.stop()
+        streamingCapture?.stop()
+        streamStartTask?.cancel()
+        streamStatusTimer?.invalidate()
+        streamStatusTimer = nil
+        streamStatusTask?.cancel()
         sceneTask?.cancel()
         reportTask?.cancel()
         captureView?.delegate = nil
         captureView?.captureSession.delegate = nil
         if phase == .scanning || phase == .processing { captureView?.captureSession.stop() }
         captureView = nil
+        streamingView = nil
+        scanCoverage = DepthScanCoverage().snapshot()
         if phase != .unsupported { session.pause() }
     }
 
     func addPoint(_ kind: AccessPoint.Kind, at floorPoint: SIMD2<Float>, name: String? = nil) {
-        guard let floorY = draft?.floorY else { return }
+        guard canPlaceReviewPoints, let floorY = draft?.floorY else { return }
         let position = SIMD3(floorPoint.x, floorY, floorPoint.y)
         guard var map = draft else { return }
         MapBuilder.add(AccessPoint(kind: kind, name: name, position: position, source: .manual, confidence: 1), to: &map)
@@ -328,7 +448,7 @@ final class ScanController: ObservableObject {
 
     /// Writes the map; the world map archive runs off the main thread.
     func save() async throws {
-        guard let draft, let worldMap else {
+        guard let draft, let worldMap, scene != nil else {
             throw CaptureValidationError.invalid("This floor isn't ready to save yet.")
         }
         // Build against the exact saved draft, even if its debounced review report is still pending.
@@ -338,12 +458,16 @@ final class ScanController: ObservableObject {
     }
 
     func retryScene() {
-        guard !isProcessingScene, let captureBundle else { return }
+        guard canRetryScene, !isProcessingScene, let captureBundle else { return }
         processScene(captureBundle, backendURL: AppConfig.backendURL)
     }
 
     func useLocalScene() {
         guard canUseLocalScene, let captureBundle else { return }
+        // Review-added destinations have no capture timestamp. Selecting the local map
+        // fixes this review's coordinates so a later backend retry cannot move its geometry
+        // away from those destinations. Saved samples can still be processed separately.
+        if isContinuous { hasSelectedLocalStreamMap = true }
         processScene(captureBundle, backendURL: nil)
     }
 
@@ -512,6 +636,7 @@ final class ScanController: ObservableObject {
         captureView?.delegate = nil
         captureView?.captureSession.delegate = nil
         captureView = nil
+        streamingView = nil
         resourceTimer?.invalidate()
         resourceTimer = nil
         unconfirmed = detector.unconfirmedSightings()
@@ -536,12 +661,16 @@ final class ScanController: ObservableObject {
         let scanID = scanID
         let floor = currentFloor
         sceneError = nil
+        sceneStage = .preparing
         phase = .processingScene
         isProcessingScene = true
         sceneTask = Task { [weak self] in
             defer { self?.isProcessingScene = false }
             do {
                 guard let self else { return }
+                if let streamingCapture {
+                    self.streamStatus = try await streamingCapture.finishCapture()
+                }
                 let raw = await self.rawCapture.finishSnapshot()
                 try Task.checkCancellation()
                 self.draft = try await ScanWork.run {
@@ -571,7 +700,7 @@ final class ScanController: ObservableObject {
             }
             if !Task.isCancelled {
                 self?.phase = .review
-                if self?.pendingFloor != nil { self?.completeFloorSwitch() }
+                if self?.pendingFloor != nil, self?.scene != nil { self?.completeFloorSwitch() }
             }
         }
     }
@@ -589,10 +718,21 @@ final class ScanController: ObservableObject {
                 reportTask?.cancel()
                 detector.pause()
                 rawCapture.stop()
+                streamingCapture?.stop()
+                streamingCapture = nil
+                streamStartTask?.cancel()
+                streamStatusTimer?.invalidate()
+                streamStatusTimer = nil
+                streamStatusTask?.cancel()
+                streamStatus = nil
+                scanCoverage = DepthScanCoverage().snapshot()
+                trackingNotice = nil
+                streamAlignmentApplied = false
+                hasSelectedLocalStreamMap = false
                 session.pause()
                 session = ARSession()
                 detector = AccessibilityDetector()
-                rawCapture = RawScanCapture()
+                rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
                 scanID = UUID()
                 currentFloor = nextFloor
                 pendingFloor = nil
@@ -632,10 +772,14 @@ final class ScanController: ObservableObject {
 
     var nextFloorName: String? { pendingFloor?.name }
 
-    func retryFloorSwitch() { completeFloorSwitch() }
+    func retryFloorSwitch() {
+        if scene == nil { retryScene() }
+        else { completeFloorSwitch() }
+    }
 
     private func processScene(_ bundle: CaptureBundle, backendURL: URL?) {
         sceneError = nil
+        sceneStage = .preparing
         isProcessingScene = true
         sceneTask = Task { [weak self] in
             defer { self?.isProcessingScene = false }
@@ -651,7 +795,40 @@ final class ScanController: ObservableObject {
 
     private func makeScene(_ bundle: CaptureBundle, backendURL: URL?) async throws -> ProcessedScene {
         let result: ProcessedScene
-        if let backendURL {
+        if isContinuous, backendURL != nil, let streamingCapture {
+            if streamBackendURL == nil, let backendURL {
+                try await streamingCapture.queue.configureBackend(backendURL)
+                streamBackendURL = backendURL
+            }
+            // The queue stays bound to the server selected at capture start.
+            if let backendURL, !matchesStreamServer(backendURL) {
+                throw CaptureValidationError.invalid("This scan is saved for its original server. Choose Send to selected server to move it to the new address.")
+            }
+            sceneStage = .uploading
+            streamStatus = await streamingCapture.queue.snapshot()
+            _ = try await streamingCapture.queue.finish()
+            streamStatus = await streamingCapture.queue.snapshot()
+            sceneStage = .reconstructing
+            let output = try await streamingCapture.queue.result()
+            sceneStage = .saving
+            try await ScanWork.run(priority: .utility) {
+                try CaptureStore.stageBundle(output.capture)
+                try CaptureStore.saveScene(output.scene, for: output.capture)
+            }
+            captureBundle = output.capture
+            if !streamAlignmentApplied {
+                applyStreamResult(output)
+                streamAlignmentApplied = true
+            }
+            return output.scene
+        } else if isContinuous, backendURL != nil {
+            throw CaptureValidationError.invalid("The scan upload isn't ready. The captured samples are saved on this phone.")
+        } else if isContinuous, streamBackendURL == nil, scene == nil, backendURL == nil {
+            // Local measured coverage remains available, but does not replace stream reconstruction.
+            guard let localScene else { throw CaptureValidationError.invalid("No measured coverage was saved.") }
+            result = localScene
+            sceneError = "Your scan is saved on this phone. Choose a server in Settings, then try again to build the full 3D model."
+        } else if let backendURL {
             result = try await BackendClient(baseURL: backendURL).uploadAndProcess(bundle)
         } else if let localScene {
             result = localScene
@@ -662,6 +839,48 @@ final class ScanController: ObservableObject {
         try await ScanWork.run(priority: .utility) { try CaptureStore.saveScene(result, for: bundle) }
         try Task.checkCancellation()
         return result
+    }
+
+    private func applyStreamResult(_ result: StreamResult) {
+        guard let original = draft else { return }
+        let timestamps = Dictionary(uniqueKeysWithValues: detector.sightings.compactMap { sighting in
+            sighting.measurementTimestamp.map { (sighting.id, $0) }
+        })
+        func correction(_ id: UUID?) -> simd_float4x4 {
+            guard let id, let timestamp = timestamps[id], let alignment = result.alignment else {
+                return matrix_identity_float4x4
+            }
+            return alignment.correction(at: timestamp)
+        }
+        let points = original.points.map { point in
+            var point = point
+            let p = correction(point.id) * SIMD4(point.position, 1)
+            point.position = [p.x, p.y, p.z]
+            return point
+        }
+        let stairs = original.footprints.filter { $0.kind == .stairs }.map { stair in
+            var stair = stair
+            let transform = correction(stair.id)
+            let p = transform * SIMD4(stair.center.x, stair.bottom ?? original.floorY, stair.center.y, 1)
+            let axis = transform * SIMD4(cos(stair.yaw), 0, sin(stair.yaw), 0)
+            stair.center = [p.x, p.z]
+            stair.bottom = p.y
+            stair.yaw = atan2(axis.z, axis.x)
+            return stair
+        }
+        unconfirmed = unconfirmed.map { sighting in
+            var sighting = sighting
+            let transform = correction(sighting.id)
+            let p = transform * SIMD4(sighting.position, 1)
+            let facing = transform * SIMD4(sighting.facing.x, 0, sighting.facing.y, 0)
+            sighting.position = [p.x, p.y, p.z]
+            let direction = SIMD2(facing.x, facing.z)
+            if simd_length_squared(direction) > 1e-8 { sighting.facing = simd_normalize(direction) }
+            return sighting
+        }
+        var corrected = MapBuilder.streamingMap(result.capture, points: points, stairs: stairs, previous: original)
+        corrected.requiresOptimizedLocalization = result.alignment?.materiallyChanged == true
+        draft = corrected
     }
 
     /// Recomputes the report a moment after the draft stops changing; it runs route searches, so keep it off the main thread.
@@ -682,10 +901,13 @@ final class ScanController: ObservableObject {
         }
     }
 
-    var canFinishInterruptedScan: Bool { !rooms.isEmpty || rawCapture.hasObservedFloor }
+    var canFinishInterruptedScan: Bool {
+        isContinuous ? canFinishContinuousScan : !rooms.isEmpty || rawCapture.hasObservedFloor
+    }
 
     var interruptionHint: String {
-        sectionCount == 0 ? (rawCapture.hasObservedFloor
+        if isContinuous { return "Your scan is saved on this phone. Continue in the same area, or finish and save." }
+        return sectionCount == 0 ? (rawCapture.hasObservedFloor
             ? "Measured floor coverage is kept. Continue scanning or finish and save."
             : "No completed sections yet. Continue scanning a smaller area.")
             : "\(sectionCount == 1 ? "1 section is" : "\(sectionCount) sections are") kept. \(interruptionAdvice)"
@@ -725,11 +947,11 @@ final class ScanController: ObservableObject {
         case .critical:
             pauseForResources(message: "The phone needs to cool down.")
         case .serious:
-            scanNotice = "The phone is warming up. Finish this section and take a short break."
+            scanNotice = "The phone is warming up. Consider taking a short break."
         default:
             scanNotice = nil
         }
-        guard phase == .scanning, let frame = session.currentFrame,
+        guard !isContinuous, phase == .scanning, let frame = session.currentFrame,
               case .normal = frame.camera.trackingState,
               abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return }
         let camera = frame.camera.transform.translation
@@ -743,7 +965,70 @@ final class ScanController: ObservableObject {
         guard isActive, phase == .scanning else { return }
         errorMessage = message
         interruptionAdvice = "Take a short break before continuing, or finish and save now."
-        endSection(thenFinish: false, pauseAfter: true)
+        if isContinuous {
+            pauseContinuousCapture()
+            if ProcessInfo.processInfo.thermalState == .critical { session.pause() }
+        } else { endSection(thenFinish: false, pauseAfter: true) }
+    }
+
+    private func pauseContinuousCapture() {
+        phase = .interrupted
+        detector.pause()
+        rawCapture.pause()
+        streamingCapture?.pause()
+    }
+
+    private func beginStreamingCapture() {
+        guard streamStartTask == nil, let floor = currentFloor else { return }
+        let id = scanID
+        let manifest = StreamManifest(id: id.uuidString, mapID: id.uuidString, floorID: floor.id.uuidString)
+        let root = URL.documentsDirectory.appending(path: "Captures", directoryHint: .isDirectory)
+            .appending(path: id.uuidString, directoryHint: .isDirectory)
+            .appending(path: "stream", directoryHint: .isDirectory)
+        let backend = streamBackendURL
+        streamStartTask = Task { [weak self] in
+            do {
+                let queue = try await ScanWork.run {
+                    try StreamingCaptureQueue(root: root, manifest: manifest, backendURL: backend)
+                }
+                guard let self, self.isActive, self.scanID == id, !Task.isCancelled else { return }
+                let capture = StreamingScanCapture(queue: queue)
+                capture.measurements = { [weak self] in self?.rawCapture.snapshot().observedFootprints ?? [] }
+                capture.onStatus = { [weak self] status in self?.streamStatus = status }
+                capture.onCoverage = { [weak self] coverage in
+                    guard let self, self.isActive, self.scanID == id else { return }
+                    self.scanCoverage = coverage
+                }
+                capture.onTrackingHint = { [weak self] hint in self?.trackingNotice = hint }
+                capture.onError = { [weak self] message in
+                    self?.errorMessage = message
+                    self?.pauseContinuousCapture()
+                }
+                self.streamingCapture = capture
+                self.streamStatus = await queue.snapshot()
+                capture.start(session: self.session)
+                if self.phase != .scanning { capture.pause() }
+                self.streamStatusTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.refreshStreamStatus() }
+                }
+            } catch {
+                guard let self, self.isActive, self.scanID == id, !Task.isCancelled else { return }
+                self.errorMessage = "Couldn't start saving the scan. \(error.localizedDescription)"
+                self.pauseContinuousCapture()
+            }
+            self?.streamStartTask = nil
+        }
+    }
+
+    private func refreshStreamStatus() {
+        guard streamStatusTask == nil, let streamingCapture else { return }
+        let id = scanID
+        streamStatusTask = Task { [weak self] in
+            let status = await streamingCapture.queue.snapshot()
+            guard let self, self.isActive, self.scanID == id else { return }
+            self.streamStatus = status
+            self.streamStatusTask = nil
+        }
     }
 
     private func captureStartView() {

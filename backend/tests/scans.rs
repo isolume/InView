@@ -245,12 +245,9 @@ fn raw_only_capture_retains_mesh_without_inventing_furniture() {
     assert_eq!(scene.meshes.len(), 1);
     assert_eq!(scene.meshes[0].source_id, "raw-obstacle-001");
     near(scene.meshes[0].vertices[0], [1.85, 0.0, -1.9]);
-    assert!(
-        scene
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("recognition is not implemented"))
-    );
+    assert!(scene.warnings.iter().any(|warning| {
+        warning.contains("No object labels were supplied. The map retains measured geometry.")
+    }));
 }
 
 #[test]

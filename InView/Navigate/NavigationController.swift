@@ -29,6 +29,7 @@ final class NavigationController: ObservableObject {
     /// Radians clockwise from -Z toward +X.
     @Published private(set) var heading: Float = 0
     @Published private(set) var startView: UIImage?
+    @Published private(set) var unavailableReason: String?
 
     let isDemo: Bool
     lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -104,7 +105,12 @@ final class NavigationController: ObservableObject {
             worldMap = loaded.worldMap
             planner = loaded.planner
             startView = loaded.startView
-            phase = map == nil || worldMap == nil ? .noMap : .locating
+            if map?.requiresOptimizedLocalization == true {
+                unavailableReason = "This map needs positioning setup before navigation. You can still view the saved model."
+                phase = .noMap
+            } else {
+                phase = map == nil || worldMap == nil ? .noMap : .locating
+            }
             if isActive { begin() }
         }
     }
@@ -153,10 +159,12 @@ final class NavigationController: ObservableObject {
         return SIMD2(translation.x, translation.z)
     }
 
-    func startFromScanOrigin() {
-        guard phase == .locating else { return }
-        run(initialWorldMap: nil)
-        didLocate()
+    /// Retry with the saved coordinate system; routing waits for actual relocalization.
+    func retryLocalization() {
+        guard phase == .locating, let worldMap else { return }
+        isRelocalizationSlow = false
+        locatingSince = .now
+        run(initialWorldMap: worldMap)
     }
 
     func navigateToNearest() {

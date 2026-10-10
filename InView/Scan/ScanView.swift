@@ -5,6 +5,8 @@ import SwiftUI
 struct ScanView: View {
     @StateObject private var controller = ScanController()
     @Environment(\.dismiss) private var dismiss
+    @State private var showsProcessingSettings = false
+    @State private var showsScanCoverage = true
 
     var body: some View {
         Group {
@@ -20,7 +22,15 @@ struct ScanView: View {
                     VStack(spacing: 16) {
                         Text(controller.errorMessage ?? "Save this floor before continuing.")
                             .multilineTextAlignment(.center)
-                        Button("Continue to \(nextFloor)", action: controller.retryFloorSwitch)
+                        if let error = controller.sceneError {
+                            Text(error).font(.subheadline).foregroundStyle(.secondary)
+                            Button("Settings") { showsProcessingSettings = true }
+                            if controller.canMoveStreamToSelectedServer {
+                                Button("Send to selected server", action: controller.moveStreamToSelectedServer)
+                            }
+                            if controller.canUseLocalScene { Button("Use local map", action: controller.useLocalScene) }
+                        }
+                        Button(controller.scene == nil ? "Try again" : "Continue to \(nextFloor)", action: controller.retryFloorSwitch)
                             .buttonStyle(.borderedProminent)
                         Button("Close", action: close).buttonStyle(.bordered)
                     }.padding()
@@ -31,6 +41,7 @@ struct ScanView: View {
         }
         .onAppear { controller.start() }
         .onDisappear { controller.stop() }
+        .sheet(isPresented: $showsProcessingSettings) { BackendSettingsView() }
         .sheet(isPresented: Binding(
             get: { controller.proposedFloorLevel != nil },
             set: { if !$0, controller.proposedFloorLevel != nil { controller.cancelFloorChange() } }
@@ -52,10 +63,19 @@ struct ScanView: View {
 
     private var captureScreen: some View {
         ZStack {
-            if let captureView = controller.captureView, controller.phase != .processingScene {
+            if let streamingView = controller.streamingView, controller.phase != .processingScene {
+                ViewContainer(view: streamingView).ignoresSafeArea()
+            } else if let captureView = controller.captureView, controller.phase != .processingScene {
                 ViewContainer(view: captureView).ignoresSafeArea()
             } else {
                 Color(.systemBackground).ignoresSafeArea()
+            }
+            if controller.isContinuous, showsScanCoverage, !controller.isChangingFloors,
+               controller.phase == .scanning || controller.phase == .interrupted {
+                ScanCoverageOverlay(session: controller.session, coverage: controller.scanCoverage)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
             if controller.phase == .scanning {
                 DetectionOverlay(detector: controller.detector, session: controller.session)
@@ -78,10 +98,34 @@ struct ScanView: View {
                         .accessibilityLabel("\(floor.name). Change floor")
                     }
                     Spacer()
-                    DetectionStatus(detector: controller.detector, section: controller.sectionCount + 1)
+                    VStack(alignment: .trailing, spacing: 6) {
+                        DetectionStatus(detector: controller.detector,
+                                        section: controller.isContinuous ? nil : controller.sectionCount + 1)
+                        if controller.isContinuous {
+                            if controller.phase == .scanning || controller.phase == .interrupted {
+                                Button {
+                                    showsScanCoverage.toggle()
+                                } label: {
+                                    Label("Captured surfaces", systemImage: showsScanCoverage ? "checkmark.circle.fill" : "eye.slash")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(showsScanCoverage ? Color.green : Color.secondary)
+                                        .padding(10)
+                                        .background(.regularMaterial, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Captured surfaces")
+                                .accessibilityValue(showsScanCoverage ? "Shown in green" : "Hidden")
+                                .accessibilityHint("Double tap to toggle highlights of surfaces saved on this phone")
+                            }
+                            Text(controller.streamStatusLine)
+                                .font(.caption.weight(.semibold))
+                                .padding(10)
+                                .background(.regularMaterial, in: Capsule())
+                        }
+                    }
                 }
                 Spacer()
-                if controller.suggestsNewSection, controller.phase == .scanning {
+                if !controller.isContinuous, controller.suggestsNewSection, controller.phase == .scanning {
                     sectionSuggestion
                 }
                 switch controller.phase {
@@ -99,7 +143,7 @@ struct ScanView: View {
                 case .savingWorldMap:
                     worldMapPanel
                 case .processingScene:
-                    ProgressView("Building map…")
+                    ScanSceneProgress(controller: controller)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .background(.regularMaterial, in: Capsule())
@@ -167,7 +211,7 @@ struct ScanView: View {
             Label("Scanning stopped", systemImage: "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundStyle(.orange)
-            Text(controller.errorMessage ?? "The scanner ended this section, usually because it lost track of where it was.")
+            Text(controller.errorMessage ?? "The scanner paused. Move somewhere with more detail in view before continuing.")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
             Text(controller.interruptionHint)
@@ -233,17 +277,22 @@ struct ScanView: View {
                 }
             }
             HStack(spacing: 10) {
-                Button(action: controller.addSection) {
-                    Label("Next section", systemImage: "plus.square.on.square").frame(maxWidth: .infinity)
+                if !controller.isContinuous {
+                    Button(action: controller.addSection) {
+                        Label("Next section", systemImage: "plus.square.on.square").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
                 Button(action: controller.finish) {
                     Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(controller.isContinuous && !controller.canFinishContinuousScan)
             }
             .controlSize(.large)
-            Text(controller.scanNotice ?? "Include the floor as you scan. Long scans save sections automatically.")
+            Text(controller.scanNotice ?? controller.trackingNotice ?? (controller.isContinuous
+                 ? "Move slowly and include the floor as you scan."
+                 : "Include the floor as you scan. Long scans save sections automatically."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if controller.automaticFloorDetectionUnavailable {
@@ -274,7 +323,7 @@ private struct Crosshair: View {
 
 private struct DetectionStatus: View {
     @ObservedObject var detector: AccessibilityDetector
-    let section: Int
+    let section: Int?
 
     var body: some View {
         let counts = detector.sightings.reduce(into: [VisionDetection.Kind: Int]()) { counts, sighting in
@@ -322,7 +371,8 @@ private struct DetectionStatus: View {
             return AppConfig.visionProvider == .openai ? "Vision off: set OPENAI_API_KEY" : "Vision off: set GEMINI_API_KEY"
         }
         if let error = detector.lastError { return error }
-        var line = "Section \(section) · \(detector.framesAnalyzed) frames checked"
+        var line = section.map { "Section \($0) · " } ?? ""
+        line += "\(detector.framesAnalyzed) frames checked"
         if detector.rejectedClaims > 0 {
             line += " · \(detector.rejectedClaims) false finds ruled out by LiDAR"
         }
@@ -344,6 +394,7 @@ struct MapReviewView: View {
                                   primaryTitle: isSaving ? "Saving…" : "Save map", primaryAction: save,
                                   secondaryTitle: "Review points",
                                   reviewDestination: AnyView(RoomReviewSheet(controller: controller, onSaved: onClose)),
+                                  streamEvidenceID: controller.streamEvidenceID,
                                   currentMapPosition: { controller.placementPosition },
                                   onPlaceBuilding: controller.setGeographicReference,
                                   error: $saveError)
@@ -362,6 +413,21 @@ struct MapReviewView: View {
                 onClose()
             } catch { saveError = error.localizedDescription }
             isSaving = false
+        }
+    }
+}
+
+private struct ScanSceneProgress: View {
+    @ObservedObject var controller: ScanController
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let progress = controller.sceneUploadProgress {
+                Text(controller.sceneStatusLine).font(.subheadline)
+                ProgressView(value: progress).frame(width: 220)
+            } else {
+                ProgressView(controller.sceneStatusLine)
+            }
         }
     }
 }
@@ -394,7 +460,7 @@ private struct MapReviewDetailsView: View {
             List {
                 if let draft = controller.draft {
                     if controller.isProcessingScene {
-                        Section { ProgressView("Building map…") }
+                        Section { ScanSceneProgress(controller: controller) }
                     } else if let error = controller.sceneError {
                         Section {
                             Text(error).font(.subheadline).foregroundStyle(.secondary)
@@ -406,13 +472,24 @@ private struct MapReviewDetailsView: View {
                                 Spacer()
                                 if controller.canRetryScene { Button("Try again", action: controller.retryScene) }
                             }
+                            if controller.canMoveStreamToSelectedServer {
+                                Button("Send to selected server", action: controller.moveStreamToSelectedServer)
+                            }
                         }
                     }
                     Section {
-                        MapPanel(map: draft, height: 320) { pendingPoint = $0 }
+                        MapPanel(map: draft, height: 320, onTap: controller.canPlaceReviewPoints ? { pendingPoint = $0 } : nil)
                             .padding(.vertical, 6)
                     } footer: {
-                        Text("Tap the plan to name a destination or add an elevator or ramp the camera missed.")
+                        Text(controller.canPlaceReviewPoints
+                             ? "Tap the plan to name a destination or add an elevator or ramp the camera missed."
+                             : "Finish building the model or choose Use local map before adding destinations.")
+                    }
+                    if controller.hasSelectedLocalStreamMap {
+                        Section {
+                            Text("Local map selected. Your saved scan can still be uploaded from Settings.")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
                     }
                     if !controller.unconfirmed.isEmpty {
                         Section {
@@ -515,7 +592,7 @@ private struct MapReviewDetailsView: View {
                     Button(action: save) {
                         if isSaving { ProgressView() } else { Text("Save") }
                     }
-                    .disabled(isSaving || controller.isProcessingScene || controller.canUseLocalScene)
+                    .disabled(isSaving || controller.isProcessingScene || controller.scene == nil)
                 }
             }
             .confirmationDialog("Add destination", isPresented: isAddingPoint) {

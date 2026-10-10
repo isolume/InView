@@ -19,6 +19,12 @@ enum FrameEncoder {
         let preview: Data
     }
 
+    struct SensorEncoded: Sendable {
+        let jpeg: Data
+        let width: Int
+        let height: Int
+    }
+
     /// Longest side of the frame sent to the model. Larger frames cost encode time and upload for little gain.
     static let modelDimension: CGFloat = 1024
     /// Longest side of the evidence photo shown in review.
@@ -93,6 +99,16 @@ enum FrameEncoder {
         autoreleasepool {
             guard !Task.isCancelled, let image = render(portrait(snapshot), maxDimension: maxDimension) else { return nil }
             return jpeg(image)
+        }
+    }
+
+    /// Reconstruction images stay in the sensor orientation shared by depth and intrinsics.
+    static func sensorJPEG(from snapshot: Snapshot, maxDimension: CGFloat = 960) -> SensorEncoded? {
+        autoreleasepool {
+            guard !Task.isCancelled,
+                  let image = render(CIImage(cvPixelBuffer: snapshot.pixelBuffer), maxDimension: maxDimension),
+                  let data = jpeg(image) else { return nil }
+            return SensorEncoded(jpeg: data, width: image.width, height: image.height)
         }
     }
 
