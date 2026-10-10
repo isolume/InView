@@ -34,27 +34,37 @@ public struct CaptureTextObservation: Codable, Equatable, Sendable {
     public var imageAsset: String
     /// Width and height of that (upright) image in pixels.
     public var imageSizePx: [Int]
+    /// How the OCR'd image relates to the calibrated, sensor-native camera image of `frameID`
+    /// (whose intrinsics are landscape). Always `CaptureImageOrientation.uprightRotatedRightFromSensor`
+    /// for iPhone keyframes and stills: the upright image is the sensor image rotated 90° clockwise.
+    public var imageOrientation: String
     public var text: String
     public var confidence: Double
-    /// `[x, y, width, height]` normalized to the image, with a top-left origin and y down.
+    /// `[x, y, width, height]` normalized to the upright image, with a top-left origin and y down.
     public var bboxNorm: [Double]
+    /// The same box in the sensor-native camera image (top-left origin, normalized), ready to be
+    /// unprojected with the frame's intrinsics without knowing the upright image's orientation.
+    public var bboxSensorNorm: [Double]
     /// BCP 47 language codes, most likely first; empty when the text is too short to tell.
     public var languages: [String]
 
     public init(frameID: String, imageAsset: String, imageSizePx: [Int], text: String, confidence: Double,
-                bboxNorm: [Double], languages: [String]) {
+                bboxNorm: [Double], languages: [String],
+                imageOrientation: String = CaptureImageOrientation.uprightRotatedRightFromSensor) {
         self.frameID = frameID
         self.imageAsset = imageAsset
         self.imageSizePx = imageSizePx
+        self.imageOrientation = imageOrientation
         self.text = text
         self.confidence = confidence
         self.bboxNorm = bboxNorm
+        self.bboxSensorNorm = CaptureImageOrientation.sensorBox(fromUpright: bboxNorm)
         self.languages = languages
     }
 
     enum CodingKeys: String, CodingKey {
         case frameID = "frame_id", imageAsset = "image_asset", imageSizePx = "image_size_px", text, confidence
-        case bboxNorm = "bbox_norm", languages
+        case imageOrientation = "image_orientation", bboxNorm = "bbox_norm", bboxSensorNorm = "bbox_sensor_norm", languages
     }
 
     /// Normalizes one recognition, or rejects it when it carries nothing usable.
@@ -82,6 +92,21 @@ public struct CaptureTextObservation: Codable, Equatable, Sendable {
         observations.sorted {
             ($0.imageAsset, $0.bboxNorm[1], $0.bboxNorm[0], $0.text) < ($1.imageAsset, $1.bboxNorm[1], $1.bboxNorm[0], $1.text)
         }
+    }
+}
+
+/// Orientation of exported capture images relative to the calibrated sensor-native camera image.
+public enum CaptureImageOrientation {
+    /// `FrameEncoder` applies `.oriented(.right)`: the upright image is the landscape sensor image
+    /// rotated 90° clockwise. Upright pixel (px, py) of a W×H image is sensor-normalized
+    /// (u, v) = (py / H, 1 − px / W).
+    public static let uprightRotatedRightFromSensor = "upright_rotated_right_from_sensor"
+
+    /// Maps a normalized top-left `[x, y, w, h]` box in the upright image to the sensor image.
+    public static func sensorBox(fromUpright box: [Double]) -> [Double] {
+        guard box.count == 4 else { return box }
+        let (x, y, w, h) = (box[0], box[1], box[2], box[3])
+        return [y, 1 - x - w, h, w].map { ($0 * 1e6).rounded() / 1e6 }
     }
 }
 

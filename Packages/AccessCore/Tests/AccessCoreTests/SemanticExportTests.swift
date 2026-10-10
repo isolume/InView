@@ -50,7 +50,10 @@ private func json(_ data: Data) throws -> [String: Any] {
     #expect(root["schema_version"] as? Int == 1)
     #expect(root["engine"] as? String == "apple_vision")
     let first = try #require((root["observations"] as? [[String: Any]])?.first)
-    #expect(Set(first.keys) == ["frame_id", "image_asset", "image_size_px", "text", "confidence", "bbox_norm", "languages"])
+    #expect(Set(first.keys) == ["frame_id", "image_asset", "image_size_px", "image_orientation", "text", "confidence",
+                                "bbox_norm", "bbox_sensor_norm", "languages"])
+    #expect(first["image_orientation"] as? String == "upright_rotated_right_from_sensor")
+    #expect(first["bbox_sensor_norm"] as? [Double] == [0.25, 0.25, 0.25, 0.5])
     #expect(first["frame_id"] as? String == "depth-3")
     #expect(first["image_size_px"] as? [Int] == [480, 640])
     #expect(first["bbox_norm"] as? [Double] == [0.25, 0.25, 0.5, 0.25])
@@ -121,4 +124,29 @@ private func json(_ data: Data) throws -> [String: Any] {
     #expect(root["geographic_reference"] == nil)
     #expect((root["access_points"] as? [Any])?.isEmpty == true)
     #expect((root["stairs_footprints"] as? [Any])?.isEmpty == true)
+}
+
+/// A non-square upright image (480×640) is the 640×480 sensor image rotated 90° clockwise, so the
+/// exported sensor box must land on the same physical pixels the frame's intrinsics describe.
+@Test func sensorBoxIsTheUprightBoxRotatedBackIntoTheSensorImage() throws {
+    let (uprightW, uprightH) = (480.0, 640.0)
+    let (sensorW, sensorH) = (uprightH, uprightW)  // Landscape sensor: 640×480.
+    // Text near the top-right of the upright image: x 300–420 px, y 40–100 px.
+    let observation = try #require(CaptureTextObservation.make(
+        frameID: "f", imageAsset: "f.color.jpg", imageWidth: Int(uprightW), imageHeight: Int(uprightH), text: "214",
+        confidence: 0.9, visionBox: (x: 300 / uprightW, y: 1 - 100 / uprightH, width: 120 / uprightW, height: 60 / uprightH),
+        languages: []
+    ))
+    let upright = observation.bboxNorm, sensor = observation.bboxSensorNorm
+    #expect(observation.imageOrientation == CaptureImageOrientation.uprightRotatedRightFromSensor)
+    // Every upright corner (px, py) maps to sensor pixel (py, H_up − px) for a clockwise rotation.
+    for (px, py) in [(300.0, 40.0), (420.0, 40.0), (300.0, 100.0), (420.0, 100.0)] {
+        let (sx, sy) = (py, uprightW - px)
+        #expect(sx / sensorW >= sensor[0] - 1e-6 && sx / sensorW <= sensor[0] + sensor[2] + 1e-6)
+        #expect(sy / sensorH >= sensor[1] - 1e-6 && sy / sensorH <= sensor[1] + sensor[3] + 1e-6)
+    }
+    // Width and height swap: 120×60 upright px is 60×120 sensor px.
+    #expect(abs(sensor[2] * sensorW - upright[3] * uprightH) < 1e-3)
+    #expect(abs(sensor[3] * sensorH - upright[2] * uprightW) < 1e-3)
+    #expect(abs(sensor[0] - 40 / sensorW) < 1e-6 && abs(sensor[1] - 60 / sensorH) < 1e-6)
 }

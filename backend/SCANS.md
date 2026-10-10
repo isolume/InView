@@ -198,7 +198,9 @@ continues. An empty `observations` list means OCR ran and found nothing.
 ```json
 {"schema_version": 1, "engine": "apple_vision", "observations": [
   {"frame_id": "depth-3", "image_asset": "depth-3.color.jpg", "image_size_px": [480, 640],
-   "text": "EXIT", "confidence": 1.0, "bbox_norm": [0.25, 0.25, 0.5, 0.25], "languages": ["en"]}]}
+   "image_orientation": "upright_rotated_right_from_sensor",
+   "text": "EXIT", "confidence": 1.0, "bbox_norm": [0.25, 0.25, 0.5, 0.25],
+   "bbox_sensor_norm": [0.25, 0.25, 0.25, 0.5], "languages": ["en"]}]}
 ```
 
 - `frame_id` is the depth observation (`package-manifest.json` `observations[].id`) whose pose and
@@ -206,8 +208,16 @@ continues. An empty `observations` list means OCR ran and found nothing.
 - `image_size_px` is `[width, height]` of that **upright** JPEG (the sensor image rotated right).
 - `bbox_norm` is `[x, y, w, h]`, normalized to the upright JPEG with a **top-left origin, y down**
   (converted from Vision's bottom-left origin and clipped to `[0, 1]`). Pixel box =
-  `bbox_norm * [w, h, w, h]`. Convert to sensor-native u/v with `geometry.jpeg_to_sensor_uv` before
-  sampling depth; manifest intrinsics describe the landscape sensor image, not the JPEG.
+  `bbox_norm * [w, h, w, h]`. Manifest intrinsics describe the landscape sensor image, not the
+  JPEG, so never unproject `bbox_norm` directly.
+- `image_orientation` (required) names the transform from the calibrated sensor-native image to
+  the OCR'd image. iPhone keyframes and stills are always `upright_rotated_right_from_sensor`
+  (rotated 90° clockwise): upright pixel `(px, py)` of a `W×H` image is sensor-normalized
+  `(u, v) = (py / H, 1 − px / W)` (`geometry.jpeg_to_sensor_uv`). Consumers must reject
+  orientations they do not know.
+- `bbox_sensor_norm` is the same box already in the sensor-native image (`[u, v, w, h]`, top-left
+  origin, normalized): `[y, 1 − x − w, h, w]` of `bbox_norm`. It can be unprojected with the frame's
+  intrinsics directly.
 - `languages` are BCP 47 guesses from `NLLanguageRecognizer` (most likely first, each ≥ 0.2
   probability), empty for text with fewer than three letters (room numbers, arrows). Vision reports
   no per-line language.
