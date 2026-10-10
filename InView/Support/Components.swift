@@ -1,0 +1,100 @@
+import AccessCore
+import SwiftUI
+
+// Buttons, by where they sit:
+// - Floating over the camera or a map: `.glassProminent` for the one main action, `.glass` for the rest,
+//   `.controlSize(.large)`, full width.
+// - On solid content (Home, lists, the report): `.borderedProminent` / `.bordered` with a capsule border shape.
+// - Destructive: the same style with `.tint(.red)`.
+// - Toolbars and sheets: the system roles `.close`, `.cancel` and `.confirm`, which draw the standard glyphs.
+
+extension View {
+    /// The container for controls floating over the camera or a map.
+    func glassPanel(padding: CGFloat = 18) -> some View {
+        self
+            .padding(padding)
+            .glassEffect(.regular, in: .rect(cornerRadius: Theme.Radius.panel))
+    }
+}
+
+/// A short status line in a glass capsule, over the camera or a map.
+struct StatusPill: View {
+    let text: String
+    var systemImage: String? = nil
+    var isWorking = false
+    var isCompact = false
+
+    var body: some View {
+        HStack(spacing: isCompact ? 6 : 8) {
+            if isWorking {
+                ProgressView().controlSize(isCompact ? .mini : .regular)
+            } else if let systemImage {
+                Image(systemName: systemImage)
+            }
+            Text(text)
+        }
+        .font(isCompact ? .caption.weight(.medium) : .subheadline.weight(.semibold))
+        .padding(.horizontal, isCompact ? 10 : 16)
+        .padding(.vertical, isCompact ? 6 : 10)
+        .glassEffect(.regular, in: .capsule)
+    }
+}
+
+/// A colored disc with a white glyph: the one marker for elevators, ramps, stairs and destinations, used in
+/// lists, cards, legends and on every map.
+struct KindBadge: View {
+    /// The size on maps, where the badge also gets a white ring to stay readable over walls and furniture.
+    static let mapDiameter: CGFloat = 26
+    static let ringWidth: CGFloat = 2
+    /// Glyph size as a share of the diameter.
+    static let glyphScale: CGFloat = 0.5
+
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = 32
+    var isOnMap = false
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * Self.glyphScale, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(tint, in: Circle())
+            .padding(isOnMap ? Self.ringWidth : 0)
+            .background(isOnMap ? Color.white : .clear, in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+extension KindBadge {
+    init(kind: AccessPoint.Kind, size: CGFloat = 32, isOnMap: Bool = false) {
+        self.init(symbol: kind.symbolName, tint: kind.tint, size: size, isOnMap: isOnMap)
+    }
+
+    init(kind: VisionDetection.Kind, size: CGFloat = 32, isOnMap: Bool = false) {
+        self.init(symbol: kind.symbolName, tint: kind.tint, size: size, isOnMap: isOnMap)
+    }
+}
+
+/// The close control for full-screen camera views, matching the toolbar close buttons elsewhere.
+struct CloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("Close", systemImage: "xmark", role: .close, action: action)
+            .labelStyle(.iconOnly)
+            .font(.headline)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+    }
+}
+
+/// Shrinks a little while pressed, for large tappable cards on solid backgrounds.
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(duration: 0.25), value: configuration.isPressed)
+    }
+}

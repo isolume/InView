@@ -134,7 +134,7 @@ private struct ActionCard: View {
             .foregroundStyle(style == .primary ? Color.white : Color.primary)
             .padding(18)
             .frame(maxWidth: .infinity, minHeight: 96)
-            .background(background, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+            .background(background, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             .opacity(isEnabled ? 1 : 0.45)
         }
         .buttonStyle(PressableStyle())
@@ -146,15 +146,6 @@ private struct ActionCard: View {
 
     private var iconBackground: AnyShapeStyle {
         style == .primary ? AnyShapeStyle(.white.opacity(0.2)) : AnyShapeStyle(Theme.accent.opacity(0.12))
-    }
-}
-
-/// Shrinks a little while pressed.
-struct PressableStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.spring(duration: 0.25), value: configuration.isPressed)
     }
 }
 

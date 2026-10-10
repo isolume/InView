@@ -22,7 +22,8 @@ extension VisionDetection.Kind {
 extension AccessPoint.Kind {
     var symbolName: String {
         switch self {
-        case .elevator: "arrow.up.arrow.down.square.fill"
+        // Bare glyphs: badges and tags supply the colored container.
+        case .elevator: "arrow.up.arrow.down"
         case .ramp: "figure.roll"
         case .destination: "flag.fill"
         }
@@ -31,7 +32,7 @@ extension AccessPoint.Kind {
     var tint: Color {
         switch self {
         case .elevator: Theme.accent
-        case .ramp: .teal
+        case .ramp: Theme.ramp
         case .destination: Theme.accent
         }
     }
@@ -40,7 +41,7 @@ extension AccessPoint.Kind {
     var uiTint: UIColor {
         switch self {
         case .elevator: Theme.accentUIColor
-        case .ramp: .systemTeal
+        case .ramp: Theme.rampUIColor
         case .destination: Theme.accentUIColor
         }
     }

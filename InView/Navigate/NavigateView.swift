@@ -331,7 +331,7 @@ private struct NextStepBanner: View {
         }
         .foregroundStyle(.white)
         .padding(16)
-        .background(Theme.accent.gradient, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .background(Theme.accent.gradient, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 

@@ -575,21 +575,6 @@ private struct PointRow: View {
     }
 }
 
-struct CloseButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark")
-                .font(.headline)
-                .frame(width: 44, height: 44)
-                .background(.regularMaterial, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Close")
-    }
-}
-
 private struct UnsupportedDeviceView: View {
     let onClose: () -> Void
 
