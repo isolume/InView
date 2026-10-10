@@ -196,6 +196,49 @@ final class NavigationController: ObservableObject {
         voice.activate()
     }
 
+    /// Places are edited while the camera is off, so AR labels and routes never show a stale list.
+    var canEditPlaces: Bool { !isDemo && map != nil && phase == .browsing && !isSavingPlaces }
+    @Published private(set) var isSavingPlaces = false
+
+    /// Adds a place dropped on the map, or saves edits to one. The pin shows at once; the map,
+    /// its report and the route planner are written and rebuilt in the background.
+    /// - Returns: The report checked against the new list of places.
+    func savePlace(_ point: AccessPoint) async throws -> AccessibilityReport {
+        guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
+        edited.place(point)
+        return try await publishPlaces(edited)
+    }
+
+    func removePlace(id: UUID) async throws -> AccessibilityReport {
+        guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
+        edited.removePoint(id: id)
+        return try await publishPlaces(edited)
+    }
+
+    private func publishPlaces(_ edited: VenueMap) async throws -> AccessibilityReport {
+        guard canEditPlaces, let previous = map else {
+            throw CaptureValidationError.invalid("Places can be changed while the map is open without directions.")
+        }
+        isSavingPlaces = true
+        defer { isSavingPlaces = false }
+        map = edited
+        if let selected = selectedDestination { selectedDestination = edited.points.first { $0.id == selected.id } }
+        do {
+            let saved = try await Task.detached(priority: .userInitiated) {
+                let planner = RoutePlanner(map: edited)
+                let report = AccessibilityReport(map: edited, planner: planner)
+                try MapStore.updatePoints(edited.points, report: report)
+                return (planner, report)
+            }.value
+            planner = saved.0
+            return saved.1
+        } catch {
+            map = previous
+            if let selected = selectedDestination { selectedDestination = previous.points.first { $0.id == selected.id } }
+            throw error
+        }
+    }
+
     func setGeographicReference(_ reference: BuildingMapReference) throws {
         try reference.validate()
         guard map != nil else { return }
