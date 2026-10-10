@@ -1,4 +1,4 @@
-# AccessNav
+# InView
 
 Volunteers scan a floor once with a LiDAR iPhone; the app spots elevators and ramps with a vision model. After that, anyone in a wheelchair can open the app, which relocalizes into the saved AR map, and follow AR arrows along a step-free route to the nearest accessible point.
 
@@ -10,7 +10,7 @@ Requires Xcode 26+, an iPhone with LiDAR (Pro / Pro Max), and [XcodeGen](https:/
 brew install xcodegen
 cp Config/Secrets.example.xcconfig Config/Secrets.xcconfig   # then fill it in
 xcodegen
-open AccessNav.xcodeproj
+open InView.xcodeproj
 ```
 
 `Config/Secrets.xcconfig` is git-ignored. Set:
@@ -39,11 +39,11 @@ Relocalization works best when the lighting matches the scan and the area has te
 
 | Piece | Where |
 | --- | --- |
-| RoomPlan scan → 2D footprints (walls, doors, furniture, stairs) | `AccessNav/Scan/MapBuilder.swift` |
-| Vision detection + 3D placement by raycast | `AccessNav/Detection/` |
-| ARWorldMap save and relocalization | `AccessNav/Scan/ScanController.swift`, `AccessNav/Navigate/NavigationController.swift` |
+| RoomPlan scan → 2D footprints (walls, doors, furniture, stairs) | `InView/Scan/MapBuilder.swift` |
+| Vision detection + 3D placement by raycast | `InView/Detection/` |
+| ARWorldMap save and relocalization | `InView/Scan/ScanController.swift`, `InView/Navigate/NavigationController.swift` |
 | Wheelchair routing: occupancy grid with clearance, ADA door widths, A* | `Packages/AccessCore/.../OccupancyGrid.swift`, `RoutePlanner.swift` |
-| AR chevrons and destination labels | `AccessNav/Navigate/PathRenderer.swift` |
+| AR chevrons and destination labels | `InView/Navigate/PathRenderer.swift` |
 
 Routes keep 45 cm clearance from obstacles (90 cm passages). In tight spaces they fall back to 30 cm, then 15 cm, and the UI warns that the route is narrow. Doors under 81 cm (ADA 32") are treated as walls.
 

@@ -45,7 +45,7 @@ struct HomeView: View {
                 }
                 .padding()
             }
-            .navigationTitle("AccessNav")
+            .navigationTitle("InView")
         }
         .onAppear { liveStatus.start() }
         .onChange(of: mode) { _, mode in

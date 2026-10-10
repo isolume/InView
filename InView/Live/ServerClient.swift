@@ -16,7 +16,7 @@ struct PointStatus: Codable, Hashable, Sendable {
     let photoVerified: Bool
 }
 
-/// Talks to the AccessNav server: uploads the scanned venue and reads live point status.
+/// Talks to the InView server: uploads the scanned venue and reads live point status.
 struct ServerClient {
     private let baseURL: URL
 

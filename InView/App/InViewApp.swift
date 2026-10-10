@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct AccessNavApp: App {
+struct InViewApp: App {
     var body: some Scene {
         WindowGroup {
             HomeView()
