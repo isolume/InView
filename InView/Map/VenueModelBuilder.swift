@@ -63,6 +63,8 @@ enum VenueModelBuilder {
             return stairs(width: w, depth: d, height: min(max(footprint.height ?? 0.9, 0.4), 1.5))
         case .obstacle:
             return furniture(footprint.furniture, w: w, d: d, h: h)
+        case .window, .floor:
+            return Entity()
         }
     }
 

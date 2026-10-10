@@ -27,7 +27,7 @@ struct MapPreviewView: View {
             switch footprint.kind {
             case .obstacle: symbol.drawFurniture(in: &context)
             case .stairs: symbol.drawStairs(in: &context)
-            case .wall, .door, .opening: break
+            case .wall, .door, .opening, .window, .floor: break
             }
         }
         for footprint in map.footprints where footprint.kind == .wall {
