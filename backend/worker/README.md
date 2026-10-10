@@ -8,7 +8,7 @@ shared ARKit frame (meters, Y up; the floor map is the X/Z plane, +Z down the im
 |------|--------|--------|
 | Floor map | RoomPlan floors/walls/doors/objects, native ARKit mesh, LiDAR depth, camera track | walkable/obstacle raster (PNG), floor outline, free-standing obstacles, passages under 0.915 m |
 | Doors | RoomPlan doors/openings + the obstacle raster | nominal vs measured clear width, 0.815 m door / 0.915 m opening minimum, 2.03 m headroom |
-| Signs & text | RGB keyframes + depth samples under each detection | exit (red/green) and accessibility (blue) plate candidates, MSER text lines, 3D position; text via Tesseract only if installed |
+| Signs & text | RGB keyframes + depth samples under each detection (+ optional `floor_map`, `text`) | colored and neutral sign plates; procedurally rendered ISO 7001/7010-style pictograms (Hu moments, multi-scale NCC, AKAZE + homography); arrow direction mapped onto the floor plan; braille dot lattice; WCAG contrast; mounting height vs ADA 703.4.1; legibility (703.5.5); languages/scripts; category; 3D dedupe. `python -m inview_worker.signage.gallery` prints a confusion report over rendered signs |
 
 Results are screening candidates, **not** verified accessible routes or ADA certification.
 The pipeline is a set of auto-discovered stages exchanging named products; see
