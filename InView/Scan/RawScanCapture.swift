@@ -88,9 +88,11 @@ final class RawScanCapture {
     private var colorTask: Task<Void, Never>?
     private var lastDepthPose: simd_float4x4?
     private var lastDepthTimestamp: TimeInterval?
+    private var lastColorTimestamp: TimeInterval?
     private var lastMeshTimestamp: TimeInterval?
     private var meshReadFailures = 0
     private var depthReadFailures = 0
+    private var mappingQualitySkips = 0
     private var evictedDepthFrames = 0
     private var meshEnabled = false
     private var depthEnabled = false
@@ -101,6 +103,8 @@ final class RawScanCapture {
     private let depthInterval: TimeInterval = 1.25
     /// Full mesh-buffer copies are expensive and visibly contend with RoomPlan rendering.
     private let meshInterval: TimeInterval = 3
+    /// RGB is evidence for texturing/OCR, not a video recorder. Leave headroom for RoomPlan.
+    private let colorInterval: TimeInterval = 3
 
     /// Call before constructing RoomCaptureView with the custom session. RoomPlan preserves
     /// the supplied world-tracking settings. No reset/remove-anchor options are used.
@@ -170,10 +174,12 @@ final class RawScanCapture {
                 "evicted_depth_keyframes": .number(Double(evictedDepthFrames)),
                 "mesh_read_failures": .number(Double(meshReadFailures)),
                 "depth_read_failures": .number(Double(depthReadFailures)),
+                "mapping_quality_skips": .number(Double(mappingQualitySkips)),
+                "raw_capture_quality_gate": .string("world_mapping_extending_or_mapped"),
                 "sensor_stream_complete": .bool(false),
                 "color_frames_collected": .bool(!colorKeyframes.isEmpty),
                 "color_keyframe_count": .number(Double(colorKeyframes.count)),
-                "color_keyframe_encoding": .string("adaptive_jpeg_max_720px"),
+                "color_keyframe_encoding": .string("adaptive_jpeg_max_640px_3s_throttled"),
                 "smoothed_depth_collected": .bool(depthBuffers.contains { $0.smoothedDepth != nil }),
                 "environment_sample_count": .number(Double(depthBuffers.filter { $0.environment != nil }.count)),
                 "environment_precision": .string("coarse_building_and_floor_context; arkit_pose_is_room_precision"),
@@ -184,6 +190,10 @@ final class RawScanCapture {
 
     private func sample(forceMesh: Bool = false) {
         guard let frame = session?.currentFrame, case .normal = frame.camera.trackingState else { return }
+        guard mappingIsUsable(frame) else {
+            mappingQualitySkips += 1
+            return
+        }
         if forceMesh || lastMeshTimestamp.map({ frame.timestamp - $0 >= meshInterval }) ?? true {
             let anchors = frame.anchors.compactMap { $0 as? ARMeshAnchor }
                 .sorted { $0.identifier.uuidString < $1.identifier.uuidString }
@@ -206,7 +216,10 @@ final class RawScanCapture {
             )
             frames.append(copied.0)
             depthBuffers.append(copied.1)
-            captureColorKeyframe(frame.capturedImage, frameID: copied.0.id)
+            if lastColorTimestamp.map({ frame.timestamp - $0 >= colorInterval }) ?? true,
+               captureColorKeyframe(frame.capturedImage, frameID: copied.0.id) {
+                lastColorTimestamp = frame.timestamp
+            }
             lastDepthTimestamp = frame.timestamp
             lastDepthPose = frame.camera.transform
             if frames.count > maximumDepthFrames {
@@ -218,12 +231,13 @@ final class RawScanCapture {
         } catch { depthReadFailures += 1 }
     }
 
-    private func captureColorKeyframe(_ buffer: CVPixelBuffer, frameID: String) {
+    @discardableResult
+    private func captureColorKeyframe(_ buffer: CVPixelBuffer, frameID: String) -> Bool {
         // Color is optional evidence. Never queue another encode while RoomPlan/ARKit needs resources.
-        guard colorTask == nil, let snapshot = FrameEncoder.snapshot(buffer) else { return }
+        guard colorTask == nil, let snapshot = FrameEncoder.snapshot(buffer) else { return false }
         colorTask = Task { [weak self] in
             let jpeg = await Task.detached(priority: .utility) {
-                FrameEncoder.portraitJPEG(from: snapshot, maxDimension: 720)
+                FrameEncoder.portraitJPEG(from: snapshot, maxDimension: 640)
             }.value
             guard let self else { return }
             defer { self.colorTask = nil }
@@ -231,6 +245,15 @@ final class RawScanCapture {
                   let image = UIImage(data: jpeg)?.cgImage else { return }
             self.colorKeyframes.removeAll { $0.frameID == frameID }
             self.colorKeyframes.append(RawColorKeyframe(frameID: frameID, width: image.width, height: image.height, jpeg: jpeg))
+        }
+        return true
+    }
+
+    private func mappingIsUsable(_ frame: ARFrame) -> Bool {
+        switch frame.worldMappingStatus {
+        case .extending, .mapped: return true
+        case .notAvailable, .limited: return false
+        @unknown default: return false
         }
     }
 
