@@ -140,6 +140,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private var pitch: Float = 0.68
     private var zoom: Float = 1
     private var displayLink: CADisplayLink?
+    private let markerProjector = RoomMapMarkerProjector()
+    private var markerRevision = 0
     private var needsViewportRefresh = true
     private var isNavigating = false
     private var routePoints: [SIMD2<Float>] = []
@@ -158,11 +160,14 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         canvas.backgroundColor = backgroundColor
         world.background.contents = backgroundColor
         canvas.scene = world
-        canvas.antialiasingMode = .multisampling4X
-        canvas.preferredFramesPerSecond = 30
+        canvas.antialiasingMode = .multisampling2X
+        canvas.preferredFramesPerSecond = 60
         canvas.autoenablesDefaultLighting = false
         canvas.allowsCameraControl = false
-        canvas.isPlaying = true
+        // This map has no scene animations. Redraw changes without spending GPU time on idle frames.
+        canvas.isPlaying = false
+        canvas.rendersContinuously = false
+        canvas.delegate = markerProjector
         addSubview(canvas)
         world.rootNode.addChildNode(room)
         room.addChildNode(shell)
@@ -188,19 +193,17 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         locationDot.isAccessibilityElement = true
         locationDot.accessibilityLabel = "Your location"
         locationDot.isHidden = true
+        locationDot.layer.zPosition = 3
         addSubview(locationDot)
         let projection = SCNCamera()
         projection.usesOrthographicProjection = true
         projection.projectionDirection = .vertical
         projection.zNear = 0.01
         projection.zFar = 1_000
-        projection.wantsHDR = true
+        projection.wantsHDR = false
         projection.wantsExposureAdaptation = false
         projection.exposureOffset = 0
-        projection.screenSpaceAmbientOcclusionIntensity = 0.65
-        projection.screenSpaceAmbientOcclusionRadius = 0.22
-        projection.screenSpaceAmbientOcclusionBias = 0.015
-        projection.screenSpaceAmbientOcclusionDepthThreshold = 0.5
+        projection.screenSpaceAmbientOcclusionIntensity = 0
         projection.bloomIntensity = 0
         camera.camera = projection
         world.rootNode.addChildNode(camera)
@@ -253,7 +256,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         if window != nil {
             needsViewportRefresh = true
             let link = CADisplayLink(target: self, selector: #selector(displayFrame))
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
@@ -265,6 +268,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             needsViewportRefresh = false
             canvas.layoutIfNeeded()
             updateCamera()
+        }
+        // Consume only the latest rendered projection; never queue a UIKit update for every frame.
+        if let positions = markerProjector.takeLatest(revision: markerRevision) {
+            positionLabels(positions)
         }
     }
 
@@ -366,8 +373,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             // Splats are drawn in perspective; the model keeps its flat architectural look.
             projection.usesOrthographicProjection = !shown
             projection.fieldOfView = CGFloat(Self.splatFieldOfView * 180 / .pi)
-            projection.wantsHDR = !shown
-            projection.screenSpaceAmbientOcclusionIntensity = shown ? 0 : 0.65
+            projection.wantsHDR = false
+            projection.screenSpaceAmbientOcclusionIntensity = 0
         }
         splat?.view.isHidden = !shown
         splat?.view.isPaused = !shown || splatPaused
@@ -426,13 +433,33 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         guard let url, illustrationRequested, !illustrationReady, illustrationTask == nil,
               urlChanged || !wasRequested else { return }
         let loadID = illustrationLoadID
+        // These static bundled assets repeat the same named USD material on hundreds of meshes.
+        // Arbitrary imported assets may reuse a name for different materials, so leave those intact.
+        let batchesMaterials = [2, 3].contains { StudentCenterCatalog.illustrationURL(for: $0) == url }
         reportIllustration(.loading, loadID: loadID)
         illustrationTask = Task { [weak self] in
             do {
                 let worker = Task.detached(priority: .userInitiated) {
                     try Task.checkCancellation()
                     let loaded = try autoreleasepool {
-                        LoadedIllustration(root: try SCNScene(url: url, options: nil).rootNode)
+                        let root = try SCNScene(url: url, options: nil).rootNode
+                        guard batchesMaterials else { return LoadedIllustration(root: root) }
+                        var materials: [String: SCNMaterial] = [:]
+                        root.enumerateChildNodes { node, _ in
+                            guard let geometry = node.geometry else { return }
+                            geometry.materials = geometry.materials.map { material in
+                                guard let name = material.name else { return material }
+                                if let shared = materials[name] { return shared }
+                                materials[name] = material
+                                return material
+                            }
+                        }
+                        let bounds = root.boundingBox
+                        let batched = root.flattenedClone()
+                        // SceneKit creates flattened geometry lazily, after its first render.
+                        // Preserve the authored bounds for validation and initial camera framing.
+                        batched.boundingBox = bounds
+                        return LoadedIllustration(root: batched)
                     }
                     try Task.checkCancellation()
                     return loaded
@@ -506,9 +533,9 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         light.castsShadow = true
         light.shadowMode = .deferred
         light.shadowColor = UIColor(roomHex: "#35434b").withAlphaComponent(0.30)
-        light.shadowMapSize = CGSize(width: 2_048, height: 2_048)
+        light.shadowMapSize = CGSize(width: 1_024, height: 1_024)
         light.shadowRadius = 4
-        light.shadowSampleCount = 32
+        light.shadowSampleCount = 4
         light.shadowBias = 0.03
         light.orthographicScale = 12
         light.zNear = 0.1
@@ -1087,6 +1114,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                     let label = RoomObjectLabel(title: title, symbol: AccessPoint.Kind.destination.symbolName, tint: Theme.accent)
                     label.isUserInteractionEnabled = false
                     label.accessibilityTraits = .staticText
+                    label.layer.zPosition = 2
                     addSubview(label)
                     destinationLabel = label
                 }
@@ -1286,7 +1314,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         }
         metersPerPoint = 2 * scale / Float(viewport.height)
         goal.simdScale = SIMD3(repeating: min(3, max(0.5, metersPerPoint * 26 / 0.44)))
-        positionLabels()
+        updateMarkerPositions()
+        canvas.setNeedsDisplay()
     }
 
     /// Rebuilds the place pins when the places change. Pins sit on the floor and win any overlap with item labels.
@@ -1301,7 +1330,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             return (place, SIMD3(place.position.x, floorY + 0.05, place.position.y), label)
         }
         refreshAccessibility()
-        positionLabels()
+        updateMarkerPositions()
     }
 
     private func buildLabels(_ source: ProcessedScene) {
@@ -1320,14 +1349,22 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         refreshAccessibility()
     }
 
-    @objc private func positionLabels() {
+    private func updateMarkerPositions() {
+        let destinationPosition = destination.map {
+            SIMD3($0.x, floorY + 0.44 * goal.simdScale.y + 0.03, $0.y)
+        }
+        markerRevision = markerProjector.update(RoomMapMarkerPositions(
+            destination: destinationLabel == nil ? nil : destinationPosition,
+            places: placeLabels.map(\.position), objects: labels.map(\.position),
+            user: userPosition.map { SIMD3($0.x, floorY + 0.065, $0.y) }))
+    }
+
+    private func positionLabels(_ positions: RoomMapMarkerPositions) {
         guard bounds.width > 0 else { return }
         var occupied: [CGRect] = []
         let allowed = CGRect(x: 10, y: max(28, topInset), width: max(1, bounds.width - 20),
                              height: max(1, bounds.height - bottomInset - max(28, topInset) - 10))
-        if let label = destinationLabel, let destination {
-            let position = SIMD3(destination.x, floorY + 0.44 * goal.simdScale.y + 0.03, destination.y)
-            let point = canvas.projectPoint(scn(position))
+        if let label = destinationLabel, let point = positions.destination {
             let size = CGSize(width: min(label.intrinsicContentSize.width, allowed.width), height: label.intrinsicContentSize.height)
             let anchor = CGPoint(x: CGFloat(point.x), y: CGFloat(point.y))
             label.frame = CGRect(x: min(max(allowed.minX, anchor.x - size.width / 2), allowed.maxX - size.width),
@@ -1335,15 +1372,13 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                                  width: size.width, height: size.height)
             label.isHidden = !isNavigating || point.z < 0 || point.z > 1 || !allowed.insetBy(dx: -16, dy: -16).contains(anchor)
             if !label.isHidden { occupied.append(label.frame) }
-            bringSubviewToFront(label)
         }
         // Every place keeps its badge, which sits on the place; a name runs to its right only where it
         // covers no other badge or name.
         var visiblePlaces: [(view: RoomObjectLabel, badge: CGRect, full: CGRect)] = []
-        for label in placeLabels {
+        for (label, point) in zip(placeLabels, positions.places) {
             // The destination has its own pin while navigating.
             let isDestination = isNavigating && destination.map { simd_distance($0, label.place.position) < 0.05 } == true
-            let point = canvas.projectPoint(scn(label.position))
             let size = label.view.intrinsicContentSize
             let badge = CGRect(x: CGFloat(point.x) - size.height / 2, y: CGFloat(point.y) - size.height / 2, width: size.height, height: size.height)
             label.view.isHidden = isDestination || point.z < 0 || point.z > 1 || !allowed.contains(badge)
@@ -1360,12 +1395,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             place.view.showsTitle = fits
             place.view.frame = fits ? place.full : place.badge
             if fits { occupied.append(title) }
-            bringSubviewToFront(place.view)
         }
-        let sorted = labels.sorted { ($0.id == selection ? 0 : 1) < ($1.id == selection ? 0 : 1) }
-        for label in sorted {
+        let sorted = zip(labels, positions.objects).sorted { ($0.0.id == selection ? 0 : 1) < ($1.0.id == selection ? 0 : 1) }
+        for (label, point) in sorted {
             label.view.isSelected = label.id == selection
-            let point = canvas.projectPoint(scn(label.position))
             let size = label.view.intrinsicContentSize
             let frame = CGRect(x: CGFloat(point.x) - size.width / 2, y: CGFloat(point.y) - size.height - 5, width: size.width, height: size.height)
             let hidden = !labelsVisible || point.z < 0 || point.z > 1 || !allowed.contains(frame) || occupied.contains { $0.intersects(frame.insetBy(dx: -3, dy: -3)) }
@@ -1373,11 +1406,9 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             label.view.frame = frame
             if !hidden { occupied.append(frame) }
         }
-        if let userPosition {
-            let point = canvas.projectPoint(scn(SIMD3(userPosition.x, floorY + 0.065, userPosition.y)))
+        if let point = positions.user {
             locationDot.frame = CGRect(x: CGFloat(point.x) - 8, y: CGFloat(point.y) - 8, width: 16, height: 16)
             locationDot.isHidden = !isNavigating || point.z < 0 || point.z > 1 || !bounds.contains(locationDot.center)
-            bringSubviewToFront(locationDot)
         } else { locationDot.isHidden = true }
     }
 
@@ -1513,6 +1544,63 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private func scn(_ value: SIMD3<Float>) -> SCNVector3 { SCNVector3(value.x, value.y, value.z) }
 }
 
+/// World positions and screen projections use the same stable ordering for each marker revision.
+private struct RoomMapMarkerPositions: Equatable {
+    var destination: SIMD3<Float>?
+    var places: [SIMD3<Float>]
+    var objects: [SIMD3<Float>]
+    var user: SIMD3<Float>?
+
+    func projected(by renderer: SCNSceneRenderer) -> Self {
+        func project(_ point: SIMD3<Float>) -> SIMD3<Float> {
+            let value = renderer.projectPoint(SCNVector3(point.x, point.y, point.z))
+            return SIMD3(value.x, value.y, value.z)
+        }
+        return Self(destination: destination.map(project), places: places.map(project),
+                    objects: objects.map(project), user: user.map(project))
+    }
+}
+
+/// SceneKit projects on its render thread after applying the camera, without blocking UIKit on its lock.
+/// The display link takes one latest snapshot, so a busy main thread cannot accumulate delayed frames.
+private final class RoomMapMarkerProjector: NSObject, SCNSceneRendererDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var positions = RoomMapMarkerPositions(places: [], objects: [])
+    private var revision = 0
+    private var latest: (revision: Int, positions: RoomMapMarkerPositions)?
+
+    func update(_ positions: RoomMapMarkerPositions) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        if self.positions != positions {
+            self.positions = positions
+            revision += 1
+            latest = nil
+        }
+        return revision
+    }
+
+    func takeLatest(revision: Int) -> RoomMapMarkerPositions? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let latest, latest.revision == revision else { return nil }
+        self.latest = nil
+        return latest.positions
+    }
+
+    func renderer(_ renderer: SCNSceneRenderer, willRenderScene scene: SCNScene, atTime time: TimeInterval) {
+        lock.lock()
+        let positions = positions
+        let revision = revision
+        lock.unlock()
+        let projected = positions.projected(by: renderer)
+        lock.lock()
+        defer { lock.unlock() }
+        guard self.revision == revision else { return }
+        latest = (revision, projected)
+    }
+}
+
 @MainActor
 /// A map label: the shared `KindBadge` marker with its name beside it, haloed to stay readable over the model.
 private final class RoomObjectLabel: UIControl {
@@ -1523,6 +1611,8 @@ private final class RoomObjectLabel: UIControl {
 
     init(title text: String, symbol: String, tint: Color) {
         super.init(frame: .zero)
+        // Keep overlays above the canvas without reordering subviews on every rendered frame.
+        layer.zPosition = 1
         icon.image = KindBadge.image(symbol: symbol, tint: tint)
         icon.contentMode = .scaleAspectFit
         icon.layer.cornerRadius = Self.iconSize / 2
