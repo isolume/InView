@@ -4,13 +4,11 @@ import Combine
 import RealityKit
 import UIKit
 
-/// Drives a navigation session: relocalize against the saved AR map, route the user to the nearest
-/// usable access point, and keep re-routing as they move and as the camera spots obstacles.
-/// Every change is spoken and captioned.
+/// The map and camera share one navigation session, including spoken directions and live obstacles.
 @MainActor
 final class NavigationController: ObservableObject {
     enum Phase: Equatable {
-        /// Reading the saved map and world map, and building the routing grids, off the main thread.
+        /// Disk reads and routing grids are prepared away from the main thread.
         case loading
         case noMap
         case locating
@@ -22,25 +20,27 @@ final class NavigationController: ObservableObject {
     }
 
     @Published private(set) var phase: Phase = .loading
-    /// Set once relocalization has taken long enough that the rider should see the fallback.
     @Published private(set) var isRelocalizationSlow = false
     @Published private(set) var route: Route?
-    /// The last thing said aloud, shown as a caption for anyone who can't hear it.
+    @Published private(set) var selectedDestination: AccessPoint?
     @Published private(set) var caption: String?
-
-    let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
-    /// The camera view where the scan started, shown while relocalizing.
+    @Published private(set) var map: VenueMap?
+    @Published private(set) var position: SIMD2<Float>?
+    /// Radians clockwise from -Z toward +X.
+    @Published private(set) var heading: Float = 0
     @Published private(set) var startView: UIImage?
 
+    let isDemo: Bool
+    lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+
     private static let rerouteInterval: TimeInterval = 1
-    /// Reading the depth map is the costliest thing a tick does; a chair in the way can wait a second.
+    /// Reading depth is the costliest tick; a newly moved chair can wait a second.
     private static let obstacleCheckInterval: TimeInterval = 1
     private static let arrivalDistance: Float = 1.2
     private static let slowRelocalization: TimeInterval = 15
     /// A routine reroute only runs once the rider has moved this far; standing still, the route is still right.
     private static let rerouteDistance: Float = 0.4
 
-    private var map: VenueMap?
     private var worldMap: ARWorldMap?
     private var planner: RoutePlanner?
     private let voice = VoiceGuide()
@@ -54,10 +54,26 @@ final class NavigationController: ObservableObject {
     private var lastRouted = Date.distantPast
     private var lastRoutedFrom: SIMD2<Float>?
     private var lastObstacleCheck = Date.distantPast
-    /// Between start() and stop(); a load that finishes after stop() doesn't start the session.
     private var isActive = false
+    private var isLoading = false
+    private var routingGeneration = 0
+    private var demoPath: [SIMD2<Float>] = []
+    private var demoDistance: Float = 0
+    private var lastDemoTick = Date.now
 
-    /// Everything read from disk, moved as one value from the loading task.
+    init(isDemo: Bool = false) {
+        self.isDemo = isDemo
+        if isDemo {
+            map = NavigationDemo.map
+            planner = map.map(RoutePlanner.init)
+            position = NavigationDemo.startPosition
+            heading = NavigationDemo.heading
+            route = NavigationDemo.route
+            selectedDestination = route?.destination
+            phase = map == nil ? .noMap : .ready
+        }
+    }
+
     private struct Loaded: @unchecked Sendable {
         let map: VenueMap?
         let worldMap: ARWorldMap?
@@ -65,8 +81,6 @@ final class NavigationController: ObservableObject {
         let startView: UIImage?
     }
 
-    /// Loads the map off the main thread, then starts relocalizing. Unarchiving the world map and building
-    /// three routing grids used to block the UI for the first seconds of every session.
     func start() {
         guard !isActive else { return }
         isActive = true
@@ -74,14 +88,18 @@ final class NavigationController: ObservableObject {
             begin()
             return
         }
+        guard !isLoading else { return }
+        isLoading = true
         Task { [weak self] in
             let started = Date.now
             let loaded = await Task.detached(priority: .userInitiated) {
                 let map = MapStore.load()
-                return Loaded(map: map, worldMap: MapStore.loadWorldMap(), planner: map.map(RoutePlanner.init), startView: MapStore.loadStartView())
+                return Loaded(map: map, worldMap: MapStore.loadWorldMap(),
+                              planner: map.map(RoutePlanner.init), startView: MapStore.loadStartView())
             }.value
             guard let self else { return }
             Log.navigation.info("map loaded in \(String(format: "%.2f", Date.now.timeIntervalSince(started)), privacy: .public) s · \(loaded.map?.footprints.count ?? 0) footprints, \(loaded.map?.points.count ?? 0) points, world map \(loaded.worldMap == nil ? "missing" : "present", privacy: .public)")
+            isLoading = false
             map = loaded.map
             worldMap = loaded.worldMap
             planner = loaded.planner
@@ -95,22 +113,46 @@ final class NavigationController: ObservableObject {
         isActive = false
         timer?.invalidate()
         timer = nil
+        routingGeneration += 1
+        isRouting = false
+        pendingReason = nil
+        if phase == .routing { phase = .ready }
         voice.deactivate()
-        arView.session.pause()
+        if !isDemo { arView.session.pause() }
     }
 
     private func begin() {
-        guard phase == .locating, timer == nil, let worldMap else { return }
-        run(initialWorldMap: worldMap)
-        locatingSince = .now
+        guard timer == nil, phase != .noMap else { return }
+        if isDemo {
+            lastDemoTick = .now
+        } else {
+            guard let worldMap else { return }
+            run(initialWorldMap: worldMap)
+            if phase == .locating { locatingSince = .now }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
         voice.activate()
     }
 
-    /// Fallback when relocalization stalls: restart tracking here and treat this spot as where
-    /// the scan began. Only lines up if the rider stands there facing the way the start photo does.
+    func setGeographicReference(_ reference: BuildingMapReference) throws {
+        try reference.validate()
+        guard map != nil else { return }
+        if !isDemo { try MapStore.updateGeographicReference(reference) }
+        map?.geographicReference = reference
+    }
+
+    /// GPS may adjust the map origin only when camera tracking is current and reliable.
+    var placementPosition: SIMD2<Float>? {
+        if isDemo { return position }
+        guard let frame = arView.session.currentFrame,
+              case .normal = frame.camera.trackingState,
+              ProcessInfo.processInfo.systemUptime - frame.timestamp < 1 else { return nil }
+        let translation = frame.camera.transform.translation
+        return SIMD2(translation.x, translation.z)
+    }
+
     func startFromScanOrigin() {
         guard phase == .locating else { return }
         run(initialWorldMap: nil)
@@ -118,24 +160,61 @@ final class NavigationController: ObservableObject {
     }
 
     func navigateToNearest() {
-        guard phase == .ready || phase == .noRoute || phase == .arrived else { return }
+        guard phase == .ready || phase == .noRoute || phase == .arrived,
+              planner != nil, userPosition() != nil else { return }
+        routingGeneration += 1
+        isRouting = false
+        pendingReason = nil
         narrator.reset()
         obstacles.reset()
         phase = .routing
         requestRoute(.started)
     }
 
-    func endNavigation() {
+    func selectDestination(_ destination: AccessPoint?) {
+        guard phase == .ready || phase == .arrived || phase == .noRoute else { return }
+        routingGeneration += 1
+        isRouting = false
+        pendingReason = nil
+        selectedDestination = destination
         route = nil
+        caption = nil
+        renderer?.clearRoute()
+        phase = .ready
+        guard let planner, let position = userPosition() else { return }
+        let generation = routingGeneration
+        let conditions = conditions
+        Task { [weak self] in
+            let preview = await Task.detached(priority: .userInitiated) {
+                if let destination { return planner.route(from: position, to: destination, conditions: conditions) }
+                return planner.nearestRoute(from: position, conditions: conditions)
+            }.value
+            guard let self, routingGeneration == generation, phase == .ready else { return }
+            route = preview
+        }
+    }
+
+    func endNavigation() {
+        routingGeneration += 1
+        isRouting = false
+        pendingReason = nil
         caption = nil
         voice.stop()
         renderer?.clearRoute()
+        if isDemo {
+            position = NavigationDemo.startPosition
+            heading = NavigationDemo.heading
+            route = NavigationDemo.route
+            selectedDestination = route?.destination
+            demoPath = []
+            demoDistance = 0
+        } else {
+            route = nil
+        }
         phase = .ready
     }
 
-    /// Relocalization plus the two things routing needs: floor planes for the marker height, and scene depth
-    /// for obstacles. No scene reconstruction mesh and no occlusion: they cost more tracking headroom than
-    /// hiding arrows behind walls is worth.
+    /// Only floor planes and scene depth are needed. Navigation avoids reconstruction and occlusion.
     private func run(initialWorldMap: ARWorldMap?) {
         let configuration = ARWorldTrackingConfiguration()
         configuration.initialWorldMap = initialWorldMap
@@ -147,9 +226,9 @@ final class NavigationController: ObservableObject {
     }
 
     private func tick() {
+        if isDemo { tickDemo(); return }
         guard let frame = arView.session.currentFrame else { return }
         guard phase != .locating else {
-            // With an initial world map, tracking stays limited until ARKit has relocalized into the scan's coordinates.
             if case .normal = frame.camera.trackingState {
                 didLocate()
             } else if !isRelocalizationSlow, Date.now.timeIntervalSince(locatingSince) > Self.slowRelocalization {
@@ -157,9 +236,11 @@ final class NavigationController: ObservableObject {
             }
             return
         }
+        let transform = frame.camera.transform
+        position = SIMD2(transform.columns.3.x, transform.columns.3.z)
+        heading = atan2(-transform.columns.2.x, transform.columns.2.z)
         updateFloorHeight(from: frame)
         guard phase == .navigating, let route, let renderer else { return }
-
         if Date.now.timeIntervalSince(lastObstacleCheck) >= Self.obstacleCheckInterval {
             lastObstacleCheck = .now
             let appeared = obstacles.update(with: frame, route: route.waypoints, floorY: renderer.floorY)
@@ -180,6 +261,8 @@ final class NavigationController: ObservableObject {
 
     private func didLocate() {
         guard let map else { return }
+        let translation = arView.session.currentFrame?.camera.transform.translation
+        position = translation.map { SIMD2($0.x, $0.z) }
         renderer = PathRenderer(scene: arView.scene, map: map)
         phase = .ready
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -189,7 +272,7 @@ final class NavigationController: ObservableObject {
         RouteConditions(obstacles: obstacles.obstacles)
     }
 
-    /// Computes a route off the main thread. Requests that arrive mid-computation run right after it.
+    /// Requests during computation run afterward; stopped or replaced sessions reject stale results.
     private func requestRoute(_ reason: Narrator.Reason) {
         guard !isRouting else {
             if case .update = reason, pendingReason != nil { return }
@@ -199,17 +282,28 @@ final class NavigationController: ObservableObject {
         guard let planner, let position = userPosition() else { return }
         isRouting = true
         lastRoutedFrom = position
+        let generation = routingGeneration
         let current = route
+        let destination = selectedDestination
         let conditions = conditions
         let fresh: Bool
         if case .started = reason { fresh = true } else { fresh = current == nil }
         Task { [weak self] in
             let next = await Task.detached(priority: .userInitiated) {
-                fresh || current == nil
-                    ? planner.nearestRoute(from: position, conditions: conditions)
-                    : planner.reroute(current!, from: position, conditions: conditions)
+                // A chosen destination stays chosen when a passage becomes blocked.
+                if let destination { return planner.route(from: position, to: destination, conditions: conditions) }
+                if fresh || current == nil {
+                    return planner.nearestRoute(from: position, conditions: conditions)
+                }
+                return planner.reroute(current!, from: position, conditions: conditions)
             }.value
-            self?.apply(next, reason: reason)
+            guard let self, routingGeneration == generation, isActive else { return }
+            if isDemo, case .started = reason {
+                demoPath = next?.waypoints ?? []
+                demoDistance = 0
+                lastDemoTick = .now
+            }
+            apply(next, reason: reason)
         }
     }
 
@@ -222,7 +316,6 @@ final class NavigationController: ObservableObject {
                 requestRoute(pending)
             }
         }
-        // The user may have ended navigation while the route was computing.
         guard phase == .routing || phase == .navigating else { return }
         guard let newRoute else {
             route = nil
@@ -263,14 +356,37 @@ final class NavigationController: ObservableObject {
             .compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.classification == .floor }
             .map(\.transform.translation.y)
-        if let lowest = floorHeights.min() {
-            renderer?.setFloorHeight(lowest)
+        if let lowest = floorHeights.min() { renderer?.setFloorHeight(lowest) }
+    }
+
+    /// The demo moves along a real planner path and never runs an AR session.
+    private func tickDemo() {
+        let now = Date.now
+        let elapsed = Float(min(0.25, now.timeIntervalSince(lastDemoTick)))
+        lastDemoTick = now
+        guard phase == .navigating, demoPath.count > 1 else { return }
+        demoDistance += elapsed * 0.35
+        var remaining = demoDistance
+        var nextPosition = demoPath.last!
+        for (a, b) in zip(demoPath, demoPath.dropFirst()) {
+            let length = simd_distance(a, b)
+            if remaining <= length, length > 0 {
+                nextPosition = a + (b - a) * (remaining / length)
+                heading = atan2(b.x - a.x, -(b.y - a.y))
+                break
+            }
+            remaining -= length
+        }
+        position = nextPosition
+        if Date.now.timeIntervalSince(lastRouted) >= Self.rerouteInterval {
+            requestRoute(.update)
         }
     }
 
     private func userPosition() -> SIMD2<Float>? {
+        if isDemo { return position }
         guard let frame = arView.session.currentFrame else { return nil }
-        let position = frame.camera.transform.translation
-        return SIMD2(position.x, position.z)
+        let translation = frame.camera.transform.translation
+        return SIMD2(translation.x, translation.z)
     }
 }

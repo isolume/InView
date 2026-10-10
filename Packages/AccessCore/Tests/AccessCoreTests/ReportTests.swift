@@ -3,6 +3,23 @@ import simd
 import Testing
 @testable import AccessCore
 
+@Test func namedRoomsDoNotCountAsStepFreeStairsAlternatives() {
+    let destination = AccessPoint(kind: .destination, name: "Kitchen", position: [3, 0, 0], source: .manual, confidence: 1)
+    let stairs = Footprint(kind: .stairs, center: [0, -1.5], size: [1, 1], yaw: 0)
+    let report = AccessibilityReport(map: room([stairs], points: [destination]))
+    #expect(report.findings.contains { $0.title == "Stairs with no step-free alternative" && $0.severity == .barrier })
+    #expect(!report.findings.contains { $0.title == "Stairs have a step-free alternative" })
+    #expect(!report.findings.contains { $0.title == "Kitchen can't be reached" })
+}
+
+@Test func namedRoomAccessibilityIsAuditedThroughItsSelectedRoute() {
+    let destination = AccessPoint(kind: .destination, name: "Kitchen", position: [3, 0, 0], source: .manual, confidence: 1)
+    let unreachable = wall(from: [1, -3], to: [1, 3])
+    let report = AccessibilityReport(map: room([unreachable], points: [destination, point(.elevator, -2, 0)]))
+    #expect(report.findings.contains { $0.title == "Kitchen can't be reached" && $0.severity == .barrier })
+    #expect(!report.findings.contains { $0.title == "Elevator can't be reached" })
+}
+
 @Test func aWellLaidOutFloorScoresFull() {
     var ramp = point(.ramp, 2, 1)
     ramp.slopeDegrees = 3.5

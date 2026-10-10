@@ -4,7 +4,7 @@ Volunteers scan a floor once with a LiDAR iPhone. A vision model (OpenAI by defa
 
 A wheelchair user then opens InView, which recognizes the room from the saved AR map. They follow AR arrows and spoken, captioned directions along a step-free route to the nearest usable elevator or ramp. The route goes around stairs, obstacles LiDAR sees on the way, and ramps steeper than the ADA allows.
 
-The server (Photon iMessage agent, ElevenLabs voice) is a teammate's separate piece of work; this repo's iOS app doesn't call it yet. Team plans: [larp.md](larp.md) and [photon.md](photon.md). `backend/` is a teammate's Rust prototype.
+Scans are processed and saved on the phone by default. An optional Rust server can process scan geometry into the same 3D scene used by navigation. Photon messaging and ElevenLabs voice remain separate team work; navigation currently uses the system voice. Team plans: [larp.md](larp.md) and [photon.md](photon.md).
 
 ## Setup
 
@@ -21,6 +21,8 @@ open InView.xcodeproj
 
 - `OPENAI_API_KEY`: elevator, ramp and stairs detection while scanning. Without it, mark things by hand.
 - `DEVELOPMENT_TEAM`: your Apple team ID, needed to run on the phone. You can also pick the team in Xcode under Signing & Capabilities.
+- `MAPBOX_ACCESS_TOKEN` (optional): a public token beginning with `pk.`, for surrounding maps and building placement. Indoor-only navigation works without it.
+- `INVIEW_BACKEND_URL` (optional): a scan processing server. Leave blank for on-device processing; you can also set or clear it in the app’s scan processing settings. Write URLs as `http:/$()/host:3000` in xcconfig.
 - `VISION_PROVIDER = gemini` plus `GEMINI_API_KEY` switches detection to Gemini. Nothing else changes.
 - Optional: `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `low`; one request is in flight at a time, so latency directly limits how many frames get checked), `GEMINI_MODEL` (default `gemini-3.8-flash`).
 
@@ -35,13 +37,94 @@ cd Packages/AccessCore && swift test
 
 The repo uses jj with small conventional commits.
 
+## Optional scan processing server
+
+With no address configured, finishing a scan creates the 3D map on the phone,
+without uploading it to a processing server. Review points and unconfirmed finds,
+then save the map for navigation. Server errors also offer **Use local map**.
+
+To use the Rust processing service, start it on the Mac:
+
+```sh
+cargo run --manifest-path backend/Cargo.toml
+```
+
+Open the gear button in the app and enter the server address. For Simulator, use
+`http://127.0.0.1:3000`. For an iPhone, use an address reachable from that device
+and bind the service to that interface. For the same Wi-Fi network:
+
+```sh
+INVIEW_BIND="$(ipconfig getifaddr en0):3000" cargo run --manifest-path backend/Cargo.toml
+```
+
+Allow local network access when iOS asks. Clearing the address returns to local
+processing. The backend is a development service without authentication or durable
+storage. A processing failure preserves the original capture on the phone for a
+retry. Saved navigation geometry can be opened without the processing server.
+
+**Try navigation demo** works without a scan or processing server, including in
+Simulator. It previews a route from reception through a hallway to a meeting room,
+then moves the position marker along that route when **Start demo** is pressed.
+It uses the real route planner and never changes the saved map. AR navigation
+needs a saved scan and camera tracking on an iPhone.
+
+### Indoor and outdoor map
+
+Mapbox supplies the surrounding map and the building placement editor. The native
+**Map options** menu offers **Indoor only** and **Surroundings** within the same
+navigation view. A placed building opens with its surroundings by default.
+**Place building** lets you move and turn the scan outline into position, using
+an address or **Current location** as a starting point. Indoor GPS still needs
+manual alignment. Placement is saved on the phone without changing the scan,
+AR tracking, or route coordinates.
+
+Address search uses Mapbox permanent geocoding because the chosen position is
+saved with the scan. Mapbox requires an account eligible for permanent geocoding;
+manual placement and location positioning also work without address search.
+
+Exterior and indoor geometry share one native map renderer. The cutaway follows
+individual measured room floors, retaining unmapped wings and gaps between rooms.
+The remaining exterior of the selected building is translucent so it cannot hide
+the indoor route; neighboring buildings keep their normal appearance. Replacement
+requires a usable building outline. When one cannot be obtained, the original
+exterior stays intact and the map reports that the cutaway is unavailable. This
+prototype uses RoomPlan's rectangular floor measurements, not surveyed room
+boundaries. Controls and the navigation sheet are native SwiftUI, with subdued
+map colors and simple indoor geometry.
+
+Without a public token, **Preview interior** uses the same Mapbox SDK with a
+labeled local example exterior, without downloading outdoor maps.
+
+When the scene contains distinct floor elevations, **Choose floor** exposes the
+selected level and hides higher levels. Changing the display floor does not move
+the navigation session or put a route on another level; **Show route** returns to
+its floor. The navigation demo adds a synthetic upper room to demonstrate a
+partially mapped building. Its geographic placement is an example, not a scan of
+the real building at that address.
+
+Use **Next room** while scanning to capture connected rooms and hallways in the
+same session, then **Finish** to process the combined scan. **Review points** lets
+a volunteer name destinations anywhere on the map. Navigation offers those
+places alongside elevators and ramps. Overlapping sections use each component's
+latest pose in both routing geometry and the 3D view.
+
+This first building prototype covers connected spaces on one floor. Joining
+independently captured areas, connecting floors through elevators, and maintaining
+tracking across a large building require additional work and device verification.
+The floor selector is a display prototype; it does not add routing between stories.
+
+Each capture is archived under Documents/Captures with native RoomPlan JSON,
+its portable upload, and the local or server-derived scene. When configured,
+vision detection sends selected camera frames to the chosen provider; outdoor
+maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
+
 ## Demo checklist
 
 1. **Start the scan at the demo table.** Hold still for a second, facing the way the rider will start. That spot is the map's origin, and the app saves a photo of it.
 2. **Map a space.** Slowly pan around the table area first, then walk to the elevator and the ramp. Pause on each one for a couple of seconds; frames are only analyzed while the camera is steady. Scan one room per section: when you go through a doorway the app offers **Add section**; take it, so RoomPlan keeps the room you just left exactly as scanned.
    - Finds appear as small colored tags as they're spotted: dashed with a "?" until confirmed.
    - **Elevator / Ramp / Stairs** mark whatever is under the crosshair. For a ramp, aim at its middle so its slope gets measured. For stairs, aim at the bottom step.
-   - **Add section** splits a big area. Keep each section under about 5 minutes.
+   - **Next room** splits a big area. Keep each section under about 5 minutes.
 3. **Finish**. If saving the AR map fails, move around a little and tap **Try again**.
    - If the scanner stops a section by itself (it says **Scanning stopped**), what it scanned is kept. Move to a spot with more detail in view and tap **Continue scanning**, or **Finish**.
 4. Review:
@@ -104,14 +187,14 @@ Relocalization works best when the lighting matches the scan and the area has te
 - Doors under 81 cm (ADA 32") are treated as walls.
 - While navigating, the route is recomputed after the rider moves 0.4 m, or at once when LiDAR spots a new obstacle; standing still costs no searches.
 - Ramps steeper than 1:12 (4.8°) are used only when nothing else is reachable.
-- Hooks for the server, unused for now:
+- Hooks for future status and messaging services:
   - `RouteConditions.unavailable` excludes points, e.g. elevators reported out of service.
   - `AccessPoint.requiresAssistance` marks staff-operated points for the Photon agent.
   - `VoiceGuide` is the single place where spoken lines are produced.
 
 ## Status and known issues (October 10, 2026)
 
-The core logic is unit-tested (39 tests). The app builds. It was tried briefly on an iPhone 17 Pro, which turned up the problems below; the fixes for them have **not** been run on a device yet.
+The merged core logic is unit-tested (110 tests), including local scene processing, optional-server clients and floor display annotations. The app builds. It was tried briefly on an iPhone 17 Pro, which turned up the problems below; the fixes for them have **not** been run on a device yet.
 
 1. **Outline boxes replaced by tags.** Scanning shows one small capsule tag per find (`DetectionOverlay`, 10 Hz), and navigation marks stairs with a red "Stairs" billboard over a floor dot (`StairsMarker`). Point markers and chevrons use the kind's color.
 2. **Finds that never confirmed.** Fixed by placing finds only where a raycast hits (no more 3 m guesses), letting one high-confidence sighting count once it's on a surface (and LiDAR-checked for ramps and stairs), and sending the rest to review as **Unconfirmed – keep?**. The detector logs every frame, placement, LiDAR verdict and merge, plus a summary when each section ends; on the device run

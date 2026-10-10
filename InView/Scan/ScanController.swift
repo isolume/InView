@@ -16,6 +16,7 @@ final class ScanController: ObservableObject {
         /// volunteer chooses whether to scan more or finish.
         case interrupted
         case savingWorldMap
+        case processingScene
         case review
     }
 
@@ -26,6 +27,9 @@ final class ScanController: ObservableObject {
         didSet { scheduleReport() }
     }
     @Published private(set) var report: AccessibilityReport?
+    @Published private(set) var scene: ProcessedScene?
+    @Published private(set) var sceneError: String?
+    @Published private(set) var isProcessingScene = false
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
     /// The volunteer just walked through a doorway: RoomPlan keeps one room per section, so suggest a new one.
@@ -33,8 +37,17 @@ final class ScanController: ObservableObject {
 
     let session = ARSession()
     let detector = AccessibilityDetector()
+    private let rawCapture = RawScanCapture()
+    private let scanID = UUID()
+    private var captureBundle: CaptureBundle?
+    private var localScene: ProcessedScene?
+    private var sceneTask: Task<Void, Never>?
+
+    var canRetryScene: Bool { captureBundle != nil }
+    var canUseLocalScene: Bool { scene == nil && localScene != nil && !isProcessingScene }
 
     private(set) lazy var captureView: RoomCaptureView = {
+        rawCapture.prepare(session: session)
         let view = RoomCaptureView(frame: .zero, arSession: session)
         view.delegate = captureDelegate
         // Live updates too, as Apple's RoomPlan sample does alongside the view's own delegate.
@@ -78,6 +91,7 @@ final class ScanController: ObservableObject {
         guard phase == .scanning, !hasStarted else { return }
         hasStarted = true
         beginSection()
+        rawCapture.start(session: session)
         detector.start(session: session)
         startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.captureStartView() }
@@ -122,14 +136,19 @@ final class ScanController: ObservableObject {
         doorMonitor?.invalidate()
         doorMonitor = nil
         detector.pause()
+        rawCapture.stop()
+        sceneTask?.cancel()
+        reportTask?.cancel()
         if phase == .scanning { captureView.captureSession.stop() }
         if phase != .unsupported { session.pause() }
     }
 
-    func addPoint(_ kind: AccessPoint.Kind, at floorPoint: SIMD2<Float>) {
+    func addPoint(_ kind: AccessPoint.Kind, at floorPoint: SIMD2<Float>, name: String? = nil) {
         guard let floorY = draft?.floorY else { return }
         let position = SIMD3(floorPoint.x, floorY, floorPoint.y)
-        draft?.points.append(AccessPoint(kind: kind, position: position, source: .manual, confidence: 1))
+        guard var map = draft else { return }
+        MapBuilder.add(AccessPoint(kind: kind, name: name, position: position, source: .manual, confidence: 1), to: &map)
+        draft = map
     }
 
     func removePoints(at offsets: IndexSet) {
@@ -139,6 +158,17 @@ final class ScanController: ObservableObject {
     func rename(_ id: UUID, to name: String) {
         guard let index = draft?.points.firstIndex(where: { $0.id == id }) else { return }
         draft?.points[index].name = name
+    }
+
+    func setGeographicReference(_ reference: BuildingMapReference) throws {
+        try reference.validate()
+        draft?.geographicReference = reference
+    }
+
+    var placementPosition: SIMD2<Float>? {
+        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return nil }
+        return SIMD2(frame.camera.transform.columns.3.x, frame.camera.transform.columns.3.z)
     }
 
     func removeStairs(_ stairs: Footprint) {
@@ -169,8 +199,21 @@ final class ScanController: ObservableObject {
     /// Writes the map; the world map archive runs off the main thread.
     func save() async throws {
         guard let draft, let worldMap else { return }
-        let report = report ?? AccessibilityReport(map: draft)
+        // Build against the exact saved draft, even if its debounced review report is still pending.
+        let report = await Task.detached(priority: .userInitiated) { AccessibilityReport(map: draft) }.value
         try await MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
+        if let captureBundle { try CaptureStore.select(captureBundle) }
+        else { CaptureStore.clearSelection() }
+    }
+
+    func retryScene() {
+        guard !isProcessingScene, let captureBundle else { return }
+        processScene(captureBundle, backendURL: AppConfig.backendURL)
+    }
+
+    func useLocalScene() {
+        guard canUseLocalScene, let captureBundle else { return }
+        processScene(captureBundle, backendURL: nil)
     }
 
     private func endSection(thenFinish finish: Bool) {
@@ -181,6 +224,7 @@ final class ScanController: ObservableObject {
         doorMonitor?.invalidate()
         doorMonitor = nil
         suggestsNewSection = false
+        rawCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
         captureView.captureSession.stop(pauseARSession: false)
     }
@@ -269,6 +313,7 @@ final class ScanController: ObservableObject {
             doorMonitor?.invalidate()
             doorMonitor = nil
             suggestsNewSection = false
+            rawCapture.pause()
             Log.scan.error("RoomPlan ended section \(self.rooms.count) on its own: \(self.errorMessage ?? "no error reported", privacy: .public)")
             recoverDroppedParts(from: room)
             // RoomPlan may have paused the shared AR session; keep tracking alive so the world map can still
@@ -286,6 +331,7 @@ final class ScanController: ObservableObject {
         phase = .scanning
         beginSection()
         detector.resume()
+        rawCapture.resume()
     }
 
     private func worldMapCaptured(_ worldMap: ARWorldMap?, error: Error?) {
@@ -295,11 +341,79 @@ final class ScanController: ObservableObject {
             return
         }
         self.worldMap = worldMap
+        rawCapture.stop()
         session.pause()
         draft = MapBuilder.build(rooms: rooms, recovered: recovered, points: detector.accessPoints(), spottedStairs: detector.stairsFootprints())
         unconfirmed = detector.unconfirmedSightings()
-        phase = .review
+        prepareScene(raw: rawCapture.snapshot())
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    /// RoomPlan's values are copied into one immutable payload before export leaves the main thread.
+    private struct ExportPayload: @unchecked Sendable {
+        let rooms: [CapturedRoom]
+        let raw: RawScanSnapshot
+        let scanID: UUID
+    }
+
+    private func prepareScene(raw: RawScanSnapshot) {
+        let payload = ExportPayload(rooms: rooms, raw: raw, scanID: scanID)
+        sceneError = nil
+        phase = .processingScene
+        isProcessingScene = true
+        sceneTask = Task { [weak self] in
+            defer { self?.isProcessingScene = false }
+            do {
+                let prepared = try await Task.detached(priority: .userInitiated) {
+                    let rawData = try ScanExporter.rawSnapshotData(payload.raw)
+                    let roomData = try ScanExporter.nativeRoomPlanData(rooms: payload.rooms)
+                    // Originals survive even if their portable export is too large or unsupported.
+                    try CaptureStore.stageOriginals(id: payload.scanID.uuidString, rawData: rawData, roomPlanData: roomData)
+                    let bundle = try ScanExporter.bundle(rooms: payload.rooms, raw: payload.raw,
+                                                         scanID: payload.scanID, mapID: payload.scanID)
+                    try CaptureStore.stage(bundle, rawData: rawData, roomPlanData: roomData)
+                    return (bundle, try LocalSceneBuilder.make(from: bundle))
+                }.value
+                try Task.checkCancellation()
+                guard let self else { return }
+                self.captureBundle = prepared.0
+                self.localScene = prepared.1
+                self.scene = try await self.makeScene(prepared.0, backendURL: AppConfig.backendURL)
+            } catch {
+                if !Task.isCancelled { self?.sceneError = error.localizedDescription }
+            }
+            if !Task.isCancelled { self?.phase = .review }
+        }
+    }
+
+    private func processScene(_ bundle: CaptureBundle, backendURL: URL?) {
+        sceneError = nil
+        isProcessingScene = true
+        sceneTask = Task { [weak self] in
+            defer { self?.isProcessingScene = false }
+            do {
+                guard let self else { return }
+                self.scene = try await self.makeScene(bundle, backendURL: backendURL)
+            } catch {
+                if !Task.isCancelled { self?.sceneError = error.localizedDescription }
+            }
+            if !Task.isCancelled { self?.phase = .review }
+        }
+    }
+
+    private func makeScene(_ bundle: CaptureBundle, backendURL: URL?) async throws -> ProcessedScene {
+        let result: ProcessedScene
+        if let backendURL {
+            result = try await BackendClient(baseURL: backendURL).uploadAndProcess(bundle)
+        } else if let localScene {
+            result = localScene
+        } else {
+            result = try await Task.detached(priority: .userInitiated) { try LocalSceneBuilder.make(from: bundle) }.value
+        }
+        try Task.checkCancellation()
+        try await Task.detached(priority: .utility) { try CaptureStore.saveScene(result, for: bundle) }.value
+        try Task.checkCancellation()
+        return result
     }
 
     /// Recomputes the report a moment after the draft stops changing; it runs route searches, so keep it off the main thread.

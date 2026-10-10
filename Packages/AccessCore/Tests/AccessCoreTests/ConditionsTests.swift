@@ -57,3 +57,14 @@ import Testing
     let ramp = point(.ramp, 5, 5.5)
     #expect(DoorSnap.snap(ramp, to: [door], floorY: 0).floorPoint == ramp.floorPoint)
 }
+
+@Test func selectedDestinationsRespectOutagesAndDynamicObstacles() throws {
+    let destination = AccessPoint(kind: .destination, name: "Kitchen", position: [3, 0, 0], source: .manual, confidence: 1)
+    let planner = RoutePlanner(map: room(points: [destination]))
+    let clear = try #require(planner.route(from: [-3, 0], to: destination))
+    let blocked = try #require(planner.route(from: [-3, 0], to: destination, conditions: RouteConditions(obstacles: [[0, 0]])))
+    #expect(blocked.length > clear.length + 0.1)
+    #expect(Polyline.distance(from: [0, 0], to: blocked.waypoints) > RoutePlanner.obstacleRadius)
+    #expect(planner.route(from: [-3, 0], to: destination, conditions: RouteConditions(unavailable: [destination.id])) == nil)
+    #expect(planner.nearestRoute(from: [-3, 0]) == nil)
+}

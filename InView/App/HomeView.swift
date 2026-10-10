@@ -5,6 +5,7 @@ struct HomeView: View {
     private enum Mode: String, Identifiable {
         case scan
         case navigate
+        case demo
 
         var id: String { rawValue }
     }
@@ -12,6 +13,7 @@ struct HomeView: View {
     @State private var savedMap = MapStore.load()
     @State private var report = MapStore.loadReport()
     @State private var mode: Mode?
+    @State private var showsSettings = false
 
     var body: some View {
         NavigationStack {
@@ -62,19 +64,30 @@ struct HomeView: View {
                     } else {
                         EmptyFloorCard()
                     }
+                    Button("Try navigation demo") { mode = .demo }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
                 }
                 .padding()
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("InView")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Scan processing settings", systemImage: "gearshape") { showsSettings = true }
+                        .labelStyle(.iconOnly)
+                }
+            }
         }
         .tint(Theme.accent)
         .fullScreenCover(item: $mode, onDismiss: reload) { mode in
             switch mode {
             case .scan: ScanView()
             case .navigate: NavigateView()
+            case .demo: NavigateView(isDemo: true)
             }
         }
+        .sheet(isPresented: $showsSettings) { BackendSettingsView() }
     }
 
     private func reload() {

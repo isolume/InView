@@ -1,0 +1,953 @@
+{
+  "schema_version": 1,
+  "id": "demo-room",
+  "map_id": "demo-living-room",
+  "floor_id": "ground",
+  "coordinates": {
+    "units": "meters",
+    "up_axis": "y",
+    "handedness": "right"
+  },
+  "metadata": {
+    "synthetic": true,
+    "title": "Demo building",
+    "description": "Two furnished rooms joined by a six meter hallway. This is a synthetic building example, with no real scans or photographs.",
+    "start_position": [
+      -1.825,
+      0,
+      0.275
+    ],
+    "destinations": [
+      {
+        "id": "reception",
+        "name": "Reception",
+        "position": [
+          -1.825,
+          0,
+          0.275
+        ]
+      },
+      {
+        "id": "meeting-room",
+        "name": "Meeting room",
+        "position": [
+          -1.4,
+          0,
+          -11
+        ]
+      }
+    ],
+    "navigation_demo": {
+      "clearance_m": 0.44999998807907104,
+      "current_position": [
+        -1.8250000476837158,
+        0,
+        0.2750000059604645
+      ],
+      "destination": {
+        "name": "Meeting room",
+        "position": [
+          -1.399999976158142,
+          0,
+          -11
+        ]
+      },
+      "distance_m": 14.961857795715332,
+      "heading_radians": 0,
+      "waypoints": [
+        [
+          -1.8249998092651367,
+          0,
+          0.27500057220458984
+        ],
+        [
+          -1.8249998092651367,
+          0,
+          -0.625
+        ],
+        [
+          -1.5249998569488525,
+          0,
+          -0.8249998092651367
+        ],
+        [
+          1.3750004768371582,
+          0,
+          -1.9249992370605469
+        ],
+        [
+          1.3750004768371582,
+          0,
+          -9.125
+        ],
+        [
+          -0.9249997138977051,
+          0,
+          -10.524999618530273
+        ],
+        [
+          -1.424999713897705,
+          0,
+          -11.024999618530273
+        ]
+      ]
+    }
+  },
+  "surfaces": [
+    {
+      "id": "floor",
+      "kind": "floor",
+      "dimensions_m": [
+        6,
+        0,
+        5
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "back-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        6,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0,
+        1.4,
+        2.5,
+        1
+      ]
+    },
+    {
+      "id": "left-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        5,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        6.123233995736766e-17,
+        0,
+        -1.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        0,
+        6.123233995736766e-17,
+        0,
+        -3,
+        1.4,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "right-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        5,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        6.123233995736766e-17,
+        0,
+        -1.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        0,
+        6.123233995736766e-17,
+        0,
+        3,
+        1.4,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "front-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        6,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0,
+        1.4,
+        -2.5,
+        1
+      ]
+    },
+    {
+      "id": "window",
+      "kind": "window",
+      "dimensions_m": [
+        2.4,
+        1.45,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0.2,
+        1.75,
+        2.5,
+        1
+      ]
+    },
+    {
+      "id": "entry",
+      "kind": "opening",
+      "dimensions_m": [
+        1.1,
+        2.15,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        1.75,
+        1.075,
+        -2.5,
+        1
+      ]
+    },
+    {
+      "id": "hallway-floor",
+      "kind": "floor",
+      "dimensions_m": [
+        2.4,
+        0,
+        6
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        1.75,
+        0,
+        -5.5,
+        1
+      ]
+    },
+    {
+      "id": "hallway-left-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        6,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        6.123233995736766e-17,
+        0,
+        -1.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        0,
+        6.123233995736766e-17,
+        0,
+        0.55,
+        1.4,
+        -5.5,
+        1
+      ]
+    },
+    {
+      "id": "hallway-right-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        6,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        6.123233995736766e-17,
+        0,
+        -1.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        0,
+        6.123233995736766e-17,
+        0,
+        2.95,
+        1.4,
+        -5.5,
+        1
+      ]
+    },
+    {
+      "id": "meeting-floor",
+      "kind": "floor",
+      "dimensions_m": [
+        6,
+        0,
+        5
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0,
+        0,
+        -11,
+        1
+      ]
+    },
+    {
+      "id": "meeting-front-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        6,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0,
+        1.4,
+        -8.5,
+        1
+      ]
+    },
+    {
+      "id": "meeting-back-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        6,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0,
+        1.4,
+        -13.5,
+        1
+      ]
+    },
+    {
+      "id": "meeting-left-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        5,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        6.123233995736766e-17,
+        0,
+        -1.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        0,
+        6.123233995736766e-17,
+        0,
+        -3,
+        1.4,
+        -11,
+        1
+      ]
+    },
+    {
+      "id": "meeting-right-wall",
+      "kind": "wall",
+      "dimensions_m": [
+        5,
+        2.8,
+        0
+      ],
+      "map_from_surface": [
+        6.123233995736766e-17,
+        0,
+        -1.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        0,
+        6.123233995736766e-17,
+        0,
+        3,
+        1.4,
+        -11,
+        1
+      ]
+    },
+    {
+      "id": "meeting-entry",
+      "kind": "opening",
+      "dimensions_m": [
+        1.1,
+        2.15,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        1.75,
+        1.075,
+        -8.5,
+        1
+      ]
+    },
+    {
+      "id": "meeting-window",
+      "kind": "window",
+      "dimensions_m": [
+        2.4,
+        1.45,
+        0
+      ],
+      "map_from_surface": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        -0.6,
+        1.75,
+        -13.5,
+        1
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "id": "sofa-001",
+      "category": "sofa",
+      "confidence": "high",
+      "dimensions_m": [
+        2.9,
+        1.05,
+        1.0
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        -0.65,
+        0.525,
+        1.78,
+        1
+      ]
+    },
+    {
+      "id": "table-001",
+      "category": "table",
+      "confidence": "high",
+      "dimensions_m": [
+        1.45,
+        0.43,
+        0.85
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        -0.6,
+        0.215,
+        0.15,
+        1
+      ]
+    },
+    {
+      "id": "chair-001",
+      "category": "chair",
+      "confidence": "high",
+      "dimensions_m": [
+        0.75,
+        0.95,
+        0.78
+      ],
+      "map_from_object": [
+        0.17902957342582418,
+        0,
+        0.9838436927881214,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.9838436927881214,
+        0,
+        0.17902957342582418,
+        0,
+        1.6,
+        0.475,
+        0.8,
+        1
+      ]
+    },
+    {
+      "id": "chair-002",
+      "category": "chair",
+      "confidence": "high",
+      "dimensions_m": [
+        0.75,
+        0.95,
+        0.78
+      ],
+      "map_from_object": [
+        -0.21822962308086924,
+        0,
+        0.9758974493306055,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.9758974493306055,
+        0,
+        -0.21822962308086924,
+        0,
+        1.65,
+        0.475,
+        -0.6,
+        1
+      ]
+    },
+    {
+      "id": "side-table",
+      "category": "table",
+      "confidence": "high",
+      "dimensions_m": [
+        0.5,
+        0.55,
+        0.5
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        -2.45,
+        0.275,
+        0.78,
+        1
+      ]
+    },
+    {
+      "id": "console",
+      "category": "storage",
+      "confidence": "high",
+      "dimensions_m": [
+        1.7,
+        0.82,
+        0.43
+      ],
+      "map_from_object": [
+        6.123233995736766e-17,
+        0,
+        -1.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        0,
+        6.123233995736766e-17,
+        0,
+        -2.71,
+        0.41,
+        -0.75,
+        1
+      ]
+    },
+    {
+      "id": "plant-001",
+      "category": "plant",
+      "confidence": "high",
+      "dimensions_m": [
+        0.62,
+        1.3,
+        0.62
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        -2.5,
+        0.65,
+        1.95,
+        1
+      ]
+    },
+    {
+      "id": "plant-002",
+      "category": "plant",
+      "confidence": "high",
+      "dimensions_m": [
+        0.48,
+        0.8,
+        0.48
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        2.5,
+        0.4,
+        1.95,
+        1
+      ]
+    },
+    {
+      "id": "rug-001",
+      "category": "rug",
+      "confidence": "high",
+      "dimensions_m": [
+        3.65,
+        0.016,
+        2.75
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        -0.05,
+        0.008,
+        0.08,
+        1
+      ]
+    },
+    {
+      "id": "meeting-table",
+      "category": "table",
+      "confidence": "high",
+      "dimensions_m": [
+        1.65,
+        0.74,
+        0.8
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0.85,
+        0.37,
+        -11.6,
+        1
+      ]
+    },
+    {
+      "id": "meeting-chair-001",
+      "category": "chair",
+      "confidence": "high",
+      "dimensions_m": [
+        0.52,
+        0.9,
+        0.54
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        0.34,
+        0.45,
+        -10.82,
+        1
+      ]
+    },
+    {
+      "id": "meeting-chair-002",
+      "category": "chair",
+      "confidence": "high",
+      "dimensions_m": [
+        0.52,
+        0.9,
+        0.54
+      ],
+      "map_from_object": [
+        1.0,
+        0,
+        -0.0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.0,
+        0,
+        1.0,
+        0,
+        1.36,
+        0.45,
+        -10.82,
+        1
+      ]
+    },
+    {
+      "id": "meeting-chair-003",
+      "category": "chair",
+      "confidence": "high",
+      "dimensions_m": [
+        0.52,
+        0.9,
+        0.54
+      ],
+      "map_from_object": [
+        -1.0,
+        0,
+        -1.2246467991473532e-16,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.2246467991473532e-16,
+        0,
+        -1.0,
+        0,
+        0.34,
+        0.45,
+        -12.38,
+        1
+      ]
+    },
+    {
+      "id": "meeting-chair-004",
+      "category": "chair",
+      "confidence": "high",
+      "dimensions_m": [
+        0.52,
+        0.9,
+        0.54
+      ],
+      "map_from_object": [
+        -1.0,
+        0,
+        -1.2246467991473532e-16,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.2246467991473532e-16,
+        0,
+        -1.0,
+        0,
+        1.36,
+        0.45,
+        -12.38,
+        1
+      ]
+    }
+  ],
+  "meshes": [],
+  "frames": []
+}

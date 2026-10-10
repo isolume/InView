@@ -24,6 +24,7 @@ extension AccessPoint.Kind {
         switch self {
         case .elevator: "arrow.up.arrow.down.square.fill"
         case .ramp: "figure.roll"
+        case .destination: "flag.fill"
         }
     }
 
@@ -31,6 +32,7 @@ extension AccessPoint.Kind {
         switch self {
         case .elevator: Theme.accent
         case .ramp: .teal
+        case .destination: Theme.accent
         }
     }
 
@@ -39,6 +41,7 @@ extension AccessPoint.Kind {
         switch self {
         case .elevator: Theme.accentUIColor
         case .ramp: .systemTeal
+        case .destination: Theme.accentUIColor
         }
     }
 }

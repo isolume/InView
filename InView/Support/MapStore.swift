@@ -32,6 +32,13 @@ enum MapStore {
         UIImage(contentsOfFile: startViewURL.path())
     }
 
+    static func updateGeographicReference(_ reference: BuildingMapReference) throws {
+        try reference.validate()
+        var map = try decoder.decode(VenueMap.self, from: Data(contentsOf: mapURL))
+        map.geographicReference = reference
+        try encoder.encode(map).write(to: mapURL, options: .atomic)
+    }
+
     static func loadReport() -> AccessibilityReport? {
         guard let data = try? Data(contentsOf: reportURL) else { return nil }
         return try? decoder.decode(AccessibilityReport.self, from: data)

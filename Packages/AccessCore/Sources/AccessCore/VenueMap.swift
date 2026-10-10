@@ -102,6 +102,17 @@ public struct Footprint: Codable, Hashable, Sendable {
         )
     }
 
+    /// Projects a legacy floor rectangle when its vertical measurements are unavailable.
+    public init(kind: Kind, transform: simd_float4x4, width: Float, depth: Float) {
+        let axis = SIMD2(transform.columns.0.x, transform.columns.0.z)
+        self.init(
+            kind: kind,
+            center: SIMD2(transform.columns.3.x, transform.columns.3.z),
+            size: SIMD2(width, depth),
+            yaw: simd_length(axis) > 1e-4 ? atan2(axis.y, axis.x) : 0
+        )
+    }
+
     /// Maps a point in the footprint's own axes (x along `size.x`, y along `size.y`) onto the floor.
     public func floorPoint(local point: SIMD2<Float>) -> SIMD2<Float> {
         let c = cos(yaw), s = sin(yaw)
@@ -133,11 +144,20 @@ public struct VenueMap: Codable, Sendable {
     public var floorY: Float
     public var footprints: [Footprint]
     public var points: [AccessPoint]
+    /// Geographic placement of the scan's origin; existing indoor maps may have none.
+    public var geographicReference: BuildingMapReference?
 
-    public init(createdAt: Date = .now, floorY: Float, footprints: [Footprint], points: [AccessPoint]) {
+    public init(
+        createdAt: Date = .now,
+        floorY: Float,
+        footprints: [Footprint],
+        points: [AccessPoint],
+        geographicReference: BuildingMapReference? = nil
+    ) {
         self.createdAt = createdAt
         self.floorY = floorY
         self.footprints = footprints
         self.points = points
+        self.geographicReference = geographicReference
     }
 }

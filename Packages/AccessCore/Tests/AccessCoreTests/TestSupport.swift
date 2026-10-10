@@ -30,9 +30,9 @@ func room(_ extra: [Footprint] = [], points: [AccessPoint]) -> VenueMap {
 let divider = wall(from: [0, -3], to: [0, 3])
 
 /// Where the route crosses x = 0, as a z coordinate.
-func crossing(of route: Route) -> Float? {
-    for (a, b) in zip(route.waypoints, route.waypoints.dropFirst()) where (a.x < 0) != (b.x < 0) {
-        let t = -a.x / (b.x - a.x)
+func crossing(of route: Route, at x: Float = 0) -> Float? {
+    for (a, b) in zip(route.waypoints, route.waypoints.dropFirst()) where (a.x < x) != (b.x < x) {
+        let t = (x - a.x) / (b.x - a.x)
         return a.y + (b.y - a.y) * t
     }
     return nil

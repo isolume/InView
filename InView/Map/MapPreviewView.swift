@@ -8,6 +8,10 @@ import SwiftUI
 /// Tapping reports the venue floor point under the finger.
 struct MapPreviewView: View {
     let map: VenueMap
+    var route: Route? = nil
+    var userPosition: SIMD2<Float>? = nil
+    var userHeading: Float = 0
+    var showsScanStart = true
     var onTap: ((SIMD2<Float>) -> Void)?
 
     var body: some View {
@@ -22,6 +26,7 @@ struct MapPreviewView: View {
         .background(PlanInk.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityLabel("Floor plan with \(map.points.count) accessible points")
+        .accessibilityValue(route.map { "Route to \($0.destination.title), \(Int($0.length.rounded())) meters" } ?? "")
     }
 
     private func draw(in context: inout GraphicsContext, size: CGSize, projection: MapProjection) {
@@ -62,10 +67,31 @@ struct MapPreviewView: View {
             )
         }
 
-        let start = projection.screenPoint(.zero)
-        context.fill(Path(ellipseIn: CGRect(x: start.x - 6, y: start.y - 6, width: 12, height: 12)), with: .color(PlanInk.paper))
-        context.fill(Path(ellipseIn: CGRect(x: start.x - 4, y: start.y - 4, width: 8, height: 8)), with: .color(PlanInk.wall))
-        context.draw(Text("Scan start").font(.caption2).foregroundStyle(PlanInk.annotation), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
+        if showsScanStart {
+            let start = projection.screenPoint(.zero)
+            context.fill(Path(ellipseIn: CGRect(x: start.x - 6, y: start.y - 6, width: 12, height: 12)), with: .color(PlanInk.paper))
+            context.fill(Path(ellipseIn: CGRect(x: start.x - 4, y: start.y - 4, width: 8, height: 8)), with: .color(PlanInk.wall))
+            context.draw(Text("Scan start").font(.caption2).foregroundStyle(PlanInk.annotation), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
+        }
+        if let route, route.waypoints.count > 1 {
+            let path = Path { $0.addLines(route.waypoints.map(projection.screenPoint)) }
+            context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+            context.stroke(path, with: .color(.blue), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+        }
+        if let userPosition {
+            let center = projection.screenPoint(userPosition)
+            let cone = Path { path in
+                path.move(to: center)
+                for index in 0...20 {
+                    let angle = CGFloat(userHeading) - .pi / 6 + CGFloat(index) * .pi / 60
+                    path.addLine(to: CGPoint(x: center.x + sin(angle) * 30, y: center.y - cos(angle) * 30))
+                }
+                path.closeSubpath()
+            }
+            context.fill(cone, with: .color(.blue.opacity(0.15)))
+            context.fill(Path(ellipseIn: CGRect(x: center.x - 9, y: center.y - 9, width: 18, height: 18)), with: .color(.white))
+            context.fill(Path(ellipseIn: CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12)), with: .color(.blue))
+        }
 
         for point in map.points {
             let center = projection.screenPoint(point.floorPoint)
@@ -76,7 +102,7 @@ struct MapPreviewView: View {
             var symbol = context.resolve(Image(systemName: point.kind.symbolName))
             symbol.shading = .color(.white)
             context.draw(symbol, in: disc.insetBy(dx: 6, dy: 6))
-            let label = context.resolve(Text(point.name).font(.caption2.weight(.semibold)).foregroundStyle(PlanInk.label))
+            let label = context.resolve(Text(point.title).font(.caption2.weight(.semibold)).foregroundStyle(PlanInk.label))
             let labelSize = label.measure(in: CGSize(width: 160, height: 40))
             let plate = CGRect(x: center.x - labelSize.width / 2 - 4, y: disc.maxY + 2, width: labelSize.width + 8, height: labelSize.height + 2)
             context.fill(Path(roundedRect: plate, cornerRadius: 4), with: .color(PlanInk.paper.opacity(0.85)))
