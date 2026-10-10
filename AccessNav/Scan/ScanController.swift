@@ -1,25 +1,23 @@
 import ARKit
 import AccessCore
 import Combine
-import RealityKit
 import RoomPlan
 import SwiftUI
 
 /// Drives a volunteer scan: RoomPlan capture of one or more sections with live vision detection,
-/// then a check-in at the printed marker that ties everything to the venue frame.
+/// then an ARWorldMap snapshot that navigation sessions relocalize against, so they share the scan's coordinates.
 @MainActor
 final class ScanController: ObservableObject {
     enum Phase: Equatable {
         case unsupported
         case scanning
         case processing
-        case checkIn
+        case savingWorldMap
         case review
     }
 
     @Published private(set) var phase: Phase
     @Published private(set) var sectionCount = 0
-    @Published private(set) var markerProgress = 0.0
     @Published private(set) var errorMessage: String?
     @Published private(set) var draft: VenueMap?
 
@@ -32,21 +30,17 @@ final class ScanController: ObservableObject {
         return view
     }()
 
-    private(set) lazy var checkInView: ARView = {
-        let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
-        view.session = session
-        return view
-    }()
-
     private lazy var captureDelegate = CaptureViewDelegate(
         onError: { [weak self] error in self?.errorMessage = error.localizedDescription },
         onRoom: { [weak self] room in self?.sectionProcessed(room) }
     )
     private var rooms: [CapturedRoom] = []
+    private var worldMap: ARWorldMap?
+    /// What the camera saw as the scan began, shown later to help riders find their place.
+    private var startView: Data?
+    private var startViewTimer: Timer?
     private var hasStarted = false
     private var finishAfterProcessing = false
-    private var markerSampler = MarkerSampler()
-    private var markerTimer: Timer?
 
     init() {
         phase = RoomCaptureSession.isSupported ? .scanning : .unsupported
@@ -57,6 +51,9 @@ final class ScanController: ObservableObject {
         hasStarted = true
         captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
         detector.start(session: session)
+        startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.captureStartView() }
+        }
     }
 
     /// Ends the current section and starts another in the same coordinate space, for floors too big for one scan.
@@ -64,9 +61,18 @@ final class ScanController: ObservableObject {
 
     func finish() { endSection(thenFinish: true) }
 
+    /// Captures the session's map of visual features. Also the retry when a capture fails.
+    func saveWorldMap() {
+        phase = .savingWorldMap
+        errorMessage = nil
+        session.getCurrentWorldMap { [weak self] worldMap, error in
+            Task { @MainActor in self?.worldMapCaptured(worldMap, error: error) }
+        }
+    }
+
     func stop() {
-        markerTimer?.invalidate()
-        markerTimer = nil
+        startViewTimer?.invalidate()
+        startViewTimer = nil
         detector.pause()
         if phase == .scanning { captureView.captureSession.stop() }
         if phase != .unsupported { session.pause() }
@@ -83,8 +89,8 @@ final class ScanController: ObservableObject {
     }
 
     func save() throws {
-        guard let draft else { return }
-        try MapStore.save(draft, rooms: rooms)
+        guard let draft, let worldMap else { return }
+        try MapStore.save(draft, rooms: rooms, worldMap: worldMap, startView: startView)
     }
 
     private func endSection(thenFinish finish: Bool) {
@@ -92,7 +98,7 @@ final class ScanController: ObservableObject {
         finishAfterProcessing = finish
         phase = .processing
         detector.pause()
-        // Keep the AR session running so the next section, and the marker, share its world frame.
+        // Keep the AR session running so the next section and the world map share its coordinates.
         captureView.captureSession.stop(pauseARSession: false)
     }
 
@@ -101,7 +107,7 @@ final class ScanController: ObservableObject {
         rooms.append(room)
         sectionCount = rooms.count
         if finishAfterProcessing {
-            beginCheckIn()
+            saveWorldMap()
         } else {
             phase = .scanning
             captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
@@ -109,33 +115,24 @@ final class ScanController: ObservableObject {
         }
     }
 
-    private func beginCheckIn() {
-        guard let marker = Marker.referenceImage else {
-            errorMessage = "The check-in marker image is missing from the app."
+    private func worldMapCaptured(_ worldMap: ARWorldMap?, error: Error?) {
+        guard phase == .savingWorldMap else { return }
+        guard let worldMap else {
+            errorMessage = "Couldn't capture the AR map (\(error?.localizedDescription ?? "unknown error")). Move the phone slowly around the area and try again."
             return
         }
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.detectionImages = [marker]
-        configuration.maximumNumberOfTrackedImages = 1
-        // No reset options: the world frame RoomPlan used survives, so walls, pins and the marker line up.
-        session.run(configuration)
-        phase = .checkIn
-        markerTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.sampleMarker() }
-        }
-    }
-
-    private func sampleMarker() {
-        guard let frame = session.currentFrame else { return }
-        markerSampler.add(frame)
-        markerProgress = markerSampler.progress
-        guard let venue = markerSampler.venueFrame else { return }
-        markerTimer?.invalidate()
-        markerTimer = nil
+        self.worldMap = worldMap
         session.pause()
-        draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints(in: venue), venue: venue)
+        draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints())
         phase = .review
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func captureStartView() {
+        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState else { return }
+        startView = FrameEncoder.portraitJPEG(from: frame.capturedImage, maxDimension: 720)
+        startViewTimer?.invalidate()
+        startViewTimer = nil
     }
 }
 

@@ -1,7 +1,7 @@
 import AccessCore
 import SwiftUI
 
-/// The volunteer flow: scan the floor, check in at the marker, review and save.
+/// The volunteer flow: scan the floor, save the AR map, review and save.
 struct ScanView: View {
     @StateObject private var controller = ScanController()
     @Environment(\.dismiss) private var dismiss
@@ -11,10 +11,8 @@ struct ScanView: View {
             switch controller.phase {
             case .unsupported:
                 UnsupportedDeviceView(onClose: close)
-            case .scanning, .processing:
+            case .scanning, .processing, .savingWorldMap:
                 captureScreen
-            case .checkIn:
-                checkInScreen
             case .review:
                 MapReviewView(controller: controller, onClose: close)
             }
@@ -38,17 +36,36 @@ struct ScanView: View {
                     DetectionStatus(detector: controller.detector, section: controller.sectionCount + 1)
                 }
                 Spacer()
-                if controller.phase == .processing {
+                switch controller.phase {
+                case .processing:
                     Label("Processing section…", systemImage: "hourglass")
                         .font(.headline)
                         .padding()
                         .background(.regularMaterial, in: Capsule())
-                } else {
+                case .savingWorldMap:
+                    worldMapPanel
+                default:
                     scanControls
                 }
             }
             .padding()
         }
+    }
+
+    private var worldMapPanel: some View {
+        VStack(spacing: 12) {
+            if let error = controller.errorMessage {
+                Text(error).font(.subheadline).multilineTextAlignment(.center)
+                Button("Try again", action: controller.saveWorldMap)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+            } else {
+                ProgressView("Saving AR map…")
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     private var scanControls: some View {
@@ -81,33 +98,6 @@ struct ScanView: View {
         }
         .padding()
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-
-    private var checkInScreen: some View {
-        ZStack {
-            ViewContainer(view: controller.checkInView).ignoresSafeArea()
-            VStack {
-                HStack {
-                    CloseButton(action: close)
-                    Spacer()
-                }
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "viewfinder").font(.largeTitle)
-                    Text("Check in at the marker").font(.title3.bold())
-                    Text("Walk back to the printed check-in sign and point the camera at it. This pins the map to the building.")
-                        .font(.subheadline)
-                        .multilineTextAlignment(.center)
-                    ProgressView(value: controller.markerProgress)
-                    if let error = controller.errorMessage {
-                        Text(error).font(.caption).foregroundStyle(.red)
-                    }
-                }
-                .padding()
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            }
-            .padding()
-        }
     }
 }
 

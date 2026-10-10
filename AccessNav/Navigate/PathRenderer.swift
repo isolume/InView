@@ -3,7 +3,8 @@ import RealityKit
 import UIKit
 
 /// Draws the route as chevrons on the floor and a floating label over every access point.
-/// Everything hangs off one anchor at the venue origin, so it is laid out in venue coordinates.
+/// Everything hangs off one anchor at the world origin, which after relocalization is where the scan started,
+/// so it is laid out directly in the saved map's coordinates.
 @MainActor
 final class PathRenderer {
     private static let chevronSpacing: Float = 0.5
@@ -17,8 +18,8 @@ final class PathRenderer {
     private var markers: [UUID: PointMarker] = [:]
     private var floorY: Float
 
-    init(scene: RealityKit.Scene, venue: VenueFrame, map: VenueMap) {
-        anchor = AnchorEntity(world: venue.worldFromVenue)
+    init(scene: RealityKit.Scene, map: VenueMap) {
+        anchor = AnchorEntity(world: .zero)
         floorY = map.floorY
         chevron = ModelEntity(mesh: Self.chevronMesh(), materials: [UnlitMaterial(color: .systemBlue)])
         anchor.addChild(routeRoot)

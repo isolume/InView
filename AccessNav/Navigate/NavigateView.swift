@@ -1,7 +1,7 @@
 import AccessCore
 import SwiftUI
 
-/// The rider flow: find the check-in sign, then follow arrows to the nearest elevator or ramp.
+/// The rider flow: relocalize in the saved map, then follow arrows to the nearest elevator or ramp.
 struct NavigateView: View {
     @StateObject private var controller = NavigationController()
     @Environment(\.dismiss) private var dismiss
@@ -45,11 +45,11 @@ struct NavigateView: View {
         case .noMap:
             EmptyView()
         case .locating:
-            VStack(spacing: 12) {
-                Image(systemName: "viewfinder").font(.largeTitle)
-                Text("Point your camera at the check-in sign").font(.title3.bold()).multilineTextAlignment(.center)
-                ProgressView(value: controller.markerProgress)
-            }
+            LocatingPanel(
+                startView: controller.startView,
+                isSlow: controller.isRelocalizationSlow,
+                onStartHere: controller.startFromScanOrigin
+            )
         case .ready:
             PrimaryButton(title: "Take me to the nearest accessible point", systemImage: "figure.roll", action: controller.navigateToNearest)
         case .routing:
@@ -77,6 +77,39 @@ struct NavigateView: View {
                     .foregroundStyle(.orange)
                 Text("Move to open floor space and try again.").font(.subheadline)
                 PrimaryButton(title: "Try again", systemImage: "arrow.clockwise", action: controller.navigateToNearest)
+            }
+        }
+    }
+}
+
+private struct LocatingPanel: View {
+    let startView: UIImage?
+    let isSlow: Bool
+    let onStartHere: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if let startView {
+                Image(uiImage: startView)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .accessibilityLabel("Photo of where the scan started")
+            }
+            Text("Finding where you are").font(.title3.bold())
+            Text("Go to where the scan started and slowly look around.")
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+            ProgressView()
+            if isSlow {
+                Divider()
+                Text("Still searching? Stand exactly where the scan started, facing the way the photo does, then start from there.")
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+                Button("Start from here", action: onStartHere)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
             }
         }
     }

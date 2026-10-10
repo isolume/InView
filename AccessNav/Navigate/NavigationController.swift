@@ -4,8 +4,8 @@ import Combine
 import RealityKit
 import UIKit
 
-/// Drives a navigation session: find the marker, then route the user to the nearest
-/// access point and keep re-routing as they move.
+/// Drives a navigation session: relocalize against the saved AR map, then route the user to the
+/// nearest access point and keep re-routing as they move.
 @MainActor
 final class NavigationController: ObservableObject {
     enum Phase: Equatable {
@@ -19,41 +19,37 @@ final class NavigationController: ObservableObject {
     }
 
     @Published private(set) var phase: Phase
-    @Published private(set) var markerProgress = 0.0
+    /// Set once relocalization has taken long enough that the rider should see the fallback.
+    @Published private(set) var isRelocalizationSlow = false
     @Published private(set) var route: Route?
 
     let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+    let startView = MapStore.loadStartView()
 
     private static let rerouteInterval: TimeInterval = 1
     private static let arrivalDistance: Float = 1.2
+    private static let slowRelocalization: TimeInterval = 15
 
     private let map: VenueMap?
+    private let worldMap: ARWorldMap?
     private let planner: RoutePlanner?
     private var renderer: PathRenderer?
-    private var venue: VenueFrame?
-    private var sampler = MarkerSampler()
     private var timer: Timer?
+    private var locatingSince = Date.now
     private var isRouting = false
     private var lastRouted = Date.distantPast
 
-    init(map: VenueMap? = MapStore.load()) {
+    init(map: VenueMap? = MapStore.load(), worldMap: ARWorldMap? = MapStore.loadWorldMap()) {
         self.map = map
+        self.worldMap = worldMap
         planner = map.map(RoutePlanner.init)
-        phase = map == nil ? .noMap : .locating
+        phase = map == nil || worldMap == nil ? .noMap : .locating
     }
 
     func start() {
-        guard map != nil, timer == nil, let marker = Marker.referenceImage else { return }
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.detectionImages = [marker]
-        configuration.maximumNumberOfTrackedImages = 1
-        configuration.planeDetection = [.horizontal]
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            // Lets real walls hide the arrows behind them.
-            configuration.sceneReconstruction = .mesh
-            arView.environment.sceneUnderstanding.options.insert(.occlusion)
-        }
-        arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        guard phase == .locating, timer == nil, let worldMap else { return }
+        run(initialWorldMap: worldMap)
+        locatingSince = .now
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -63,6 +59,14 @@ final class NavigationController: ObservableObject {
         timer?.invalidate()
         timer = nil
         arView.session.pause()
+    }
+
+    /// Fallback when relocalization stalls: restart tracking here and treat this spot as where
+    /// the scan began. Only lines up if the rider stands there facing the way the start photo does.
+    func startFromScanOrigin() {
+        guard phase == .locating else { return }
+        run(initialWorldMap: nil)
+        didLocate()
     }
 
     func navigateToNearest() {
@@ -82,24 +86,38 @@ final class NavigationController: ObservableObject {
         phase = .ready
     }
 
+    private func run(initialWorldMap: ARWorldMap?) {
+        let configuration = ARWorldTrackingConfiguration()
+        configuration.initialWorldMap = initialWorldMap
+        configuration.planeDetection = [.horizontal]
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            // Lets real walls hide the arrows behind them.
+            configuration.sceneReconstruction = .mesh
+            arView.environment.sceneUnderstanding.options.insert(.occlusion)
+        }
+        arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+    }
+
     private func tick() {
         guard let frame = arView.session.currentFrame else { return }
-        guard let venue else {
-            locateMarker(in: frame)
+        guard phase != .locating else {
+            // With an initial world map, tracking stays limited until ARKit has relocalized into the scan's coordinates.
+            if case .normal = frame.camera.trackingState {
+                didLocate()
+            } else if !isRelocalizationSlow, Date.now.timeIntervalSince(locatingSince) > Self.slowRelocalization {
+                isRelocalizationSlow = true
+            }
             return
         }
-        updateFloorHeight(from: frame, venue: venue)
+        updateFloorHeight(from: frame)
         if phase == .navigating, !isRouting, Date.now.timeIntervalSince(lastRouted) >= Self.rerouteInterval {
             reroute()
         }
     }
 
-    private func locateMarker(in frame: ARFrame) {
-        sampler.add(frame)
-        markerProgress = sampler.progress
-        guard let venue = sampler.venueFrame, let map else { return }
-        self.venue = venue
-        renderer = PathRenderer(scene: arView.scene, venue: venue, map: map)
+    private func didLocate() {
+        guard let map else { return }
+        renderer = PathRenderer(scene: arView.scene, map: map)
         phase = .ready
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
@@ -142,19 +160,19 @@ final class NavigationController: ObservableObject {
             || simd_distance(position, route.destination.floorPoint) <= Self.arrivalDistance
     }
 
-    private func updateFloorHeight(from frame: ARFrame, venue: VenueFrame) {
+    private func updateFloorHeight(from frame: ARFrame) {
         let floorHeights = frame.anchors
             .compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.classification == .floor }
-            .map { venue.toVenue($0.transform.translation).y }
+            .map(\.transform.translation.y)
         if let lowest = floorHeights.min() {
             renderer?.setFloorHeight(lowest)
         }
     }
 
     private func userPosition() -> SIMD2<Float>? {
-        guard let venue, let frame = arView.session.currentFrame else { return nil }
-        let position = venue.toVenue(frame.camera.transform.translation)
+        guard let frame = arView.session.currentFrame else { return nil }
+        let position = frame.camera.transform.translation
         return SIMD2(position.x, position.z)
     }
 }

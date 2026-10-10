@@ -36,9 +36,9 @@ struct MapPreviewView: View {
             context.fill(projection.path(footprint.corners), with: .color(wideEnough ? .green : .orange))
         }
 
-        let marker = projection.screenPoint(.zero)
-        context.fill(Path(CGRect(x: marker.x - 5, y: marker.y - 5, width: 10, height: 10)), with: .color(.primary))
-        context.draw(Text("Check-in").font(.caption2), at: CGPoint(x: marker.x, y: marker.y + 8), anchor: .top)
+        let start = projection.screenPoint(.zero)
+        context.fill(Path(ellipseIn: CGRect(x: start.x - 5, y: start.y - 5, width: 10, height: 10)), with: .color(.primary))
+        context.draw(Text("Scan start").font(.caption2), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
 
         for point in map.points {
             let center = projection.screenPoint(point.floorPoint)

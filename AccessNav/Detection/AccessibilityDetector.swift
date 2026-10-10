@@ -57,9 +57,9 @@ final class AccessibilityDetector: ObservableObject {
         record(kind, at: position, confidence: 1, source: .manual)
     }
 
-    func accessPoints(in venue: VenueFrame) -> [AccessPoint] {
+    func accessPoints() -> [AccessPoint] {
         sightings.map {
-            AccessPoint(kind: $0.kind, position: venue.toVenue($0.position), source: $0.source, confidence: $0.confidence)
+            AccessPoint(kind: $0.kind, position: $0.position, source: $0.source, confidence: $0.confidence)
         }
     }
 
