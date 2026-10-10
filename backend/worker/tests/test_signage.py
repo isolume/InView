@@ -303,6 +303,33 @@ def test_synthetic_package_exit_sign_is_found_measured_and_screened(synthetic_ct
     assert {"kind", "text", "position_m", "observation_count"} <= set(sign)
 
 
+def test_merged_arrows_use_circular_angles_and_map_meaning():
+    from inview_worker.signage.analyze import _merge_arrows
+
+    def arrow(name, angle, meaning, xz):
+        return {"image_direction": name, "angle_deg": angle, "meaning": meaning, "direction_xz": xz, "score": 0.9}
+
+    records = [{"arrows": [arrow("right", 357.0, "unknown", None)]},
+               {"arrows": [arrow("right", 1.0, "unknown", None)]},
+               {"arrows": [arrow("right", 1.0, "right", [1.0, 0.0])]},
+               {"arrows": [arrow("up", 90.0, "right", [1.0, 0.0])]}]  # same arrow, landscape keyframe
+    merged = _merge_arrows(records)
+    by_meaning = {m["meaning"]: m for m in merged}
+    assert set(by_meaning) == {"right", "unknown"} and by_meaning["right"]["direction_xz"] == [1.0, 0.0]
+    unknown = by_meaning["unknown"]
+    assert unknown["image_direction"] == "right" and unknown["angle_deg"] == 359.0  # circular mean of 357 and 1
+
+
+def test_overhead_exit_sign_gets_a_note_not_a_tactile_issue():
+    sign = {"kind": "exit_sign_candidate", "category": "exit", "pictograms": ["exit_running_person"], "text": "EXIT",
+            "mounting_height_m": 2.25, "heights_m": {"bottom": 2.12, "top": 2.38}}
+    issues, notes = assess.assess(sign)
+    assert not any("tactile range" in i for i in issues) and any("Overhead sign" in n for n in notes)
+    sign["heights_m"] = {"bottom": 1.85, "top": 2.1}
+    issues, _ = assess.assess(sign)
+    assert any("tactile range" in i for i in issues)
+
+
 def test_stage_without_keyframes_reports_a_notice():
     result = run_pipeline(ScanContext("empty", ScanInputs("empty")))
     assert result["signs"] == [] and any("No RGB keyframes" in n for n in result["notices"])

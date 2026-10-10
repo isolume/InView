@@ -11,6 +11,7 @@ from . import assess as assess_mod
 from . import i18n
 from .placement import LocalFrame, height_range, local_frame, locate, map_direction
 from .plates import Detection, detect, overlap_fraction
+from .arrows import name_for as arrow_name
 from .reader import Reading, read
 
 MERGE_DISTANCE_M = 0.6
@@ -140,22 +141,33 @@ def _median(values):
     return round(float(np.median(values)), 3) if values else None
 
 
+def _arrow_key(arrow: dict) -> str:
+    """Group arrows by their map-frame meaning when known (camera roll changes the image name)."""
+    if arrow.get("meaning") not in (None, "unknown"):
+        return f"map:{arrow['meaning']}"
+    return f"image:{arrow['image_direction']}"
+
+
 def _merge_arrows(records: list[dict]) -> list[dict]:
-    by_name: dict[str, list[dict]] = {}
+    groups: dict[str, list[dict]] = {}
     for record in records:
         for arrow in record["arrows"]:
-            by_name.setdefault(arrow["image_direction"], []).append(arrow)
+            groups.setdefault(_arrow_key(arrow), []).append(arrow)
     merged = []
-    for name, arrows in sorted(by_name.items()):
+    for _, arrows in sorted(groups.items()):
         vectors = [a["direction_xz"] for a in arrows if a["direction_xz"]]
         direction = None
         if vectors:
             mean = np.mean(vectors, axis=0)
             n = np.linalg.norm(mean)
             direction = [round(float(c), 3) for c in mean / n] if n > 1e-9 else None
-        merged.append({"direction_xz": direction, "image_direction": name, "meaning": arrows[0]["meaning"],
-                       "angle_deg": _median([a["angle_deg"] for a in arrows]),
-                       "score": _median([a["score"] for a in arrows])})
+        # Circular mean of the image angles (a plain median breaks across 0/360 degrees).
+        radians = np.radians([a["angle_deg"] for a in arrows])
+        angle = float(np.degrees(np.arctan2(np.sin(radians).mean(), np.cos(radians).mean())) % 360)
+        meanings = [a["meaning"] for a in arrows if a.get("meaning") not in (None, "unknown")]
+        merged.append({"direction_xz": direction, "image_direction": arrow_name(angle),
+                       "meaning": max(sorted(set(meanings)), key=meanings.count) if meanings else "unknown",
+                       "angle_deg": round(angle, 1), "score": _median([a["score"] for a in arrows])})
     return merged
 
 

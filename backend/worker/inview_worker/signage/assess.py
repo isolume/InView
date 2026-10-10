@@ -119,10 +119,17 @@ def assess(sign: dict) -> tuple[list[str], list[str]]:
         else:
             low, high, basis = heights.get("bottom"), heights.get("bottom"), "bottom edge"
         tactile = tactile_range_issues(low, high, mounting, basis)
-        issues += tactile
+        bottom = heights.get("bottom")
+        overhead = bottom is not None and bottom >= Thresholds.HEADROOM_MIN_M
+        if sign.get("braille") or not overhead:
+            # Braille, or a sign within reach of a standing person (below 2.03 m): it is acting as a
+            # tactile/door sign, so the 703.4.1 range applies.
+            issues += tactile
+        else:
+            notes += [f"Overhead sign: {t}; overhead visual signs are exempt." for t in tactile]
         if tactile and not sign.get("braille"):
-            notes.append("Overhead visual signs are exempt from 703.4.1, but exit doors, restrooms and stairs also "
-                         "need a tactile sign with braille within range (ADA 216); verify on site.")
+            notes.append("Exit doors, restrooms and stairs also need a tactile sign with braille at "
+                         "1.22-1.52 m (ADA 216, 703.4.1); verify on site.")
     if heights.get("text_baseline_low") is not None and heights["text_baseline_low"] < VISUAL_CHAR_MIN_HEIGHT_M \
             and not sign.get("braille"):
         issues.append(f"visual characters {heights['text_baseline_low']:.2f} m above the floor, below "
