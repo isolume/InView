@@ -1,0 +1,10 @@
+{
+  "from": "entrance",
+  "to": "room-204",
+  "movement_speed_mps": 1,
+  "requirements": {
+    "requires_step_free": true,
+    "minimum_clear_width_m": 0.9,
+    "maximum_slope": 0.08
+  }
+}
