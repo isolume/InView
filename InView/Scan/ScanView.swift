@@ -30,6 +30,8 @@ struct ScanView: View {
         ZStack {
             ViewContainer(view: controller.captureView).ignoresSafeArea()
             if controller.phase == .scanning {
+                DetectionOverlay(detector: controller.detector, session: controller.session)
+                    .ignoresSafeArea()
                 Crosshair()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
@@ -148,14 +150,16 @@ private struct DetectionStatus: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.trailing)
             }
-            ForEach(detector.sightings) { sighting in
-                chip(sighting.name, count: sighting.count, symbol: sighting.kind.symbolName, tint: sighting.kind.tint)
+            ForEach(detector.sightings.filter(\.isConfirmed)) { sighting in
+                chip(sighting.name, count: sighting.frames, symbol: sighting.kind.symbolName, tint: sighting.kind.tint)
             }
-            ForEach(detector.stairs.filter(\.isConfirmed)) { stairs in
-                chip(stairs.name, count: stairs.count, symbol: "figure.stairs", tint: Theme.stairs)
+            if detector.isWaitingForSteadyCamera {
+                Label("Hold still a moment to look for features", systemImage: "hand.raised")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
         }
-        .animation(.spring, value: detector.sightings.count + detector.stairs.filter(\.isConfirmed).count)
+        .animation(.spring, value: detector.sightings.filter(\.isConfirmed).count)
         .padding(10)
         .frame(maxWidth: 230, alignment: .trailing)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -178,8 +182,8 @@ private struct DetectionStatus: View {
         }
         if let error = detector.lastError { return error }
         var line = "Section \(section) · \(detector.framesAnalyzed) frames checked"
-        if detector.rejectedStairs > 0 {
-            line += " · \(detector.rejectedStairs) false stairs ruled out by LiDAR"
+        if detector.rejectedClaims > 0 {
+            line += " · \(detector.rejectedClaims) false finds ruled out by LiDAR"
         }
         return line
     }
@@ -190,6 +194,7 @@ struct MapReviewView: View {
     let onClose: () -> Void
     @State private var pendingPoint: SIMD2<Float>?
     @State private var saveError: String?
+    @State private var shownEvidence: ShownEvidence?
 
     var body: some View {
         NavigationStack {
@@ -206,13 +211,48 @@ struct MapReviewView: View {
                             Text("None yet").foregroundStyle(.secondary)
                         }
                         ForEach(draft.points) { point in
-                            PointRow(point: point, name: name(for: point), needsStaff: needsStaff(for: point))
+                            HStack(spacing: 12) {
+                                evidenceThumbnail(for: point.id, title: point.name)
+                                PointRow(point: point, name: name(for: point), needsStaff: needsStaff(for: point))
+                            }
                         }
                         .onDelete(perform: controller.removePoints)
                     } header: {
                         Text("Accessible points")
                     } footer: {
-                        Text("Names are read aloud, so make them easy to say. Turn on \u{201C}Needs staff\u{201D} for lifts or doors someone has to operate.")
+                        Text("Tap a photo to see what the camera saw. Names are read aloud, so make them easy to say. Turn on \u{201C}Needs staff\u{201D} for lifts or doors someone has to operate.")
+                    }
+                    let stairs = draft.footprints.filter { $0.kind == .stairs }
+                    Section {
+                        if stairs.isEmpty {
+                            Text("None found").foregroundStyle(.secondary)
+                        }
+                        ForEach(Array(stairs.enumerated()), id: \.offset) { index, footprint in
+                            HStack(spacing: 12) {
+                                if let id = footprint.id {
+                                    evidenceThumbnail(for: id, title: "Stairs \(index + 1)")
+                                } else {
+                                    Image(systemName: "figure.stairs")
+                                        .font(.title2)
+                                        .foregroundStyle(Theme.stairs)
+                                        .frame(width: 48, height: 64)
+                                        .background(Theme.stairs.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Stairs \(index + 1)").font(.body.weight(.medium))
+                                    Text(footprint.id == nil ? "Measured by RoomPlan" : "Spotted by the camera, checked with LiDAR")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .onDelete { offsets in
+                            offsets.map { stairs[$0] }.forEach(controller.removeStairs)
+                        }
+                    } header: {
+                        Text("Stairs")
+                    } footer: {
+                        Text("Routes go around every stairs listed here. Swipe to delete any that aren't real.")
                     }
                     Section("Accessibility report") {
                         if let report = controller.report {
@@ -259,6 +299,24 @@ struct MapReviewView: View {
             } message: {
                 Text(saveError ?? "")
             }
+            .sheet(item: $shownEvidence) { shown in
+                EvidenceSheet(title: shown.title, evidence: shown.evidence)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func evidenceThumbnail(for id: UUID, title: String) -> some View {
+        if let evidence = controller.detector.evidence(for: id) {
+            Button {
+                shownEvidence = ShownEvidence(title: title, evidence: evidence)
+            } label: {
+                EvidenceImage(evidence: evidence, markerSize: 12)
+                    .frame(width: 48, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Photo of \(title)")
         }
     }
 
@@ -345,5 +403,55 @@ private struct UnsupportedDeviceView: View {
         } actions: {
             Button("Close", action: onClose)
         }
+    }
+}
+
+private struct ShownEvidence: Identifiable {
+    let id = UUID()
+    let title: String
+    let evidence: AccessibilityDetector.Evidence
+}
+
+/// The frame a find came from, with a ring where the model pointed.
+private struct EvidenceImage: View {
+    let evidence: AccessibilityDetector.Evidence
+    var markerSize: CGFloat = 28
+
+    var body: some View {
+        Image(uiImage: evidence.image)
+            .resizable()
+            .aspectRatio(evidence.image.size, contentMode: .fit)
+            .overlay {
+                GeometryReader { geometry in
+                    Circle()
+                        .stroke(.white, lineWidth: markerSize / 6)
+                        .background(Circle().stroke(.black.opacity(0.5), lineWidth: markerSize / 3))
+                        .frame(width: markerSize, height: markerSize)
+                        .position(x: evidence.point.x * geometry.size.width, y: evidence.point.y * geometry.size.height)
+                }
+            }
+    }
+}
+
+private struct EvidenceSheet: View {
+    let title: String
+    let evidence: AccessibilityDetector.Evidence
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            EvidenceImage(evidence: evidence)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding()
+                .frame(maxHeight: .infinity)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+        }
+        .presentationDetents([.large])
     }
 }

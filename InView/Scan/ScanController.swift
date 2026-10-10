@@ -97,6 +97,10 @@ final class ScanController: ObservableObject {
         draft?.points[index].name = name
     }
 
+    func removeStairs(_ stairs: Footprint) {
+        draft?.footprints.removeAll { $0 == stairs }
+    }
+
     func setRequiresAssistance(_ id: UUID, _ value: Bool) {
         guard let index = draft?.points.firstIndex(where: { $0.id == id }) else { return }
         draft?.points[index].requiresAssistance = value
