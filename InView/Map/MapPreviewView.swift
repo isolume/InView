@@ -2,7 +2,10 @@ import AccessCore
 import simd
 import SwiftUI
 
-/// Top-down drawing of a venue map. Tapping reports the venue floor point under the finger.
+/// Top-down drawing of a venue map, styled like an architectural plan: a faint metre grid on paper,
+/// each room's floor filled, charcoal walls with door swings and windows, tinted furniture symbols,
+/// hatched stairs, pins for the accessible points, and a scale bar.
+/// Tapping reports the venue floor point under the finger.
 struct MapPreviewView: View {
     let map: VenueMap
     var onTap: ((SIMD2<Float>) -> Void)?
@@ -10,18 +13,28 @@ struct MapPreviewView: View {
     var body: some View {
         GeometryReader { geometry in
             let projection = MapProjection(map: map, size: geometry.size)
-            Canvas { context, _ in draw(in: &context, projection: projection) }
+            Canvas { context, size in draw(in: &context, size: size, projection: projection) }
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { location in
                     onTap?(projection.venuePoint(location))
                 }
         }
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(PlanInk.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityLabel("Floor plan with \(map.points.count) accessible points")
     }
 
-    private func draw(in context: inout GraphicsContext, projection: MapProjection) {
-        // Furniture and stairs first, walls over them, doors over the walls, points on top.
+    private func draw(in context: inout GraphicsContext, size: CGSize, projection: MapProjection) {
+        drawGrid(in: &context, size: size, projection: projection)
+
+        let floors = map.footprints.filter { $0.kind == .floor }
+        for floor in floors {
+            let outline = projection.path(floor.corners)
+            context.fill(outline, with: .color(PlanInk.floor))
+            context.stroke(outline, with: .color(PlanInk.floorEdge), lineWidth: 1)
+        }
+
+        // Furniture and stairs on the floor, walls over them, openings and windows over the walls, points on top.
         for footprint in map.footprints {
             let symbol = FloorPlanSymbol(footprint: footprint, projection: projection)
             switch footprint.kind {
@@ -31,27 +44,111 @@ struct MapPreviewView: View {
             }
         }
         for footprint in map.footprints where footprint.kind == .wall {
-            context.fill(projection.path(footprint.corners), with: .color(.primary.opacity(0.85)))
+            context.fill(projection.path(footprint.corners), with: .color(PlanInk.wall))
+        }
+        for footprint in map.footprints where footprint.kind == .window {
+            FloorPlanSymbol(footprint: footprint, projection: projection).drawWindow(in: &context)
         }
         for footprint in map.footprints where footprint.kind == .door || footprint.kind == .opening {
             FloorPlanSymbol(footprint: footprint, projection: projection).drawDoor(in: &context)
         }
 
+        for floor in floors {
+            let area = abs(Polygon.signedArea(floor.corners))
+            guard area >= 6, projection.scale * CGFloat(floor.size.x.squareRoot()) > 60 else { continue }
+            context.draw(
+                Text(String(format: "%.0f m²", area)).font(.caption2).foregroundStyle(PlanInk.annotation),
+                at: projection.screenPoint(floor.center)
+            )
+        }
+
         let start = projection.screenPoint(.zero)
-        context.fill(Path(ellipseIn: CGRect(x: start.x - 5, y: start.y - 5, width: 10, height: 10)), with: .color(.primary))
-        context.draw(Text("Scan start").font(.caption2), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
+        context.fill(Path(ellipseIn: CGRect(x: start.x - 6, y: start.y - 6, width: 12, height: 12)), with: .color(PlanInk.paper))
+        context.fill(Path(ellipseIn: CGRect(x: start.x - 4, y: start.y - 4, width: 8, height: 8)), with: .color(PlanInk.wall))
+        context.draw(Text("Scan start").font(.caption2).foregroundStyle(PlanInk.annotation), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
 
         for point in map.points {
             let center = projection.screenPoint(point.floorPoint)
             let disc = CGRect(x: center.x - 13, y: center.y - 13, width: 26, height: 26)
-            // A white ring keeps the marker readable over walls and furniture.
-            context.fill(Path(ellipseIn: disc.insetBy(dx: -2, dy: -2)), with: .color(Color(.systemBackground)))
+            // A pale ring keeps the pin readable over walls and furniture.
+            context.fill(Path(ellipseIn: disc.insetBy(dx: -3, dy: -3)), with: .color(PlanInk.paper.opacity(0.9)))
             context.fill(Path(ellipseIn: disc), with: .color(point.isTooSteep ? .orange : point.kind.tint))
             var symbol = context.resolve(Image(systemName: point.kind.symbolName))
             symbol.shading = .color(.white)
             context.draw(symbol, in: disc.insetBy(dx: 6, dy: 6))
-            context.draw(Text(point.name).font(.caption2.weight(.semibold)), at: CGPoint(x: center.x, y: disc.maxY + 3), anchor: .top)
+            let label = context.resolve(Text(point.name).font(.caption2.weight(.semibold)).foregroundStyle(PlanInk.label))
+            let labelSize = label.measure(in: CGSize(width: 160, height: 40))
+            let plate = CGRect(x: center.x - labelSize.width / 2 - 4, y: disc.maxY + 2, width: labelSize.width + 8, height: labelSize.height + 2)
+            context.fill(Path(roundedRect: plate, cornerRadius: 4), with: .color(PlanInk.paper.opacity(0.85)))
+            context.draw(label, at: CGPoint(x: plate.midX, y: plate.midY))
         }
+
+        drawScaleBar(in: &context, size: size, projection: projection)
+    }
+
+    /// Faint lines every metre (or every 2 or 5 m when zoomed out), like graph paper.
+    private func drawGrid(in context: inout GraphicsContext, size: CGSize, projection: MapProjection) {
+        let spacing: Float = projection.scale >= 24 ? 1 : projection.scale >= 10 ? 2 : 5
+        let lower = projection.venuePoint(.zero), upper = projection.venuePoint(CGPoint(x: size.width, y: size.height))
+        var grid = Path()
+        var x = (lower.x / spacing).rounded(.down) * spacing
+        while x <= upper.x {
+            let sx = projection.screenPoint(SIMD2(x, 0)).x
+            grid.move(to: CGPoint(x: sx, y: 0))
+            grid.addLine(to: CGPoint(x: sx, y: size.height))
+            x += spacing
+        }
+        var z = (lower.y / spacing).rounded(.down) * spacing
+        while z <= upper.y {
+            let sy = projection.screenPoint(SIMD2(0, z)).y
+            grid.move(to: CGPoint(x: 0, y: sy))
+            grid.addLine(to: CGPoint(x: size.width, y: sy))
+            z += spacing
+        }
+        context.stroke(grid, with: .color(PlanInk.grid), lineWidth: 0.5)
+    }
+
+    private func drawScaleBar(in context: inout GraphicsContext, size: CGSize, projection: MapProjection) {
+        let meters: Float = projection.scale >= 60 ? 1 : projection.scale >= 25 ? 2 : 5
+        let length = CGFloat(meters) * projection.scale
+        guard length < size.width / 2 else { return }
+        let origin = CGPoint(x: 12, y: size.height - 14)
+        var bar = Path()
+        bar.move(to: origin)
+        bar.addLine(to: CGPoint(x: origin.x + length, y: origin.y))
+        for x in [origin.x, origin.x + length] {
+            bar.move(to: CGPoint(x: x, y: origin.y - 4))
+            bar.addLine(to: CGPoint(x: x, y: origin.y + 4))
+        }
+        context.stroke(bar, with: .color(PlanInk.annotation), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+        context.draw(
+            Text("\(Int(meters)) m").font(.caption2.weight(.medium)).foregroundStyle(PlanInk.annotation),
+            at: CGPoint(x: origin.x + length / 2, y: origin.y - 6),
+            anchor: .bottom
+        )
+    }
+}
+
+/// The plan's palette, with dark-mode versions, so it reads like a drawing in either appearance.
+enum PlanInk {
+    static let paper = dynamic(light: UIColor(red: 0.985, green: 0.975, blue: 0.955, alpha: 1), dark: UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1))
+    static let grid = dynamic(light: UIColor(white: 0, alpha: 0.07), dark: UIColor(white: 1, alpha: 0.07))
+    static let floor = dynamic(light: UIColor(red: 0.96, green: 0.93, blue: 0.87, alpha: 1), dark: UIColor(red: 0.2, green: 0.19, blue: 0.17, alpha: 1))
+    static let floorEdge = dynamic(light: UIColor(red: 0.85, green: 0.8, blue: 0.72, alpha: 1), dark: UIColor(red: 0.32, green: 0.3, blue: 0.27, alpha: 1))
+    static let wall = dynamic(light: UIColor(white: 0.16, alpha: 1), dark: UIColor(white: 0.88, alpha: 1))
+    static let window = dynamic(light: UIColor(red: 0.55, green: 0.8, blue: 0.95, alpha: 1), dark: UIColor(red: 0.45, green: 0.7, blue: 0.9, alpha: 1))
+    static let annotation = dynamic(light: UIColor(white: 0.35, alpha: 1), dark: UIColor(white: 0.7, alpha: 1))
+    static let label = Color.primary
+    /// Furniture fills: wood, fabric, porcelain, steel; each with a darker ink for its outline.
+    static let wood = dynamic(light: UIColor(red: 0.87, green: 0.76, blue: 0.62, alpha: 1), dark: UIColor(red: 0.45, green: 0.36, blue: 0.27, alpha: 1))
+    static let fabric = dynamic(light: UIColor(red: 0.75, green: 0.8, blue: 0.88, alpha: 1), dark: UIColor(red: 0.33, green: 0.38, blue: 0.47, alpha: 1))
+    static let porcelain = dynamic(light: UIColor(white: 0.97, alpha: 1), dark: UIColor(white: 0.6, alpha: 1))
+    static let steel = dynamic(light: UIColor(white: 0.78, alpha: 1), dark: UIColor(white: 0.45, alpha: 1))
+    static let ink = dynamic(light: UIColor(white: 0.25, alpha: 0.75), dark: UIColor(white: 0.9, alpha: 0.6))
+    static let shadow = dynamic(light: UIColor(white: 0, alpha: 0.12), dark: UIColor(white: 0, alpha: 0.35))
+
+    private static func dynamic(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
     }
 }
 
@@ -64,53 +161,69 @@ private struct FloorPlanSymbol {
     private var half: SIMD2<Float> { footprint.size / 2 }
 
     func drawFurniture(in context: inout GraphicsContext) {
-        let fill = GraphicsContext.Shading.color(.gray.opacity(0.28))
-        let ink = GraphicsContext.Shading.color(.gray.opacity(0.8))
+        let ink = GraphicsContext.Shading.color(PlanInk.ink)
         let outline = rectangle(inset: 0)
+        // A soft shadow lifts each piece off the floor.
+        var shadow = context
+        shadow.translateBy(x: 1.5, y: 2)
+        shadow.fill(outline, with: .color(PlanInk.shadow))
+
         switch footprint.furniture {
         case .table:
-            context.fill(outline, with: fill)
+            context.fill(outline, with: .color(PlanInk.wood))
             context.stroke(outline, with: ink, lineWidth: 1)
+            context.stroke(rectangle(inset: min(0.1, footprint.size.min() * 0.15)), with: ink, lineWidth: 0.5)
         case .chair:
-            context.fill(outline, with: fill)
+            context.fill(outline, with: .color(PlanInk.fabric))
             context.stroke(outline, with: ink, lineWidth: 1)
             // Backrest along the -y edge.
-            context.stroke(line(from: [-half.x, -half.y], to: [half.x, -half.y]), with: ink, lineWidth: 3)
+            context.fill(strip(y: -half.y, thickness: min(0.08, footprint.size.y * 0.2)), with: ink)
         case .sofa:
-            context.fill(outline, with: fill)
+            context.fill(outline, with: .color(PlanInk.fabric))
             context.stroke(outline, with: ink, lineWidth: 1)
+            let arm = min(0.18, footprint.size.x * 0.15)
             context.fill(strip(y: -half.y, thickness: footprint.size.y * 0.25), with: ink)
-            context.fill(strip(x: -half.x, thickness: min(0.18, footprint.size.x * 0.15)), with: ink)
-            context.fill(strip(x: half.x - min(0.18, footprint.size.x * 0.15), thickness: min(0.18, footprint.size.x * 0.15)), with: ink)
+            context.fill(strip(x: -half.x, thickness: arm), with: ink)
+            context.fill(strip(x: half.x - arm, thickness: arm), with: ink)
+            // Seat cushions.
+            let cushions = max(1, Int((footprint.size.x / 0.7).rounded()))
+            for i in 1..<max(2, cushions) {
+                let x = -half.x + arm + (footprint.size.x - 2 * arm) * Float(i) / Float(cushions)
+                context.stroke(line(from: [x, -half.y + footprint.size.y * 0.25], to: [x, half.y]), with: ink, lineWidth: 0.5)
+            }
         case .bed:
-            context.fill(outline, with: fill)
+            context.fill(outline, with: .color(PlanInk.porcelain))
             context.stroke(outline, with: ink, lineWidth: 1)
             let pillow = rectangle(from: [-half.x * 0.8, -half.y * 0.95], to: [half.x * 0.8, -half.y * 0.6])
             context.stroke(pillow, with: ink, lineWidth: 1)
+            context.stroke(line(from: [-half.x, -half.y * 0.45], to: [half.x, -half.y * 0.45]), with: ink, lineWidth: 0.75)
         case .toilet:
             let bowl = ellipse(from: [-half.x * 0.8, -half.y * 0.4], to: [half.x * 0.8, half.y])
-            context.fill(bowl, with: fill)
+            context.fill(bowl, with: .color(PlanInk.porcelain))
             context.stroke(bowl, with: ink, lineWidth: 1)
-            context.stroke(rectangle(from: [-half.x, -half.y], to: [half.x, -half.y * 0.45]), with: ink, lineWidth: 1)
+            let tank = rectangle(from: [-half.x, -half.y], to: [half.x, -half.y * 0.45])
+            context.fill(tank, with: .color(PlanInk.porcelain))
+            context.stroke(tank, with: ink, lineWidth: 1)
         case .sink, .bathtub:
-            context.fill(outline, with: fill)
+            context.fill(outline, with: .color(PlanInk.porcelain))
             context.stroke(outline, with: ink, lineWidth: 1)
             context.stroke(ellipse(from: -half * 0.7, to: half * 0.7), with: ink, lineWidth: 1)
         case .appliance:
-            context.fill(outline, with: fill)
+            context.fill(outline, with: .color(PlanInk.steel))
             context.stroke(outline, with: ink, lineWidth: 1)
-            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 0.75)
-            context.stroke(line(from: [-half.x, half.y], to: [half.x, -half.y]), with: ink, lineWidth: 0.75)
+            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 0.5)
+            context.stroke(line(from: [-half.x, half.y], to: [half.x, -half.y]), with: ink, lineWidth: 0.5)
         case .television:
             context.fill(outline, with: ink)
         case .storage, .fireplace, nil:
-            context.fill(outline, with: fill)
+            context.fill(outline, with: .color(PlanInk.wood))
             context.stroke(outline, with: ink, lineWidth: 1)
-            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 0.75)
+            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 0.5)
+            context.stroke(line(from: [-half.x, half.y], to: [half.x, -half.y]), with: ink, lineWidth: 0.5)
         }
     }
 
-    /// Red hatched area with a tread line every 28 cm, like an architectural plan.
+    /// Red hatched area with a tread line every 28 cm and an arrow up the flight, like an architectural plan.
     func drawStairs(in context: inout GraphicsContext) {
         let outline = rectangle(inset: 0)
         context.fill(outline, with: .color(Theme.stairs.opacity(0.18)))
@@ -120,25 +233,50 @@ private struct FloorPlanSymbol {
             context.stroke(line(from: [-half.x, y], to: [half.x, y]), with: .color(Theme.stairs.opacity(0.8)), lineWidth: 1)
             y += 0.28
         }
+        // Direction of climb: up the footprint's y axis.
+        var arrow = Path()
+        arrow.move(to: projection.screenPoint(footprint.floorPoint(local: [0, -half.y + 0.15])))
+        arrow.addLine(to: projection.screenPoint(footprint.floorPoint(local: [0, half.y - 0.15])))
+        let head: Float = min(0.15, footprint.size.x * 0.2)
+        arrow.move(to: projection.screenPoint(footprint.floorPoint(local: [-head, half.y - 0.15 - head])))
+        arrow.addLine(to: projection.screenPoint(footprint.floorPoint(local: [0, half.y - 0.15])))
+        arrow.addLine(to: projection.screenPoint(footprint.floorPoint(local: [head, half.y - 0.15 - head])))
+        context.stroke(arrow, with: .color(Theme.stairs), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
         let center = projection.screenPoint(footprint.center)
-        context.draw(Text("Stairs").font(.caption2.bold()).foregroundStyle(Theme.stairs), at: center)
+        context.draw(Text("Stairs").font(.caption2.bold()).foregroundStyle(Theme.stairs), at: CGPoint(x: center.x, y: center.y), anchor: .center)
     }
 
-    /// The opening in green (wide enough) or orange (too narrow), plus a swing arc for doors.
+    /// A gap in the wall, a leaf swung open on its hinge, and the swing arc; green when wide enough for a chair, orange when not.
     func drawDoor(in context: inout GraphicsContext) {
         let wideEnough = footprint.size.x >= OccupancyGrid.minimumDoorWidth
         let color: Color = wideEnough ? .green : .orange
-        context.fill(rectangle(inset: 0), with: .color(color))
-        guard footprint.kind == .door else { return }
+        context.fill(rectangle(inset: 0), with: .color(PlanInk.floor))
+        // Thin jambs either side of the gap.
+        context.fill(rectangle(from: [-half.x - 0.03, -half.y], to: [-half.x, half.y]), with: .color(PlanInk.wall))
+        context.fill(rectangle(from: [half.x, -half.y], to: [half.x + 0.03, half.y]), with: .color(PlanInk.wall))
+        guard footprint.kind == .door else {
+            // An opening: just mark its width.
+            context.stroke(line(from: [-half.x, 0], to: [half.x, 0]), with: .color(color), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            return
+        }
+        let width = footprint.size.x
+        var leaf = Path()
+        leaf.move(to: projection.screenPoint(footprint.floorPoint(local: [-half.x, 0])))
+        leaf.addLine(to: projection.screenPoint(footprint.floorPoint(local: [-half.x, width])))
+        context.stroke(leaf, with: .color(color), lineWidth: 2)
         var swing = Path()
-        let hinge = projection.screenPoint(footprint.floorPoint(local: [-half.x, 0]))
         swing.move(to: projection.screenPoint(footprint.floorPoint(local: [half.x, 0])))
         for step in 1...12 {
             let angle = Float(step) / 12 * .pi / 2
-            swing.addLine(to: projection.screenPoint(footprint.floorPoint(local: [-half.x + cos(angle) * footprint.size.x, sin(angle) * footprint.size.x])))
+            swing.addLine(to: projection.screenPoint(footprint.floorPoint(local: [-half.x + cos(angle) * width, sin(angle) * width])))
         }
-        swing.addLine(to: hinge)
-        context.stroke(swing, with: .color(color.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+        context.stroke(swing, with: .color(color.opacity(0.7)), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+    }
+
+    /// A pale band in the wall with a centre line, the usual plan symbol for glazing.
+    func drawWindow(in context: inout GraphicsContext) {
+        context.fill(rectangle(inset: 0), with: .color(PlanInk.window))
+        context.stroke(line(from: [-half.x, 0], to: [half.x, 0]), with: .color(PlanInk.wall), lineWidth: 1)
     }
 
     private func rectangle(inset: Float) -> Path {
@@ -180,10 +318,11 @@ private struct FloorPlanSymbol {
 /// Fits the venue floor into the view: venue x runs right, venue z runs down.
 private struct MapProjection {
     private let minimum: SIMD2<Float>
-    private let scale: CGFloat
+    /// Screen points per metre.
+    let scale: CGFloat
     private let offset: CGPoint
 
-    init(map: VenueMap, size: CGSize, inset: CGFloat = 20) {
+    init(map: VenueMap, size: CGSize, inset: CGFloat = 24) {
         var lower = SIMD2<Float>(-0.5, -0.5)
         var upper = SIMD2<Float>(0.5, 0.5)
         for point in map.footprints.flatMap(\.corners) + map.points.map(\.floorPoint) {
