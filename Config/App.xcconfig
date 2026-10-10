@@ -4,6 +4,13 @@
 PRODUCT_BUNDLE_IDENTIFIER = com.vedanta.accessnav
 DEVELOPMENT_TEAM =
 
+// Which model spots elevators, ramps and stairs while scanning: openai or gemini.
+VISION_PROVIDER = openai
+
+OPENAI_API_KEY =
+OPENAI_MODEL = gpt-6.1-sol
+OPENAI_REASONING_EFFORT = low
+
 GEMINI_API_KEY =
 GEMINI_MODEL = gemini-3.8-flash
 

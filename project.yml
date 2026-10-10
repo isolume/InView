@@ -27,6 +27,10 @@ targets:
         UIRequiredDeviceCapabilities: [arkit]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: InView uses the camera and LiDAR to map buildings and guide you to accessible entrances, elevators and ramps.
+        VisionProvider: $(VISION_PROVIDER)
+        OPENAIAPIKey: $(OPENAI_API_KEY)
+        OPENAIModel: $(OPENAI_MODEL)
+        OPENAIReasoningEffort: $(OPENAI_REASONING_EFFORT)
         GeminiAPIKey: $(GEMINI_API_KEY)
         GeminiModel: $(GEMINI_MODEL)
     settings:

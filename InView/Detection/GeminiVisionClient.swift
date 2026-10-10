@@ -1,26 +1,14 @@
-import AccessCore
 import Foundation
 
-/// Asks Gemini where elevators and ramps are in a camera frame. Gemini is trained to point at
-/// things in images, which is what pin placement depends on.
-struct GeminiVisionClient {
-    struct Detection: Decodable {
-        let kind: AccessPoint.Kind
+/// Asks Gemini where elevators, ramps and stairs are in a camera frame.
+struct GeminiVisionClient: VisionDetector {
+    private struct Detection: Decodable {
+        let kind: VisionDetection.Kind
         let name: String
         let confidence: Float
-        /// The floor spot to navigate to, as Gemini's [y, x] normalized to 0...1000.
+        /// Gemini's pointing convention: [y, x] normalized to 0...1000.
         let point: [Double]
-        /// A spot in the middle of a ramp's surface, used to measure its slope. Same as `point` for elevators.
         let surfacePoint: [Double]
-
-        /// Normalized (0...1, top-left origin) image positions.
-        var target: CGPoint? { Self.normalized(point) }
-        var surface: CGPoint? { Self.normalized(surfacePoint) }
-
-        private static func normalized(_ yx: [Double]) -> CGPoint? {
-            guard yx.count == 2 else { return nil }
-            return CGPoint(x: yx[1] / 1000, y: yx[0] / 1000)
-        }
     }
 
     enum ClientError: LocalizedError {
@@ -47,7 +35,7 @@ struct GeminiVisionClient {
         model = AppConfig.geminiModel
     }
 
-    func detect(jpeg: Data) async throws -> [Detection] {
+    func detect(jpeg: Data) async throws -> [VisionDetection] {
         let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -72,17 +60,31 @@ struct GeminiVisionClient {
         }
         let text = (candidate.content?.parts ?? []).filter { $0.thought != true }.compactMap(\.text).joined()
         guard !text.isEmpty else { throw ClientError.noOutput }
-        return try JSONDecoder().decode(DetectionList.self, from: Data(text.utf8)).detections
+        return try JSONDecoder().decode(DetectionList.self, from: Data(text.utf8)).detections.compactMap { detection in
+            guard let target = Self.normalized(detection.point) else { return nil }
+            return VisionDetection(
+                kind: detection.kind,
+                name: detection.name,
+                confidence: detection.confidence,
+                target: target,
+                surface: Self.normalized(detection.surfacePoint) ?? target
+            )
+        }
+    }
+
+    private static func normalized(_ yx: [Double]) -> CGPoint? {
+        guard yx.count == 2 else { return nil }
+        return CGPoint(x: yx[1] / 1000, y: yx[0] / 1000)
     }
 
     private func body(for jpeg: Data) -> [String: Any] {
         [
-            "systemInstruction": ["parts": [["text": Self.instructions]]],
+            "systemInstruction": ["parts": [["text": VisionPrompt.instructions(coordinates: Self.coordinates)]]],
             "contents": [[
                 "role": "user",
                 "parts": [
                     ["inlineData": ["mimeType": "image/jpeg", "data": jpeg.base64EncodedString()]],
-                    ["text": "Find elevators and ramps in this photo."],
+                    ["text": VisionPrompt.userText],
                 ],
             ]],
             "generationConfig": [
@@ -93,21 +95,7 @@ struct GeminiVisionClient {
         ]
     }
 
-    private static let instructions = """
-    You help volunteers map buildings for wheelchair users. Each photo comes from a phone held upright \
-    while walking through a building. Report only these features, and only when clearly visible:
-    - elevator: elevator doors (usually metal, with a call-button panel beside them) or an elevator call panel.
-    - ramp: a sloped walkway or sloped section of floor a wheelchair can roll along. Not stairs, not escalators.
-    For each one:
-    - point: [y, x] normalized to 0-1000, the spot on the floor where a wheelchair user should go: \
-    in front of the elevator doors, or the bottom of the ramp.
-    - surfacePoint: [y, x] normalized to 0-1000. For a ramp, a spot in the middle of the ramp's walking surface. \
-    For an elevator, repeat point.
-    - name: a short name a person would use, from what you can see, e.g. "Lobby elevator", "Elevator B", \
-    "Entrance ramp". Use visible signs or numbers when there are any.
-    - confidence: your certainty from 0 to 1.
-    Return an empty list when neither is visible. Do not guess.
-    """
+    private static let coordinates = "Give point and surfacePoint as [y, x] normalized to 0-1000."
 
     private static let schema: [String: Any] = [
         "type": "object",
@@ -119,7 +107,7 @@ struct GeminiVisionClient {
                     "type": "object",
                     "required": ["kind", "name", "confidence", "point", "surfacePoint"],
                     "properties": [
-                        "kind": ["type": "string", "enum": AccessPoint.Kind.allCases.map(\.rawValue)],
+                        "kind": ["type": "string", "enum": VisionDetection.Kind.allCases.map(\.rawValue)],
                         "name": ["type": "string"],
                         "confidence": ["type": "number", "minimum": 0, "maximum": 1],
                         "point": ["type": "array", "items": ["type": "number", "minimum": 0, "maximum": 1000], "minItems": 2, "maxItems": 2],
@@ -129,10 +117,10 @@ struct GeminiVisionClient {
             ],
         ],
     ]
-}
 
-private struct DetectionList: Decodable {
-    let detections: [GeminiVisionClient.Detection]
+    private struct DetectionList: Decodable {
+        let detections: [Detection]
+    }
 }
 
 private struct ResponsePayload: Decodable {
