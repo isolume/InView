@@ -70,3 +70,42 @@ private func tiltedSamples(degrees: Float) -> [SIMD3<Float>] {
 @Test func refusesToGuessFromTooFewSamples() {
     #expect(SurfaceFit.slopeDegrees(of: Array(tiltedSamples(degrees: 4).prefix(4))) == nil)
 }
+
+// Viewer stands at the origin, 1.4 m up, looking down -z at the samples.
+private let viewer = SIMD3<Float>(0, 1.4, 0)
+
+/// Points along a staircase: 17 cm risers, 28 cm treads, starting 2 m away.
+private func staircase(steps: Int = 4) -> [SIMD3<Float>] {
+    var points: [SIMD3<Float>] = []
+    for step in 0..<steps {
+        let z = -2 - Float(step) * 0.28
+        let height = Float(step) * 0.17
+        points.append([0, height, z])
+        points.append([0, height, z - 0.14])
+        points.append([0, height + 0.085, z - 0.28])  // the riser up to the next tread
+    }
+    return points
+}
+
+@Test func recognizesStairs() {
+    #expect(StairsCheck.classify(staircase(), viewer: viewer) == .stairs)
+}
+
+@Test func rejectsAFlatFloor() {
+    let floor = (0..<10).map { SIMD3<Float>(0, 0, -2 - Float($0) * 0.1) }
+    #expect(StairsCheck.classify(floor, viewer: viewer) == .notStairs)
+}
+
+@Test func rejectsAWallOrCabinetFront() {
+    let wall = (0..<10).map { SIMD3<Float>(0, Float($0) * 0.15, -2) }
+    #expect(StairsCheck.classify(wall, viewer: viewer) == .notStairs)
+}
+
+@Test func rejectsARamp() {
+    let ramp = (0..<10).map { SIMD3<Float>(0, Float($0) * 0.1 * tan(5 * .pi / 180), -2 - Float($0) * 0.1) }
+    #expect(StairsCheck.classify(ramp, viewer: viewer) == .notStairs)
+}
+
+@Test func cannotTellFromTooFewSamples() {
+    #expect(StairsCheck.classify(Array(staircase().prefix(3)), viewer: viewer) == .inconclusive)
+}
