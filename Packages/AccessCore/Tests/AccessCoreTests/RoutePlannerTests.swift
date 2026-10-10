@@ -95,3 +95,44 @@ import Testing
     #expect(planner.route(from: [-3, 0], to: destination) == nil)
     #expect(planner.nearestRoute(from: [-3, 0]) == nil)
 }
+
+@Test func sharedEntranceAuditMatchesIndividualRoutesThroughNarrowAndSealedRooms() throws {
+    let open = point(.elevator, 0, 1)
+    let narrow = AccessPoint(kind: .destination, name: "Narrow room", position: [3.5, 0, 0], source: .manual, confidence: 1)
+    let sealed = AccessPoint(kind: .destination, name: "Sealed room", position: [-3.5, 0, 0], source: .manual, confidence: 1)
+    let onWall = point(.ramp, 4, 2)
+    // A physical 80 cm gap has no door override. The ideal 90 cm clearance cannot pass;
+    // the tighter fallback can. The left-hand room has no passage at all.
+    let map = room([
+        wall(from: [-1.5, -3], to: [-1.5, 3]),
+        wall(from: [1.5, -3], to: [1.5, -0.4]),
+        wall(from: [1.5, 0.4], to: [1.5, 3]),
+    ], points: [open, narrow, sealed, onWall])
+    let planner = RoutePlanner(map: map)
+    let clearances = try planner.reachableClearances(from: .zero, to: map.points)
+    #expect(clearances == map.points.map { planner.route(from: .zero, to: $0)?.clearance })
+    #expect(clearances[0] == RoutePlanner.clearances[0])
+    #expect(try #require(clearances[1]) < RoutePlanner.clearances[0])
+    #expect(clearances[2] == nil)
+    #expect(clearances[3] != nil)
+
+    let report = AccessibilityReport(map: map, planner: planner)
+    #expect(report.findings.contains { $0.title == "Tight squeeze to Narrow room" && $0.severity == .warning })
+    #expect(report.findings.contains { $0.title == "Sealed room can't be reached" && $0.severity == .barrier })
+    #expect(!report.findings.contains { $0.title == "Elevator can't be reached" })
+}
+
+@Test func entranceAuditKeepsPointOrderAndDoesNotMergeRepeatedIdentifiers() throws {
+    let elevator = point(.elevator, 2, 0)
+    let planner = RoutePlanner(map: room(points: [elevator]))
+    var distant = elevator
+    distant.position = [100, 0, 100]
+    // The results correspond to each supplied position, even when identifiers repeat.
+    let points = [distant] + Array(repeating: elevator, count: 80) + [distant]
+    let clearances = try planner.reachableClearances(from: .zero, to: points)
+    #expect(clearances.count == points.count)
+    #expect(clearances.first! == nil)
+    #expect(clearances.last! == nil)
+    #expect(clearances.dropFirst().dropLast().allSatisfy { $0 == RoutePlanner.clearances[0] })
+    #expect(try planner.reachableClearances(from: .zero, to: []).isEmpty)
+}

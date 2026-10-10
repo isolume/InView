@@ -72,6 +72,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
 
 /// Uploads an immutable draft capture and retrieves verified geometry for a native preview.
 public struct BackendClient: Sendable {
+    private static let maximumUploadBytes = 32 * 1024 * 1024
     public let baseURL: URL
     private let session: URLSession
 
@@ -95,6 +96,10 @@ public struct BackendClient: Sendable {
         let data: Data
         do { data = try JSONEncoder().encode(capture) }
         catch { throw BackendClientError.invalidCapture("The capture could not be prepared for upload.") }
+        try Task.checkCancellation()
+        guard data.count <= Self.maximumUploadBytes else {
+            throw BackendClientError.invalidCapture("This scan is too large to send. You can use its local map instead.")
+        }
         do {
             let response = try await request(path: ["scans"], method: "POST", stage: .upload, body: data)
             let summary: CaptureUploadSummary = try decode(response)

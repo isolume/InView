@@ -2,11 +2,13 @@ import Foundation
 
 /// Builds a simplified display scene on the device, in the capture's original AR coordinates.
 public enum LocalSceneBuilder {
-    public static func make(from capture: CaptureBundle) throws -> ProcessedScene {
+    public static func make(from capture: CaptureBundle, includeDepthPoints: Bool = true) throws -> ProcessedScene {
+        try Task.checkCancellation()
         try capture.validate()
         let options = SceneProcessingOptions()
         var warnings: [String] = []
         let objects = try capture.objects.map { object in
+            try Task.checkCancellation()
             let key = modelKey(for: object)
             let corners = try (0..<8).map { corner in
                 try mapPoint((0..<3).map { axis in
@@ -42,12 +44,13 @@ public enum LocalSceneBuilder {
             )
         }
         let meshes = try capture.meshes.map { mesh in
-            SceneMesh(sourceID: mesh.id,
+            try Task.checkCancellation()
+            return SceneMesh(sourceID: mesh.id,
                       vertices: try mesh.vertices.map { try mapPoint($0, using: mesh.mapFromAnchor) },
                       triangles: mesh.triangles, classifications: mesh.classifications)
         }
         var totalSamples = 0
-        for frame in capture.frames {
+        for frame in capture.frames where includeDepthPoints {
             let sum = totalSamples.addingReportingOverflow(frame.depth.valuesM.count)
             guard !sum.overflow else { throw invalidMeasurements() }
             totalSamples = sum.partialValue
@@ -55,11 +58,13 @@ public enum LocalSceneBuilder {
         let stride = totalSamples == 0 ? 1 : (totalSamples - 1) / options.maxPoints + 1
         var sampleIndex = 0
         var points: [ScenePoint] = []
-        for frame in capture.frames {
+        for frame in capture.frames where includeDepthPoints {
+            try Task.checkCancellation()
             if frame.depth.confidence == nil {
                 warnings.append("Depth samples without a confidence measurement were left out.")
             }
             for (index, depth) in frame.depth.valuesM.enumerated() {
+                if index % 4096 == 0 { try Task.checkCancellation() }
                 let take = sampleIndex % stride == 0
                 sampleIndex += 1
                 guard take, let depth, depth > 0,
@@ -82,6 +87,7 @@ public enum LocalSceneBuilder {
                                    objects: objects, surfaces: surfaces, meshes: meshes,
                                    pointCloud: points, warnings: Array(Set(warnings)).sorted())
         try scene.validate(source: capture)
+        try Task.checkCancellation()
         return scene
     }
 

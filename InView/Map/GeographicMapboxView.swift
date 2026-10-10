@@ -275,15 +275,17 @@ private struct GeographicMapboxCanvas: UIViewRepresentable {
                     .fillExtrusionVerticalGradient(false)
                     .fillExtrusionAmbientOcclusionIntensity(0.12)
                     .minZoom(17)
-                // Draw the transparent shell after opaque indoor geometry.
-                // Its depth prepass must not prevent the interior from drawing.
+                // The unmapped remainder is a continuous cutaway at the selected level.
+                // A translucent extrusion exposes every hidden sidewall and roof behind it.
                 GeoJSONSource(id: "inview-exterior-remainder").data(.featureCollection(remainder))
                 FillExtrusionLayer(id: "inview-exterior-remainder-shapes", source: "inview-exterior-remainder")
                     .fillExtrusionColor(UIColor(red: 0.84, green: 0.84, blue: 0.81, alpha: 1))
-                    .fillExtrusionOpacity(0.18)
+                    .fillExtrusionOpacity(1)
+                    .filter(Exp(.lt) { Exp(.get) { "base" }; floorAltitude + wallHeight })
                     .fillExtrusionBase(Exp(.get) { "base" })
-                    .fillExtrusionHeight(Exp(.get) { "height" })
+                    .fillExtrusionHeight(Exp(.min) { Exp(.get) { "height" }; floorAltitude + wallHeight })
                     .fillExtrusionVerticalGradient(false)
+                    .fillExtrusionCastShadows(false)
                     .minZoom(17)
                 GeoJSONSource(id: "inview-route").data(.featureCollection(route))
                 LineLayer(id: "inview-route-casing", source: "inview-route")
@@ -432,6 +434,10 @@ private struct GeographicMapboxGeometry {
             objects = map.footprints.filter { $0.kind == .obstacle || $0.kind == .stairs }
                 .map { ($0.corners, 0, $0.kind == .stairs ? 0.15 : 0.55) }
         }
+        // Native RoomPlan polygons survive in VenueMap even when an older portable scene
+        // only has a floor's rectangular dimensions. Prefer the measured room boundary.
+        let measuredFloors = map.footprints.filter { $0.kind == .floor }.map(\.corners)
+        if !measuredFloors.isEmpty { floors = measuredFloors }
         func polygon(_ points: [SIMD2<Float>], properties: JSONObject? = nil) -> Feature? {
             // Local X/Z is right handed with +Z south; geographic longitude /
             // latitude reverses that winding. GeoJSON outer rings are CCW.
@@ -441,7 +447,12 @@ private struct GeographicMapboxGeometry {
             feature.properties = properties
             return feature
         }
-        floorFeatures = FeatureCollection(features: floors.compactMap { polygon($0) })
+        // Render each connected floor once. Overlapping room rectangles at the same height
+        // produce coplanar faces and striped surfaces if they are extruded separately.
+        let floorRegions = try? BuildingFootprintCutaway.unionRegions(floors)
+        floorFeatures = FeatureCollection(features: (floorRegions ?? []).compactMap {
+            Self.feature(exterior: $0.exterior, holes: $0.holes, reference: reference)
+        })
         floorPolygons = floors
         wallFeatures = FeatureCollection(features: walls.compactMap { polygon($0) })
         objectFeatures = FeatureCollection(features: objects.compactMap {
@@ -464,15 +475,13 @@ private struct GeographicMapboxGeometry {
 
     /// The local example follows the same layer order as the live exterior.
     func exampleExterior(outline: [SIMD2<Float>]) -> FeatureCollection {
-        let pieces = (try? BuildingFootprintCutaway.subtract(mapped: floorPolygons, from: outline)) ?? [outline]
-        let features = pieces.compactMap { piece -> Feature? in
-            let coordinates = piece.reversed().compactMap { coordinate($0) }
-            guard coordinates.count == piece.count, let first = coordinates.first else { return nil }
-            var feature = Feature(geometry: Polygon([coordinates + [first]]))
-            feature.properties = ["base": .number(0), "height": .number(6)]
-            return feature
+        guard let regions = try? BuildingFootprintCutaway.subtractRegions(mapped: floorPolygons, from: outline) else {
+            return .init(features: [])
         }
-        return FeatureCollection(features: features)
+        return FeatureCollection(features: regions.compactMap {
+            Self.feature(exterior: $0.exterior, holes: $0.holes, reference: reference,
+                         properties: ["base": .number(0), "height": .number(6)])
+        })
     }
 
     struct ExteriorCutaway {
@@ -488,6 +497,9 @@ private struct GeographicMapboxGeometry {
     func cutaway(buildings: [StandardBuildingsFeature]) throws -> ExteriorCutaway {
         var features: [Feature] = []
         var seen = Set<Data>()
+        var renderedRegions = Set<Data>()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
         var changed = false
         for building in buildings {
             if building.group == "building-2d" { continue }
@@ -500,30 +512,41 @@ private struct GeographicMapboxGeometry {
             var encoded = try JSONEncoder().encode(building.geometry)
             encoded.append(contentsOf: "|\(building.height ?? -1)|\(building.minHeight ?? 0)".utf8)
             guard seen.insert(encoded).inserted else { continue }
+            var buildingRegions: [BuildingFootprintCutaway.Region] = []
+            var buildingChanged = false
             for rings in polygons {
                 let local = try rings.map { ring in
                     try ring.map { try reference.mapPoint(for: .init(latitude: $0.latitude, longitude: $0.longitude)) }
                 }
                 guard let exterior = local.first else { throw CutawayError.invalidExterior }
                 let holes = Array(local.dropFirst())
-                let pieces = try BuildingFootprintCutaway.subtract(mapped: floorPolygons, from: exterior, holes: holes)
+                let regions = try BuildingFootprintCutaway.subtractRegions(mapped: floorPolygons, from: exterior, holes: holes)
                 let originalArea = Self.area(exterior) - holes.reduce(0) { $0 + Self.area($1) }
-                let remainderArea = pieces.reduce(0) { $0 + Self.area($1) }
+                let remainderArea = regions.reduce(0) {
+                    $0 + Self.area($1.exterior) - $1.holes.reduce(0) { $0 + Self.area($1) }
+                }
                 guard originalArea.isFinite, originalArea > 0, remainderArea.isFinite else { throw CutawayError.invalidExterior }
-                guard originalArea - remainderArea > 0.001 else { continue }
-                // Missing height on an intersecting original part must keep the
-                // exterior intact, not erase an unmapped wing by omission.
+                if originalArea - remainderArea > 0.001 { buildingChanged = true }
+                buildingRegions.append(contentsOf: regions)
+            }
+            // Native clipping replaces an entire feature, including disconnected components.
+            // Preserve every untouched wing of a MultiPolygon belonging to a replaced building.
+            if buildingChanged {
+                // Only replaced buildings need height metadata. An unrelated nearby building
+                // with incomplete attributes must not prevent the interior from opening.
                 guard let height = building.height, height.isFinite, height > 0 else { throw CutawayError.invalidExterior }
                 let base = building.minHeight ?? 0
                 guard base.isFinite, base >= 0, base <= height else { throw CutawayError.invalidExterior }
-                changed = true
-                for piece in pieces {
-                    let coordinates = piece.reversed().compactMap { coordinate($0) }
-                    guard coordinates.count == piece.count, let first = coordinates.first else { throw CutawayError.invalidExterior }
-                    var feature = Feature(geometry: Polygon([coordinates + [first]]))
-                    feature.properties = ["base": .number(base), "height": .number(height)]
-                    features.append(feature)
+                for region in buildingRegions {
+                    guard let feature = Self.feature(exterior: region.exterior, holes: region.holes, reference: reference,
+                                                     properties: ["base": .number(base), "height": .number(height)]) else {
+                        throw CutawayError.invalidExterior
+                    }
+                    // Equivalent rings can arrive with different starting vertices or winding
+                    // from neighboring map tiles. Region boundaries are canonicalized first.
+                    if renderedRegions.insert(try encoder.encode(feature)).inserted { features.append(feature) }
                 }
+                changed = true
             }
         }
         return ExteriorCutaway(clip: changed ? floorFeatures : .init(features: []),
@@ -532,6 +555,19 @@ private struct GeographicMapboxGeometry {
 
     func coordinate(_ point: SIMD2<Float>) -> CLLocationCoordinate2D? {
         Self.coordinate(point, reference: reference)
+    }
+
+    private static func feature(exterior: [SIMD2<Float>], holes: [[SIMD2<Float>]],
+                                reference: BuildingMapReference, properties: JSONObject? = nil) -> Feature? {
+        var rings: [[CLLocationCoordinate2D]] = []
+        for points in [exterior] + holes {
+            let coordinates = points.reversed().compactMap { coordinate($0, reference: reference) }
+            guard coordinates.count == points.count, coordinates.count >= 3, let first = coordinates.first else { return nil }
+            rings.append(coordinates + [first])
+        }
+        var feature = Feature(geometry: Polygon(rings))
+        feature.properties = properties
+        return feature
     }
 
     private static func area(_ polygon: [SIMD2<Float>]) -> Double {

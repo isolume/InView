@@ -23,23 +23,72 @@ enum MapBuilder {
     ///     they don't overlap what the processed rooms have.
     ///   - spottedStairs: Stairs found by the vision model, added where RoomPlan missed them.
     static func build(rooms: [CapturedRoom], recovered: [RoomParts] = [], points: [AccessPoint], spottedStairs: [Footprint] = []) -> VenueMap {
-        let parts = rooms.map(RoomParts.init)
-        let walls = parts.flatMap(\.walls) + recovered.flatMap(\.walls)
-        let floorY = median(walls.map { $0.transform.translation.y - $0.dimensions.y / 2 })
-            ?? median((parts + recovered).flatMap(\.floors).map(\.transform.translation.y))
-            ?? -assumedPhoneHeight
-
-        var footprints = parts.flatMap { flatten($0, floorY: floorY) }
-        for part in recovered {
-            for footprint in flatten(part, floorY: floorY)
-            where !footprints.contains(where: { $0.kind == footprint.kind && overlaps($0, footprint, slack: recoveredSlack) }) {
-                footprints.append(footprint)
-            }
-        }
-        var map = VenueMap(floorY: floorY, footprints: footprints, points: [])
+        let merged = mergedParts(rooms: rooms, recovered: recovered)
+        let footprints = flatten(merged.parts, floorY: merged.floorY)
+        var map = VenueMap(floorY: merged.floorY, footprints: footprints, points: [])
         for stairs in spottedStairs { add(spottedStairs: stairs, to: &map) }
         for point in points { add(point, to: &map) }
         return map
+    }
+
+    /// The same measured components for routing and scene export, with processed rooms taking precedence.
+    /// Overhead objects stay available for display even though they don't obstruct the routing map.
+    static func mergedParts(rooms: [CapturedRoom], recovered: [RoomParts] = []) -> (parts: RoomParts, floorY: Float) {
+        var parts = latest(rooms.map(RoomParts.init))
+        let recoveredParts = latest(recovered, excluding: parts)
+        let walls = parts.walls + recoveredParts.walls
+        let floorY = median(walls.map { $0.transform.translation.y - $0.dimensions.y / 2 })
+            ?? median((parts.floors + recoveredParts.floors).map(\.transform.translation.y))
+            ?? -assumedPhoneHeight
+
+        var footprints = flatten(parts, floorY: floorY)
+        func accepted<Value>(_ values: [Value], footprint: (Value) -> Footprint?) -> [Value] {
+            values.filter { value in
+                // Non-blocking overhead measurements are kept for the scene without changing routing.
+                guard let candidate = footprint(value) else { return true }
+                guard !footprints.contains(where: { $0.kind == candidate.kind && overlaps($0, candidate, slack: recoveredSlack) }) else { return false }
+                footprints.append(candidate)
+                return true
+            }
+        }
+        parts.floors.append(contentsOf: accepted(recoveredParts.floors) {
+            Footprint(floor: outline(of: $0), bottom: $0.transform.translation.y)
+        })
+        parts.walls.append(contentsOf: accepted(recoveredParts.walls) {
+            Footprint(kind: .wall, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
+        })
+        parts.doors.append(contentsOf: accepted(recoveredParts.doors) {
+            Footprint(kind: .door, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
+        })
+        parts.openings.append(contentsOf: accepted(recoveredParts.openings) {
+            Footprint(kind: .opening, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
+        })
+        parts.windows.append(contentsOf: accepted(recoveredParts.windows) {
+            Footprint(kind: .window, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
+        })
+        parts.objects.append(contentsOf: accepted(recoveredParts.objects) { objectFootprint($0, floorY: floorY) })
+        return (parts, floorY)
+    }
+
+    /// A later section may refine a component already scanned. Keep one current obstacle.
+    private static func latest<Value>(_ values: [Value], identifier: KeyPath<Value, UUID>, excluding: Set<UUID> = []) -> [Value] {
+        var result: [UUID: Value] = [:]
+        for value in values where !excluding.contains(value[keyPath: identifier]) {
+            result[value[keyPath: identifier]] = value
+        }
+        return result.sorted { $0.key.uuidString < $1.key.uuidString }.map(\.value)
+    }
+
+    /// Processed components take precedence over remembered versions; later sections refine earlier ones.
+    private static func latest(_ parts: [RoomParts], excluding kept: RoomParts = RoomParts()) -> RoomParts {
+        var result = RoomParts()
+        result.walls = latest(parts.flatMap(\.walls), identifier: \.identifier, excluding: Set(kept.walls.map(\.identifier)))
+        result.doors = latest(parts.flatMap(\.doors), identifier: \.identifier, excluding: Set(kept.doors.map(\.identifier)))
+        result.openings = latest(parts.flatMap(\.openings), identifier: \.identifier, excluding: Set(kept.openings.map(\.identifier)))
+        result.windows = latest(parts.flatMap(\.windows), identifier: \.identifier, excluding: Set(kept.windows.map(\.identifier)))
+        result.floors = latest(parts.flatMap(\.floors), identifier: \.identifier, excluding: Set(kept.floors.map(\.identifier)))
+        result.objects = latest(parts.flatMap(\.objects), identifier: \.identifier, excluding: Set(kept.objects.map(\.identifier)))
+        return result
     }
 
     /// Adds stairs the camera spotted, unless RoomPlan already measured stairs there.
@@ -75,11 +124,15 @@ enum MapBuilder {
             footprints.append(Footprint(kind: .window, transform: window.transform, dimensions: window.dimensions, depth: wallThickness))
         }
         for object in parts.objects {
-            guard object.transform.translation.y - object.dimensions.y / 2 < floorY + overheadClearance else { continue }
-            let kind: Footprint.Kind = object.category == .stairs ? .stairs : .obstacle
-            footprints.append(Footprint(kind: kind, transform: object.transform, dimensions: object.dimensions, furniture: furniture(for: object.category)))
+            if let footprint = objectFootprint(object, floorY: floorY) { footprints.append(footprint) }
         }
         return footprints
+    }
+
+    private static func objectFootprint(_ object: CapturedRoom.Object, floorY: Float) -> Footprint? {
+        guard object.transform.translation.y - object.dimensions.y / 2 < floorY + overheadClearance else { return nil }
+        let kind: Footprint.Kind = object.category == .stairs ? .stairs : .obstacle
+        return Footprint(kind: kind, transform: object.transform, dimensions: object.dimensions, furniture: furniture(for: object.category))
     }
 
     /// A floor surface's outline on the (x, z) plane. RoomPlan gives the polygon in the surface's own frame,

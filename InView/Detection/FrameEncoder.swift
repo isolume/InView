@@ -27,6 +27,7 @@ enum FrameEncoder {
     /// Renders on the CPU: ARKit and RoomPlan already saturate the GPU, and a Core Image pass on top of
     /// them is what left the camera view without drawables.
     private static let context = CIContext(options: [.useSoftwareRenderer: true, .cacheIntermediates: false])
+    private static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
     /// Copies the frame's pixels; a millisecond or two, meant to be called synchronously on the frame.
     static func snapshot(_ source: CVPixelBuffer) -> Snapshot? {
@@ -74,14 +75,25 @@ enum FrameEncoder {
 
     /// The model's frame plus the evidence preview. Tens of milliseconds; run it off the main thread.
     static func encode(_ snapshot: Snapshot) -> Encoded? {
-        let image = portrait(snapshot)
-        guard let jpeg = encodeJPEG(image, maxDimension: modelDimension), let preview = encodeJPEG(image, maxDimension: previewDimension) else { return nil }
-        return Encoded(jpeg: jpeg, preview: preview)
+        autoreleasepool {
+            // Convert the full camera image once. The second render starts with this small RGB image,
+            // rather than repeating the sensor-sized YCbCr conversion for every evidence photo.
+            guard !Task.isCancelled,
+                  let modelImage = render(portrait(snapshot), maxDimension: modelDimension),
+                  let modelJPEG = jpeg(modelImage),
+                  !Task.isCancelled,
+                  let previewImage = render(CIImage(cgImage: modelImage), maxDimension: previewDimension),
+                  let preview = jpeg(previewImage) else { return nil }
+            return Encoded(jpeg: modelJPEG, preview: preview)
+        }
     }
 
     /// One upright JPEG of the frame. Tens of milliseconds; run it off the main thread.
     static func portraitJPEG(from snapshot: Snapshot, maxDimension: CGFloat) -> Data? {
-        encodeJPEG(portrait(snapshot), maxDimension: maxDimension)
+        autoreleasepool {
+            guard !Task.isCancelled, let image = render(portrait(snapshot), maxDimension: maxDimension) else { return nil }
+            return jpeg(image)
+        }
     }
 
     /// Maps a normalized point in the portrait JPEG back to the captured (landscape) image.
@@ -94,17 +106,21 @@ enum FrameEncoder {
         CIImage(cvPixelBuffer: snapshot.pixelBuffer).oriented(.right)
     }
 
-    private static func encodeJPEG(_ source: CIImage, maxDimension: CGFloat) -> Data? {
+    private static func render(_ source: CIImage, maxDimension: CGFloat) -> CGImage? {
         var image = source
         let scale = maxDimension / max(image.extent.width, image.extent.height)
         if scale < 1 {
             image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         }
-        return context.jpegRepresentation(
-            of: image,
-            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.7]
-        )
+        return context.createCGImage(image, from: image.extent.integral, format: .RGBA8, colorSpace: colorSpace)
+    }
+
+    private static func jpeg(_ image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.7] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
     }
 
     private static func copyRows(

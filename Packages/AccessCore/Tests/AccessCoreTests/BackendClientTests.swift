@@ -151,6 +151,24 @@ struct BackendIntegrationTests {
         #expect(throws: CaptureValidationError.self) { try capture.validate() }
     }
 
+    @Test func oversizedCaptureStillBuildsLocallyAndNeverStartsAnUpload() async throws {
+        var capture = try exampleCapture()
+        capture.roomplanOriginal = .string(String(repeating: "x", count: 32 * 1024 * 1024))
+        // An archive's size does not prevent the local map from using its measured geometry.
+        let scene = try LocalSceneBuilder.make(from: capture, includeDepthPoints: false)
+        #expect(scene.objects.count == capture.objects.count)
+        #expect(scene.surfaces.count == capture.surfaces.count)
+        let (client, session) = mockClient([])
+        defer { session.invalidateAndCancel() }
+        do {
+            _ = try await client.upload(capture)
+            Issue.record("An oversized upload should be rejected before networking")
+        } catch let error as BackendClientError {
+            #expect(error == .invalidCapture("This scan is too large to send. You can use its local map instead."))
+        }
+        #expect(BackendMockProtocol.failure == nil)
+    }
+
     @Test func rejectsSceneShapeAndCaptureIdentityMismatch() throws {
         let capture = try exampleCapture()
         var scene = try exampleScene()

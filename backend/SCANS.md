@@ -117,17 +117,23 @@ or passability. Styling never substitutes for reviewed navigation geometry.
 ## iPhone handoff
 
 This envelope is **not** Apple's native `CapturedRoom` JSON. The app adapter in
-`AccessNav/Scan/ScanExporter.swift` exports RoomPlan dimensions/transforms/categories
-into these records and retains the native export in `roomplan_original`.
+`InView/Scan/ScanExporter.swift` exports RoomPlan dimensions/transforms/categories
+into these records. Native RoomPlan JSON is archived separately in `roomplan.json`,
+rather than duplicated as a large `roomplan_original` tree in every portable capture.
+The optional field remains supported when importing other providers' bundles.
 `RawScanCapture.swift` polls the same session without replacing its delegate,
-copies the latest mesh snapshot, and selects up to six calibrated depth keyframes.
+selecting up to six calibrated depth keyframes within an 8 MiB retained-payload
+budget. It does not request or repeatedly copy a second raw mesh reconstruction;
+RoomPlan's measured surfaces and objects supply navigation geometry. Native depth
+bytes are copied before one background worker decodes them; busy samples are skipped.
 These records preserve the shared ARKit frame; no export origin reset is applied.
 Overlapping sections use the latest component with the same RoomPlan identifier.
 
-The app archives native RoomPlan JSON and copied mesh/depth bytes locally before
-upload. If a bundle exceeds the 32 MiB limit, optional whole depth/mesh layers remain
-local and their omission is recorded in metadata. Native RoomPlan/semantic data is
-never silently truncated; if that layer alone is too large, upload reports an error.
+The app archives native RoomPlan JSON and selected depth bytes locally before upload.
+Local processing has no upload-size limit and does not project a display point cloud
+that navigation doesn't render. The network client enforces the 32 MiB limit only
+when sending a capture; an oversized upload can still use its complete local map.
+Native RoomPlan/semantic data is never silently truncated.
 The saved active capture identifies its cached scene, so a failed new scan cannot
 replace a previously saved room view. Network failures support retry; the saved
 source can restore the backend's in-memory capture after a restart.

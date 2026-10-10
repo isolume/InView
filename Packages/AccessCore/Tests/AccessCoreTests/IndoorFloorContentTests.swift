@@ -117,3 +117,27 @@ private func contentMap(footprints: [Footprint]) -> VenueMap {
     #expect(content.map?.geographicReference == map.geographicReference)
     #expect(content.map?.createdAt == map.createdAt)
 }
+
+@Test func displayFloorRetainsMeasuredConcaveOutlinesInsteadOfSceneBounds() throws {
+    let source = try contentScene()
+    let outline: [SIMD2<Float>] = [[-4, -3], [4, -3], [4, -1], [0, -1], [0, 3], [-4, 3]]
+    let floor = Footprint(floor: outline, bottom: -1.3)
+    let map = contentMap(footprints: [floor])
+    let content = IndoorFloorContent(scene: source, map: map, selectedFloorID: nil)
+    #expect(content.map?.footprints.filter { $0.kind == .floor } == [floor])
+    #expect(content.map?.footprints.first { $0.kind == .floor }?.corners == outline)
+    #expect(source.surfaces.first?.measuredDimensionsM == [8, 0, 6])
+}
+
+@Test func measuredFloorOutlinesNeverLeakBetweenSelectedLevels() throws {
+    let source = try contentScene()
+    let ground = Footprint(floor: [[-4, -3], [4, -3], [4, 3], [-4, 3]], bottom: -1.3)
+    let upstairs = Footprint(floor: [[-2, -2], [2, -2], [0, 2]], bottom: 1.7)
+    let map = contentMap(footprints: [ground, upstairs])
+    let levels = IndoorSceneFloors.floors(in: source)
+    let lowerContent = IndoorFloorContent(scene: source, map: map, selectedFloorID: levels.first?.id)
+    let upperContent = IndoorFloorContent(scene: source, map: map, selectedFloorID: levels.last?.id)
+    #expect(lowerContent.map?.footprints.filter { $0.kind == .floor } == [ground])
+    #expect(upperContent.map?.footprints.filter { $0.kind == .floor } == [upstairs])
+    #expect(map.footprints == [ground, upstairs])
+}

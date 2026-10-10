@@ -28,7 +28,11 @@ struct ScanView: View {
 
     private var captureScreen: some View {
         ZStack {
-            ViewContainer(view: controller.captureView).ignoresSafeArea()
+            if let captureView = controller.captureView, controller.phase != .processingScene {
+                ViewContainer(view: captureView).ignoresSafeArea()
+            } else {
+                Color(.systemBackground).ignoresSafeArea()
+            }
             if controller.phase == .scanning {
                 DetectionOverlay(detector: controller.detector, session: controller.session)
                     .ignoresSafeArea()
@@ -105,7 +109,7 @@ struct ScanView: View {
             Text(controller.errorMessage ?? "The scanner ended this section, usually because it lost track of where it was.")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
-            Text("Section \(controller.sectionCount) is kept. Move somewhere with more detail in view, then continue, or finish with what you have.")
+            Text(controller.interruptionHint)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -118,6 +122,7 @@ struct ScanView: View {
                     Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .disabled(!controller.canFinishInterruptedScan)
             }
             .controlSize(.large)
         }
@@ -168,7 +173,7 @@ struct ScanView: View {
             }
             HStack(spacing: 10) {
                 Button(action: controller.addSection) {
-                    Label("Next room", systemImage: "plus.square.on.square").frame(maxWidth: .infinity)
+                    Label("Next section", systemImage: "plus.square.on.square").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 Button(action: controller.finish) {
@@ -177,8 +182,8 @@ struct ScanView: View {
                 .buttonStyle(.borderedProminent)
             }
             .controlSize(.large)
-            Text("One room per section: add a section each time you go through a door.")
-                .font(.caption2)
+            Text(controller.scanNotice ?? "One room per section: add a section each time you go through a door.")
+                .font(.footnote)
                 .foregroundStyle(.secondary)
             if let error = controller.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red)
@@ -207,6 +212,9 @@ private struct DetectionStatus: View {
     let section: Int
 
     var body: some View {
+        let counts = detector.sightings.reduce(into: [VisionDetection.Kind: Int]()) { counts, sighting in
+            if sighting.isConfirmed { counts[sighting.kind, default: 0] += 1 }
+        }
         VStack(alignment: .trailing, spacing: 6) {
             HStack(spacing: 6) {
                 Circle()
@@ -217,8 +225,10 @@ private struct DetectionStatus: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.trailing)
             }
-            ForEach(detector.sightings.filter(\.isConfirmed)) { sighting in
-                chip(sighting.name, count: sighting.frames, symbol: sighting.kind.symbolName, tint: sighting.kind.tint)
+            ForEach(VisionDetection.Kind.allCases, id: \.self) { kind in
+                if let count = counts[kind] {
+                    chip(kind.title, count: count, symbol: kind.symbolName, tint: kind.tint)
+                }
             }
             if detector.isWaitingForSteadyCamera {
                 Label("Hold still a moment to look for features", systemImage: "hand.raised")
@@ -226,7 +236,6 @@ private struct DetectionStatus: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .animation(.spring, value: detector.sightings.filter(\.isConfirmed).count)
         .padding(10)
         .frame(maxWidth: 230, alignment: .trailing)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
