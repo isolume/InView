@@ -65,6 +65,24 @@ enum CaptureStore {
         try data.write(to: directory.appending(path: filename), options: .atomic)
     }
 
+    /// Stages the coverage evidence recorded beside the depth keyframes: high-resolution OCR stills
+    /// (moved from their temporary capture files) and the dense `camera-track.json` pose track.
+    static func stageCoverageAssets(_ snapshot: RawScanSnapshot, id: String) throws {
+        let directory = try directory(for: id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for still in snapshot.ocrStills ?? [] {
+            let destination = directory.appending(path: still.filename)
+            let source = URL(filePath: still.temporaryPath)
+            guard !FileManager.default.fileExists(atPath: destination.path),
+                  FileManager.default.fileExists(atPath: source.path) else { continue }
+            try FileManager.default.moveItem(at: source, to: destination)
+        }
+        if let track = snapshot.cameraTrack {
+            try stageSidecar(JSONEncoder().encode(track), named: cameraTrackFilename, id: id)
+        }
+    }
+
+    private static let cameraTrackFilename = "camera-track.json"
     private static func rawDepthFilename(_ id: String) -> String { "\(id).depth-f32le" }
     private static func confidenceFilename(_ id: String) -> String { "\(id).confidence-u8" }
     private static func smoothedDepthFilename(_ id: String) -> String { "\(id).smoothed-depth-f32le" }
@@ -186,6 +204,10 @@ enum CaptureStore {
         if let raw, !hasNativeLidarAssets(raw, in: directory) {
             try stageNativeLidarAssets(raw, id: captureID)
         }
+        if let track = raw?.cameraTrack,
+           !FileManager.default.fileExists(atPath: directory.appending(path: cameraTrackFilename).path) {
+            try stageSidecar(JSONEncoder().encode(track), named: cameraTrackFilename, id: captureID)
+        }
         let files = try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]
         )
@@ -200,6 +222,10 @@ enum CaptureStore {
             return PackageManifest.Asset(path: name, role: assetRole(for: name), mediaType: mediaType(for: name), bytes: size)
         }
         let colorNames = Set(raw?.colorKeyframes.map(\.filename) ?? [])
+        let stagedNames = Set(assets.map(\.path))
+        // Only stills that actually reached the capture directory are referenced.
+        let stills = Dictionary((raw?.ocrStills ?? []).filter { stagedNames.contains($0.filename) }.map { ($0.frameID, $0) },
+                                uniquingKeysWith: { _, latest in latest })
         let buffers = Dictionary(uniqueKeysWithValues: (raw?.depthBuffers ?? []).map { ($0.id, $0) })
         // The portable bundle may omit frames to fit its JSON limit; the raw capture keeps them all,
         // so every native depth buffer keeps its calibrated pose in the manifest.
@@ -217,7 +243,9 @@ enum CaptureStore {
                                                pixelFormat: $0.pixelFormat, confidenceBytesPerRow: $0.confidenceBytesPerRow,
                                                environment: $0.environment, smoothedWidth: $0.smoothedWidth,
                                                smoothedHeight: $0.smoothedHeight, smoothedBytesPerRow: $0.smoothedBytesPerRow,
-                                               smoothedPixelFormat: $0.smoothedPixelFormat) }
+                                               smoothedPixelFormat: $0.smoothedPixelFormat) },
+                ocrAsset: stills[frame.id]?.filename,
+                ocrImage: stills[frame.id].map { .init(width: $0.width, height: $0.height) }
             )
         }
         let meshAnchors = (raw?.meshBuffers ?? []).map { mesh in
@@ -364,15 +392,26 @@ private struct PackageManifest: Codable {
                 case smoothedPixelFormat = "smoothed_pixel_format"
             }
         }
+        /// Size and orientation of the high-resolution OCR still. Its pixels are the sensor image
+        /// rotated 90° clockwise (upright portrait) and uniformly scaled, so a still pixel maps back
+        /// to the calibrated sensor image as (u, v) = (y / height · image.width, (1 − x / width) · image.height).
+        struct OCRImage: Codable {
+            var width: Int
+            var height: Int
+            var orientation = "rotated_90_cw_from_sensor"
+        }
         var id: String
         var timestampSeconds: Double
         var rgbAsset: String?
         var mapFromCamera: [Float]
         var image: Image
         var rawDepth: NativeDepth?
+        var ocrAsset: String?
+        var ocrImage: OCRImage?
         enum CodingKeys: String, CodingKey {
             case id, timestampSeconds = "timestamp_seconds", rgbAsset = "rgb_asset"
             case mapFromCamera = "map_from_camera", image, rawDepth = "raw_depth"
+            case ocrAsset = "ocr_asset", ocrImage = "ocr_image"
         }
     }
 

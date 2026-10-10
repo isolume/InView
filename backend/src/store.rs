@@ -8,7 +8,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
@@ -79,15 +79,111 @@ impl StoredScan {
 /// One camera pose in the shared scan frame, for building-map evidence and previews.
 pub struct TrackPoint {
     pub timestamp_seconds: f64,
-    /// iPhone wall clock from the capture's location context, when it was recorded.
+    /// iPhone wall clock: ARKit time + `unix_offset_seconds` for the dense track, otherwise the
+    /// capture's location context when it was recorded.
     pub unix_seconds: Option<f64>,
     pub map_from_camera: Transform,
+    /// ARKit tracking state (`normal`, `limited:<reason>`), known for the dense track only.
+    pub tracking: Option<String>,
+    /// ARKit world-mapping status (`limited`, `extending`, `mapped`, ...), dense track only.
+    pub mapping: Option<String>,
+}
+
+/// Where a camera track came from, best first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackSource {
+    CameraTrackSidecar,
+    PackageManifest,
+    PortableFrames,
+}
+
+pub const CAMERA_TRACK_ASSET: &str = "camera-track.json";
+
+#[derive(Deserialize)]
+struct CameraTrackFile {
+    schema_version: u32,
+    clock: String,
+    unix_offset_seconds: Option<f64>,
+    poses: Vec<CameraTrackPose>,
+}
+
+#[derive(Deserialize)]
+struct CameraTrackPose {
+    t: f64,
+    m: Transform,
+    #[serde(default)]
+    tracking: Option<String>,
+    #[serde(default)]
+    mapping: Option<String>,
+}
+
+/// Parses the iPhone's dense `camera-track.json` (≈10 Hz ARKit poses). Poses without a usable
+/// transform, without tracking, or out of time order are dropped; an unknown schema or clock is an error.
+pub fn parse_camera_track(bytes: &[u8]) -> Result<Vec<TrackPoint>, String> {
+    let file: CameraTrackFile = serde_json::from_slice(bytes)
+        .map_err(|error| format!("camera-track.json is invalid: {error}"))?;
+    if file.schema_version != 1 || file.clock != "arkit_uptime_seconds" {
+        return Err("camera-track.json uses an unsupported schema or clock.".into());
+    }
+    let offset = file.unix_offset_seconds.filter(|v| v.is_finite());
+    let mut last = f64::NEG_INFINITY;
+    let mut points = Vec::with_capacity(file.poses.len());
+    for pose in file.poses {
+        // Without tracking ARKit reports a meaningless transform; while initializing it sits near
+        // the origin and while relocalizing it can jump. Other limited poses are kept and labelled.
+        if !pose.t.is_finite()
+            || pose.t < 0.
+            || pose.t <= last
+            || matches!(
+                pose.tracking.as_deref(),
+                Some("not_available" | "limited:initializing" | "limited:relocalizing")
+            )
+            || pose.m.validate().is_err()
+        {
+            continue;
+        }
+        last = pose.t;
+        points.push(TrackPoint {
+            timestamp_seconds: pose.t,
+            unix_seconds: offset.map(|o| pose.t + o).filter(|u| *u > 0.),
+            map_from_camera: pose.m,
+            tracking: pose.tracking,
+            mapping: pose.mapping,
+        });
+    }
+    Ok(points)
 }
 
 impl StoredScan {
-    /// Prefer the package manifest: the iPhone writes it from the complete raw capture, while
-    /// `capture.json` may omit portable frames to stay within the JSON upload limit.
+    /// The best available camera path; see [`StoredScan::camera_track_with_source`].
     pub fn camera_track(&self) -> Vec<TrackPoint> {
+        self.camera_track_with_source().0
+    }
+
+    /// Prefer the dense `camera-track.json` sidecar, then the package manifest (the iPhone writes
+    /// it from the complete raw capture), then `capture.json`, which may omit portable frames to
+    /// stay within the JSON upload limit.
+    pub fn camera_track_with_source(&self) -> (Vec<TrackPoint>, TrackSource) {
+        if let Some(bytes) = self
+            .package_assets
+            .as_ref()
+            .and_then(|assets| assets.get(CAMERA_TRACK_ASSET))
+        {
+            match parse_camera_track(bytes) {
+                Ok(points) if !points.is_empty() => {
+                    return (points, TrackSource::CameraTrackSidecar);
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(scan = %self.bundle.id, %error, "Ignoring camera track sidecar")
+                }
+            }
+        }
+        self.sparse_camera_track()
+    }
+
+    fn sparse_camera_track(&self) -> (Vec<TrackPoint>, TrackSource) {
         let manifest = self
             .package_manifest
             .as_ref()
@@ -119,6 +215,8 @@ impl StoredScan {
                                 .and_then(|e| e.recorded_at_unix_seconds)
                                 .filter(|t| t.is_finite() && *t > 0.),
                             map_from_camera: pose,
+                            tracking: None,
+                            mapping: None,
                         })
                     })
                     .filter(|p| {
@@ -128,17 +226,21 @@ impl StoredScan {
             })
             .unwrap_or_default();
         if !from_manifest.is_empty() {
-            return from_manifest;
+            return (from_manifest, TrackSource::PackageManifest);
         }
-        self.bundle
+        let portable = self
+            .bundle
             .frames
             .iter()
             .map(|f| TrackPoint {
                 timestamp_seconds: f.timestamp_seconds,
                 unix_seconds: None,
                 map_from_camera: f.map_from_camera,
+                tracking: None,
+                mapping: None,
             })
-            .collect()
+            .collect();
+        (portable, TrackSource::PortableFrames)
     }
 }
 

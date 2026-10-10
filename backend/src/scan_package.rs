@@ -10,8 +10,9 @@ use tar::Archive;
 
 use crate::{capture::ScanBundle, geometry::Transform};
 
-/// A full RoomPlan walk keeps up to 32 depth observations (4 files each) plus 4 files per
-/// ARKit mesh anchor, so the entry limit must cover hundreds of anchors.
+/// A full RoomPlan walk keeps up to 48 depth observations (up to 5 files each: raw, confidence,
+/// smoothed depth, colour keyframe, OCR still) plus 4 files per ARKit mesh anchor, so the entry
+/// limit must cover hundreds of anchors.
 const MAX_FILES: usize = 4096;
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 /// Upper bound for one uncompressed `.inviewscan.tar` upload or persisted package.
@@ -68,6 +69,18 @@ pub(crate) struct ManifestObservation {
     #[serde(default)]
     pub image: Option<ManifestImage>,
     pub raw_depth: Option<ManifestDepth>,
+    /// High-resolution upright still for OCR (`<frame-id>.ocr.jpg`), sharing this observation's
+    /// pose, intrinsics, and depth. Optional and additive.
+    #[serde(default)]
+    pub ocr_asset: Option<String>,
+    #[serde(default)]
+    pub ocr_image: Option<ManifestOcrImage>,
+}
+/// Pixel size of an OCR still: the sensor image rotated 90° clockwise and uniformly scaled.
+#[derive(Clone, Copy, Deserialize)]
+pub(crate) struct ManifestOcrImage {
+    pub width: usize,
+    pub height: usize,
 }
 #[derive(Clone, Copy, Deserialize)]
 pub(crate) struct ManifestImage {
@@ -278,6 +291,16 @@ fn validate_manifest(
             && !files.contains_key(rgb)
         {
             return Err("package-manifest.json refers to a missing RGB keyframe.".into());
+        }
+        if let Some(ocr) = &observation.ocr_asset
+            && !files.contains_key(ocr)
+        {
+            return Err("package-manifest.json refers to a missing OCR still.".into());
+        }
+        if let Some(size) = observation.ocr_image
+            && !((1..=16_384).contains(&size.width) && (1..=16_384).contains(&size.height))
+        {
+            return Err("package-manifest.json contains an invalid OCR still size.".into());
         }
         if let Some(depth) = &observation.raw_depth {
             for asset in [

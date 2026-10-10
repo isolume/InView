@@ -143,14 +143,15 @@ fn json_error(error: JsonRejection) -> ApiError {
     ApiError::new(error.status(), "invalid_json", error.body_text())
 }
 
-/// Full camera path in the shared ARKit frame (package manifest first, then portable frames).
+/// Full camera path in the shared ARKit frame (dense `camera-track.json` sidecar first, then the
+/// package manifest, then portable frames).
 pub async fn camera_track(
     State(state): State<AppState>,
     Path(scan_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let scan = state.scans.get(&scan_id).await.ok_or_else(missing)?;
-    let poses: Vec<Value> = scan
-        .camera_track()
+    let (track, source) = scan.camera_track_with_source();
+    let poses: Vec<Value> = track
         .iter()
         .map(|p| {
             serde_json::json!({
@@ -158,12 +159,14 @@ pub async fn camera_track(
                 "unix_seconds": p.unix_seconds,
                 "position_m": p.map_from_camera.point([0., 0., 0.]),
                 "map_from_camera": p.map_from_camera,
+                "tracking": p.tracking,
+                "mapping": p.mapping,
             })
         })
         .collect();
-    Ok(Json(
-        serde_json::json!({"scan_id": scan_id, "frame": "shared_arkit_session", "poses": poses}),
-    ))
+    Ok(Json(serde_json::json!({
+        "scan_id": scan_id, "frame": "shared_arkit_session", "source": source, "poses": poses
+    })))
 }
 
 pub async fn analysis(

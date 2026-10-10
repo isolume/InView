@@ -28,7 +28,7 @@ Graphs remain in memory; source scans persist as immutable local files when `INV
 | POST | `/api/buildings/{id}/alignments` | Provisionally align an already-uploaded scan |
 | GET | `/api/buildings/{id}/observations` | Time-indexed, version-pinned camera positions |
 | GET | `/api/buildings/{id}/overview` | Top-down preview of aligned camera paths and mesh samples |
-| GET | `/scans/{id}/camera-track` | Full camera path (package manifest first, then portable frames) |
+| GET | `/scans/{id}/camera-track` | Full camera path (dense `camera-track.json` first, then package manifest, then portable frames; `source` says which) |
 | GET/PUT | `/scans/{id}/analysis` | Derived OpenCV worker output; see [worker/README.md](worker/README.md) |
 | GET | `/graphs` | List graph summaries |
 | PUT | `/graphs/{graph_id}` | Validate and replace a complete graph |
