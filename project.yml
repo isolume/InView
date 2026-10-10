@@ -37,6 +37,9 @@ targets:
         OPENAIReasoningEffort: $(OPENAI_REASONING_EFFORT)
         GeminiAPIKey: $(GEMINI_API_KEY)
         GeminiModel: $(GEMINI_MODEL)
+        ElevenLabsAPIKey: $(ELEVENLABS_API_KEY)
+        ElevenLabsVoiceID: $(ELEVENLABS_VOICE_ID)
+        ElevenLabsModel: $(ELEVENLABS_MODEL)
         InViewBackendURL: $(INVIEW_BACKEND_URL)
         MBXAccessToken: $(MAPBOX_ACCESS_TOKEN)
         NSLocationWhenInUseUsageDescription: InView uses your location to place a scanned building on the map.

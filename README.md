@@ -25,6 +25,7 @@ open InView.xcodeproj
 - `INVIEW_BACKEND_URL` (optional): a scan processing server. Leave blank for on-device processing; you can also set or clear it in the app’s scan processing settings. Write URLs as `http:/$()/host:3000` in xcconfig.
 - `VISION_PROVIDER = gemini` plus `GEMINI_API_KEY` switches detection to Gemini. Nothing else changes.
 - Optional: `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `low`; one request is in flight at a time, so latency directly limits how many frames get checked), `GEMINI_MODEL` (default `gemini-3.8-flash`).
+- `ELEVENLABS_API_KEY` (optional): spoken turn-by-turn prompts use ElevenLabs when set, and the system voice otherwise. Optional: `ELEVENLABS_VOICE_ID` (default the stock "Rachel" voice) and `ELEVENLABS_MODEL` (default `eleven_turbo_v2_5`, chosen for low latency). Each line is synthesized live and given 2.5 s to return audio; a missing key, a slow network, or any error falls straight back to the system voice so navigation prompts are never delayed or dropped. Synthesized lines are cached in memory, since routes repeat phrases like "Turn right now."
 
 Re-run `xcodegen` after adding or removing files. The scheme turns off Metal API Validation, because RealityKit's own shaders trip it in debug runs.
 
