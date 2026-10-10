@@ -68,10 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             tracing::warn!("Furniture recognition disabled; run recognition/setup.sh to enable it")
         }
     }
-    let state = AppState {
-        streams,
-        ..AppState::default()
-    };
+    state.streams = streams;
     tracing::info!(address = %listener.local_addr()?, "InView backend listening");
     axum::serve(listener, app(state))
         .with_graceful_shutdown(shutdown())
