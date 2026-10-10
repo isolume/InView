@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::Write,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -482,6 +483,168 @@ fn incomplete_committed_disk_state_is_reported_instead_of_discarded() {
 }
 
 #[test]
+fn encoded_result_cache_survives_restart_and_corrupt_cache_rebuilds_originals() {
+    let temp = Temp::new();
+    let store = StreamStore::open(&temp.0).unwrap();
+    store.create(manifest()).unwrap();
+    store.append(ID, 0, chunk(0)).unwrap();
+    store.finish(ID, 1).unwrap();
+    let original_path = temp.0.join(ID).join("chunk-000000.json");
+    let original_bytes = fs::read(&original_path).unwrap();
+    let expected = serde_json::to_vec(&store.reconstruct(ID).unwrap()).unwrap();
+    let cached = store.reconstruct_encoded(ID, false).unwrap();
+    assert_eq!(expected, cached);
+    let cache_path = temp.0.join(ID).join("reconstruction-v5-result.json");
+    let modified = fs::metadata(&cache_path).unwrap().modified().unwrap();
+    let scene: Value =
+        serde_json::from_slice(&store.reconstruct_encoded(ID, true).unwrap()).unwrap();
+    assert_eq!(
+        scene,
+        serde_json::from_slice::<Value>(&cached).unwrap()["scene"]
+    );
+    drop(store);
+    let reopened = StreamStore::open(&temp.0).unwrap();
+    assert_eq!(reopened.reconstruct_encoded(ID, false).unwrap(), cached);
+    assert_eq!(
+        fs::metadata(&cache_path).unwrap().modified().unwrap(),
+        modified
+    );
+    fs::write(&cache_path, b"{broken cache").unwrap();
+    assert_eq!(reopened.reconstruct_encoded(ID, false).unwrap(), cached);
+    fs::write(&cache_path, b"{\"valid_json_but_wrong_geometry\":true}").unwrap();
+    assert_eq!(reopened.reconstruct_encoded(ID, false).unwrap(), cached);
+    let metadata_path = temp.0.join(ID).join("reconstruction-v5-cache.json");
+    let mut metadata: Value = serde_json::from_slice(&fs::read(&metadata_path).unwrap()).unwrap();
+    metadata["reconstruction_version"] = json!(999);
+    fs::write(&metadata_path, metadata.to_string()).unwrap();
+    assert_eq!(reopened.reconstruct_encoded(ID, false).unwrap(), cached);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fs::read(metadata_path).unwrap()).unwrap()["reconstruction_version"],
+        5
+    );
+    assert_eq!(fs::read(original_path).unwrap(), original_bytes);
+}
+
+#[test]
+fn dense_capture_compacts_instead_of_failing_old_mesh_limits() {
+    let mut value = chunk(0);
+    value["frame"]["camera"]["fx"] = json!(0.75);
+    value["frame"]["camera"]["fy"] = json!(0.75);
+    value["frame"]["camera"]["cx"] = json!(2.);
+    value["frame"]["camera"]["cy"] = json!(2.);
+    value["frame"]["depth"] = json!({"width":512,"height":512,
+        "values_m":vec![2.;512*512],"confidence":vec![2;512*512]});
+    let temp = Temp::new();
+    let store = StreamStore::open(&temp.0).unwrap();
+    store.create(manifest()).unwrap();
+    store.append(ID, 0, value.clone()).unwrap();
+    store.finish(ID, 1).unwrap();
+    let result = serde_json::to_value(store.reconstruct(ID).unwrap()).unwrap();
+    assert!(
+        result["capture"]["metadata"]["mesh_compactions"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(
+        result["capture"]["metadata"]["weld_meters"]
+            .as_f64()
+            .unwrap()
+            > 0.02
+    );
+    let mesh = &result["capture"]["meshes"][0];
+    assert!(!mesh["triangles"].as_array().unwrap().is_empty());
+    let points = mesh["vertices"].as_array().unwrap();
+    // All of the measured plane, including late pixels, is represented.
+    let xs: Vec<_> = points
+        .iter()
+        .map(|point| point[0].as_f64().unwrap())
+        .collect();
+    assert!(xs.iter().copied().fold(f64::INFINITY, f64::min) < -4.9);
+    assert!(xs.iter().copied().fold(f64::NEG_INFINITY, f64::max) > 4.9);
+    let source: ScanBundle = serde_json::from_value(result["capture"].clone()).unwrap();
+    source.validate().unwrap();
+    assert_eq!(mesh["vertices"], result["scene"]["meshes"][0]["vertices"]);
+    assert_eq!(mesh["triangles"], result["scene"]["meshes"][0]["triangles"]);
+    let display = &result["capture"]["metadata"]["display_meshes"][0];
+    assert!(
+        display["display_triangle_count"].as_u64().unwrap()
+            < display["source_triangle_count"].as_u64().unwrap()
+    );
+    let original: Value =
+        serde_json::from_slice(&fs::read(temp.0.join(ID).join("chunk-000000.json")).unwrap())
+            .unwrap();
+    assert_eq!(original, value);
+}
+
+#[test]
+fn whole_building_labels_are_not_capped_by_the_per_observation_budget() {
+    let temp = Temp::new();
+    let store = StreamStore::open(&temp.0).unwrap();
+    store.create(manifest()).unwrap();
+    for sequence in 0..2 {
+        let mut value = chunk(sequence);
+        value["objects"] =
+            json!((0..600).map(|index| json!({
+            "id":format!("obstacle-{sequence}-{index}"), "category":"unclassified_obstacle",
+            "map_from_object":IDENTITY, "dimensions_m":[0.3,0.4,0.5], "confidence":"low"
+        })).collect::<Vec<_>>());
+        value["surfaces"] = json!(
+            (0..600)
+                .map(|index| json!({
+                    "id":format!("wall-{sequence}-{index}"), "kind":"wall",
+                    "map_from_surface":IDENTITY, "dimensions_m":[1.,2.,0.]
+                }))
+                .collect::<Vec<_>>()
+        );
+        store.append(ID, sequence, value).unwrap();
+    }
+    assert_eq!(store.finish(ID, 2).unwrap().frame_count, 2);
+    drop(store);
+    assert!(
+        StreamStore::open(&temp.0)
+            .unwrap()
+            .summary(ID)
+            .unwrap()
+            .finished
+    );
+}
+
+#[test]
+fn concurrent_result_and_scene_requests_share_finished_reconstruction() {
+    let store = StreamStore::default();
+    store.create(manifest()).unwrap();
+    for sequence in 0..12 {
+        store.append(ID, sequence, chunk(sequence)).unwrap();
+    }
+    store.finish(ID, 12).unwrap();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(6));
+    let workers: Vec<_> = (0..6)
+        .map(|index| {
+            let worker = store.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let result: Value = serde_json::from_slice(
+                    &worker.reconstruct_encoded(ID, index % 2 == 1).unwrap(),
+                )
+                .unwrap();
+                if index % 2 == 1 {
+                    result
+                } else {
+                    result["scene"].clone()
+                }
+            })
+        })
+        .collect();
+    let results: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect();
+    assert!(results.windows(2).all(|pair| pair[0] == pair[1]));
+}
+
+#[test]
 fn uuid_paths_and_bounded_valid_jpeg_images_are_required() {
     let store = StreamStore::default();
     for id in [
@@ -635,5 +798,147 @@ async fn api_supports_recovery_model_result_and_oversize_chunk_errors() {
         .await
         .0,
         StatusCode::PAYLOAD_TOO_LARGE
+    );
+}
+
+fn gzip(bytes: &[u8]) -> Vec<u8> {
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    encoder.write_all(bytes).unwrap();
+    encoder.finish().unwrap()
+}
+
+async fn encoded_chunk(router: &Router, bytes: Vec<u8>, encoding: &str) -> (StatusCode, Value) {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/streams/{ID}/chunks/0"))
+                .header("content-type", "application/json")
+                .header("content-encoding", encoding)
+                .body(Body::from(bytes))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+#[tokio::test]
+async fn gzip_capability_and_retries_preserve_uncompressed_originals() {
+    let temp = Temp::new();
+    let state = AppState {
+        streams: StreamStore::open(&temp.0).unwrap(),
+        ..AppState::default()
+    };
+    let router = app(state);
+    let created = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/streams")
+                .header("content-type", "application/json")
+                .body(Body::from(manifest().to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    assert_eq!(created.headers()["accept-encoding"], "gzip");
+    let value = chunk(0);
+    let encoded = gzip(&serde_json::to_vec(&value).unwrap());
+    assert_eq!(
+        encoded_chunk(&router, encoded.clone(), "gzip").await.0,
+        StatusCode::OK
+    );
+    let path = temp.0.join(ID).join("chunk-000000.json");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fs::read(path).unwrap()).unwrap(),
+        value
+    );
+    assert_eq!(
+        call(
+            &router,
+            "PUT",
+            &format!("/streams/{ID}/chunks/0"),
+            Some(value)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    call(
+        &router,
+        "POST",
+        &format!("/streams/{ID}/finish"),
+        Some(json!({"chunk_count":1})),
+    )
+    .await;
+    assert_eq!(
+        encoded_chunk(&router, encoded, "gzip").await.0,
+        StatusCode::OK
+    );
+    let summary = router
+        .oneshot(
+            Request::builder()
+                .uri(format!("/streams/{ID}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(summary.headers()["accept-encoding"], "gzip");
+}
+
+#[tokio::test]
+async fn gzip_chunks_reject_malformed_truncated_trailing_or_oversized_data() {
+    let router = app(AppState::default());
+    call(&router, "POST", "/streams", Some(manifest())).await;
+    let valid = gzip(&serde_json::to_vec(&chunk(0)).unwrap());
+    let mut trailing = valid.clone();
+    trailing.extend(b"trailing");
+    let mut concatenated = valid.clone();
+    concatenated.extend(&valid);
+    let mut bad_crc = valid.clone();
+    let crc_index = bad_crc.len() - 8;
+    bad_crc[crc_index] ^= 1;
+    for bytes in [
+        b"not gzip".to_vec(),
+        valid[..valid.len() - 3].to_vec(),
+        trailing,
+        concatenated,
+        bad_crc,
+    ] {
+        assert_eq!(
+            encoded_chunk(&router, bytes, "gzip").await.0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        encoded_chunk(&router, valid, "br").await.0,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE
+    );
+    assert_eq!(
+        encoded_chunk(&router, vec![1; 4 * 1024 * 1024 + 1], "gzip")
+            .await
+            .0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert_eq!(
+        encoded_chunk(&router, gzip(&vec![b' '; 4 * 1024 * 1024 + 1]), "gzip")
+            .await
+            .0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert_eq!(
+        call(&router, "GET", &format!("/streams/{ID}"), None)
+            .await
+            .1["next_sequence"],
+        0
     );
 }

@@ -1,10 +1,13 @@
 pub mod alignment;
 pub mod api;
 pub mod capture;
+pub mod display_mesh;
 pub mod error;
 pub mod geometry;
 pub mod graph;
 pub mod model_meshes;
+pub mod recognition_service;
+pub mod recognized_objects;
 pub mod routing;
 pub mod scan_api;
 pub mod scene;

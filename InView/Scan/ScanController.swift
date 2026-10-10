@@ -9,6 +9,9 @@ import SwiftUI
 /// then an ARWorldMap snapshot that navigation sessions relocalize against, so they share the scan's coordinates.
 @MainActor
 final class ScanController: ObservableObject {
+    enum SceneStage: Equatable {
+        case preparing, uploading, reconstructing, saving
+    }
     enum Phase: Equatable {
         case unsupported
         case choosingFloor
@@ -33,11 +36,13 @@ final class ScanController: ObservableObject {
     @Published private(set) var scene: ProcessedScene?
     @Published private(set) var sceneError: String?
     @Published private(set) var isProcessingScene = false
+    @Published private(set) var sceneStage: SceneStage = .preparing
     @Published private(set) var scanNotice: String?
     @Published private(set) var trackingNotice: String?
     @Published private(set) var captureView: RoomCaptureView?
     @Published private(set) var streamingView: ARView?
     @Published private(set) var streamStatus: StreamingCaptureStatus?
+    @Published private(set) var scanCoverage = DepthScanCoverage().snapshot()
     @Published private(set) var hasSelectedLocalStreamMap = false
     let isContinuous = AppConfig.continuousScanning
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
@@ -74,7 +79,27 @@ final class ScanController: ObservableObject {
         if streamStatus.captured == 0 { return "Move slowly to start scanning" }
         if streamStatus.lastError != nil { return "Upload paused · scan saved on phone" }
         if streamBackendURL == nil { return "Scan saved on phone" }
-        return streamStatus.pending > 0 ? "Saving and uploading…" : "Scan uploaded"
+        return streamStatus.pending > 0
+            ? "Uploaded \(streamStatus.uploaded) of \(streamStatus.captured) samples" : "Scan uploaded"
+    }
+
+    var sceneStatusLine: String {
+        guard isContinuous else { return "Building map…" }
+        switch sceneStage {
+        case .preparing: return "Preparing scan…"
+        case .uploading:
+            guard let streamStatus, streamStatus.captured > 0 else { return "Uploading scan…" }
+            if streamStatus.pending == 0 { return "Finishing upload…" }
+            return "Uploading \(streamStatus.uploaded) of \(streamStatus.captured) samples…"
+        case .reconstructing: return "Building map…"
+        case .saving: return "Saving map…"
+        }
+    }
+
+    var sceneUploadProgress: Double? {
+        guard isContinuous, sceneStage == .uploading,
+              let streamStatus, streamStatus.captured > 0 else { return nil }
+        return min(1, Double(streamStatus.uploaded) / Double(streamStatus.captured))
     }
 
     var canFinishContinuousScan: Bool { (streamStatus?.captured ?? 0) > 0 }
@@ -171,6 +196,7 @@ final class ScanController: ObservableObject {
     private var reportTask: Task<Void, Never>?
 
     init() {
+        rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
         let supported = isContinuous
             ? ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
             : RoomCaptureSession.isSupported
@@ -363,6 +389,7 @@ final class ScanController: ObservableObject {
         if phase == .scanning || phase == .processing { captureView?.captureSession.stop() }
         captureView = nil
         streamingView = nil
+        scanCoverage = DepthScanCoverage().snapshot()
         if phase != .unsupported { session.pause() }
     }
 
@@ -634,6 +661,7 @@ final class ScanController: ObservableObject {
         let scanID = scanID
         let floor = currentFloor
         sceneError = nil
+        sceneStage = .preparing
         phase = .processingScene
         isProcessingScene = true
         sceneTask = Task { [weak self] in
@@ -697,13 +725,14 @@ final class ScanController: ObservableObject {
                 streamStatusTimer = nil
                 streamStatusTask?.cancel()
                 streamStatus = nil
+                scanCoverage = DepthScanCoverage().snapshot()
                 trackingNotice = nil
                 streamAlignmentApplied = false
                 hasSelectedLocalStreamMap = false
                 session.pause()
                 session = ARSession()
                 detector = AccessibilityDetector()
-                rawCapture = RawScanCapture()
+                rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
                 scanID = UUID()
                 currentFloor = nextFloor
                 pendingFloor = nil
@@ -750,6 +779,7 @@ final class ScanController: ObservableObject {
 
     private func processScene(_ bundle: CaptureBundle, backendURL: URL?) {
         sceneError = nil
+        sceneStage = .preparing
         isProcessingScene = true
         sceneTask = Task { [weak self] in
             defer { self?.isProcessingScene = false }
@@ -774,8 +804,13 @@ final class ScanController: ObservableObject {
             if let backendURL, !matchesStreamServer(backendURL) {
                 throw CaptureValidationError.invalid("This scan is saved for its original server. Choose Send to selected server to move it to the new address.")
             }
+            sceneStage = .uploading
+            streamStatus = await streamingCapture.queue.snapshot()
             _ = try await streamingCapture.queue.finish()
+            streamStatus = await streamingCapture.queue.snapshot()
+            sceneStage = .reconstructing
             let output = try await streamingCapture.queue.result()
+            sceneStage = .saving
             try await ScanWork.run(priority: .utility) {
                 try CaptureStore.stageBundle(output.capture)
                 try CaptureStore.saveScene(output.scene, for: output.capture)
@@ -960,6 +995,10 @@ final class ScanController: ObservableObject {
                 let capture = StreamingScanCapture(queue: queue)
                 capture.measurements = { [weak self] in self?.rawCapture.snapshot().observedFootprints ?? [] }
                 capture.onStatus = { [weak self] status in self?.streamStatus = status }
+                capture.onCoverage = { [weak self] coverage in
+                    guard let self, self.isActive, self.scanID == id else { return }
+                    self.scanCoverage = coverage
+                }
                 capture.onTrackingHint = { [weak self] hint in self?.trackingNotice = hint }
                 capture.onError = { [weak self] message in
                     self?.errorMessage = message

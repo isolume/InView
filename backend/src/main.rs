@@ -1,6 +1,8 @@
 use std::{env, net::SocketAddr};
 
-use inview_backend::{AppState, app, streaming::StreamStore};
+use inview_backend::{
+    AppState, app, recognition_service::RecognitionConfig, streaming::StreamStore,
+};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -17,8 +19,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     let stream_path = env::var("INVIEW_STREAM_DIR").unwrap_or_else(|_| "data/streams".to_owned());
-    let streams = StreamStore::open(stream_path)
+    let mut streams = StreamStore::open(stream_path)
         .map_err(|error| format!("Cannot open streaming scan store: {error:?}"))?;
+    match RecognitionConfig::from_environment()? {
+        Some(config) => {
+            streams = streams
+                .with_recognition(config)
+                .map_err(|error| format!("Cannot start furniture recognition: {error:?}"))?;
+            tracing::info!("Local furniture recognition enabled");
+        }
+        None => {
+            tracing::warn!("Furniture recognition disabled; run recognition/setup.sh to enable it")
+        }
+    }
     let state = AppState {
         streams,
         ..AppState::default()

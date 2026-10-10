@@ -6,6 +6,7 @@ struct ScanView: View {
     @StateObject private var controller = ScanController()
     @Environment(\.dismiss) private var dismiss
     @State private var showsProcessingSettings = false
+    @State private var showsScanCoverage = true
 
     var body: some View {
         Group {
@@ -69,6 +70,13 @@ struct ScanView: View {
             } else {
                 Color(.systemBackground).ignoresSafeArea()
             }
+            if controller.isContinuous, showsScanCoverage, !controller.isChangingFloors,
+               controller.phase == .scanning || controller.phase == .interrupted {
+                ScanCoverageOverlay(session: controller.session, coverage: controller.scanCoverage)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
             if controller.phase == .scanning {
                 DetectionOverlay(detector: controller.detector, session: controller.session)
                     .ignoresSafeArea()
@@ -94,6 +102,21 @@ struct ScanView: View {
                         DetectionStatus(detector: controller.detector,
                                         section: controller.isContinuous ? nil : controller.sectionCount + 1)
                         if controller.isContinuous {
+                            if controller.phase == .scanning || controller.phase == .interrupted {
+                                Button {
+                                    showsScanCoverage.toggle()
+                                } label: {
+                                    Label("Captured surfaces", systemImage: showsScanCoverage ? "checkmark.circle.fill" : "eye.slash")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(showsScanCoverage ? Color.green : Color.secondary)
+                                        .padding(10)
+                                        .background(.regularMaterial, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Captured surfaces")
+                                .accessibilityValue(showsScanCoverage ? "Shown in green" : "Hidden")
+                                .accessibilityHint("Double tap to toggle highlights of surfaces saved on this phone")
+                            }
                             Text(controller.streamStatusLine)
                                 .font(.caption.weight(.semibold))
                                 .padding(10)
@@ -120,7 +143,7 @@ struct ScanView: View {
                 case .savingWorldMap:
                     worldMapPanel
                 case .processingScene:
-                    ProgressView("Building map…")
+                    ScanSceneProgress(controller: controller)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .background(.regularMaterial, in: Capsule())
@@ -394,6 +417,21 @@ struct MapReviewView: View {
     }
 }
 
+private struct ScanSceneProgress: View {
+    @ObservedObject var controller: ScanController
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let progress = controller.sceneUploadProgress {
+                Text(controller.sceneStatusLine).font(.subheadline)
+                ProgressView(value: progress).frame(width: 220)
+            } else {
+                ProgressView(controller.sceneStatusLine)
+            }
+        }
+    }
+}
+
 private struct RoomReviewSheet: View {
     @ObservedObject var controller: ScanController
     let onSaved: () -> Void
@@ -422,7 +460,7 @@ private struct MapReviewDetailsView: View {
             List {
                 if let draft = controller.draft {
                     if controller.isProcessingScene {
-                        Section { ProgressView("Building map…") }
+                        Section { ScanSceneProgress(controller: controller) }
                     } else if let error = controller.sceneError {
                         Section {
                             Text(error).font(.subheadline).foregroundStyle(.secondary)

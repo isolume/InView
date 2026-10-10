@@ -1,4 +1,4 @@
-//! Durable continuous capture and a bounded, pose-preserving reconstruction baseline.
+//! Durable continuous capture and pose-preserving reconstruction with adaptive detail.
 //! Depth neighborhoods become measured triangles; no labels or navigation clearance are inferred.
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -13,30 +13,39 @@ use std::{
 };
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
 use crate::{
     alignment::{self, AlignmentFrame, AlignmentResult},
     capture::{CapturedSurface, Coordinates, DepthFrame, DetectedObject, MeshCapture, ScanBundle},
+    display_mesh::{DisplayMeshOptions, simplify_display_mesh},
     geometry::{Transform, Vec3},
+    recognition_service::{
+        RecognitionConfig, RecognitionService, RecognitionSnapshot, RecognitionStatus,
+    },
+    recognized_objects::{ObjectFusion, merge_recognized},
     scene::{self, ProcessingOptions, Scene},
 };
 
 pub const MAX_CHUNK_BYTES: usize = 4 * 1024 * 1024;
-pub const MAX_FRAMES: usize = 10_000;
-pub const MAX_STREAM_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-pub const MAX_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_JPEG_BYTES: usize = 512 * 1024;
 const MAX_DEPTH_SAMPLES: usize = 512 * 512;
 const MAX_COLOR_PIXELS: usize = 1024 * 1024;
 const MAX_LABELS: usize = 1024;
-const MAX_VERTICES: usize = 250_000;
-const MAX_TRIANGLES: usize = 500_000;
+// These are compaction targets, never capture or reconstruction rejection limits.
+const MESH_VERTEX_TARGET: usize = 250_000;
+const MESH_TRIANGLE_TARGET: usize = 500_000;
 const MAX_GRAPH_KEYFRAMES: usize = 64;
 const MAX_REGISTRATION_POINTS: usize = 512;
 const WELD_METERS: f64 = 0.02;
+const MAX_COMPACTION_LEVEL: u32 = 2; // 2 -> 4 -> 8 cm, then keep growing with coverage.
+// Bump this version whenever reconstruction semantics or the result contract change.
+const RECONSTRUCTION_VERSION: u32 = 5;
+const RESULT_CACHE: &str = "reconstruction-v5-result.json";
+const SCENE_CACHE: &str = "reconstruction-v5-scene.json";
+const CACHE_METADATA: &str = "reconstruction-v5-cache.json";
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Deserialize)]
@@ -69,6 +78,8 @@ pub struct StreamSummary {
     pub next_sequence: usize,
     pub finished: bool,
     pub frame_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recognition: Option<RecognitionSnapshot>,
 }
 
 #[derive(Serialize)]
@@ -82,11 +93,13 @@ pub struct StreamResult {
 #[derive(Debug)]
 pub enum StreamError {
     Invalid(String),
+    Malformed(String),
     Conflict(String),
     Limit(String),
-    ResultTooLarge,
     Missing,
     Unfinished,
+    Busy,
+    RecognitionPending,
     Storage(std::io::Error),
 }
 
@@ -100,12 +113,10 @@ struct Record {
     manifest: StreamManifest,
     original: Value,
     count: usize,
-    bytes: u64,
     last_timestamp: Option<f64>,
     frames: HashSet<String>,
-    surfaces: HashSet<String>,
-    objects: HashSet<String>,
     finished: bool,
+    reconstruction: Arc<Mutex<()>>,
 }
 
 impl Record {
@@ -117,10 +128,11 @@ impl Record {
             next_sequence: self.count,
             frame_count: self.count,
             finished: self.finished,
+            recognition: None,
         }
     }
 
-    fn check_next(&self, chunk: &StreamChunk, bytes: u64) -> Result<(), StreamError> {
+    fn check_next(&self, chunk: &StreamChunk) -> Result<(), StreamError> {
         if self.finished {
             return Err(StreamError::Conflict(
                 "This stream is already finished.".into(),
@@ -131,9 +143,6 @@ impl Record {
                 "Send sequence {} before any later chunk.",
                 self.count
             )));
-        }
-        if self.count >= MAX_FRAMES || self.bytes + bytes > MAX_STREAM_BYTES {
-            return Err(StreamError::Limit("The scan reached its frame or storage limit. Finish this scan before capturing more.".into()));
         }
         if self
             .last_timestamp
@@ -148,42 +157,13 @@ impl Record {
                 "Each frame needs a new frame id.".into(),
             ));
         }
-        for (seen, ids) in [
-            (
-                &self.surfaces,
-                chunk
-                    .surfaces
-                    .iter()
-                    .map(|v| v.id.as_str())
-                    .collect::<Vec<_>>(),
-            ),
-            (
-                &self.objects,
-                chunk
-                    .objects
-                    .iter()
-                    .map(|v| v.id.as_str())
-                    .collect::<Vec<_>>(),
-            ),
-        ] {
-            if seen.len() + ids.into_iter().filter(|id| !seen.contains(*id)).count() > MAX_LABELS {
-                return Err(StreamError::Limit(
-                    "The scan reached its observed-label limit.".into(),
-                ));
-            }
-        }
         Ok(())
     }
 
-    fn accept(&mut self, chunk: StreamChunk, bytes: u64) {
+    fn accept(&mut self, chunk: StreamChunk) {
         self.count += 1;
-        self.bytes += bytes;
         self.last_timestamp = Some(chunk.frame.timestamp_seconds);
         self.frames.insert(chunk.frame.id);
-        self.surfaces
-            .extend(chunk.surfaces.into_iter().map(|value| value.id));
-        self.objects
-            .extend(chunk.objects.into_iter().map(|value| value.id));
     }
 }
 
@@ -203,8 +183,10 @@ impl Drop for Inner {
 
 #[derive(Clone)]
 pub struct StreamStore {
+    recognition: Option<RecognitionService>,
     inner: Arc<Inner>,
-    pub(crate) processing: Arc<Semaphore>,
+    processing: Arc<Semaphore>,
+    pub(crate) response_requests: Arc<Semaphore>,
 }
 
 impl Default for StreamStore {
@@ -274,22 +256,17 @@ impl StreamStore {
                 }
             }
             sequences.sort_unstable();
-            if sequences.len() > MAX_FRAMES {
-                return Err(StreamError::Limit(
-                    "Stored stream exceeds the frame limit.".into(),
-                ));
-            }
             for sequence in sequences {
                 let path = entry.path().join(chunk_name(sequence));
-                let bytes = file_len(&path, MAX_CHUNK_BYTES)?;
+                file_len(&path, MAX_CHUNK_BYTES)?;
                 let chunk = parse_chunk(&read_value(&path, MAX_CHUNK_BYTES)?, &record.manifest)?;
                 if chunk.sequence != sequence {
                     return Err(StreamError::Invalid(
                         "Stored chunk sequence does not match its filename.".into(),
                     ));
                 }
-                record.check_next(&chunk, bytes)?;
-                record.accept(chunk, bytes);
+                record.check_next(&chunk)?;
+                record.accept(chunk);
             }
             let finish_path = entry.path().join("finish.json");
             if finish_path.try_exists()? {
@@ -310,7 +287,44 @@ impl StreamStore {
                 temporary: false,
             }),
             processing: Arc::new(Semaphore::new(2)),
+            response_requests: Arc::new(Semaphore::new(4)),
+            recognition: None,
         })
+    }
+
+    /// Enable one local inference worker for this durable store. Tests and embedders
+    /// keep their existing dependency-free geometry path unless explicitly enabled.
+    pub fn with_recognition(mut self, config: RecognitionConfig) -> Result<Self, StreamError> {
+        self.recognition = Some(
+            RecognitionService::new(self.inner.root.clone(), Some(config))
+                .map_err(StreamError::Invalid)?,
+        );
+        Ok(self)
+    }
+
+    fn recognition_summary(&self, mut summary: StreamSummary) -> StreamSummary {
+        if let Some(service) = &self.recognition {
+            summary.recognition = Some(service.snapshot(&summary.id, summary.frame_count));
+        }
+        summary
+    }
+
+    fn prepare_recognition(
+        &self,
+        id: &str,
+        count: usize,
+    ) -> Result<Option<RecognitionSnapshot>, StreamError> {
+        let Some(service) = &self.recognition else {
+            return Ok(None);
+        };
+        service.submit(id, count);
+        let snapshot = service.snapshot(id, count);
+        match snapshot.status {
+            RecognitionStatus::Pending | RecognitionStatus::Running => {
+                Err(StreamError::RecognitionPending)
+            }
+            RecognitionStatus::Complete | RecognitionStatus::Unavailable => Ok(Some(snapshot)),
+        }
     }
 
     pub fn create(&self, original: Value) -> Result<(bool, StreamSummary), StreamError> {
@@ -341,13 +355,15 @@ impl StreamStore {
 
     pub fn summary(&self, id: &str) -> Result<StreamSummary, StreamError> {
         check_id(id)?;
-        self.inner
+        let summary = self
+            .inner
             .records
             .lock()
             .unwrap()
             .get(id)
             .map(Record::summary)
-            .ok_or(StreamError::Missing)
+            .ok_or(StreamError::Missing)?;
+        Ok(self.recognition_summary(summary))
     }
 
     pub fn append(
@@ -372,7 +388,12 @@ impl StreamStore {
                 MAX_CHUNK_BYTES,
             )?;
             return if original == previous {
-                Ok(record.summary())
+                let summary = record.summary();
+                drop(records);
+                if let Some(service) = &self.recognition {
+                    service.submit(id, summary.frame_count);
+                }
+                Ok(self.recognition_summary(summary))
             } else {
                 Err(StreamError::Conflict(
                     "This sequence already contains different observations.".into(),
@@ -385,10 +406,15 @@ impl StreamStore {
                 "Chunk sequence must match the upload URL.".into(),
             ));
         }
-        record.check_next(&chunk, bytes.len() as u64)?;
+        record.check_next(&chunk)?;
         atomic_write(&self.inner.root.join(id).join(chunk_name(sequence)), &bytes)?;
-        record.accept(chunk, bytes.len() as u64);
-        Ok(record.summary())
+        record.accept(chunk);
+        let summary = record.summary();
+        drop(records);
+        if let Some(service) = &self.recognition {
+            service.submit(id, summary.frame_count);
+        }
+        Ok(self.recognition_summary(summary))
     }
 
     pub fn finish(&self, id: &str, chunk_count: usize) -> Result<StreamSummary, StreamError> {
@@ -408,10 +434,90 @@ impl StreamStore {
             )?;
             record.finished = true;
         }
-        Ok(record.summary())
+        let summary = record.summary();
+        drop(records);
+        if let Some(service) = &self.recognition {
+            service.submit(id, summary.frame_count);
+        }
+        Ok(self.recognition_summary(summary))
     }
 
     pub fn reconstruct(&self, id: &str) -> Result<StreamResult, StreamError> {
+        self.build_reconstruction(id)
+    }
+
+    /// HTTP results are serialized once and cached durably. A second request for the same
+    /// immutable finished capture joins that reconstruction instead of starting another job.
+    pub fn reconstruct_encoded(&self, id: &str, scene_only: bool) -> Result<Vec<u8>, StreamError> {
+        check_id(id)?;
+        let (reconstruction, frame_count) = {
+            let records = self.inner.records.lock().unwrap();
+            let record = records.get(id).ok_or(StreamError::Missing)?;
+            if !record.finished {
+                return Err(StreamError::Unfinished);
+            }
+            (record.reconstruction.clone(), record.count)
+        };
+        let recognition = self.prepare_recognition(id, frame_count)?;
+        let cacheable = recognition.as_ref().is_none_or(|snapshot| {
+            snapshot.status == RecognitionStatus::Complete && snapshot.failed_frames == 0
+        });
+        let recognition_key = recognition
+            .as_ref()
+            .map(|snapshot| snapshot.cache_key.as_str());
+        let _job = reconstruction.lock().unwrap();
+        let dir = self.inner.root.join(id);
+        let path = dir.join(if scene_only {
+            SCENE_CACHE
+        } else {
+            RESULT_CACHE
+        });
+        if cacheable
+            && let Some(bytes) =
+                cached_json(&dir, &path, id, frame_count, scene_only, recognition_key)?
+        {
+            return Ok(bytes);
+        }
+        // Cache hits and callers waiting for the same job do not consume a processing slot.
+        let _permit = self
+            .processing
+            .try_acquire()
+            .map_err(|_| StreamError::Busy)?;
+        let result = self.build_reconstruction(id)?;
+        let result_bytes = serde_json::to_vec(&result).map_err(invalid_json)?;
+        let scene_bytes = serde_json::to_vec(&result.scene).map_err(invalid_json)?;
+        // A missing/failing inference worker must not permanently cache a partial model.
+        if !cacheable {
+            return Ok(if scene_only {
+                scene_bytes
+            } else {
+                result_bytes
+            });
+        }
+        // Atomic cache writes never change or replace the acknowledged original observations.
+        atomic_write(&dir.join(RESULT_CACHE), &result_bytes)?;
+        atomic_write(&dir.join(SCENE_CACHE), &scene_bytes)?;
+        let metadata = CacheMetadata {
+            reconstruction_version: RECONSTRUCTION_VERSION,
+            source_stream_id: id.to_owned(),
+            source_frame_count: frame_count,
+            recognition_key: recognition_key.map(str::to_owned),
+            result: CacheFile::new(&result_bytes),
+            scene: CacheFile::new(&scene_bytes),
+        };
+        // Write validity metadata last, so interrupted cache writes are always rebuilt.
+        atomic_write(
+            &dir.join(CACHE_METADATA),
+            &serde_json::to_vec(&metadata).map_err(invalid_json)?,
+        )?;
+        Ok(if scene_only {
+            scene_bytes
+        } else {
+            result_bytes
+        })
+    }
+
+    fn build_reconstruction(&self, id: &str) -> Result<StreamResult, StreamError> {
         check_id(id)?;
         let (manifest, count) = {
             let records = self.inner.records.lock().unwrap();
@@ -421,6 +527,7 @@ impl StreamStore {
             }
             (record.manifest.clone(), record.count)
         };
+        let recognition = self.prepare_recognition(id, count)?;
         // Retain a small uniformly spaced pose graph including the first and final observation.
         // All unselected raw frames remain on disk and are reintegrated with rigid corrections
         // interpolated by timestamp between their neighboring graph frames.
@@ -432,34 +539,39 @@ impl StreamStore {
             } else {
                 index * (count - 1) / (key_count - 1)
             };
-            let original = read_value(
+            let chunk: StreamChunk = read_json(
                 &self.inner.root.join(id).join(chunk_name(sequence)),
                 MAX_CHUNK_BYTES,
             )?;
-            let chunk: StreamChunk = serde_json::from_value(original).map_err(invalid_json)?;
             alignment_frames.push(registration_frame(&chunk)?);
         }
         let alignment = alignment::align(&alignment_frames).map_err(StreamError::Invalid)?;
         let mut fusion = TriangleFusion::default();
         let mut objects = BTreeMap::new();
+        let mut recognized = ObjectFusion::default();
         let mut surfaces = BTreeMap::new();
         for sequence in 0..count {
             // Decode and release each observation before reading the next. JPEG was validated
             // at ingestion; reconstruction uses measured depth and the supplied rigid pose.
-            let original = read_value(
+            let mut chunk: StreamChunk = read_json(
                 &self.inner.root.join(id).join(chunk_name(sequence)),
                 MAX_CHUNK_BYTES,
             )?;
-            let mut chunk: StreamChunk = serde_json::from_value(original).map_err(invalid_json)?;
             let correction = alignment.correction_for(chunk.frame.timestamp_seconds);
             chunk.frame.map_from_camera = compose(correction, chunk.frame.map_from_camera);
+            if let Some(service) = &self.recognition {
+                recognized.integrate(
+                    &chunk.frame,
+                    &service.detections(id, sequence, &chunk.frame),
+                );
+            }
             for object in &mut chunk.objects {
                 object.map_from_object = compose(correction, object.map_from_object);
             }
             for surface in &mut chunk.surfaces {
                 surface.map_from_surface = compose(correction, surface.map_from_surface);
             }
-            fusion.integrate(&chunk.frame)?;
+            fusion.integrate(&chunk.frame);
             objects.extend(
                 chunk
                     .objects
@@ -473,16 +585,27 @@ impl StreamStore {
                     .map(|value| (value.id.clone(), value)),
             );
         }
+        let weld_meters = fusion.cell_meters();
+        let mesh_compactions = fusion.compaction_level;
+        let (objects, recognition_merge) =
+            merge_recognized(objects.into_values().collect(), recognized.finish());
+        let mut display_reports = Vec::new();
         let meshes = if fusion.triangles.is_empty() {
             vec![]
         } else {
-            vec![MeshCapture {
+            let measured = MeshCapture {
                 id: "stream-depth-fusion".into(),
                 map_from_anchor: identity(),
                 vertices: fusion.vertices,
                 triangles: fusion.triangles,
                 classifications: None,
-            }]
+            };
+            // Both returned halves must share the compact display geometry. Observed
+            // surfaces and obstacle bounds remain measured independently for navigation.
+            let (display, report) = simplify_display_mesh(measured, DisplayMeshOptions::default())
+                .map_err(StreamError::Invalid)?;
+            display_reports.push(report);
+            vec![display]
         };
         let capture = ScanBundle {
             schema_version: 1,
@@ -492,63 +615,137 @@ impl StreamStore {
             coordinates: manifest.coordinates,
             meshes,
             frames: vec![],
-            objects: objects.into_values().collect(),
+            objects,
             surfaces: surfaces.into_values().collect(),
         };
         if capture.meshes.is_empty() && capture.objects.is_empty() && capture.surfaces.is_empty() {
             return Err(StreamError::Invalid("No connected, confident depth surface was captured. Scan closer to surfaces with adequate lighting and try again.".into()));
         }
         let mut scene =
-            scene::process(&capture, ProcessingOptions::default()).map_err(StreamError::Invalid)?;
+            scene::process_with_catalog_references(&capture, ProcessingOptions::default())
+                .map_err(StreamError::Invalid)?;
+        // The app already bundles these catalog assets. Send model placements, not
+        // thousands of repeated vertices for each chair. Older viewers can render
+        // the existing coarse parts. Unknown objects also need only their bounds.
         scene.warnings.push(if alignment.optimized {
-            "Measured depth geometry and observed labels use loop-optimized camera poses. Live AR navigation needs localization against this corrected map. RGB texturing and automatic floor/object recognition are not implemented.".into()
+            "Measured depth geometry and observed labels use loop-optimized camera poses. Live AR navigation needs localization against this corrected map. RGB texturing and automatic floor recognition are not implemented.".into()
         } else if alignment.constraints.iter().any(|constraint| constraint.accepted) {
-            "A verified loop was already aligned; geometry retains the original ARKit poses. RGB texturing and automatic floor/object recognition are not implemented.".into()
+            "A verified loop was already aligned; geometry retains the original ARKit poses. RGB texturing and automatic floor recognition are not implemented.".into()
         } else {
-            "No observable, verified loop closure was accepted; geometry uses the original ARKit poses. RGB texturing and automatic floor/object recognition are not implemented.".into()
+            "No observable, verified loop closure was accepted; geometry uses the original ARKit poses. RGB texturing and automatic floor recognition are not implemented.".into()
         });
+        match recognition.as_ref().map(|snapshot| &snapshot.status) {
+            Some(RecognitionStatus::Complete) if recognition.as_ref().is_some_and(|snapshot| snapshot.failed_frames > 0) => scene.warnings.push("Some camera views could not be recognized. Confirmed furniture uses measured depth; other areas retain measured geometry.".into()),
+            Some(RecognitionStatus::Complete) => scene.warnings.push("Furniture types are estimated from camera views; dimensions come from measured depth. Uncertain objects keep measured shapes.".into()),
+            Some(_) => scene.warnings.push("Furniture recognition was unavailable. The map retains measured geometry and supplied labels.".into()),
+            None => scene.warnings.push("Furniture recognition is disabled. The map retains measured geometry and supplied labels.".into()),
+        }
+        if mesh_compactions > 0
+            || display_reports
+                .iter()
+                .any(|report| report.display_triangle_count < report.source_triangle_count)
+        {
+            scene.warnings.push(
+                "Map detail was reduced for this large scan. Original measurements remain saved."
+                    .into(),
+            );
+        }
         let mut value = serde_json::to_value(&capture).map_err(invalid_json)?;
         value["metadata"] = json!({
             "source_stream_id": manifest.id, "source_frame_count": count,
-            "reconstruction_method": "depth_triangle_fusion_v1",
+            "reconstruction_method": "adaptive_depth_fusion_recognition_display_v5",
             "coordinate_frame": "original_arkit_session", "alignment_refined": alignment.optimized,
             "alignment_optimized": alignment.optimized,
             "alignment_keyframe_count": key_count, "correction_interpolation": "rigid_by_timestamp",
-            "weld_meters": WELD_METERS,
+            "weld_meters": weld_meters, "mesh_compactions": mesh_compactions,
+            "display_meshes": display_reports,
+            "model_catalog": "photo-furniture-v1",
+            "recognition": {"worker": recognition.map(|snapshot| serde_json::to_value(snapshot).unwrap())
+                .unwrap_or_else(|| json!({"status":"disabled"})),
+                "fusion": recognized.stats(), "merge": recognition_merge},
         });
         let result = StreamResult {
             capture: value,
             scene,
             alignment,
         };
-        // Count serialized bytes without allocating a second result-sized buffer. Native clients
-        // receive a complete compact source plus scene, never a truncated mesh or partial JSON.
-        let mut counter = BoundedWriter { count: 0 };
-        if let Err(error) = serde_json::to_writer(&mut counter, &result) {
-            if counter.count > MAX_RESULT_BYTES {
-                return Err(StreamError::ResultTooLarge);
-            }
-            return Err(invalid_json(error));
-        }
         Ok(result)
     }
 }
 
-struct BoundedWriter {
-    count: usize,
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CacheMetadata {
+    reconstruction_version: u32,
+    source_stream_id: String,
+    source_frame_count: usize,
+    recognition_key: Option<String>,
+    result: CacheFile,
+    scene: CacheFile,
 }
-impl Write for BoundedWriter {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.count = self.count.saturating_add(bytes.len());
-        if self.count > MAX_RESULT_BYTES {
-            Err(std::io::Error::other("stream result exceeds 64 MiB"))
-        } else {
-            Ok(bytes.len())
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CacheFile {
+    bytes: usize,
+    crc32: u32,
+}
+impl CacheFile {
+    fn new(bytes: &[u8]) -> Self {
+        let mut checksum = flate2::Crc::new();
+        checksum.update(bytes);
+        Self {
+            bytes: bytes.len(),
+            crc32: checksum.sum(),
         }
     }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+    fn matches(&self, bytes: &[u8]) -> bool {
+        let actual = Self::new(bytes);
+        actual.bytes == self.bytes && actual.crc32 == self.crc32
     }
+}
+
+fn cached_json(
+    dir: &Path,
+    path: &Path,
+    id: &str,
+    frame_count: usize,
+    scene_only: bool,
+    recognition_key: Option<&str>,
+) -> Result<Option<Vec<u8>>, StreamError> {
+    let metadata_path = dir.join(CACHE_METADATA);
+    if !path.try_exists()? || !metadata_path.try_exists()? {
+        return Ok(None);
+    }
+    let metadata: CacheMetadata = match read_json(&metadata_path, 4096) {
+        Ok(metadata) => metadata,
+        Err(StreamError::Invalid(_) | StreamError::Limit(_)) => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if metadata.reconstruction_version != RECONSTRUCTION_VERSION
+        || metadata.source_stream_id != id
+        || metadata.source_frame_count != frame_count
+        || metadata.recognition_key.as_deref() != recognition_key
+    {
+        return Ok(None);
+    }
+    let expected = if scene_only {
+        &metadata.scene
+    } else {
+        &metadata.result
+    };
+    let file = fs::symlink_metadata(path)?;
+    if !file.file_type().is_file() || file.len() != expected.bytes as u64 {
+        return Ok(None);
+    };
+    // Results have no aggregate size cutoff. Chunk reads remain separately bounded.
+    let bytes = fs::read(path)?;
+    // Detect accidental corruption, including valid JSON with changed geometry. This is
+    // derived data; only the backend writes it after validating the immutable raw source.
+    if !expected.matches(&bytes) {
+        return Ok(None);
+    }
+    Ok(Some(bytes))
 }
 
 fn empty_record(manifest: StreamManifest, original: Value) -> Record {
@@ -556,12 +753,10 @@ fn empty_record(manifest: StreamManifest, original: Value) -> Record {
         manifest,
         original,
         count: 0,
-        bytes: 0,
         last_timestamp: None,
         frames: HashSet::new(),
-        surfaces: HashSet::new(),
-        objects: HashSet::new(),
         finished: false,
+        reconstruction: Arc::new(Mutex::new(())),
     }
 }
 
@@ -699,7 +894,7 @@ fn file_len(path: &Path, max: usize) -> Result<u64, StreamError> {
     Ok(metadata.len())
 }
 
-fn read_value(path: &Path, max: usize) -> Result<Value, StreamError> {
+fn read_bytes(path: &Path, max: usize) -> Result<Vec<u8>, StreamError> {
     file_len(path, max)?;
     let mut bytes = Vec::new();
     File::open(path)?
@@ -710,7 +905,15 @@ fn read_value(path: &Path, max: usize) -> Result<Value, StreamError> {
             "Stored stream file is too large.".into(),
         ));
     }
-    serde_json::from_slice(&bytes).map_err(invalid_json)
+    Ok(bytes)
+}
+
+fn read_json<T: DeserializeOwned>(path: &Path, max: usize) -> Result<T, StreamError> {
+    serde_json::from_slice(&read_bytes(path, max)?).map_err(invalid_json)
+}
+
+fn read_value(path: &Path, max: usize) -> Result<Value, StreamError> {
+    read_json(path, max)
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), StreamError> {
@@ -816,26 +1019,71 @@ fn registration_frame(chunk: &StreamChunk) -> Result<AlignmentFrame, StreamError
     })
 }
 
-#[derive(Default)]
 struct TriangleFusion {
     vertices: Vec<Vec3>,
     triangles: Vec<[usize; 3]>,
+    // Keep each measured face's normal through every compaction, preventing accumulated folds.
+    source_normals: Vec<Vec3>,
     voxels: HashMap<[i64; 3], usize>,
     faces: HashSet<[usize; 3]>,
+    compaction_level: u32,
+    vertex_target: usize,
+    triangle_target: usize,
+}
+
+struct PreparedTriangle {
+    keys: [[i64; 3]; 3],
+    positions: [Vec3; 3],
+}
+
+impl Default for TriangleFusion {
+    fn default() -> Self {
+        Self {
+            vertices: Vec::new(),
+            triangles: Vec::new(),
+            source_normals: Vec::new(),
+            voxels: HashMap::new(),
+            faces: HashSet::new(),
+            compaction_level: 0,
+            vertex_target: MESH_VERTEX_TARGET,
+            triangle_target: MESH_TRIANGLE_TARGET,
+        }
+    }
 }
 
 impl TriangleFusion {
-    fn integrate(&mut self, frame: &DepthFrame) -> Result<(), StreamError> {
+    fn cell_meters(&self) -> f64 {
+        WELD_METERS * (1u32 << self.compaction_level) as f64
+    }
+
+    fn voxel_key(&self, position: Vec3) -> [i64; 3] {
+        // Nested cells make every finer cell belong to exactly one coarser cell,
+        // including at negative coordinates. First measured representatives stay
+        // within one final cell of their source without accumulated displacement.
+        let factor = 1i64 << self.compaction_level;
+        position.map(|value| ((value / WELD_METERS).floor() as i64).div_euclid(factor))
+    }
+
+    fn integrate(&mut self, frame: &DepthFrame) {
         let width = frame.depth.width;
         let height = frame.depth.height;
         if width < 2 || height < 2 {
-            return Ok(());
+            return;
         }
-        let valid = |index: usize| {
-            let depth = frame.depth.values_m[index]?;
-            let confidence = frame.depth.confidence.as_ref()?[index];
-            (confidence >= 1 && (0.15..=8.0).contains(&depth)).then_some(depth)
-        };
+        // A sample belongs to up to six triangles. Unproject it once, preserving the
+        // exact coordinates and triangle order while avoiding per-triangle allocation.
+        let projected: Vec<_> = frame
+            .depth
+            .values_m
+            .iter()
+            .enumerate()
+            .map(|(index, depth)| {
+                let depth = (*depth)?;
+                let confidence = frame.depth.confidence.as_ref()?[index];
+                (confidence >= 1 && (0.15..=8.0).contains(&depth))
+                    .then(|| (depth, frame.point_in_map(index, depth)))
+            })
+            .collect();
         for row in 0..height - 1 {
             for col in 0..width - 1 {
                 let tl = row * width + col;
@@ -844,30 +1092,89 @@ impl TriangleFusion {
                     [tl, tl + width, tl + 1],
                     [tl + 1, tl + width, tl + width + 1],
                 ] {
-                    let Some(depths) = pixels.map(valid).into_iter().collect::<Option<Vec<_>>>()
-                    else {
+                    let [Some(a), Some(b), Some(c)] = pixels.map(|index| projected[index]) else {
                         continue;
                     };
+                    let depths = [a.0, b.0, c.0];
                     let nearest = depths.iter().copied().fold(f64::INFINITY, f64::min);
                     let farthest = depths.iter().copied().fold(0.0, f64::max);
                     // Do not bridge foreground/background silhouettes or missing samples.
                     if farthest - nearest > (nearest * 0.05).max(0.05) {
                         continue;
                     }
-                    let positions =
-                        std::array::from_fn(|i| frame.point_in_map(pixels[i], depths[i]));
-                    self.add_triangle(positions)?;
+                    let positions = [a.1, b.1, c.1];
+                    self.add_triangle(positions);
                 }
             }
         }
-        Ok(())
     }
 
-    fn add_triangle(&mut self, positions: [Vec3; 3]) -> Result<(), StreamError> {
-        let keys = positions.map(|p| p.map(|v| (v / WELD_METERS).round() as i64));
-        if keys[0] == keys[1] || keys[0] == keys[2] || keys[1] == keys[2] {
-            return Ok(());
+    fn add_triangle(&mut self, positions: [Vec3; 3]) {
+        let Some(source_normal) = Self::measured_normal(positions) else {
+            return;
+        };
+        loop {
+            let Some(prepared) = self.prepare_triangle(positions, source_normal) else {
+                return;
+            };
+            let new_vertices = prepared
+                .keys
+                .iter()
+                .filter(|key| !self.voxels.contains_key(*key))
+                .count();
+            if self.compaction_level < MAX_COMPACTION_LEVEL
+                && (self.vertices.len() + new_vertices > self.vertex_target
+                    || self.triangles.len() + 1 > self.triangle_target)
+            {
+                self.compact();
+                // The offending observation and all later coverage are still integrated.
+                continue;
+            }
+            self.insert_triangle(prepared, source_normal);
+            return;
         }
+    }
+
+    fn prepare_triangle(
+        &self,
+        positions: [Vec3; 3],
+        source_normal: Vec3,
+    ) -> Option<PreparedTriangle> {
+        let keys = positions.map(|position| self.voxel_key(position));
+        if keys[0] == keys[1] || keys[0] == keys[2] || keys[1] == keys[2] {
+            return None;
+        }
+        if let [Some(a), Some(b), Some(c)] = keys.map(|key| self.voxels.get(&key).copied()) {
+            let mut canonical = [a, b, c];
+            canonical.sort_unstable();
+            if self.faces.contains(&canonical) {
+                return None;
+            }
+        }
+        let mapped = std::array::from_fn(|index| {
+            self.voxels
+                .get(&keys[index])
+                .map_or(positions[index], |vertex| self.vertices[*vertex])
+        });
+        let mapped_normal = Self::measured_normal(mapped)?;
+        let dot: f64 = mapped_normal
+            .iter()
+            .zip(source_normal)
+            .map(|(a, b)| a * b)
+            .sum();
+        let mapped_length: f64 = mapped_normal.iter().map(|v| v * v).sum();
+        let source_length: f64 = source_normal.iter().map(|v| v * v).sum();
+        // Reject a fold or a normal change over 60 degrees instead of manufacturing a face.
+        if dot <= 0. || dot * dot < 0.25 * mapped_length * source_length {
+            return None;
+        }
+        Some(PreparedTriangle {
+            keys,
+            positions: mapped,
+        })
+    }
+
+    fn measured_normal(positions: [Vec3; 3]) -> Option<Vec3> {
         let a = std::array::from_fn::<_, 3, _>(|i| positions[1][i] - positions[0][i]);
         let b = std::array::from_fn::<_, 3, _>(|i| positions[2][i] - positions[0][i]);
         let cross = [
@@ -876,40 +1183,241 @@ impl TriangleFusion {
             a[0] * b[1] - a[1] * b[0],
         ];
         if cross.iter().map(|v| v * v).sum::<f64>() < 1e-12 {
-            return Ok(());
+            return None;
         }
         // Very coarse angular samples should not fill broad regions between observations.
         if positions.iter().enumerate().any(|(i, p)| {
             let q = positions[(i + 1) % 3];
             p.iter().zip(q).map(|(p, q)| (p - q) * (p - q)).sum::<f64>() > 0.25
         }) {
-            return Ok(());
+            return None;
         }
-        let new_vertices = keys
-            .iter()
-            .filter(|key| !self.voxels.contains_key(*key))
-            .count();
-        if self.vertices.len() + new_vertices > MAX_VERTICES {
-            return Err(StreamError::Limit("This scan exceeds the reconstruction vertex limit. A larger-scene reconstruction pipeline is required.".into()));
-        }
+        Some(cross)
+    }
+
+    fn insert_triangle(&mut self, prepared: PreparedTriangle, source_normal: Vec3) {
         let mut triangle = [0usize; 3];
-        for i in 0..3 {
-            triangle[i] = *self.voxels.entry(keys[i]).or_insert_with(|| {
+        for (i, vertex) in triangle.iter_mut().enumerate() {
+            *vertex = *self.voxels.entry(prepared.keys[i]).or_insert_with(|| {
                 let index = self.vertices.len();
-                self.vertices.push(positions[i]);
+                self.vertices.push(prepared.positions[i]);
                 index
             });
         }
         let mut canonical = triangle;
         canonical.sort_unstable();
-        if self.faces.contains(&canonical) {
-            return Ok(());
-        }
-        if self.triangles.len() >= MAX_TRIANGLES {
-            return Err(StreamError::Limit("This scan exceeds the reconstruction triangle limit. A larger-scene reconstruction pipeline is required.".into()));
-        }
         self.faces.insert(canonical);
         self.triangles.push(triangle);
-        Ok(())
+        self.source_normals.push(source_normal);
+    }
+
+    fn compact(&mut self) {
+        self.compaction_level += 1;
+        let vertices = std::mem::take(&mut self.vertices);
+        let triangles = std::mem::take(&mut self.triangles);
+        let normals = std::mem::take(&mut self.source_normals);
+        self.voxels.clear();
+        self.faces.clear();
+        // Preserve insertion order and measured representatives. Only faces supported
+        // by earlier measurements are remapped; holes are never explicitly filled.
+        for (triangle, normal) in triangles.into_iter().zip(normals) {
+            if let Some(prepared) =
+                self.prepare_triangle(triangle.map(|index| vertices[index]), normal)
+            {
+                self.insert_triangle(prepared, normal);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod reconstruction_tests {
+    use super::*;
+
+    fn add_patch(fusion: &mut TriangleFusion, offset: f64, jitter: f64, spacing: f64) {
+        for row in 0..5 {
+            for col in 0..5 {
+                let x = offset + col as f64 * spacing + jitter;
+                let y = row as f64 * spacing + jitter;
+                let points = [
+                    [x, y, -2.],
+                    [x + spacing, y, -2.],
+                    [x, y + spacing, -2.],
+                    [x + spacing, y + spacing, -2.],
+                ];
+                fusion.add_triangle([points[0], points[1], points[2]]);
+                fusion.add_triangle([points[1], points[3], points[2]]);
+            }
+        }
+    }
+
+    #[test]
+    fn soft_targets_keep_early_and_late_coverage_and_never_reject_a_building() {
+        let build = || {
+            let mut fusion = TriangleFusion {
+                vertex_target: 25,
+                triangle_target: 30,
+                ..Default::default()
+            };
+            for region in 0..12 {
+                add_patch(&mut fusion, region as f64 * 2. - 8., 0., 0.1);
+            }
+            fusion
+        };
+        let fusion = build();
+        let repeated = build();
+        assert_eq!(fusion.compaction_level, MAX_COMPACTION_LEVEL);
+        assert!(fusion.vertices.len() > fusion.vertex_target);
+        assert!(fusion.triangles.len() > fusion.triangle_target);
+        assert!(fusion.vertices.iter().any(|point| point[0] < -7.9));
+        assert!(fusion.vertices.iter().any(|point| point[0] > 14.4));
+        assert_eq!(fusion.vertices, repeated.vertices);
+        assert_eq!(fusion.triangles, repeated.triangles);
+        for (triangle, source_normal) in fusion.triangles.iter().zip(&fusion.source_normals) {
+            let normal =
+                TriangleFusion::measured_normal(triangle.map(|index| fusion.vertices[index]))
+                    .unwrap();
+            assert!(
+                normal
+                    .iter()
+                    .zip(source_normal)
+                    .map(|(a, b)| a * b)
+                    .sum::<f64>()
+                    > 0.
+            );
+        }
+    }
+
+    #[test]
+    fn moving_overlapping_views_remain_compact_after_the_soft_target() {
+        let mut fusion = TriangleFusion {
+            vertex_target: 25,
+            triangle_target: 30,
+            ..Default::default()
+        };
+        for view in 0..80 {
+            add_patch(&mut fusion, -0.24, (view % 4) as f64 * 0.003, 0.04);
+        }
+        assert_eq!(fusion.compaction_level, MAX_COMPACTION_LEVEL);
+        assert!(!fusion.triangles.is_empty());
+        assert!(fusion.triangles.len() < 80);
+        assert!(fusion.vertices.iter().all(|point| point[2] == -2.));
+        assert_eq!(fusion.source_normals.len(), fusion.triangles.len());
+    }
+
+    #[test]
+    fn remapped_faces_cannot_fold_or_tilt_away_from_their_measurement() {
+        let measured = [
+            [0.079, 0.079, -2.],
+            [0.081, 0.079, -2.],
+            [0.079, 0.081, -2.],
+        ];
+        let normal = TriangleFusion::measured_normal(measured).unwrap();
+        for representatives in [
+            [
+                [0.079, 0.079, -2.],
+                [0.081, 0.001, -2.],
+                [0.001, 0.081, -2.],
+            ],
+            [
+                [0.079, 0.079, -2.],
+                [0.081, 0.079, -1.921],
+                [0.079, 0.081, -2.],
+            ],
+        ] {
+            let mut fusion = TriangleFusion {
+                compaction_level: MAX_COMPACTION_LEVEL,
+                ..Default::default()
+            };
+            for point in representatives {
+                fusion
+                    .voxels
+                    .insert(fusion.voxel_key(point), fusion.vertices.len());
+                fusion.vertices.push(point);
+            }
+            assert!(fusion.prepare_triangle(measured, normal).is_none());
+        }
+    }
+
+    #[test]
+    fn compaction_preserves_a_large_confidence_hole_and_depth_discontinuities() {
+        let mut frame: DepthFrame = serde_json::from_value(json!({
+            "id":"hole", "timestamp_seconds":1., "pixel_orientation":"sensor_native", "map_from_camera":identity(),
+            "camera":{"image_width":33,"image_height":33,"fx":50.,"fy":50.,"cx":16.,"cy":16.},
+            "depth":{"width":33,"height":33,"values_m":vec![2.;33*33],"confidence":vec![2;33*33]}
+        }))
+        .unwrap();
+        for row in 11..22 {
+            for col in 11..22 {
+                frame.depth.confidence.as_mut().unwrap()[row * 33 + col] = 0;
+            }
+        }
+        let mut fusion = TriangleFusion {
+            vertex_target: 100,
+            triangle_target: 100,
+            ..Default::default()
+        };
+        fusion.integrate(&frame);
+        assert_eq!(fusion.compaction_level, MAX_COMPACTION_LEVEL);
+        assert!(!fusion.triangles.is_empty());
+        for triangle in &fusion.triangles {
+            let p = triangle.map(|index| fusion.vertices[index]);
+            let signs = std::array::from_fn::<_, 3, _>(|i| {
+                let a = p[i];
+                let b = p[(i + 1) % 3];
+                a[0] * b[1] - a[1] * b[0]
+            });
+            assert!(
+                signs.iter().any(|value| *value > 0.) && signs.iter().any(|value| *value < 0.),
+                "a remapped measured face filled the center of the confidence hole: {p:?}"
+            );
+        }
+        frame.depth.confidence = Some(vec![2; 33 * 33]);
+        for row in 0..33 {
+            for col in 16..33 {
+                frame.depth.values_m[row * 33 + col] = Some(5.);
+            }
+        }
+        let mut fusion = TriangleFusion {
+            vertex_target: 100,
+            triangle_target: 100,
+            ..Default::default()
+        };
+        fusion.integrate(&frame);
+        assert_eq!(fusion.compaction_level, MAX_COMPACTION_LEVEL);
+        for triangle in &fusion.triangles {
+            let depths = triangle.map(|index| fusion.vertices[index][2]);
+            assert_eq!(depths[0], depths[1]);
+            assert_eq!(depths[1], depths[2]);
+        }
+    }
+
+    #[test]
+    fn cached_results_larger_than_the_former_64_mib_limit_remain_readable() {
+        let store = StreamStore::default();
+        let id = "ebcb2c65-e1cd-4517-a02a-c204579b2f24";
+        let dir = store.inner.root.join(id);
+        fs::create_dir(&dir).unwrap();
+        let mut bytes = b"{}".to_vec();
+        bytes.resize(64 * 1024 * 1024 + 1, b' ');
+        let metadata = CacheMetadata {
+            reconstruction_version: RECONSTRUCTION_VERSION,
+            source_stream_id: id.into(),
+            source_frame_count: 1,
+            recognition_key: None,
+            result: CacheFile::new(&bytes),
+            scene: CacheFile::new(&bytes),
+        };
+        fs::write(dir.join(RESULT_CACHE), &bytes).unwrap();
+        fs::write(
+            dir.join(CACHE_METADATA),
+            serde_json::to_vec(&metadata).unwrap(),
+        )
+        .unwrap();
+        let cached = cached_json(&dir, &dir.join(RESULT_CACHE), id, 1, false, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.len(), bytes.len());
+        assert_eq!(serde_json::from_slice::<Value>(&cached).unwrap(), json!({}));
     }
 }

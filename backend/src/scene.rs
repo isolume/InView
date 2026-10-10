@@ -109,13 +109,28 @@ pub struct CloudPoint {
 
 /// Deterministic first pass: placement and depth unprojection, not learned recognition.
 pub fn process(bundle: &ScanBundle, options: ProcessingOptions) -> Result<Scene, String> {
+    process_geometry(bundle, options, false)
+}
+
+/// Compact catalog references retain the measured placement and coarse parts for
+/// viewers without the bundled assets. Other categories still include model geometry.
+pub fn process_with_catalog_references(
+    bundle: &ScanBundle,
+    options: ProcessingOptions,
+) -> Result<Scene, String> {
+    process_geometry(bundle, options, true)
+}
+
+fn process_geometry(
+    bundle: &ScanBundle,
+    options: ProcessingOptions,
+    catalog_references: bool,
+) -> Result<Scene, String> {
     bundle.validate()?;
     options.validate()?;
     let mut warnings = Vec::new();
     if bundle.objects.is_empty() {
-        warnings.push(
-            "No object labels were supplied; furniture recognition is not implemented yet.".into(),
-        );
+        warnings.push("No object labels were supplied. The map retains measured geometry.".into());
     }
     let objects: Vec<_> = bundle
         .objects
@@ -147,7 +162,14 @@ pub fn process(bundle: &ScanBundle, options: ProcessingOptions) -> Result<Scene,
                 obstacle_bounds: Bounds::from_points(&corners).expect("eight corners"),
                 obstacle_corners: corners,
                 parts: model_parts(model_key, object.dimensions_m),
-                model_meshes: furniture_meshes(model_key, object.dimensions_m),
+                model_meshes: if catalog_references
+                    && (model_key == "bounds_v1"
+                        || photo_model_key(model_key, object.dimensions_m).is_some())
+                {
+                    vec![]
+                } else {
+                    furniture_meshes(model_key, object.dimensions_m)
+                },
             }
         })
         .collect();

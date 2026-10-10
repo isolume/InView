@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import ImageIO
+import zlib
 import Testing
 @testable import AccessCore
 
@@ -34,9 +35,23 @@ private func streamManifest() -> StreamManifest {
     StreamManifest(id: UUID().uuidString, mapID: "building-1", floorID: "ground")
 }
 
+private func streamResult(_ manifest: StreamManifest) -> StreamResult {
+    StreamResult(capture: CaptureBundle(id: manifest.id, mapID: manifest.mapID,
+                                        floorID: manifest.floorID, frames: [streamFrame()]),
+                 scene: ProcessedScene(sourceScanID: manifest.id, mapID: manifest.mapID,
+                                       floorID: manifest.floorID, objects: [], surfaces: []))
+}
+
 private final class StreamTestServer: @unchecked Sendable {
-    enum Reply { case http(Int, Data), failure(URLError.Code), stall }
-    struct Record: Sendable { var method: String; var path: String; var body: Data }
+    enum Reply { case http(Int, Data, headers: [String: String] = [:]), failure(URLError.Code), stall }
+    struct Record: Sendable {
+        var method: String
+        var path: String
+        var body: Data
+        var contentEncoding: String?
+        var requestedAt: ContinuousClock.Instant
+        var timeoutInterval: TimeInterval
+    }
     let lock = NSLock()
     private var savedManifest: StreamManifest?
     private var chunks: [Int: Data] = [:]
@@ -48,6 +63,9 @@ private final class StreamTestServer: @unchecked Sendable {
     private var failAll = false
     private var wrongMap = false
     private var rejection: Int?
+    private var acceptsGzip = false
+    private var resultData: Data?
+    private var resultFailures: [(status: Int, code: String)] = []
 
     var records: [Record] { lock.withLock { requests } }
     var frameCount: Int { lock.withLock { chunks.count } }
@@ -58,13 +76,19 @@ private final class StreamTestServer: @unchecked Sendable {
     func wrongAcknowledgement() { lock.withLock { wrongMap = true } }
     func rejectUploads(status: Int) { lock.withLock { rejection = status } }
     func restart() { lock.withLock { savedManifest = nil; chunks = [:]; finished = false } }
+    func advertiseGzip() { lock.withLock { acceptsGzip = true } }
+    func respondWithResult(_ data: Data?) { lock.withLock { resultData = data } }
+    func failNextResults(_ failures: [(status: Int, code: String)]) { lock.withLock { resultFailures = failures } }
 
     func reply(to request: URLRequest) throws -> Reply {
-        let body = streamRequestBody(request)
+        let wireBody = streamRequestBody(request)
+        let encoding = request.value(forHTTPHeaderField: "Content-Encoding")
+        let body = encoding == "gzip" ? try streamGunzip(wireBody) : wireBody
         return try lock.withLock {
             let method = request.httpMethod ?? ""
             let path = request.url!.path
-            requests.append(Record(method: method, path: path, body: body))
+            requests.append(Record(method: method, path: path, body: wireBody, contentEncoding: encoding,
+                                   requestedAt: .now, timeoutInterval: request.timeoutInterval))
             if stallAll { return .stall }
             if failAll { return .failure(.notConnectedToInternet) }
             var pieces = path.split(separator: "/").map(String.init)
@@ -79,6 +103,13 @@ private final class StreamTestServer: @unchecked Sendable {
                 return error(404, "stream_not_found")
             }
             if method == "GET", pieces.count == 2 { return try summary() }
+            if method == "GET", pieces.count == 3, pieces[2] == "result" {
+                if !resultFailures.isEmpty {
+                    let failure = resultFailures.removeFirst()
+                    return error(failure.status, failure.code)
+                }
+                if let resultData { return .http(200, resultData) }
+            }
             if method == "PUT", pieces.count == 4, pieces[2] == "chunks", let sequence = Int(pieces[3]) {
                 if stallUpload { return .stall }
                 if let rejection { return error(rejection, "stream_limit") }
@@ -106,7 +137,7 @@ private final class StreamTestServer: @unchecked Sendable {
         let summary = StreamSummary(id: manifest.id, mapID: wrongMap ? "wrong-map" : manifest.mapID,
                                     floorID: manifest.floorID, nextSequence: chunks.count,
                                     finished: finished, frameCount: chunks.count)
-        return .http(200, try JSONEncoder().encode(summary))
+        return .http(200, try JSONEncoder().encode(summary), headers: acceptsGzip ? ["Accept-Encoding": "gzip"] : [:])
     }
 
     private func error(_ status: Int, _ code: String) -> Reply {
@@ -127,9 +158,9 @@ private final class StreamMockProtocol: URLProtocol {
         }
         do {
             switch try server.reply(to: request) {
-            case .http(let status, let data):
+            case .http(let status, let data, let headers):
                 client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status,
-                                                                    httpVersion: nil, headerFields: ["Content-Type": "application/json"])!,
+                                                                    httpVersion: nil, headerFields: headers.merging(["Content-Type": "application/json"]) { _, new in new })!,
                                     cacheStoragePolicy: .notAllowed)
                 client?.urlProtocol(self, didLoad: data)
                 client?.urlProtocolDidFinishLoading(self)
@@ -165,6 +196,35 @@ private func streamRequestBody(_ request: URLRequest) -> Data {
     return data
 }
 
+private func streamGunzip(_ data: Data) throws -> Data {
+    var stream = z_stream()
+    guard inflateInit2_(&stream, MAX_WBITS + 16, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+        throw StreamingCaptureError.invalidChunk
+    }
+    defer { inflateEnd(&stream) }
+    var output = Data(count: StreamChunk.maximumEncodedBytes)
+    let status = data.withUnsafeBytes { source in
+        output.withUnsafeMutableBytes { target in
+            stream.next_in = UnsafeMutablePointer(mutating: source.bindMemory(to: Bytef.self).baseAddress)
+            stream.avail_in = uInt(source.count)
+            stream.next_out = target.bindMemory(to: Bytef.self).baseAddress
+            stream.avail_out = uInt(target.count)
+            return inflate(&stream, Z_FINISH)
+        }
+    }
+    guard status == Z_STREAM_END, stream.avail_in == 0 else { throw StreamingCaptureError.invalidChunk }
+    output.removeSubrange(Int(stream.total_out)..<output.count)
+    return output
+}
+
+private func waitForUploadedFrames(_ count: Int, in queue: StreamingCaptureQueue) async throws {
+    for _ in 0..<400 {
+        if await queue.snapshot().uploaded == count { return }
+        try await Task.sleep(for: .milliseconds(5))
+    }
+    throw URLError(.timedOut)
+}
+
 private func waitForStreamRequest(_ server: StreamTestServer, method: String) async throws {
     for _ in 0..<400 {
         if server.records.contains(where: { $0.method == method }) { return }
@@ -174,6 +234,204 @@ private func waitForStreamRequest(_ server: StreamTestServer, method: String) as
 }
 
 struct StreamingCaptureTests {
+    @Test(arguments: [true, false])
+    func resultsWaitForRecognitionAndBusyProcessingWithinOneDeadline(usingManifest: Bool) async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let manifest = streamManifest()
+        let expected = streamResult(manifest)
+        server.respondWithResult(try JSONEncoder().encode(expected))
+        server.failNextResults([(503, "recognition_pending"), (503, "processing_busy")])
+        let client = StreamingBackendClient(baseURL: url, session: session)
+        try await client.begin(manifest)
+        let result = try await (usingManifest ? client.result(manifest: manifest) : client.result(id: manifest.id))
+        #expect(result == expected)
+        let requests = server.records.filter { $0.method == "GET" }
+        #expect(requests.count == 3)
+        #expect(requests[0].requestedAt.duration(to: requests[1].requestedAt) >= .seconds(1))
+        #expect(requests[1].requestedAt.duration(to: requests[2].requestedAt) >= .seconds(2))
+        #expect(requests[0].timeoutInterval <= 180)
+        #expect(requests[1].timeoutInterval < requests[0].timeoutInterval)
+        #expect(requests[2].timeoutInterval < requests[1].timeoutInterval)
+    }
+
+    @Test func cancellationDuringRecognitionWaitStopsPollingImmediately() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let manifest = streamManifest()
+        server.respondWithResult(try JSONEncoder().encode(streamResult(manifest)))
+        server.failNextResults([(503, "recognition_pending")])
+        let client = StreamingBackendClient(baseURL: url, session: session)
+        try await client.begin(manifest)
+        let task = Task { try await client.result(manifest: manifest) }
+        try await waitForStreamRequest(server, method: "GET")
+        // The mock responds immediately; let the result task enter its cancellable wait.
+        try await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(server.records.filter { $0.method == "GET" }.count == 1)
+    }
+
+    @Test(arguments: [503, 404, 500])
+    func unsupportedOrPermanentResultErrorsAreNeverPolled(status: Int) async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let manifest = streamManifest()
+        server.respondWithResult(try JSONEncoder().encode(streamResult(manifest)))
+        let code = status == 503 ? "recognition_unavailable" : "recognition_pending"
+        server.failNextResults([(status, code)])
+        let client = StreamingBackendClient(baseURL: url, session: session)
+        try await client.begin(manifest)
+        await #expect(throws: BackendClientError.http(status: status, code: code, message: "Request failed.")) {
+            try await client.result(manifest: manifest)
+        }
+        #expect(server.records.filter { $0.method == "GET" }.count == 1)
+    }
+
+    @Test func resultsStillValidateTheCaptureAfterRecognitionFinishes() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let manifest = streamManifest()
+        var wrong = streamResult(manifest)
+        wrong.capture.mapID = "different-map"
+        wrong.scene.mapID = "different-map"
+        server.respondWithResult(try JSONEncoder().encode(wrong))
+        server.failNextResults([(503, "recognition_pending")])
+        let client = StreamingBackendClient(baseURL: url, session: session)
+        try await client.begin(manifest)
+        await #expect(throws: BackendClientError.invalidResponse("The scan server returned a different scan.")) {
+            try await client.result(manifest: manifest)
+        }
+        #expect(server.records.filter { $0.method == "GET" }.count == 2)
+    }
+
+    @Test func defaultCaptureBudgetsDoNotLimitWholeBuildingScans() async throws {
+        #expect(StreamingCaptureLimits.standard.maximumFrames == Int.max)
+        #expect(StreamingCaptureLimits.standard.maximumSavedBytes == Int.max)
+        #expect(StreamingCaptureLimits() == .standard)
+        let root = streamRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Explicit caller budgets can also exceed the former 10,000-frame / 2-GiB defaults.
+        let limits = StreamingCaptureLimits(maximumFrames: 20_000, maximumSavedBytes: 4 * 1024 * 1024 * 1024)
+        let queue = try StreamingCaptureQueue(root: root, manifest: streamManifest(), backendURL: nil, limits: limits)
+        #expect(try await queue.append(frame: streamFrame(), colorJPEG: streamJPEG()).captured == 1)
+        #expect(throws: StreamingCaptureError.invalidLimits) {
+            try StreamingCaptureQueue(root: streamRoot(), manifest: streamManifest(), backendURL: nil,
+                                      limits: StreamingCaptureLimits(maximumFrames: 0))
+        }
+        #expect(throws: StreamingCaptureError.invalidLimits) {
+            try StreamingCaptureQueue(root: streamRoot(), manifest: streamManifest(), backendURL: nil,
+                                      limits: StreamingCaptureLimits(maximumSavedBytes: -1))
+        }
+    }
+
+    @Test func streamingResultsLargerThan64MiBAreDecodedAndValidated() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel(); server.respondWithResult(nil) }
+        let manifest = streamManifest()
+        let expected = StreamResult(capture: CaptureBundle(id: manifest.id, mapID: manifest.mapID,
+                                                           floorID: manifest.floorID, frames: [streamFrame()]),
+                                    scene: ProcessedScene(sourceScanID: manifest.id, mapID: manifest.mapID,
+                                                          floorID: manifest.floorID, objects: [], surfaces: []))
+        // Legal JSON whitespace exercises the transport boundary without allocating millions
+        // of test triangles. The decoded capture and scene still undergo full validation.
+        var response = try JSONEncoder().encode(expected)
+        response.append(Data(repeating: 0x20, count: 64 * 1024 * 1024))
+        #expect(response.count > 64 * 1024 * 1024)
+        server.respondWithResult(response)
+        let client = StreamingBackendClient(baseURL: url, session: session)
+        try await client.begin(manifest)
+        #expect(try await client.result(manifest: manifest) == expected)
+    }
+
+    @Test func automaticUploadsReuseTheReconciledStreamButExplicitSyncChecksAgain() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let root = streamRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let queue = try StreamingCaptureQueue(root: root, manifest: streamManifest(), backendURL: url, session: session)
+        let jpeg = try streamJPEG()
+        for timestamp in 1...3 {
+            try await queue.append(frame: streamFrame(Double(timestamp)), colorJPEG: jpeg)
+            try await waitForUploadedFrames(timestamp, in: queue)
+        }
+        #expect(server.records.filter { $0.method == "POST" && $0.path == "/api/streams" }.count == 1)
+        #expect(server.records.filter { $0.method == "PUT" }.count == 3)
+        try await queue.synchronize()
+        #expect(server.records.filter { $0.method == "POST" && $0.path == "/api/streams" }.count == 2)
+        await queue.stopUploads()
+    }
+
+    @Test func aBackendRestartBetweenAutomaticUploadsRestoresTheRetainedPrefix() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let root = streamRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let queue = try StreamingCaptureQueue(root: root, manifest: streamManifest(), backendURL: url, session: session)
+        let jpeg = try streamJPEG()
+        try await queue.append(frame: streamFrame(), colorJPEG: jpeg)
+        try await waitForUploadedFrames(1, in: queue)
+        server.restart()
+        try await queue.append(frame: streamFrame(2), colorJPEG: jpeg)
+        try await waitForUploadedFrames(2, in: queue)
+        #expect(server.frameCount == 2)
+        #expect(server.records.filter { $0.method == "PUT" }.map { $0.path.components(separatedBy: "/").last! } == ["0", "1", "0", "1"])
+        #expect(try await queue.finish().finished)
+    }
+
+    @Test func gzipUploadsAreNegotiatedLosslessAndKeepTheExactOriginalsForResume() async throws {
+        for supportsGzip in [true, false] {
+            let (server, url, session) = streamServer()
+            defer { session.invalidateAndCancel() }
+            if supportsGzip { server.advertiseGzip() }
+            let root = streamRoot()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let manifest = streamManifest()
+            let queue = try StreamingCaptureQueue(root: root, manifest: manifest, backendURL: url, session: session)
+            await queue.stopUploads()
+            let frame = streamFrame()
+            let jpeg = try streamJPEG()
+            let original = try StreamChunk(sequence: 0, frame: frame, colorJPEG: jpeg).encoded()
+            try await queue.append(frame: frame, colorJPEG: jpeg)
+            server.loseNextUploadResponse()
+            await #expect(throws: BackendClientError.connection(stage: .upload, code: .networkConnectionLost)) {
+                try await queue.synchronize()
+            }
+            await queue.stopUploads()
+            let upload = try #require(server.records.first { $0.method == "PUT" })
+            #expect(upload.contentEncoding == (supportsGzip ? "gzip" : nil))
+            #expect((supportsGzip ? try streamGunzip(upload.body) : upload.body) == original)
+            if supportsGzip { #expect(upload.body.count < original.count) }
+            #expect(try Data(contentsOf: root.appendingPathComponent("chunks/chunk-0000000000.json")) == original)
+            let reopened = try StreamingCaptureQueue(root: root, manifest: manifest, backendURL: url, session: session)
+            #expect(try await reopened.finish().finished)
+            #expect(server.records.filter { $0.method == "PUT" }.count == 1)
+        }
+    }
+
+    @Test func gzipSkipsBodiesThatCannotShrinkOrExceedTheChunkBudget() {
+        #expect(StreamingBackendClient.gzipIfSmaller(Data()) == nil)
+        #expect(StreamingBackendClient.gzipIfSmaller(Data([1, 2, 3])) == nil)
+        #expect(StreamingBackendClient.gzipIfSmaller(Data(repeating: 0, count: StreamChunk.maximumEncodedBytes + 1)) == nil)
+    }
+
+    @Test func modifyingAnAlreadyValidatedOriginalIsRejectedBeforeUpload() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let root = streamRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let queue = try StreamingCaptureQueue(root: root, manifest: streamManifest(), backendURL: url, session: session)
+        await queue.stopUploads()
+        let jpeg = try streamJPEG()
+        try await queue.append(frame: streamFrame(), colorJPEG: jpeg)
+        let changed = try StreamChunk(sequence: 0, frame: streamFrame(2), colorJPEG: jpeg).encoded()
+        try changed.write(to: root.appendingPathComponent("chunks/chunk-0000000000.json"), options: .atomic)
+        await #expect(throws: StreamingCaptureError.missingChunks) { try await queue.synchronize() }
+        #expect(server.frameCount == 0)
+        #expect(await queue.snapshot().uploaded == 0)
+        await queue.stopUploads()
+    }
+
     @Test func interchangePreservesSynchronizedRGBDepthAndDefaultObservationArrays() throws {
         let chunk = StreamChunk(sequence: 0, frame: streamFrame(), colorJPEG: try streamJPEG())
         let encoded = try chunk.encoded()

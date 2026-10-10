@@ -1,1 +1,5 @@
 /target/
+/recognition/.venv/
+/recognition/cache/
+/recognition/__pycache__/
+/recognition/tests/__pycache__/

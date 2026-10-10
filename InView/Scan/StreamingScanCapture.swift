@@ -12,7 +12,9 @@ final class StreamingScanCapture {
     var onStatus: ((StreamingCaptureStatus) -> Void)?
     var onError: ((String) -> Void)?
     var onTrackingHint: ((String?) -> Void)?
+    var onCoverage: ((DepthScanCoverageSnapshot) -> Void)?
     var measurements: (() -> [Footprint])?
+    private let coverage = SavedScanCoverage()
     private weak var session: ARSession?
     private var timer: Timer?
     private var worker: Task<Void, Never>?
@@ -81,6 +83,7 @@ final class StreamingScanCapture {
         lastTimestamp = frame.timestamp
         lastPose = frame.camera.transform
         let queue = queue
+        let coverage = coverage
         worker = Task { [weak self] in
             do {
                 let encoded = try await Task.detached(priority: .utility) {
@@ -88,8 +91,11 @@ final class StreamingScanCapture {
                 }.value
                 let status = try await queue.append(frame: encoded.frame, colorJPEG: encoded.jpeg,
                                                     surfaces: surfaces, objects: objects)
+                // Green means durably captured on this phone, independent of upload progress.
+                let capturedCoverage = await coverage.record(encoded.frame)
                 for surface in surfaces { self?.savedSurfaces[surface.id] = surface }
                 for object in objects { self?.savedObjects[object.id] = object }
+                self?.onCoverage?(capturedCoverage)
                 self?.onStatus?(status)
             } catch {
                 self?.pause()
@@ -191,5 +197,15 @@ final class StreamingScanCapture {
         return (CaptureDepthFrame(id: sample.id, timestampSeconds: sample.timestamp, mapFromCamera: sample.pose,
                                   camera: camera, depth: CaptureDepthImage(width: sample.width, height: sample.height,
                                                                          valuesM: values, confidence: confidence)), color.jpeg)
+    }
+}
+
+/// The bounded display index has no camera images and never performs depth work on the UI actor.
+private actor SavedScanCoverage {
+    private var coverage = DepthScanCoverage()
+
+    func record(_ frame: CaptureDepthFrame) -> DepthScanCoverageSnapshot {
+        coverage.recordSavedFrame(frame)
+        return coverage.snapshot()
     }
 }
