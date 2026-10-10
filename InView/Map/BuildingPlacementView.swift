@@ -36,30 +36,38 @@ struct BuildingPlacementView: View {
         NavigationStack {
             placementMap
             .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Move and turn the outline to match the building.")
-                    HStack {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Move and turn the outline to match the building.").font(.subheadline.weight(.medium))
+                    HStack(spacing: 12) {
                         Button("Rotate left", systemImage: "rotate.left") { turn(-15) }.labelStyle(.iconOnly)
                         Slider(value: $heading, in: 0...359)
                             .accessibilityLabel("Building orientation")
                         Button("Rotate right", systemImage: "rotate.right") { turn(15) }.labelStyle(.iconOnly)
                     }
+                    .font(.title3)
                     if location.isLoading { ProgressView("Finding your location…") }
                     if let message = error ?? location.error {
                         Text(message).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-                .padding(24)
-                .background(.regularMaterial)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassPanel(padding: 20)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
             .navigationTitle("Place building")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItemGroup(placement: .confirmationAction) {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Current location", systemImage: "location.fill") { location.request() }
-                        .labelStyle(.iconOnly).disabled(location.isLoading)
-                    Button("Done", action: save).disabled(reference == nil)
+                        .disabled(location.isLoading)
+                }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", systemImage: "checkmark", role: .confirm, action: save).disabled(reference == nil)
                 }
             }
             .searchable(text: $query, isPresented: $searchPresented, prompt: "Address")
@@ -82,7 +90,11 @@ struct BuildingPlacementView: View {
                         }
                     }
                     .navigationTitle("Search results").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { results = nil } } }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close", systemImage: "xmark", role: .close) { results = nil }
+                        }
+                    }
                 }
             }
             .onChange(of: heading) { _, value in reference?.headingDegrees = value }

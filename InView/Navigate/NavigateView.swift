@@ -29,12 +29,16 @@ struct NavigateView: View {
                 mapContent(bottomInset: sheetInset(geometry))
                     .ignoresSafeArea()
             }
+            .overlay(alignment: .topTrailing) {
+                if mode == .map, controller.phase != .noMap {
+                    FloorPicker(floors: floors, floorID: floorSelection).padding(.horizontal, 16).padding(.top, 8)
+                }
+            }
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark") { controller.stop(); dismiss() }
-                        .labelStyle(.iconOnly)
+                    Button("Close", systemImage: "xmark", role: .close) { controller.stop(); dismiss() }
                 }
                 ToolbarItem(placement: .principal) {
                     Picker("Navigation view", selection: $mode) {
@@ -44,29 +48,10 @@ struct NavigateView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 150)
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if mode == .map {
-                        if floors.count > 1 {
-                            Menu {
-                                Picker("Floor", selection: floorSelection) {
-                                    ForEach(floors) { floor in Text(floor.title).tag(Optional(floor.id)) }
-                                }
-                            } label: { Text(floorContent.floor?.title ?? "Floor") }
-                            .accessibilityLabel("Choose floor")
-                        }
-                        Menu {
-                            Picker("Map appearance", selection: $presentation) {
-                                ForEach(MapPresentation.allCases) { option in Text(option.title).tag(option) }
-                            }
-                            Divider()
-                            Button("Overview", systemImage: "arrow.up.left.and.arrow.down.right") { resetID += 1 }
-                            Button("Place building", systemImage: "mappin.and.ellipse") { showsPlacement = true }
-                                .disabled(controller.map == nil)
-                        } label: { Image(systemName: "ellipsis") }
-                        .accessibilityLabel("Map options")
-                        Button(topDown ? "3D" : "2D") { topDown.toggle() }
-                            .accessibilityLabel(topDown ? "Show 3D" : "Show 2D")
-                    }
+                if mode == .map {
+                    MapToolbarItems(presentation: $presentation, topDown: $topDown,
+                                    canPlaceBuilding: controller.map != nil,
+                                    onRecenter: { resetID += 1 }, onPlaceBuilding: { showsPlacement = true })
                 }
             }
             .sheet(isPresented: $showsNavigation) {
@@ -97,6 +82,14 @@ struct NavigateView: View {
                 }
                 if phase == .noMap { showsNavigation = false }
                 if phase == .navigating { selectedFloorID = nil }
+            }
+            .sensoryFeedback(trigger: controller.phase) { _, phase in
+                switch phase {
+                case .navigating: .start
+                case .arrived: .success
+                case .noRoute: .warning
+                default: nil
+                }
             }
         }
         .preferredColorScheme(.light)
@@ -156,6 +149,7 @@ struct NavigateView: View {
                         Text("Route is on \(routeFloorTitle)").foregroundStyle(.secondary)
                         Spacer()
                         Button("Show route") { selectedFloorID = nil; resetID += 1 }
+                            .buttonStyle(.glass)
                     }
                 }
                 switch controller.phase {
@@ -168,10 +162,10 @@ struct NavigateView: View {
                 case .ready:
                     destinationPicker
                     Button(action: controller.navigateToNearest) {
-                        Label(controller.isDemo ? "Start demo" : "Go", systemImage: "arrow.turn.up.right")
+                        Label(controller.isDemo ? "Start demo" : "Go", systemImage: Theme.Symbol.navigate)
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(.glassProminent).controlSize(.large)
                 case .routing:
                     ProgressView("Finding a step-free route…").frame(maxWidth: .infinity, minHeight: 120)
                 case .navigating:
@@ -183,24 +177,19 @@ struct NavigateView: View {
                         }
                     }
                 case .arrived:
-                    Label("You’ve arrived", systemImage: "checkmark.circle.fill")
-                        .font(.title2.bold()).foregroundStyle(.green)
-                    Text(controller.route?.destination.title ?? "Destination").foregroundStyle(.secondary)
-                    if controller.route?.destination.requiresAssistance == true {
-                        Label("Needs a staff member to operate", systemImage: "person.fill.questionmark")
-                            .font(.subheadline).foregroundStyle(.orange)
-                    }
-                    Button("Done", action: controller.endNavigation)
-                        .buttonStyle(.borderedProminent).controlSize(.large)
+                    ArrivedPanel(destination: controller.route?.destination, onDone: controller.endNavigation)
                 case .noRoute:
                     destinationPicker
-                    Label("No step-free route from here", systemImage: "exclamationmark.triangle.fill")
-                        .font(.headline).foregroundStyle(.orange)
+                    Label("No step-free route from here", systemImage: Theme.symbol(for: .warning))
+                        .font(.headline).foregroundStyle(Theme.color(for: .warning))
                     Text("Move to open floor space and try again.").foregroundStyle(.secondary)
-                    Button("Try again", action: controller.navigateToNearest)
-                        .buttonStyle(.borderedProminent).controlSize(.large)
+                    Button(action: controller.navigateToNearest) {
+                        Label("Try again", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent).controlSize(.large)
                 }
             }
+            .animation(.smooth, value: controller.phase)
             .padding(24)
             .padding(.top, 6)
         }
@@ -216,14 +205,14 @@ struct NavigateView: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Text(controller.selectedDestination?.title ?? "Choose destination").font(.title2.bold())
+                        Text(controller.selectedDestination?.title ?? "Choose destination").font(.panelTitle)
                         Image(systemName: "chevron.up.chevron.down").font(.caption)
                     }
                 }
                 .tint(.primary)
                 if let route = controller.route {
                     Text("\(Int(route.length.rounded())) m · Step-free").foregroundStyle(.secondary)
-                    if route.isNarrow { Text("Narrow passages").font(.footnote).foregroundStyle(.orange) }
+                    if route.isNarrow { Text("Narrow passages").font(.footnote).foregroundStyle(Theme.color(for: .warning)) }
                 } else {
                     Text(controller.selectedDestination == nil ? "Nearest elevator or ramp" : "Directions through the building")
                         .foregroundStyle(.secondary)
@@ -291,18 +280,18 @@ private struct LocatingPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Finding where you are").font(.title2.bold())
+            Text("Finding where you are").font(.panelTitle)
             Text("Go to where the scan started and slowly look around.").foregroundStyle(.secondary)
             ProgressView()
             if let startView {
                 Image(uiImage: startView).resizable().scaledToFill()
                     .frame(maxWidth: .infinity, maxHeight: 150).clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                     .accessibilityLabel("Photo of where the scan started")
             }
             if isSlow {
                 Text("Stand where the scan started, facing the way the photo does.").font(.footnote)
-                Button("Start from here", action: onStartHere).buttonStyle(.bordered)
+                Button("Start from here", systemImage: "figure.stand", action: onStartHere).buttonStyle(.glass)
             }
         }
     }
@@ -319,8 +308,9 @@ private struct NextStepBanner: View {
                 Image(systemName: symbol)
                     .font(.system(size: 34, weight: .bold))
                     .frame(width: 48)
+                    .contentTransition(.symbolEffect(.replace))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(distance).font(.system(.title, design: .rounded).weight(.bold)).monospacedDigit()
+                    Text(distance).font(.metric).contentTransition(.numericText())
                     Text(instruction).font(.title3.weight(.semibold))
                 }
                 Spacer(minLength: 0)
@@ -330,8 +320,9 @@ private struct NextStepBanner: View {
             }
         }
         .foregroundStyle(.white)
-        .padding(16)
-        .background(Theme.accent.gradient, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .padding(18)
+        .glassEffect(.regular.tint(Theme.accent), in: .rect(cornerRadius: Theme.Radius.panel))
+        .animation(.smooth, value: distance)
         .accessibilityElement(children: .combine)
     }
 
@@ -356,6 +347,36 @@ private struct NextStepBanner: View {
     }
 }
 
+/// The arrival message, with a bounce and a haptic when it appears.
+private struct ArrivedPanel: View {
+    let destination: AccessPoint?
+    let onDone: () -> Void
+    @State private var bounce = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label {
+                Text("You’ve arrived")
+            } icon: {
+                Image(systemName: Theme.symbol(for: .good))
+                    .foregroundStyle(Theme.color(for: .good))
+                    .symbolEffect(.bounce, value: bounce)
+            }
+            .font(.panelTitle)
+            Text(destination?.title ?? "Destination").foregroundStyle(.secondary)
+            if destination?.requiresAssistance == true {
+                Label("Needs a staff member to operate", systemImage: Theme.Symbol.needsStaff)
+                    .font(.subheadline).foregroundStyle(Theme.color(for: .warning))
+            }
+            Button(action: onDone) {
+                Text("Done").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glassProminent).controlSize(.large)
+        }
+        .onAppear { bounce += 1 }
+    }
+}
+
 private struct RouteCard: View {
     let route: Route
     let onEnd: () -> Void
@@ -365,36 +386,31 @@ private struct RouteCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                Image(systemName: route.destination.kind.symbolName)
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 48, height: 48)
-                    .background(route.destination.kind.tint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                KindBadge(kind: route.destination.kind, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(route.destination.title).font(.title3.bold())
                     Text(details).font(.subheadline).foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
                 }
                 Spacer()
                 Button("End", action: onEnd)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
                     .tint(.red)
                     .controlSize(.large)
             }
-            if route.destination.requiresAssistance {
-                Label("Needs a staff member to operate", systemImage: "person.fill.questionmark")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
+            Group {
+                if route.destination.requiresAssistance {
+                    Label("Needs a staff member to operate", systemImage: Theme.Symbol.needsStaff)
+                }
+                if route.destination.isTooSteep {
+                    Label("Steeper than the ADA allows; it's the only reachable option", systemImage: Theme.symbol(for: .warning))
+                }
+                if route.isNarrow {
+                    Label("Some passages on this route are narrow", systemImage: Theme.Symbol.narrow)
+                }
             }
-            if route.destination.isTooSteep {
-                Label("Steeper than the ADA allows; it's the only reachable option", systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            }
-            if route.isNarrow {
-                Label("Some passages on this route are narrow", systemImage: "arrow.left.and.right")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            }
+            .font(.footnote)
+            .foregroundStyle(Theme.color(for: .warning))
         }
         .accessibilityElement(children: .combine)
     }

@@ -33,7 +33,8 @@ struct NavigationMapSurface: View {
             } description: {
                 Text("Align the scan with its surroundings to see it on the map.")
             } actions: {
-                Button("Place building", action: onPlaceBuilding).buttonStyle(.borderedProminent)
+                Button("Place building", systemImage: Theme.Symbol.placeBuilding, action: onPlaceBuilding)
+                    .buttonStyle(.glassProminent)
                     .disabled(map == nil)
             }
             .padding(.bottom, bottomInset)

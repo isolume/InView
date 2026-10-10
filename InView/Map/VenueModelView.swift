@@ -121,17 +121,14 @@ struct MapPanel: View {
                     MapPreviewView(map: map, onTap: onTap)
                 case .model where isModelAllowed:
                     VenueModelView(map: map)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                         .overlay(alignment: .bottomTrailing) {
-                            Text("Drag to orbit · pinch to zoom")
-                                .font(.caption2)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.regularMaterial, in: Capsule())
+                            StatusPill(text: "Drag to orbit · pinch to zoom", isCompact: true)
                                 .padding(8)
+                                .allowsHitTesting(false)
                         }
                 case .model:
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                         .fill(Color(.secondarySystemBackground))
                         .overlay {
                             Label("3D view paused", systemImage: "cube.transparent")

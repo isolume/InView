@@ -5,6 +5,8 @@ import SwiftUI
 struct ScanView: View {
     @StateObject private var controller = ScanController()
     @Environment(\.dismiss) private var dismiss
+    @Namespace private var glass
+    @State private var marks = 0
 
     var body: some View {
         Group {
@@ -36,45 +38,43 @@ struct ScanView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
             }
-            VStack(spacing: 12) {
-                HStack(alignment: .top) {
-                    CloseButton(action: close)
-                    Spacer()
-                    DetectionStatus(detector: controller.detector, section: controller.sectionCount + 1)
-                }
-                Spacer()
-                switch controller.phase {
-                case .processing:
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Processing section…").font(.headline)
+            // One glass container, so the bottom controls morph into each phase's panel instead of cutting.
+            GlassEffectContainer(spacing: 12) {
+                VStack(spacing: 12) {
+                    HStack(alignment: .top) {
+                        CloseButton(action: close)
+                        Spacer()
+                        DetectionStatus(detector: controller.detector, section: controller.sectionCount + 1)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    .background(.regularMaterial, in: Capsule())
-                case .interrupted:
-                    interruptedPanel
-                case .savingWorldMap:
-                    worldMapPanel
-                case .processingScene:
-                    ProgressView("Building map…")
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                        .background(.regularMaterial, in: Capsule())
-                default:
-                    scanControls
+                    Spacer()
+                    switch controller.phase {
+                    case .processing:
+                        StatusPill(text: "Processing section…", isWorking: true)
+                            .glassEffectID("status", in: glass)
+                    case .interrupted:
+                        interruptedPanel
+                    case .savingWorldMap:
+                        worldMapPanel
+                    case .processingScene:
+                        StatusPill(text: "Building map…", isWorking: true)
+                            .glassEffectID("status", in: glass)
+                    default:
+                        scanControls
+                    }
                 }
+                .padding()
             }
-            .padding()
+            .animation(.smooth, value: controller.phase)
         }
+        .sensoryFeedback(.impact(weight: .medium), trigger: marks)
     }
 
     /// RoomPlan ended the section by itself; what it scanned is kept, and the volunteer decides what's next.
     private var interruptedPanel: some View {
         VStack(spacing: 12) {
-            Label("Scanning stopped", systemImage: "exclamationmark.triangle.fill")
+            Label("Scanning stopped", systemImage: Theme.symbol(for: .warning))
                 .font(.headline)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Theme.color(for: .warning))
             Text(controller.errorMessage ?? "The scanner ended this section, usually because it lost track of where it was.")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
@@ -86,55 +86,55 @@ struct ScanView: View {
                 Button(action: controller.continueScanning) {
                     Label("Continue scanning", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 Button(action: controller.finish) {
                     Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
             }
             .controlSize(.large)
         }
-        .padding()
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .glassPanel()
+        .glassEffectID("status", in: glass)
     }
 
     private var worldMapPanel: some View {
         VStack(spacing: 12) {
             if let error = controller.errorMessage {
                 Text(error).font(.subheadline).multilineTextAlignment(.center)
-                Button("Try again", action: controller.saveWorldMap)
-                    .buttonStyle(.borderedProminent)
+                Button("Try again", systemImage: "arrow.clockwise", action: controller.saveWorldMap)
+                    .buttonStyle(.glassProminent)
                     .controlSize(.large)
             } else {
                 ProgressView("Saving AR map…")
             }
         }
-        .padding()
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .glassPanel()
+        .glassEffectID("status", in: glass)
     }
 
+    /// Separate glass pieces rather than one slab, like the Camera app's controls.
     private var scanControls: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Mark what's in the middle of the screen")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
+        VStack(spacing: 10) {
+            StatusPill(text: "Mark what's in the middle of the screen", isCompact: true)
             HStack(spacing: 10) {
                 ForEach(VisionDetection.Kind.allCases, id: \.self) { kind in
                     Button {
                         controller.detector.addManual(kind)
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        marks += 1
                     } label: {
                         VStack(spacing: 6) {
-                            Image(systemName: kind.symbolName).font(.title3.weight(.semibold))
+                            KindBadge(kind: kind, size: 30)
                             Text(kind.title).font(.caption.weight(.semibold))
                         }
-                        .foregroundStyle(kind.tint)
-                        .frame(maxWidth: .infinity, minHeight: 58)
-                        .background(kind.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .frame(maxWidth: .infinity, minHeight: 72)
+                        .contentShape(.rect)
                     }
-                    .buttonStyle(PressableStyle())
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Theme.Radius.panel))
+                    .glassEffectID("mark-\(kind.title)", in: glass)
                     .accessibilityLabel("Mark \(kind.title.lowercased())")
                     .accessibilityHint("Marks the spot in the center of the screen")
                 }
@@ -143,19 +143,18 @@ struct ScanView: View {
                 Button(action: controller.addSection) {
                     Label("Next room", systemImage: "plus.square.on.square").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
                 Button(action: controller.finish) {
                     Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
             }
             .controlSize(.large)
             if let error = controller.errorMessage {
-                Text(error).font(.caption).foregroundStyle(.red)
+                StatusPill(text: error, systemImage: Theme.symbol(for: .barrier), isCompact: true)
+                    .foregroundStyle(Theme.color(for: .barrier))
             }
         }
-        .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 }
 
@@ -180,12 +179,13 @@ private struct DetectionStatus: View {
         VStack(alignment: .trailing, spacing: 6) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(detector.lastError == nil && detector.isEnabled ? Color.green : Color.orange)
+                    .fill(Theme.color(for: detector.lastError == nil && detector.isEnabled ? .good : .warning))
                     .frame(width: 7, height: 7)
                 Text(statusLine)
                     .font(.caption.weight(.semibold))
                     .lineLimit(2)
                     .multilineTextAlignment(.trailing)
+                    .contentTransition(.numericText())
             }
             ForEach(detector.sightings.filter(\.isConfirmed)) { sighting in
                 chip(sighting.name, count: sighting.frames, symbol: sighting.kind.symbolName, tint: sighting.kind.tint)
@@ -194,13 +194,17 @@ private struct DetectionStatus: View {
                 Label("Hold still a moment to look for features", systemImage: "hand.raised")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .symbolEffect(.pulse)
             }
         }
-        .animation(.spring, value: detector.sightings.filter(\.isConfirmed).count)
-        .padding(10)
-        .frame(maxWidth: 230, alignment: .trailing)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .animation(.spring, value: confirmedCount)
+        .animation(.smooth, value: detector.framesAnalyzed)
+        .frame(maxWidth: 210, alignment: .trailing)
+        .glassPanel(padding: 12)
+        .sensoryFeedback(.success, trigger: confirmedCount) { old, new in new > old }
     }
+
+    private var confirmedCount: Int { detector.sightings.filter(\.isConfirmed).count }
 
     private func chip(_ name: String, count: Int, symbol: String, tint: Color) -> some View {
         Label(count > 1 ? "\(name) ×\(count)" : name, systemImage: symbol)
@@ -352,11 +356,9 @@ private struct MapReviewDetailsView: View {
                                 if let id = footprint.id {
                                     evidenceThumbnail(for: id, title: "Stairs \(index + 1)")
                                 } else {
-                                    Image(systemName: "figure.stairs")
-                                        .font(.title2)
-                                        .foregroundStyle(Theme.stairs)
+                                    KindBadge(kind: VisionDetection.Kind.stairs, size: 32)
                                         .frame(width: 48, height: 64)
-                                        .background(Theme.stairs.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        .background(Theme.stairs.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.thumb, style: .continuous))
                                 }
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Stairs \(index + 1)").font(.body.weight(.medium))
@@ -402,14 +404,14 @@ private struct MapReviewDetailsView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if isDetailSheet {
-                        Button("Done", action: onClose)
+                        Button("Close", systemImage: "xmark", role: .close, action: onClose)
                     } else {
                         Button("Discard", role: .destructive, action: onClose)
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(action: save) {
-                        if isSaving { ProgressView() } else { Text("Save") }
+                    Button(role: .confirm, action: save) {
+                        if isSaving { ProgressView() } else { Label("Save", systemImage: "checkmark") }
                     }
                     .disabled(isSaving || controller.isProcessingScene || controller.canUseLocalScene)
                 }
@@ -463,7 +465,7 @@ private struct MapReviewDetailsView: View {
             } label: {
                 EvidenceImage(evidence: evidence, markerSize: 12)
                     .frame(width: 48, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.thumb, style: .continuous))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Photo of \(title)")
@@ -516,7 +518,7 @@ private struct UnconfirmedRow<Thumbnail: View>: View {
                 Label {
                     Text("\(sighting.name)?").font(.body.weight(.medium))
                 } icon: {
-                    Image(systemName: sighting.kind.symbolName).foregroundStyle(sighting.kind.tint)
+                    KindBadge(kind: sighting.kind, size: 26)
                 }
                 Text(reason).font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
@@ -526,6 +528,7 @@ private struct UnconfirmedRow<Thumbnail: View>: View {
                     Button("Drop", role: .destructive, action: onDrop)
                         .buttonStyle(.bordered)
                 }
+                .buttonBorderShape(.capsule)
                 .controlSize(.small)
             }
         }
@@ -555,14 +558,14 @@ private struct PointRow: View {
                 TextField(point.kind.title, text: $name)
                     .font(.body.weight(.medium))
                     .submitLabel(.done)
-                Text(details).font(.caption).foregroundStyle(point.isTooSteep ? .orange : .secondary)
+                Text(details).font(.caption).foregroundStyle(point.isTooSteep ? Theme.color(for: .warning) : .secondary)
                 Toggle("Needs staff", isOn: $needsStaff)
                     .font(.caption)
                     .toggleStyle(.switch)
                     .controlSize(.mini)
             }
         } icon: {
-            Image(systemName: point.kind.symbolName).foregroundStyle(point.kind.tint)
+            KindBadge(kind: point.kind, size: 26)
         }
     }
 
@@ -624,14 +627,14 @@ private struct EvidenceSheet: View {
     var body: some View {
         NavigationStack {
             EvidenceImage(evidence: evidence)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 .padding()
                 .frame(maxHeight: .infinity)
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close", systemImage: "xmark", role: .close) { dismiss() }
                     }
                 }
         }

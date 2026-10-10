@@ -27,7 +27,7 @@ struct HomeView: View {
                     ActionCard(
                         title: "Navigate",
                         subtitle: savedMap == nil ? "Map this floor first" : "Nearest elevator or ramp, step-free",
-                        systemImage: "figure.roll",
+                        systemImage: Theme.Symbol.navigate,
                         style: .primary
                     ) { mode = .navigate }
                     .disabled(savedMap == nil)
@@ -35,7 +35,7 @@ struct HomeView: View {
                     ActionCard(
                         title: "Map a space",
                         subtitle: "Scan a floor; InView finds elevators, ramps and stairs",
-                        systemImage: "viewfinder",
+                        systemImage: Theme.Symbol.scan,
                         style: .secondary
                     ) { mode = .scan }
 
@@ -64,9 +64,11 @@ struct HomeView: View {
                     } else {
                         EmptyFloorCard()
                     }
-                    Button("Try navigation demo") { mode = .demo }
-                        .frame(maxWidth: .infinity)
+                    Button("Try navigation demo", systemImage: Theme.Symbol.demo) { mode = .demo }
                         .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.large)
+                        .frame(maxWidth: .infinity)
                 }
                 .padding()
             }
@@ -74,7 +76,7 @@ struct HomeView: View {
             .navigationTitle("InView")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Scan processing settings", systemImage: "gearshape") { showsSettings = true }
+                    Button("Scan processing settings", systemImage: Theme.Symbol.settings) { showsSettings = true }
                         .labelStyle(.iconOnly)
                 }
             }
@@ -123,7 +125,8 @@ private struct ActionCard: View {
                 Image(systemName: systemImage)
                     .font(.system(size: 26, weight: .semibold))
                     .frame(width: 54, height: 54)
-                    .background(iconBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .foregroundStyle(style == .primary ? Color.white : Theme.accent)
+                    .background(iconBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.title3.bold())
                     Text(subtitle).font(.subheadline).opacity(0.8)

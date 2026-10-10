@@ -20,7 +20,7 @@ struct MapPreviewView: View {
                     onTap?(projection.venuePoint(location))
                 }
         }
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         .accessibilityLabel("Floor plan with \(map.points.count) accessible points")
         .accessibilityValue(route.map { "Route to \($0.destination.title), \(Int($0.length.rounded())) meters" } ?? "")
     }

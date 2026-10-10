@@ -42,17 +42,11 @@ struct GeographicMapboxView: View {
                 .id(publicToken == nil ? "interior-preview" : "outdoor-map")
                 .overlay(alignment: .top) {
                     if publicToken == nil {
-                        Text("Local preview · Example exterior")
-                            .font(.caption)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(.regularMaterial, in: Capsule())
+                        StatusPill(text: "Local preview · Example exterior", isCompact: true)
                             .padding(.top, 122)
                             .allowsHitTesting(false)
                     } else if cutawayUnavailable {
-                        Label("Interior cutaway unavailable", systemImage: "exclamationmark.circle")
-                            .font(.caption)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(.regularMaterial, in: Capsule())
+                        StatusPill(text: "Interior cutaway unavailable", systemImage: "exclamationmark.circle", isCompact: true)
                             .padding(.top, 122)
                             .allowsHitTesting(false)
                     }
@@ -64,6 +58,7 @@ struct GeographicMapboxView: View {
                 Text("You can still preview the indoor map.")
             } actions: {
                 Button("Preview interior") { showsLocalPreview = true }
+                    .buttonStyle(.glassProminent)
             }
             .padding(.bottom, bottomInset)
         }

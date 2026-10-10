@@ -34,48 +34,34 @@ struct RoomMapExperience: View {
                                      destinationTitle: floorContent.isRouteFloor ? map?.points.first?.title : nil) { showsPlacement = true }
                     .ignoresSafeArea()
             }
+            .overlay(alignment: .topTrailing) {
+                FloorPicker(floors: floors, floorID: floorSelection).padding(.horizontal, 16).padding(.top, 8)
+            }
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark", action: onClose).labelStyle(.iconOnly)
+                    Button("Close", systemImage: "xmark", role: .close, action: onClose)
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if floors.count > 1 {
-                        Menu {
-                            Picker("Floor", selection: floorSelection) {
-                                ForEach(floors) { floor in Text(floor.title).tag(Optional(floor.id)) }
-                            }
-                        } label: { Text(floorContent.floor?.title ?? "Floor") }
-                        .accessibilityLabel("Choose floor")
-                    }
-                    Menu {
-                        Picker("Map appearance", selection: $presentation) {
-                            ForEach(MapPresentation.allCases) { option in
-                                Text(option.title).tag(option).disabled(option != .indoor && onPlaceBuilding == nil)
-                            }
-                        }
-                        Divider()
-                        Button("Recenter", systemImage: "scope") { resetID += 1 }
-                        if map != nil, onPlaceBuilding != nil {
-                            Button("Place building", systemImage: "mappin.and.ellipse") { showsPlacement = true }
-                        }
-                    } label: { Image(systemName: "ellipsis") }
-                    .accessibilityLabel("Map options")
-                    Button(topDown ? "3D" : "2D") { topDown.toggle() }
-                        .accessibilityLabel(topDown ? "Show 3D" : "Show 2D")
-                }
+                MapToolbarItems(presentation: $presentation, topDown: $topDown,
+                                canPlaceBuilding: map != nil && onPlaceBuilding != nil,
+                                onRecenter: { resetID += 1 }, onPlaceBuilding: { showsPlacement = true })
             }
             .sheet(isPresented: $showsSheet) {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text(title).font(.title2.bold())
-                    HStack {
-                        if let primaryTitle, let primaryAction {
-                            Button(primaryTitle, action: primaryAction)
-                                .frame(maxWidth: .infinity).buttonStyle(.borderedProminent)
-                        }
+                    Text(title).font(.panelTitle)
+                    HStack(spacing: 10) {
                         if let secondaryTitle {
-                            Button(secondaryTitle) { showsReview = true }.buttonStyle(.bordered)
+                            Button(action: { showsReview = true }) {
+                                Label(secondaryTitle, systemImage: "list.bullet").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                        }
+                        if let primaryTitle, let primaryAction {
+                            Button(action: primaryAction) {
+                                Label(primaryTitle, systemImage: "checkmark").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glassProminent)
                         }
                     }
                     .controlSize(.large)
@@ -162,6 +148,6 @@ enum RoomItemStyle {
         }
     }
     static func tint(_ category: String) -> Color {
-        Color(red: 0.50, green: 0.53, blue: 0.54)
+        Theme.furniture
     }
 }
