@@ -126,8 +126,13 @@ final class AccessibilityDetector: ObservableObject {
     /// A floor-plane hit further out than this is a grazing ray, not where the model pointed.
     private static let maxFloorPlaneDistance: Float = 6
     /// Slope samples form a grid this wide around the surface point, in normalized image units.
+    /// 4 × 4 = 16 raycasts: enough for SurfaceFit's 8-sample minimum after outliers go, a third of the old 7 × 7.
     private static let slopeSampleSpan: CGFloat = 0.08
-    private static let slopeSampleSteps = 7
+    private static let slopeSampleSteps = 4
+    /// Stairs samples: two columns this far either side of the claimed bottom step...
+    private static let stairsSampleColumns: [CGFloat] = [-0.02, 0.02]
+    /// ...and rows from above it to well below, so stairs going up or down are both covered. 18 raycasts, was 39.
+    private static let stairsSampleRows: [CGFloat] = Array(stride(from: 0.12, through: -0.24, by: -0.045))
 
     private let client = VisionProvider.makeDetector()
     private weak var session: ARSession?
@@ -290,7 +295,7 @@ final class AccessibilityDetector: ObservableObject {
                 guard let encoded = await Task.detached(priority: .utility) { FrameEncoder.encode(snapshot) }.value else { return }
                 let started = Date.now
                 let detections = try await client.detect(jpeg: encoded.jpeg)
-                self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, preview: encoded.preview)
+                await self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, preview: encoded.preview)
             } catch {
                 self?.stats.framesFailed += 1
                 Log.detection.error("frame \(number) failed: \(error.localizedDescription, privacy: .public)")
@@ -299,14 +304,17 @@ final class AccessibilityDetector: ObservableObject {
         }
     }
 
-    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, preview: Data) {
+    /// Places and checks each detection. The raycasts run on the main actor, where ARSession is known to be
+    /// safe to call, so the loop yields between detections to keep the UI and ARKit callbacks moving.
+    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, preview: Data) async {
         framesAnalyzed += 1
         stats.framesAnalyzed += 1
         stats.totalLatency += latency
         lastError = nil
         Log.detection.info("frame \(number) analyzed in \(String(format: "%.1f", latency), privacy: .public) s: \(detections.count) detections")
-        guard let session else { return }
-        for detection in detections {
+        for (index, detection) in detections.enumerated() {
+            if index > 0 { await Task.yield() }
+            guard let session else { return }
             Log.detection.info("  \(detection.kind.rawValue, privacy: .public) '\(detection.name, privacy: .public)' \(String(format: "%.2f", detection.confidence), privacy: .public) at (\(String(format: "%.2f, %.2f", detection.target.x, detection.target.y), privacy: .public))")
             guard detection.confidence >= Self.minimumConfidence else {
                 Log.detection.info("    skipped: below minimum confidence")
@@ -372,8 +380,8 @@ final class AccessibilityDetector: ObservableObject {
     /// going up or down are both covered, and asks whether the surface there climbs like stairs.
     private func checkStairs(around portraitPoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> StairsCheck.Verdict {
         var samples: [SIMD3<Float>] = []
-        for column in [-0.03, 0, 0.03] {
-            for row in stride(from: 0.12, through: -0.24, by: -0.03) {
+        for column in Self.stairsSampleColumns {
+            for row in Self.stairsSampleRows {
                 let point = CGPoint(x: min(1, max(0, portraitPoint.x + column)), y: min(1, max(0, portraitPoint.y + row)))
                 if let hit = hit(FrameEncoder.capturedImagePoint(fromPortrait: point), camera: camera, in: session) {
                     samples.append(hit)
@@ -381,7 +389,8 @@ final class AccessibilityDetector: ObservableObject {
             }
         }
         let verdict = StairsCheck.classify(samples, viewer: camera.transform.translation)
-        Log.detection.info("    stairs check: \(samples.count) of 39 raycasts hit → \(String(describing: verdict), privacy: .public)")
+        let casts = Self.stairsSampleColumns.count * Self.stairsSampleRows.count
+        Log.detection.info("    stairs check: \(samples.count) of \(casts) raycasts hit → \(String(describing: verdict), privacy: .public)")
         return verdict
     }
 
