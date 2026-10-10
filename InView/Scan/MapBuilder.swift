@@ -4,8 +4,8 @@ import simd
 
 /// Flattens RoomPlan's output into the floor footprints the route planner works with.
 enum MapBuilder {
-    /// Stairs the camera spotted within this distance of stairs RoomPlan found are the same stairs.
-    private static let sameStairsDistance: Float = 1.5
+    /// Stairs the camera spotted that overlap stairs RoomPlan found (allowing this much slack) are the same stairs.
+    private static let sameStairsSlack: Float = 1
 
     /// RoomPlan surfaces have no depth, so walls are treated as this thick.
     private static let wallThickness: Float = 0.15
@@ -37,12 +37,26 @@ enum MapBuilder {
             footprints.append(Footprint(kind: kind, transform: object.transform, dimensions: object.dimensions, furniture: furniture(for: object.category)))
         }
         let scannedStairs = footprints.filter { $0.kind == .stairs }
-        for stairs in spottedStairs where !scannedStairs.contains(where: { simd_distance($0.center, stairs.center) < sameStairsDistance }) {
+        for stairs in spottedStairs where !scannedStairs.contains(where: { overlaps($0, stairs) }) {
             var stairs = stairs
             stairs.bottom = floorY
             footprints.append(stairs)
         }
-        return VenueMap(floorY: floorY, footprints: footprints, points: points)
+        // RoomPlan measures door openings precisely; move elevator pins in front of the doors they belong to.
+        let snapped = points.map { DoorSnap.snap($0, to: footprints, floorY: floorY) }
+        return VenueMap(floorY: floorY, footprints: footprints, points: snapped)
+    }
+
+    /// Whether two footprints' areas come within `sameStairsSlack` of each other.
+    private static func overlaps(_ a: Footprint, _ b: Footprint) -> Bool {
+        let reach = (simd_length(a.size) + simd_length(b.size)) / 2 + sameStairsSlack
+        guard simd_distance(a.center, b.center) < reach else { return false }
+        // Close enough by bounding circles; confirm with a corner or center inside the other, grown by the slack.
+        let inside = { (point: SIMD2<Float>, footprint: Footprint) -> Bool in
+            let local = footprint.local(point)
+            return abs(local.x) <= footprint.size.x / 2 + sameStairsSlack && abs(local.y) <= footprint.size.y / 2 + sameStairsSlack
+        }
+        return ([b.center] + b.corners).contains { inside($0, a) } || ([a.center] + a.corners).contains { inside($0, b) }
     }
 
     private static func furniture(for category: CapturedRoom.Object.Category) -> Footprint.Furniture? {
