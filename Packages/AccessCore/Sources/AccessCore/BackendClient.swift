@@ -19,7 +19,7 @@ public struct CaptureUploadSummary: Codable, Equatable, Sendable {
 }
 
 public enum BackendRequestStage: Equatable, Sendable {
-    case upload, original, scene, health
+    case upload, original, scene, health, analysis
 }
 
 public enum BackendClientError: Error, LocalizedError, Equatable {
@@ -43,6 +43,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
                 case .original: return "Checking the saved scan took too long. Try again."
                 case .scene: return "The 3D map took too long to respond. Try again."
                 case .health: return "The scan server took too long to respond. Check its address and your connection."
+                case .analysis: return "The scan's navigation details took too long to load. Try again."
                 }
             case .cannotFindHost: return "Could not find the scan server. Check its address."
             case .notConnectedToInternet: return "Could not connect to the scan server. Check your connection."
@@ -64,6 +65,10 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
 
     var isMissingCapture: Bool {
         if case .http(status: 404, code: "scan_not_found", message: _) = self { return true }
+        return false
+    }
+    var isMissingAnalysis: Bool {
+        if case .http(status: 404, code: "analysis_not_found", message: _) = self { return true }
         return false
     }
     var isExistingCapture: Bool {
@@ -161,6 +166,20 @@ public struct BackendClient: Sendable {
         do { try scene.validate(expectedScanID: scanID) }
         catch { throw BackendClientError.invalidResponse(error.localizedDescription) }
         return scene
+    }
+
+    /// Fetches the worker's navigation analysis (places, door checks, hazards, routes) for an uploaded
+    /// scan. Returns nil while the worker has not produced one yet (404 `analysis_not_found`); a
+    /// missing scan or any other failure throws.
+    public func analysis(scanID: String) async throws -> ScanAnalysis? {
+        let response: Data
+        do { response = try await request(path: ["scans", scanID, "analysis"], method: "GET", stage: .analysis) }
+        catch let error as BackendClientError where error.isMissingAnalysis { return nil }
+        let analysis: ScanAnalysis = try decode(response)
+        guard analysis.scanID == scanID else {
+            throw BackendClientError.invalidResponse("The backend returned the analysis of a different scan.")
+        }
+        return analysis
     }
 
     /// Reuses a matching remote capture or restores the locally saved capture after a restart.

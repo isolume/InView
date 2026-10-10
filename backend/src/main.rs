@@ -30,7 +30,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     }
     if let Ok(path) = env::var("INVIEW_SCAN_DIR") {
-        state.scans = inview_backend::store::ScanStore::open(path)?;
+        let path = std::path::PathBuf::from(path);
+        state.scans = inview_backend::store::ScanStore::open(&path)?;
+        // Graphs are replaceable output, persisted next to the scans they were derived from.
+        state.graphs = inview_backend::store::GraphStore::open(path.join("graphs"))?;
     }
     if let Ok(url) = env::var("INVIEW_DATABASE_URL") {
         if env::var("INVIEW_SCAN_DIR").is_err() {

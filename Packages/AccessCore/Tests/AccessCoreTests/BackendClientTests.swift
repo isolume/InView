@@ -494,3 +494,44 @@ struct BackendIntegrationTests {
         #expect(BackendMockProtocol.failure == nil)
     }
 }
+
+extension BackendIntegrationTests {
+    @Test func fetchesAnalysisWithAuthorizationAndEscapedID() async throws {
+        let (_, session) = mockClient([
+            ExpectedRequest("GET", "/api/scans/scan-1/analysis", 200, realisticAnalysisJSON, inspect: { request in
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
+                #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+            }),
+            ExpectedRequest("GET", "/api/scans/a%2Fb/analysis", 404, errorData("analysis_not_found")),
+        ])
+        defer { session.invalidateAndCancel() }
+        let client = BackendClient(baseURL: URL(string: "https://backend.invalid/api/")!,
+                                   accessToken: "secret-token", session: session)
+        let analysis = try #require(try await client.analysis(scanID: "scan-1"))
+        #expect(analysis.places.count == 7)
+        #expect(try await client.analysis(scanID: "a/b") == nil)
+        #expect(BackendMockProtocol.steps.isEmpty)
+        #expect(BackendMockProtocol.failure == nil)
+    }
+
+    @Test func analysisErrorsOtherThanNotYetAnalysedThrow() async throws {
+        let (client, session) = mockClient([
+            ExpectedRequest("GET", "/scans/missing/analysis", 404, errorData("scan_not_found")),
+            ExpectedRequest("GET", "/scans/scan-2/analysis", 200, realisticAnalysisJSON),
+            ExpectedRequest("GET", "/scans/scan-3/analysis", 200, Data("[]".utf8)),
+        ])
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: BackendClientError.http(status: 404, code: "scan_not_found", message: "Backend request failed.")) {
+            try await client.analysis(scanID: "missing")
+        }
+        // The response names scan-1, not the requested scan.
+        await #expect(throws: BackendClientError.self) { try await client.analysis(scanID: "scan-2") }
+        await #expect(throws: BackendClientError.self) { try await client.analysis(scanID: "scan-3") }
+        #expect(BackendMockProtocol.steps.isEmpty)
+    }
+
+    @Test func analysisRefusesTokenOverPlainHTTPToRemoteHost() async throws {
+        let client = BackendClient(baseURL: URL(string: "http://backend.invalid")!, accessToken: "secret-token")
+        await #expect(throws: BackendClientError.invalidURL) { try await client.analysis(scanID: "scan-1") }
+    }
+}

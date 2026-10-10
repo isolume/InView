@@ -42,6 +42,10 @@ final class ScanController: ObservableObject {
     private var captureBundle: CaptureBundle?
     private var localScene: ProcessedScene?
     private var sceneTask: Task<Void, Never>?
+    /// Polls the backend worker's navigation analysis in the background; never blocks review.
+    private var analysisTask: Task<Void, Never>?
+    /// Detected places already offered to this draft, so a removed one is not merged back later.
+    private var mergedDetectionIDs: Set<UUID> = []
 
     var canRetryScene: Bool { captureBundle != nil }
     var canUseLocalScene: Bool { scene == nil && localScene != nil && !isProcessingScene }
@@ -119,6 +123,7 @@ final class ScanController: ObservableObject {
         contextTracker.stop()
         sceneTask?.cancel()
         reportTask?.cancel()
+        analysisTask?.cancel()
         if phase == .scanning { captureView.captureSession.stop() }
         if phase != .unsupported { session.pause() }
     }
@@ -374,6 +379,7 @@ final class ScanController: ObservableObject {
             } else {
                 result = try await client.uploadAndProcess(bundle)
             }
+            if !Task.isCancelled { fetchDetectedPlaces(scanID: bundle.id, client: client) }
         } else if let localScene {
             result = localScene
         } else {
@@ -383,6 +389,46 @@ final class ScanController: ObservableObject {
         try await Task.detached(priority: .utility) { try CaptureStore.saveScene(result, for: bundle) }.value
         try Task.checkCancellation()
         return result
+    }
+
+    /// The worker analyses an upload asynchronously (seconds to minutes), so poll a few times with
+    /// backoff while the volunteer reviews, then merge its places into the draft's points.
+    private func fetchDetectedPlaces(scanID: String, client: BackendClient) {
+        analysisTask?.cancel()
+        analysisTask = Task { [weak self] in
+            for delay in [0, 5, 15, 30, 60] {
+                if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+                guard !Task.isCancelled else { return }
+                do {
+                    guard let analysis = try await client.analysis(scanID: scanID) else { continue }
+                    guard !Task.isCancelled else { return }
+                    self?.mergeDetectedPlaces(analysis)
+                    return
+                } catch is CancellationError {
+                    return
+                } catch BackendClientError.connection {
+                    continue
+                } catch {
+                    Log.scan.notice("navigation analysis unavailable: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
+            }
+        }
+    }
+
+    /// Adds worker-detected places to the destination list. IDs derive from the place IDs, and points
+    /// near an existing one of the same kind are skipped; existing (manual) points never change.
+    private func mergeDetectedPlaces(_ analysis: ScanAnalysis) {
+        guard var map = draft else { return }
+        let detected = analysis.places
+            .compactMap { $0.accessPoint(scanID: analysis.scanID, floorY: map.floorY) }
+            .filter { !mergedDetectionIDs.contains($0.id) }
+        let added = AccessPoint.newDetections(detected, existing: map.points)
+        mergedDetectionIDs.formUnion(detected.map(\.id))
+        guard !added.isEmpty else { return }
+        for point in added { MapBuilder.add(point, to: &map) }
+        draft = map
+        Log.scan.info("merged \(added.count) detected places from the navigation analysis")
     }
 
     /// Recomputes the report a moment after the draft stops changing; it runs route searches, so keep it off the main thread.
