@@ -2,7 +2,7 @@ import AccessCore
 import RealityKit
 import UIKit
 
-/// Draws the route as chevrons on the floor, a floating label over every access point, red zones over
+/// Draws the route as chevrons on the floor, a floating label over every access point, a red tag over
 /// stairs, and a red marker on anything the camera found in the way.
 /// Everything hangs off one anchor at the world origin, which after relocalization is where the scan started,
 /// so it is laid out directly in the saved map's coordinates.
@@ -26,7 +26,7 @@ final class PathRenderer {
     init(scene: RealityKit.Scene, map: VenueMap) {
         anchor = AnchorEntity(world: .zero)
         floorY = map.floorY
-        chevron = ModelEntity(mesh: Self.chevronMesh(), materials: [UnlitMaterial(color: .systemBlue)])
+        chevron = ModelEntity(mesh: Self.chevronMesh(), materials: [UnlitMaterial(color: Theme.accentUIColor)])
         obstacleMarker = ModelEntity(mesh: .generateCylinder(height: 0.02, radius: 0.3), materials: [UnlitMaterial(color: .systemRed)])
         anchor.addChild(routeRoot)
         anchor.addChild(obstacleRoot)
@@ -128,7 +128,7 @@ final class PathRenderer {
     }
 }
 
-/// A pole with a billboard label standing over one access point.
+/// A pole with a billboard label standing over one access point, in the point's color.
 @MainActor
 private final class PointMarker {
     enum State: Equatable {
@@ -148,7 +148,7 @@ private final class PointMarker {
 
         let pole = ModelEntity(mesh: .generateBox(width: 0.03, height: 1.3, depth: 0.03), materials: [UnlitMaterial(color: .white)])
         pole.position.y = 0.65
-        head = ModelEntity(mesh: .generateSphere(radius: 0.07), materials: [UnlitMaterial(color: .systemBlue)])
+        head = ModelEntity(mesh: .generateSphere(radius: 0.07), materials: [UnlitMaterial(color: point.kind.uiTint)])
         head.position.y = 1.35
         label.entity.position.y = 1.6
 
@@ -161,15 +161,20 @@ private final class PointMarker {
     func show(_ state: State) {
         switch state {
         case .idle:
-            setLabel(title, accent: point.isTooSteep ? .systemOrange : .systemBlue, background: .black)
+            setLabel(title, accent: tint, background: tint)
             entity.scale = .one
         case .destination(let distance):
-            setLabel("\(point.name) · \(Int(distance.rounded())) m", accent: .systemBlue, background: .systemBlue)
+            setLabel("\(point.name) · \(Int(distance.rounded())) m", accent: tint, background: tint)
             entity.scale = SIMD3(repeating: 1.3)
         case .arrived:
             setLabel("Arrived · \(point.name)", accent: .systemGreen, background: .systemGreen)
             entity.scale = SIMD3(repeating: 1.3)
         }
+    }
+
+    /// The kind's color: blue elevators, teal ramps; orange for ramps too steep to count on.
+    private var tint: UIColor {
+        point.isTooSteep ? .systemOrange : point.kind.uiTint
     }
 
     /// The name, plus the measured slope for ramps and a note when staff must operate it.
@@ -186,55 +191,24 @@ private final class PointMarker {
     }
 }
 
-/// Stairs outlined in red, the way the scanning view outlines them: a translucent floor zone, a box of
-/// red edges around the steps, and a floating warning, so riders see them from across the room.
+/// A small red "Stairs" tag over the stairs, with a dot on the floor where they are, so riders know
+/// why the route bends around that spot.
 @MainActor
 private final class StairsMarker {
-    /// Height of the outline box: roughly the first few steps.
-    private static let height: Float = 0.8
-    private static let edgeThickness: Float = 0.02
+    private static let tagHeight: Float = 0.9
 
     let entity = Entity()
 
     init(stairs: Footprint, floorY: Float) {
-        entity.position = SIMD3(stairs.center.x, floorY + 0.02, stairs.center.y)
-        entity.orientation = simd_quatf(angle: -stairs.yaw, axis: [0, 1, 0])
+        entity.position = SIMD3(stairs.center.x, floorY, stairs.center.y)
 
-        var zoneMaterial = UnlitMaterial(color: .systemRed)
-        zoneMaterial.blending = .transparent(opacity: 0.3)
-        let zone = ModelEntity(mesh: .generatePlane(width: stairs.size.x, depth: stairs.size.y, cornerRadius: 0.05), materials: [zoneMaterial])
-        entity.addChild(zone)
-        addOutline(width: stairs.size.x, depth: stairs.size.y)
+        let dot = ModelEntity(mesh: .generateCylinder(height: 0.01, radius: 0.12), materials: [UnlitMaterial(color: Theme.stairsUIColor)])
+        dot.position.y = 0.01
+        entity.addChild(dot)
 
-        let label = BillboardLabel()
-        label.set("Stairs", background: .systemRed)
-        label.entity.position.y = Self.height + 0.35
+        let label = BillboardLabel(fontSize: 0.08)
+        label.set("Stairs", background: Theme.stairsUIColor)
+        label.entity.position.y = Self.tagHeight
         entity.addChild(label.entity)
-    }
-
-    /// The 12 edges of the box, as thin red bars.
-    private func addOutline(width: Float, depth: Float) {
-        let material = UnlitMaterial(color: .systemRed)
-        let t = Self.edgeThickness, h = Self.height
-        let x = width / 2, z = depth / 2
-        for y in [Float(0), h] {
-            for zSide in [-z, z] {
-                addBar(size: [width, t, t], at: [0, y, zSide], material: material)
-            }
-            for xSide in [-x, x] {
-                addBar(size: [t, t, depth], at: [xSide, y, 0], material: material)
-            }
-        }
-        for xSide in [-x, x] {
-            for zSide in [-z, z] {
-                addBar(size: [t, h, t], at: [xSide, h / 2, zSide], material: material)
-            }
-        }
-    }
-
-    private func addBar(size: SIMD3<Float>, at position: SIMD3<Float>, material: UnlitMaterial) {
-        let bar = ModelEntity(mesh: .generateBox(size: size), materials: [material])
-        bar.position = position
-        entity.addChild(bar)
     }
 }

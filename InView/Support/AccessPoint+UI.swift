@@ -33,4 +33,12 @@ extension AccessPoint.Kind {
         case .ramp: .teal
         }
     }
+
+    /// `tint` for RealityKit materials.
+    var uiTint: UIColor {
+        switch self {
+        case .elevator: Theme.accentUIColor
+        case .ramp: .systemTeal
+        }
+    }
 }

@@ -6,6 +6,9 @@ enum Theme {
     /// InView blue: routes, primary actions, elevators.
     static let accent = Color(red: 0.18, green: 0.38, blue: 0.96)
     static let stairs = Color.red
+    /// The same colors for RealityKit materials, which take UIKit colors.
+    static let accentUIColor = UIColor(red: 0.18, green: 0.38, blue: 0.96, alpha: 1)
+    static let stairsUIColor = UIColor.systemRed
     static let cornerRadius: CGFloat = 22
 
     /// Barrier / warning / good, always shown with an icon and a word as well as the color.
