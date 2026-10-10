@@ -3,6 +3,7 @@ import SwiftUI
 
 struct BackendSettingsView: View {
     @State private var address = AppConfig.backendAddress
+    @State private var accessToken = AppConfig.backendToken ?? ""
     @State private var continuousScanning = AppConfig.continuousScanning
     @State private var connectionStatus: ConnectionStatus?
     @State private var isChecking = false
@@ -24,6 +25,10 @@ struct BackendSettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     if !address.isEmpty {
+                        // Kept in the Keychain, never in the address; required by authenticated servers.
+                        SecureField("Access token (if required)", text: $accessToken)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                         Button("Clear server address") { address = "" }
                     }
                     Button("Test connection") { checkConnection() }
@@ -60,6 +65,10 @@ struct BackendSettingsView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", systemImage: "checkmark", role: .confirm) {
+                        guard AppConfig.setBackendToken(accessToken) else {
+                            connectionStatus = ConnectionStatus(message: "Could not securely save the access token.", isConnected: false)
+                            return
+                        }
                         AppConfig.setBackendAddress(address)
                         AppConfig.setContinuousScanning(continuousScanning)
                         dismiss()
@@ -72,6 +81,11 @@ struct BackendSettingsView: View {
                 isChecking = false
                 connectionStatus = nil
             }
+            .onChange(of: accessToken) { _, _ in
+                connectionTask?.cancel()
+                isChecking = false
+                connectionStatus = nil
+            }
             .onDisappear { connectionTask?.cancel() }
         }
     }
@@ -79,20 +93,21 @@ struct BackendSettingsView: View {
     private func checkConnection() {
         guard let url = AppConfig.validatedBackendURL(address) else { return }
         connectionTask?.cancel()
-        let testedAddress = address
+        let testedAddress = address, testedToken = accessToken
+        let token = testedToken.trimmingCharacters(in: .whitespacesAndNewlines)
         isChecking = true
         connectionStatus = nil
         connectionTask = Task {
             let status: ConnectionStatus
             do {
-                try await BackendClient(baseURL: url).checkHealth()
+                try await BackendClient(baseURL: url, accessToken: token).checkHealth()
                 status = ConnectionStatus(message: "Connected to the scan processing server.", isConnected: true)
             } catch is CancellationError {
                 return
             } catch {
                 status = ConnectionStatus(message: error.localizedDescription, isConnected: false)
             }
-            guard !Task.isCancelled, address == testedAddress else { return }
+            guard !Task.isCancelled, address == testedAddress, accessToken == testedToken else { return }
             connectionStatus = status
             isChecking = false
         }

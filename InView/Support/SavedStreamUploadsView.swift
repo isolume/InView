@@ -100,7 +100,8 @@ struct SavedStreamUploadsView: View {
             do {
                 let queue = try await ScanWork.run(priority: .utility) {
                     // nil preserves the original server binding from the checkpoint.
-                    try StreamingCaptureQueue(root: scan.root, manifest: scan.manifest, backendURL: nil)
+                    try StreamingCaptureQueue(root: scan.root, manifest: scan.manifest, backendURL: nil,
+                                              accessToken: AppConfig.backendToken)
                 }
                 activeQueue = queue
                 if moveToSelectedServer, let selectedServer {

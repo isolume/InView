@@ -1,0 +1,48 @@
+{
+  "locale": "fr",
+  "name": "Français",
+  "direction": "ltr",
+  "number": {"decimal": ",", "group": " ", "min_grouping": 1},
+  "messages": {
+    "distance": "{n, plural, one {# mètre} other {# mètres}}",
+    "distance_ahead": "{n, plural, one {# mètre} other {# mètres}}",
+    "width": "{w} m",
+    "clause.depart": "Partez depuis {origin}",
+    "clause.depart_plain": "Commencez à marcher",
+    "clause.turn": "{maneuver, select, slight_left {Serrez à gauche} left {Tournez à gauche} slight_right {Serrez à droite} right {Tournez à droite} u_turn {Faites demi-tour} other {Continuez tout droit}}",
+    "clause.turn_after": "{turn} après {landmark}",
+    "clause.turn_before": "{turn} avant {landmark}",
+    "clause.door": "Franchissez la porte",
+    "clause.door_narrow": "Franchissez la porte étroite ({width} de passage libre)",
+    "clause.caution": "Attention : {hazard} dans {ahead}",
+    "clause.transition": "{connector, select, elevator {Prenez l'ascenseur} stairs {Prenez l'escalier} escalator {Prenez l'escalator} other {Prenez la liaison}}{direction, select, up { pour monter} down { pour descendre} other {}} jusqu'à l'étage {floor}",
+    "clause.arrive": "Arrivée : {destination}",
+    "clause.arrive_side": "Arrivée : {destination}, {side, select, left {sur votre gauche} right {sur votre droite} other {droit devant}}",
+    "landmark.sign_text": "le panneau « {text} »",
+    "landmark.sign_category": "le panneau « {category} »",
+    "landmark.sign": "le panneau",
+    "landmark.door": "la porte",
+    "sentence.continue": "{clause}, puis continuez sur {distance}.",
+    "sentence.plain": "{clause}."
+  },
+  "place_phrases": {
+    "entrance": "l'entrée", "exit": "la sortie", "emergency_exit": "la sortie de secours",
+    "restroom": "les toilettes", "accessible_restroom": "les toilettes accessibles", "elevator": "l'ascenseur",
+    "stairs": "l'escalier", "escalator": "l'escalator", "ramp": "la rampe", "door": "la porte",
+    "room": "la salle", "corridor": "le couloir", "information": "le point d'information",
+    "reception": "l'accueil", "seating": "l'espace assis", "water_fountain": "la fontaine à eau",
+    "fire_extinguisher": "l'extincteur", "first_aid": "la trousse de secours", "landmark": "le repère",
+    "other": "votre destination"
+  },
+  "sign_categories": {
+    "exit": "Sortie", "emergency_exit": "Sortie de secours", "entrance": "Entrée", "restroom": "Toilettes",
+    "accessible_restroom": "Toilettes accessibles", "elevator": "Ascenseur", "stairs": "Escalier",
+    "escalator": "Escalator", "ramp": "Rampe", "information": "Information", "first_aid": "Premiers secours",
+    "fire_extinguisher": "Extincteur", "directional": "Direction", "informational": "Information"
+  },
+  "hazards": {
+    "step": "une marche", "stairs": "un escalier", "ramp": "une rampe", "level_change": "un changement de niveau",
+    "drop_off": "un rebord en contrebas", "low_headroom": "un passage bas", "protruding_object": "un objet en saillie",
+    "other": "un obstacle"
+  }
+}

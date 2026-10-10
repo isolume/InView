@@ -1,0 +1,48 @@
+{
+  "locale": "en",
+  "name": "English",
+  "direction": "ltr",
+  "number": {"decimal": ".", "group": ",", "min_grouping": 1},
+  "messages": {
+    "distance": "{n, plural, one {# meter} other {# meters}}",
+    "distance_ahead": "{n, plural, one {# meter} other {# meters}}",
+    "width": "{w} m",
+    "clause.depart": "Start at {origin}",
+    "clause.depart_plain": "Start walking",
+    "clause.turn": "{maneuver, select, slight_left {Bear left} left {Turn left} slight_right {Bear right} right {Turn right} u_turn {Turn around} other {Continue straight}}",
+    "clause.turn_after": "{turn} after {landmark}",
+    "clause.turn_before": "{turn} before {landmark}",
+    "clause.door": "Go through the door",
+    "clause.door_narrow": "Go through the narrow door ({width} clear)",
+    "clause.caution": "Caution: {hazard} in {ahead}",
+    "clause.transition": "{connector, select, elevator {Take the elevator} stairs {Take the stairs} escalator {Take the escalator} other {Take the connector}}{direction, select, up { up} down { down} other {}} to floor {floor}",
+    "clause.arrive": "Arrive at {destination}",
+    "clause.arrive_side": "Arrive at {destination}, {side, select, left {on your left} right {on your right} other {straight ahead}}",
+    "landmark.sign_text": "the {text} sign",
+    "landmark.sign_category": "the {category} sign",
+    "landmark.sign": "the sign",
+    "landmark.door": "the door",
+    "sentence.continue": "{clause}, then continue for {distance}.",
+    "sentence.plain": "{clause}."
+  },
+  "place_phrases": {
+    "entrance": "the entrance", "exit": "the exit", "emergency_exit": "the emergency exit",
+    "restroom": "the restroom", "accessible_restroom": "the accessible restroom", "elevator": "the elevator",
+    "stairs": "the stairs", "escalator": "the escalator", "ramp": "the ramp", "door": "the door",
+    "room": "the room", "corridor": "the corridor", "information": "the information point",
+    "reception": "the reception desk", "seating": "the seating area", "water_fountain": "the water fountain",
+    "fire_extinguisher": "the fire extinguisher", "first_aid": "the first aid kit", "landmark": "the landmark",
+    "other": "your destination"
+  },
+  "sign_categories": {
+    "exit": "exit", "emergency_exit": "emergency exit", "entrance": "entrance", "restroom": "restroom",
+    "accessible_restroom": "accessible restroom", "elevator": "elevator", "stairs": "stairs",
+    "escalator": "escalator", "ramp": "ramp", "information": "information", "first_aid": "first aid",
+    "fire_extinguisher": "fire extinguisher", "directional": "direction", "informational": "information"
+  },
+  "hazards": {
+    "step": "a step", "stairs": "stairs", "ramp": "a ramp", "level_change": "a level change",
+    "drop_off": "a drop-off", "low_headroom": "low headroom", "protruding_object": "a protruding object",
+    "other": "an obstacle"
+  }
+}

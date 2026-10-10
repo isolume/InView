@@ -1,0 +1,48 @@
+{
+  "locale": "es",
+  "name": "Español",
+  "direction": "ltr",
+  "number": {"decimal": ",", "group": ".", "min_grouping": 2},
+  "messages": {
+    "distance": "{n, plural, one {# metro} other {# metros}}",
+    "distance_ahead": "{n, plural, one {# metro} other {# metros}}",
+    "width": "{w} m",
+    "clause.depart": "Sal desde {origin}",
+    "clause.depart_plain": "Empieza a caminar",
+    "clause.turn": "{maneuver, select, slight_left {Gira ligeramente a la izquierda} left {Gira a la izquierda} slight_right {Gira ligeramente a la derecha} right {Gira a la derecha} u_turn {Da la vuelta} other {Sigue recto}}",
+    "clause.turn_after": "{turn} tras {landmark}",
+    "clause.turn_before": "{turn} justo antes de alcanzar {landmark}",
+    "clause.door": "Atraviesa la puerta",
+    "clause.door_narrow": "Atraviesa la puerta estrecha ({width} de paso libre)",
+    "clause.caution": "Precaución: {hazard} a {ahead}",
+    "clause.transition": "{connector, select, elevator {Toma el ascensor} stairs {Toma las escaleras} escalator {Toma la escalera mecánica} other {Toma el conector}}{direction, select, up { para subir} down { para bajar} other {}} hasta la planta {floor}",
+    "clause.arrive": "Destino alcanzado: {destination}",
+    "clause.arrive_side": "Destino alcanzado: {destination}, {side, select, left {a tu izquierda} right {a tu derecha} other {justo delante}}",
+    "landmark.sign_text": "el letrero «{text}»",
+    "landmark.sign_category": "el letrero de {category}",
+    "landmark.sign": "el letrero",
+    "landmark.door": "la puerta",
+    "sentence.continue": "{clause} y continúa {distance}.",
+    "sentence.plain": "{clause}."
+  },
+  "place_phrases": {
+    "entrance": "la entrada", "exit": "la salida", "emergency_exit": "la salida de emergencia",
+    "restroom": "los aseos", "accessible_restroom": "el aseo accesible", "elevator": "el ascensor",
+    "stairs": "las escaleras", "escalator": "la escalera mecánica", "ramp": "la rampa", "door": "la puerta",
+    "room": "la sala", "corridor": "el pasillo", "information": "el punto de información",
+    "reception": "la recepción", "seating": "la zona de asientos", "water_fountain": "la fuente de agua",
+    "fire_extinguisher": "el extintor", "first_aid": "el botiquín", "landmark": "el punto de referencia",
+    "other": "tu destino"
+  },
+  "sign_categories": {
+    "exit": "salida", "emergency_exit": "salida de emergencia", "entrance": "entrada", "restroom": "aseos",
+    "accessible_restroom": "aseo accesible", "elevator": "ascensor", "stairs": "escaleras",
+    "escalator": "escalera mecánica", "ramp": "rampa", "information": "información", "first_aid": "primeros auxilios",
+    "fire_extinguisher": "extintor", "directional": "dirección", "informational": "información"
+  },
+  "hazards": {
+    "step": "un escalón", "stairs": "escaleras", "ramp": "una rampa", "level_change": "un desnivel",
+    "drop_off": "un borde con caída", "low_headroom": "un techo bajo", "protruding_object": "un objeto saliente",
+    "other": "un obstáculo"
+  }
+}

@@ -5,9 +5,12 @@ import zlib
 public struct StreamingBackendClient: Sendable {
     public let baseURL: URL
     private let session: URLSession
+    /// Bearer token for an authenticated backend. Sent only over HTTPS or to a loopback host.
+    private let accessToken: String?
 
-    public init(baseURL: URL, session: URLSession = .shared) {
+    public init(baseURL: URL, accessToken: String? = nil, session: URLSession = .shared) {
         self.baseURL = baseURL; self.session = session
+        self.accessToken = accessToken.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     @discardableResult
@@ -39,6 +42,15 @@ public struct StreamingBackendClient: Sendable {
     public func upload(_ chunk: StreamChunk, manifest: StreamManifest) async throws -> StreamSummary {
         try manifest.validate()
         return try await uploadEncodedChunk(chunk.encoded(), sequence: chunk.sequence, manifest: manifest)
+    }
+
+    /// Uploads a whole-capture attachment (`StreamAttachment.allowedNames`) for this stream.
+    public func putAttachment(_ data: Data, named name: String, manifest: StreamManifest) async throws {
+        try manifest.validate()
+        guard StreamAttachment.allowedNames.contains(name), data.count <= StreamAttachment.maximumBytes else {
+            throw StreamingCaptureError.invalidChunk
+        }
+        _ = try await request(path: ["streams", manifest.id, "assets", name], method: "PUT", stage: .upload, body: data)
     }
 
     @discardableResult
@@ -180,8 +192,13 @@ public struct StreamingBackendClient: Sendable {
         }
         components.percentEncodedPath += "/" + segments.joined(separator: "/")
         guard let url = components.url else { throw BackendClientError.invalidURL }
+        if accessToken != nil, url.scheme != "https",
+           !["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? "") {
+            throw BackendClientError.invalidURL  // Never send a credential in clear text.
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
+        if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
         // Large models can take longer than an upload request to reconstruct. Keep the
         // transport cancellable while allowing a bounded wait for the finished result.
         request.timeoutInterval = timeoutInterval ?? (stage == .scene ? 180 : 45)

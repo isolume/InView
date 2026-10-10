@@ -43,7 +43,14 @@ pub async fn put_graph(
     }
     graph.validate().map_err(ApiError::invalid)?;
     let summary = graph.summary();
-    state.graphs.put(graph).await;
+    state.graphs.put(graph).await.map_err(|error| {
+        tracing::error!(%error, "Could not persist graph");
+        ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "graph_storage_error",
+            "The graph could not be saved.",
+        )
+    })?;
     Ok(Json(summary))
 }
 

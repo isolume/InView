@@ -33,6 +33,7 @@ public actor StreamingCaptureQueue {
     public nonisolated let root: URL
     public nonisolated let manifest: StreamManifest
     private let session: URLSession
+    private let accessToken: String?
     private let limits: StreamingCaptureLimits
     private var state: Checkpoint
     private var captured: Int
@@ -54,14 +55,16 @@ public actor StreamingCaptureQueue {
 
     /// Reopening restores saved progress but does not send anything until append/synchronize/finish.
     /// A saved server binding must match an explicitly supplied address; changing it is a separate action.
-    public init(root: URL, manifest: StreamManifest, backendURL: URL?, session: URLSession = .shared,
-                limits: StreamingCaptureLimits = .standard) throws {
+    /// `accessToken` is held in memory only; it is never written to the queue's checkpoint.
+    public init(root: URL, manifest: StreamManifest, backendURL: URL?, accessToken: String? = nil,
+                session: URLSession = .shared, limits: StreamingCaptureLimits = .standard) throws {
         try manifest.validate()
         guard limits.maximumFrames > 0, limits.maximumSavedBytes > 0 else {
             throw StreamingCaptureError.invalidLimits
         }
         guard root.isFileURL else { throw StreamingCaptureError.storageFailure }
         self.root = root; self.manifest = manifest; self.session = session; self.limits = limits
+        self.accessToken = accessToken
         let suppliedURL = try backendURL.map(StreamingBackendClient.normalizedURL)
         let manager = FileManager.default
         let manifestURL = root.appendingPathComponent("manifest.json")
@@ -114,14 +117,16 @@ public actor StreamingCaptureQueue {
 
     @discardableResult
     public func append(frame: CaptureDepthFrame, colorJPEG: Data,
-                       surfaces: [CaptureSurface] = [], objects: [CaptureObject] = []) async throws -> StreamingCaptureStatus {
+                       surfaces: [CaptureSurface] = [], objects: [CaptureObject] = [],
+                       environment: CaptureEnvironmentSample? = nil,
+                       poses: [StreamPose] = []) async throws -> StreamingCaptureStatus {
         guard !state.captureClosed else { throw StreamingCaptureError.captureClosed }
         guard captured < limits.maximumFrames else { throw StreamingCaptureError.captureLimit }
         guard lastTimestamp == nil || frame.timestampSeconds > lastTimestamp! else {
             throw StreamingCaptureError.invalidChunk
         }
         let chunk = StreamChunk(sequence: captured, frame: frame, colorJPEG: colorJPEG,
-                                surfaces: surfaces, objects: objects)
+                                surfaces: surfaces, objects: objects, environment: environment, poses: poses)
         let data = try chunk.encoded()
         guard data.count <= limits.maximumSavedBytes - min(capturedBytes, limits.maximumSavedBytes) else {
             throw StreamingCaptureError.captureLimit
@@ -141,6 +146,27 @@ public actor StreamingCaptureQueue {
     public func snapshot() -> StreamingCaptureStatus {
         StreamingCaptureStatus(captured: captured, uploaded: state.uploaded,
                                lastError: lastError, finished: state.finished)
+    }
+
+    /// Saves a whole-capture file (RoomPlan export, semantics, OCR text, movement track) with the
+    /// scan. It is uploaded before the scan is finished, and again if finishing is retried.
+    public func attach(_ data: Data, named name: String) throws {
+        guard StreamAttachment.allowedNames.contains(name), data.count <= StreamAttachment.maximumBytes,
+              (try? JSONSerialization.jsonObject(with: data)) != nil else {
+            throw StreamingCaptureError.invalidChunk
+        }
+        let directory = root.appendingPathComponent("attachments", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+        } catch { throw StreamingCaptureError.storageFailure }
+    }
+
+    private func savedAttachments() -> [(name: String, data: Data)] {
+        let directory = root.appendingPathComponent("attachments", isDirectory: true)
+        return StreamAttachment.allowedNames.sorted().compactMap { name in
+            (try? Data(contentsOf: directory.appendingPathComponent(name))).map { (name, $0) }
+        }
     }
 
     /// Durably end capture without requiring a connection or starting an upload.
@@ -316,6 +342,11 @@ public actor StreamingCaptureQueue {
         do {
             try await synchronize()
             let backend = try client()
+            // Attachments are idempotent PUTs; an older server without the route skips them.
+            for attachment in savedAttachments() {
+                do { try await backend.putAttachment(attachment.data, named: attachment.name, manifest: manifest) }
+                catch let error as BackendClientError where error.isArchiveEndpointUnavailable { break }
+            }
             let summary: StreamSummary
             do { summary = try await backend.finish(manifest, chunkCount: captured) }
             catch let error as BackendClientError where error.isMissingStream {
@@ -348,7 +379,7 @@ public actor StreamingCaptureQueue {
         guard let address = state.backendURL, let url = URL(string: address) else {
             throw StreamingCaptureError.notConfigured
         }
-        return StreamingBackendClient(baseURL: url, session: session)
+        return StreamingBackendClient(baseURL: url, accessToken: accessToken, session: session)
     }
 
     private func save(_ checkpoint: Checkpoint) throws {
@@ -404,7 +435,7 @@ public actor StreamingCaptureQueue {
         if let backend = error as? BackendClientError {
             switch backend {
             case .http(let status, _, _): return (400...499).contains(status) && status != 408 && status != 429
-            case .invalidResponse, .invalidCapture, .invalidURL, .captureConflict: return true
+            case .invalidResponse, .invalidCapture, .invalidURL, .captureConflict, .archiveTooLarge: return true
             case .connection: return false
             }
         }

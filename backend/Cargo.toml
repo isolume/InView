@@ -13,10 +13,17 @@ meshopt = "0.6.2"
 nalgebra = "0.34"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-native-tls", "postgres", "json", "chrono", "uuid"] }
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+subtle = "2"
+chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync"] }
+tar = "0.4"
 tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+jpeg-encoder = "0.6"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

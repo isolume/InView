@@ -122,6 +122,10 @@ private final class StreamTestServer: @unchecked Sendable {
                 if loseResponse { loseResponse = false; return .failure(.networkConnectionLost) }
                 return try summary()
             }
+            if method == "PUT", pieces.count == 4, pieces[2] == "assets" {
+                guard !finished else { return error(409, "stream_finished") }
+                return .http(204, Data())
+            }
             if method == "POST", pieces.count == 3, pieces[2] == "finish" {
                 let json = try JSONSerialization.jsonObject(with: body) as? [String: Int]
                 guard json?["chunk_count"] == chunks.count, !chunks.isEmpty else { return error(409, "stream_incomplete") }
@@ -725,5 +729,55 @@ struct StreamingCaptureTests {
         try await waitForStreamRequest(server, method: "POST")
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
+    }
+}
+
+@Suite struct StreamingContextTests {
+    @Test func emptyContextIsOmittedSoOlderServersAcceptTheChunk() throws {
+        let plain = try StreamChunk(sequence: 0, frame: streamFrame(), colorJPEG: streamJPEG()).encoded()
+        let keys = try #require(JSONSerialization.jsonObject(with: plain) as? [String: Any]).keys
+        #expect(!keys.contains("environment") && !keys.contains("poses"))
+    }
+
+    @Test func geoAndMovementTravelWithTheChunk() throws {
+        let environment = CaptureEnvironmentSample(recordedAtUnixSeconds: 1_791_000_001, latitude: 33.7756,
+                                                   longitude: -84.3963, horizontalAccuracyM: 6, headingDegrees: 90)
+        let pose = StreamPose(t: 0.75, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.1, 0, 0, 1],
+                              tracking: "normal", mapping: "mapped")
+        let chunk = try StreamChunk(sequence: 0, frame: streamFrame(), colorJPEG: streamJPEG(),
+                                    environment: environment, poses: [pose])
+        let json = try #require(JSONSerialization.jsonObject(with: chunk.encoded()) as? [String: Any])
+        let geo = try #require(json["environment"] as? [String: Any])
+        #expect(geo["latitude"] as? Double == 33.7756 && geo["recorded_at_unix_seconds"] as? Double == 1_791_000_001)
+        #expect((json["poses"] as? [[String: Any]])?.first?["tracking"] as? String == "normal")
+        #expect(try JSONDecoder().decode(StreamChunk.self, from: chunk.encoded()) == chunk)
+    }
+
+    @Test func invalidMovementOrGeoIsRejected() throws {
+        let frame = streamFrame(), jpeg = try streamJPEG()
+        let badPose = StreamPose(t: .nan, m: [Float](repeating: 0, count: 16))
+        #expect(throws: StreamingCaptureError.invalidChunk) {
+            try StreamChunk(sequence: 0, frame: frame, colorJPEG: jpeg, poses: [badPose]).encoded()
+        }
+        let badGeo = CaptureEnvironmentSample(recordedAtUnixSeconds: 1, latitude: .infinity)
+        #expect(throws: StreamingCaptureError.invalidChunk) {
+            try StreamChunk(sequence: 0, frame: frame, colorJPEG: jpeg, environment: badGeo).encoded()
+        }
+    }
+
+    @Test func attachmentsUploadBeforeFinishAndBadNamesAreRefused() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let queue = try StreamingCaptureQueue(root: streamRoot(), manifest: streamManifest(), backendURL: url, session: session)
+        try await queue.append(frame: streamFrame(), colorJPEG: streamJPEG())
+        try await queue.attach(Data(#"{"schema_version":1}"#.utf8), named: "semantics.json")
+        try await queue.attach(Data(#"{"schema_version":1,"observations":[]}"#.utf8), named: "text-observations.json")
+        await #expect(throws: StreamingCaptureError.invalidChunk) { try await queue.attach(Data("{}".utf8), named: "../evil.json") }
+        await #expect(throws: StreamingCaptureError.invalidChunk) { try await queue.attach(Data("not json".utf8), named: "roomplan.json") }
+        _ = try await queue.finish()
+        let order = server.records.map { "\($0.method) \($0.path.split(separator: "/").suffix(2).joined(separator: "/"))" }
+        let finish = try #require(order.firstIndex { $0.hasSuffix("/finish") })
+        let uploads = order.indices.filter { order[$0].hasPrefix("PUT assets/") }
+        #expect(uploads.count == 2 && uploads.allSatisfy { $0 < finish })
     }
 }
