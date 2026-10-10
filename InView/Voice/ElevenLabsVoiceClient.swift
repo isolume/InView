@@ -5,11 +5,13 @@ struct ElevenLabsVoiceClient {
     enum ClientError: LocalizedError {
         case http(status: Int, message: String)
         case empty
+        case invalidVoice
 
         var errorDescription: String? {
             switch self {
             case .http(let status, let message): "ElevenLabs \(status): \(message)"
             case .empty: "ElevenLabs returned no audio"
+            case .invalidVoice: "The configured ElevenLabs voice is invalid"
             }
         }
     }
@@ -28,7 +30,12 @@ struct ElevenLabsVoiceClient {
     /// MP3 audio for this line, or throws on any failure. Callers are expected to apply their own
     /// timeout and fall back to an on-device voice; this makes no retry attempts of its own.
     func synthesize(_ text: String) async throws -> Data {
-        var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)")!)
+        var endpoint = URLComponents()
+        endpoint.scheme = "https"
+        endpoint.host = "api.elevenlabs.io"
+        endpoint.path = "/v1/text-to-speech/\(voiceID)"
+        guard let url = endpoint.url else { throw ClientError.invalidVoice }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 4
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")

@@ -1,8 +1,7 @@
 import AVFoundation
 
-/// Speaks navigation prompts. Prefers ElevenLabs when a key is configured, falling back to the
-/// system voice immediately on any failure, timeout, or missing key — navigation audio must
-/// never wait on the network. Urgent prompts cut off whatever is playing.
+/// Plays prompts in order, using ElevenLabs when configured and the system voice if synthesis
+/// fails or exceeds 2.5 seconds. Urgent prompts cancel queued and playing speech.
 @MainActor
 final class VoiceGuide: NSObject {
     private let synthesizer = AVSpeechSynthesizer()
@@ -16,12 +15,17 @@ final class VoiceGuide: NSObject {
     private static let maxCachedLines = 60
     private static let synthesisTimeout: TimeInterval = 2.5
     private var synthesisTask: Task<Void, Never>?
+    private var pendingLines: [String] = []
+    private var playbackCompletion: CheckedContinuation<Bool, Never>?
+    private var utterance: AVSpeechUtterance?
+    private var generation = 0
 
     /// Audio session changes can block for a moment, so they happen off the main thread.
     private static let sessionQueue = DispatchQueue(label: "VoiceGuide.audioSession")
 
     override init() {
         super.init()
+        synthesizer.delegate = self
     }
 
     func activate() {
@@ -51,56 +55,106 @@ final class VoiceGuide: NSObject {
 
     func say(_ text: String, interrupting: Bool = false) {
         if interrupting { stop() }
-        guard let elevenLabs else {
-            speakWithSystemVoice(text)
-            return
-        }
-        if let cached = audioCache[text] {
-            play(cached, fallbackText: text)
-            return
-        }
+        pendingLines.append(text)
+        guard synthesisTask == nil else { return }
+        let generation = generation
         synthesisTask = Task { [weak self] in
             guard let self else { return }
-            do {
-                let data = try await withTimeout(Self.synthesisTimeout) {
-                    try await elevenLabs.synthesize(text)
+            defer {
+                if self.generation == generation { self.synthesisTask = nil }
+            }
+            while !Task.isCancelled, !self.pendingLines.isEmpty {
+                let text = self.pendingLines.removeFirst()
+                var data = self.audioCache[text]
+                if data == nil, let elevenLabs = self.elevenLabs {
+                    data = try? await withTimeout(Self.synthesisTimeout) {
+                        try await elevenLabs.synthesize(text)
+                    }
+                    guard !Task.isCancelled else { return }
+                    if let data { self.cache(text, data: data) }
                 }
-                try Task.checkCancellation()
-                self.cache(text, data: data)
-                self.play(data, fallbackText: text)
-            } catch {
                 guard !Task.isCancelled else { return }
-                self.speakWithSystemVoice(text)
+                if let data, await self.play(data) { continue }
+                guard !Task.isCancelled else { return }
+                await self.speakWithSystemVoice(text)
             }
         }
     }
 
     func stop() {
+        generation += 1
         synthesisTask?.cancel()
         synthesisTask = nil
+        pendingLines.removeAll()
+        completePlayback(false)
+        utterance = nil
         synthesizer.stopSpeaking(at: .immediate)
         player?.stop()
         player = nil
     }
 
-    private func speakWithSystemVoice(_ text: String) {
+    private func speakWithSystemVoice(_ text: String) async {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice ?? AVSpeechSynthesisVoice(language: "en-US")
-        synthesizer.speak(utterance)
+        self.utterance = utterance
+        _ = await withCheckedContinuation { continuation in
+            playbackCompletion = continuation
+            synthesizer.speak(utterance)
+        }
+        if self.utterance === utterance { self.utterance = nil }
     }
 
-    private func play(_ data: Data, fallbackText: String) {
-        guard let player = try? AVAudioPlayer(data: data) else {
-            speakWithSystemVoice(fallbackText)
-            return
-        }
+    private func play(_ data: Data) async -> Bool {
+        guard let player = try? AVAudioPlayer(data: data) else { return false }
         self.player = player
-        player.play()
+        player.delegate = self
+        let finished = await withCheckedContinuation { continuation in
+            playbackCompletion = continuation
+            if !player.play() { completePlayback(false) }
+        }
+        if self.player === player { self.player = nil }
+        return finished
+    }
+
+    private func completePlayback(_ finished: Bool) {
+        let completion = playbackCompletion
+        playbackCompletion = nil
+        completion?.resume(returning: finished)
     }
 
     private func cache(_ text: String, data: Data) {
         if audioCache.count >= Self.maxCachedLines { audioCache.removeAll() }
         audioCache[text] = data
+    }
+}
+
+extension VoiceGuide: AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self, self.player === player else { return }
+            self.completePlayback(flag)
+        }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor [weak self] in
+            guard let self, self.player === player else { return }
+            self.completePlayback(false)
+        }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in
+            guard let self, self.utterance === utterance else { return }
+            self.completePlayback(true)
+        }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in
+            guard let self, self.utterance === utterance else { return }
+            self.completePlayback(false)
+        }
     }
 }
 

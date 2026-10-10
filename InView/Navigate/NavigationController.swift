@@ -62,6 +62,7 @@ final class NavigationController: ObservableObject {
     private var lastObstacleCheck = Date.distantPast
     private var isActive = false
     private var isLoading = false
+    private var loadingGeneration = 0
     private var routingGeneration = 0
     private var demoPath: [SIMD2<Float>] = []
     private var demoDistance: Float = 0
@@ -102,14 +103,15 @@ final class NavigationController: ObservableObject {
         }
         guard !isLoading else { return }
         isLoading = true
+        let generation = loadingGeneration
         Task { [weak self] in
             let started = Date.now
             let loaded = await Task.detached(priority: .userInitiated) {
-                let map = MapStore.load()
-                return Loaded(map: map, worldMap: MapStore.loadWorldMap(),
-                              planner: map.map(RoutePlanner.init), startView: MapStore.loadStartView())
+                let assets = MapStore.loadNavigationAssets()
+                return Loaded(map: assets.map, worldMap: assets.worldMap,
+                              planner: assets.map.map(RoutePlanner.init), startView: assets.startView)
             }.value
-            guard let self else { return }
+            guard let self, loadingGeneration == generation else { return }
             Log.navigation.info("map loaded in \(String(format: "%.2f", Date.now.timeIntervalSince(started)), privacy: .public) s · \(loaded.map?.footprints.count ?? 0) footprints, \(loaded.map?.points.count ?? 0) points, world map \(loaded.worldMap == nil ? "missing" : "present", privacy: .public)")
             isLoading = false
             map = loaded.map
@@ -139,6 +141,8 @@ final class NavigationController: ObservableObject {
     func reload(map newMap: VenueMap?) {
         guard !isDemo else { return }
         stop()
+        loadingGeneration += 1
+        isLoading = false
         map = newMap
         worldMap = nil
         planner = nil
@@ -313,10 +317,10 @@ final class NavigationController: ObservableObject {
         guard phase == .navigating, let route, let renderer else { return }
         if Date.now.timeIntervalSince(lastObstacleCheck) >= Self.obstacleCheckInterval {
             lastObstacleCheck = .now
-            let appeared = obstacles.update(with: frame, route: route.waypoints, floorY: renderer.floorY)
+            let change = obstacles.update(with: frame, route: route.waypoints, floorY: renderer.floorY)
             renderer.showObstacles(obstacles.obstacles)
-            if appeared {
-                requestRoute(.obstacle)
+            if let change {
+                requestRoute(change == .appeared ? .obstacle : .update)
                 return
             }
         }

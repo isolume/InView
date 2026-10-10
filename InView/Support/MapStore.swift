@@ -67,6 +67,11 @@ enum MapStore {
         UIImage(contentsOfFile: startViewURL.path())
     }
 
+    /// Keep the map, relocalization archive, and start photo on the same selected floor.
+    static func loadNavigationAssets() -> (map: VenueMap?, worldMap: ARWorldMap?, startView: UIImage?) {
+        publicationLock.withLock { (load(), loadWorldMap(), loadStartView()) }
+    }
+
     static func updateGeographicReference(_ reference: BuildingMapReference) throws {
         try reference.validate()
         try publicationLock.withLock {
