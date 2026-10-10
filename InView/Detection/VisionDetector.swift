@@ -54,14 +54,16 @@ enum VisionPrompt {
         while walking through a building. Report only these features, and only when clearly visible:
         - elevator: elevator doors (usually metal, with a call-button panel beside them) or an elevator call panel.
         - ramp: a sloped walkway or sloped section of floor a wheelchair can roll along. Not stairs, not escalators.
-        - stairs: any staircase or steps, even a single step or a short flight at a doorway. Escalators count as stairs.
+        - stairs: a staircase or steps where you can clearly see risers and treads, even a single step at a doorway. \
+        Escalators count as stairs. Do not report floor tiles or patterns, shelves, bookcases, benches, bleacher seats, \
+        ladders, or the edge of a platform unless actual steps are visible.
         For each one:
         - point: where a wheelchair user should go: on the floor in front of the elevator doors, or the bottom of \
         the ramp. For stairs, the middle of the bottom step's front edge.
         - surface point: for a ramp, a spot in the middle of its walking surface. Otherwise repeat point.
         - name: a short name a person would use, from what you can see, e.g. "Lobby elevator", "Elevator B", \
         "Entrance ramp", "Main stairs". Use visible signs or numbers when there are any.
-        - confidence: your certainty from 0 to 1.
+        - confidence: your certainty from 0 to 1. Only go above 0.8 for stairs when the steps are unmistakable.
         \(coordinates)
         Return an empty list when none are visible. Do not guess.
         """

@@ -31,10 +31,17 @@ final class AccessibilityDetector: ObservableObject {
         /// Horizontal direction (x, z) from the bottom step up the stairs, as seen from the camera.
         var facing: SIMD2<Float>
         var count = 1
+        /// LiDAR confirmed a climbing surface there, or a volunteer marked it by hand.
+        var isVerified: Bool
+
+        /// Counts as stairs once LiDAR agrees, or once the model has seen it twice when LiDAR couldn't tell.
+        var isConfirmed: Bool { isVerified || count >= 2 }
     }
 
     @Published private(set) var sightings: [Sighting] = []
     @Published private(set) var stairs: [StairsSighting] = []
+    /// Stairs the model claimed but LiDAR showed to be flat floor or a wall.
+    @Published private(set) var rejectedStairs = 0
     @Published private(set) var framesAnalyzed = 0
     @Published private(set) var lastError: String?
 
@@ -43,6 +50,8 @@ final class AccessibilityDetector: ObservableObject {
     private static let sampleInterval: TimeInterval = 2
     private static let maxRequestsInFlight = 2
     private static let minimumConfidence: Float = 0.6
+    /// Stairs are a costly false alarm (they block routes), so the model must be surer.
+    private static let minimumStairsConfidence: Float = 0.8
     /// Sightings of the same kind closer than this are treated as the same place.
     private static let mergeDistance: Float = 2
     /// Stairs the camera spots are drawn this size, starting at the bottom step: (width, depth).
@@ -81,7 +90,7 @@ final class AccessibilityDetector: ObservableObject {
         let center = CGPoint(x: 0.5, y: 0.5)
         let position = locate(center, camera: camera, in: session)
         guard let pointKind = kind.accessPointKind else {
-            recordStairs(name: "Stairs \(stairs.count + 1)", at: position, seenFrom: camera)
+            recordStairs(name: "Stairs \(stairs.count + 1)", at: position, seenFrom: camera, verified: true)
             return
         }
         let slope = pointKind == .ramp ? measureSlope(around: center, camera: camera, in: session) : nil
@@ -91,7 +100,7 @@ final class AccessibilityDetector: ObservableObject {
 
     /// Footprints for the stairs the camera spotted, extending away from the bottom step.
     func stairsFootprints() -> [Footprint] {
-        stairs.map { sighting in
+        stairs.filter(\.isConfirmed).map { sighting in
             let size = Self.spottedStairsSize
             let bottom = SIMD2(sighting.position.x, sighting.position.z)
             // The footprint's y axis runs up the stairs.
@@ -136,7 +145,15 @@ final class AccessibilityDetector: ObservableObject {
         for detection in detections where detection.confidence >= Self.minimumConfidence {
             let position = locate(FrameEncoder.capturedImagePoint(fromPortrait: detection.target), camera: camera, in: session)
             guard let kind = detection.kind.accessPointKind else {
-                recordStairs(name: detection.name, at: position, seenFrom: camera)
+                guard detection.confidence >= Self.minimumStairsConfidence else { continue }
+                switch checkStairs(around: detection.target, camera: camera, in: session) {
+                case .notStairs:
+                    rejectedStairs += 1
+                case .stairs:
+                    recordStairs(name: detection.name, at: position, seenFrom: camera, verified: true)
+                case .inconclusive:
+                    recordStairs(name: detection.name, at: position, seenFrom: camera, verified: false)
+                }
                 continue
             }
             var slope: Float?
@@ -147,14 +164,30 @@ final class AccessibilityDetector: ObservableObject {
         }
     }
 
-    private func recordStairs(name: String, at position: SIMD3<Float>, seenFrom camera: CameraSnapshot) {
+    /// Raycasts a strip of the image around the claimed stairs, above and below the bottom step so stairs
+    /// going up or down are both covered, and asks whether the surface there climbs like stairs.
+    private func checkStairs(around portraitPoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> StairsCheck.Verdict {
+        var samples: [SIMD3<Float>] = []
+        for column in [-0.03, 0, 0.03] {
+            for row in stride(from: 0.12, through: -0.24, by: -0.03) {
+                let point = CGPoint(x: min(1, max(0, portraitPoint.x + column)), y: min(1, max(0, portraitPoint.y + row)))
+                if let hit = hit(FrameEncoder.capturedImagePoint(fromPortrait: point), camera: camera, in: session) {
+                    samples.append(hit)
+                }
+            }
+        }
+        return StairsCheck.classify(samples, viewer: camera.transform.translation)
+    }
+
+    private func recordStairs(name: String, at position: SIMD3<Float>, seenFrom camera: CameraSnapshot, verified: Bool) {
         let offset = SIMD2(position.x, position.z) - SIMD2(camera.transform.translation.x, camera.transform.translation.z)
         let facing = simd_length(offset) > 0.1 ? simd_normalize(offset) : SIMD2<Float>(0, -1)
         let floor = SIMD2(position.x, position.z)
         if let match = stairs.firstIndex(where: { simd_distance(SIMD2($0.position.x, $0.position.z), floor) < Self.mergeDistance }) {
             stairs[match].count += 1
+            stairs[match].isVerified = stairs[match].isVerified || verified
         } else {
-            stairs.append(StairsSighting(name: name, position: position, facing: facing))
+            stairs.append(StairsSighting(name: name, position: position, facing: facing, isVerified: verified))
         }
     }
 

@@ -151,11 +151,11 @@ private struct DetectionStatus: View {
             ForEach(detector.sightings) { sighting in
                 chip(sighting.name, count: sighting.count, symbol: sighting.kind.symbolName, tint: sighting.kind.tint)
             }
-            ForEach(detector.stairs) { stairs in
+            ForEach(detector.stairs.filter(\.isConfirmed)) { stairs in
                 chip(stairs.name, count: stairs.count, symbol: "figure.stairs", tint: Theme.stairs)
             }
         }
-        .animation(.spring, value: detector.sightings.count + detector.stairs.count)
+        .animation(.spring, value: detector.sightings.count + detector.stairs.filter(\.isConfirmed).count)
         .padding(10)
         .frame(maxWidth: 230, alignment: .trailing)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -177,7 +177,11 @@ private struct DetectionStatus: View {
             return AppConfig.visionProvider == .openai ? "Vision off: set OPENAI_API_KEY" : "Vision off: set GEMINI_API_KEY"
         }
         if let error = detector.lastError { return error }
-        return "Section \(section) · \(detector.framesAnalyzed) frames checked"
+        var line = "Section \(section) · \(detector.framesAnalyzed) frames checked"
+        if detector.rejectedStairs > 0 {
+            line += " · \(detector.rejectedStairs) false stairs ruled out by LiDAR"
+        }
+        return line
     }
 }
 
