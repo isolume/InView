@@ -10,15 +10,22 @@ final class VoiceGuide {
         .max { $0.quality.rawValue < $1.quality.rawValue }
         ?? AVSpeechSynthesisVoice(language: "en-US")
 
+    /// Audio session changes can block for a moment, so they happen off the main thread.
+    private static let sessionQueue = DispatchQueue(label: "VoiceGuide.audioSession")
+
     func activate() {
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
-        try? session.setActive(true)
+        Self.sessionQueue.async {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
+            try? session.setActive(true)
+        }
     }
 
     func deactivate() {
         stop()
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Self.sessionQueue.async {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     func say(_ text: String, interrupting: Bool = false) {
