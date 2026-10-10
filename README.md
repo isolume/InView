@@ -111,7 +111,7 @@ Relocalization works best when the lighting matches the scan and the area has te
 
 ## Status and known issues (October 10, 2026)
 
-The core logic is unit-tested (37 tests). The app builds. It was tried briefly on an iPhone 17 Pro, which turned up the problems below; the fixes for them have **not** been run on a device yet.
+The core logic is unit-tested (39 tests). The app builds. It was tried briefly on an iPhone 17 Pro, which turned up the problems below; the fixes for them have **not** been run on a device yet.
 
 1. **Outline boxes replaced by tags.** Scanning shows one small capsule tag per find (`DetectionOverlay`, 10 Hz), and navigation marks stairs with a red "Stairs" billboard over a floor dot (`StairsMarker`). Point markers and chevrons use the kind's color.
 2. **Finds that never confirmed.** Fixed by placing finds only where a raycast hits (no more 3 m guesses), letting one high-confidence sighting count once it's on a surface (and LiDAR-checked for ramps and stairs), and sending the rest to review as **Unconfirmed – keep?**. The detector logs every frame, placement, LiDAR verdict and merge, plus a summary when each section ends; on the device run
