@@ -19,10 +19,12 @@ use crate::{
     scan_package,
 };
 
-/// Process-local storage. Keep database decisions out of the HTTP and routing code.
+/// Navigation graphs, kept in memory and, when a directory is configured, persisted as one
+/// replaceable JSON file per graph. Keep database decisions out of the HTTP and routing code.
 #[derive(Clone, Default)]
 pub struct GraphStore {
     graphs: Arc<RwLock<BTreeMap<String, Arc<Graph>>>>,
+    directory: Option<Arc<PathBuf>>,
 }
 
 pub struct StoredScan {
@@ -343,15 +345,60 @@ fn persist_immutable(directory: &Path, path: &Path, bytes: &[u8]) -> io::Result<
 }
 
 impl GraphStore {
+    /// Load persisted graphs from `directory` (typically `INVIEW_SCAN_DIR/graphs`). Graphs are
+    /// replaceable worker or reviewer output, so unreadable, invalid or misnamed files are
+    /// logged and skipped instead of blocking startup.
+    pub fn open(directory: impl AsRef<Path>) -> io::Result<Self> {
+        let directory = directory.as_ref().to_path_buf();
+        fs::create_dir_all(&directory)?;
+        let mut graphs = BTreeMap::new();
+        for entry in fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if path.extension().and_then(|v| v.to_str()) != Some("json") {
+                continue;
+            }
+            match load_graph(&path) {
+                Ok(graph) => {
+                    graphs.insert(graph.id.clone(), Arc::new(graph));
+                }
+                Err(reason) => {
+                    tracing::warn!(path = %path.display(), %reason, "Ignoring unreadable graph")
+                }
+            }
+        }
+        Ok(Self {
+            graphs: Arc::new(RwLock::new(graphs)),
+            directory: Some(Arc::new(directory)),
+        })
+    }
+
     pub async fn get(&self, id: &str) -> Option<Arc<Graph>> {
         self.graphs.read().await.get(id).cloned()
     }
 
-    pub async fn put(&self, graph: Graph) {
-        self.graphs
-            .write()
+    /// Replace a graph. When persistent, the file is written atomically before the in-memory
+    /// copy changes, so a failed write never acknowledges the update. The work runs in its own
+    /// task so a dropped request cannot leave a graph on disk that memory does not serve.
+    pub async fn put(&self, graph: Graph) -> io::Result<()> {
+        let store = self.clone();
+        tokio::spawn(async move { store.put_now(graph).await })
             .await
-            .insert(graph.id.clone(), Arc::new(graph));
+            .map_err(io::Error::other)?
+    }
+
+    async fn put_now(&self, graph: Graph) -> io::Result<()> {
+        // Holding the lock across the write keeps disk and memory in the same order.
+        let mut graphs = self.graphs.write().await;
+        if let Some(directory) = &self.directory {
+            let directory = directory.as_ref().clone();
+            let path = directory.join(format!("{}.json", scan_filename(&graph.id)));
+            let bytes = serde_json::to_vec(&graph).map_err(invalid_scan)?;
+            tokio::task::spawn_blocking(move || persist_replaceable(&directory, &path, &bytes))
+                .await
+                .map_err(io::Error::other)??;
+        }
+        graphs.insert(graph.id.clone(), Arc::new(graph));
+        Ok(())
     }
 
     pub async fn list(&self) -> Vec<GraphSummary> {
@@ -362,4 +409,14 @@ impl GraphStore {
             .map(|graph| graph.summary())
             .collect()
     }
+}
+
+fn load_graph(path: &Path) -> Result<Graph, String> {
+    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    let graph: Graph = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    graph.validate()?;
+    if path.file_stem().and_then(|v| v.to_str()) != Some(scan_filename(&graph.id).as_str()) {
+        return Err("file name does not match the graph id".into());
+    }
+    Ok(graph)
 }

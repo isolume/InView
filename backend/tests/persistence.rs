@@ -4,7 +4,10 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use inview_backend::{AppState, app, scan_package, store::ScanStore};
+use inview_backend::{
+    AppState, app, scan_package,
+    store::{GraphStore, ScanStore},
+};
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -256,4 +259,138 @@ async fn analysis_is_validated_replaceable_and_survives_restart() {
         serde_json::json!([0., 1.4, 1.8])
     );
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn demo_graph(id: &str, label: &str) -> Vec<u8> {
+    let mut graph: Value =
+        serde_json::from_slice(include_bytes!("../examples/graph.json")).unwrap();
+    graph["id"] = Value::from(id);
+    graph["nodes"][0]["label"] = Value::from(label);
+    serde_json::to_vec(&graph).unwrap()
+}
+
+#[tokio::test]
+async fn graphs_survive_restart_and_replacements_persist() {
+    let dir = temporary_directory();
+    let graphs_dir = dir.join("graphs");
+    let first = AppState {
+        graphs: GraphStore::open(&graphs_dir).unwrap(),
+        ..AppState::default()
+    };
+    let (status, summary) = send(
+        first.clone(),
+        "/graphs/scan-1-nav",
+        "PUT",
+        demo_graph("scan-1-nav", "Front door"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(summary["node_count"], 4);
+    let (status, _) = send(
+        first.clone(),
+        "/graphs/scan-1-nav",
+        "PUT",
+        demo_graph("scan-1-nav", "Main entrance"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // Invalid replacements are rejected before touching disk.
+    let mut invalid: Value = serde_json::from_slice(&demo_graph("scan-1-nav", "x")).unwrap();
+    invalid["schema_version"] = Value::from(2);
+    let (status, _) = send(
+        first,
+        "/graphs/scan-1-nav",
+        "PUT",
+        serde_json::to_vec(&invalid).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let files: Vec<_> = fs::read_dir(&graphs_dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(
+        files.len(),
+        1,
+        "one replaceable file, no temp leftovers: {files:?}"
+    );
+
+    let restarted = AppState {
+        graphs: GraphStore::open(&graphs_dir).unwrap(),
+        ..AppState::default()
+    };
+    let (status, graph) = send(restarted.clone(), "/graphs/scan-1-nav", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(graph["nodes"][0]["label"], "Main entrance");
+    let (status, list) = send(restarted.clone(), "/graphs", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    let (status, route) = send(
+        restarted,
+        "/graphs/scan-1-nav/routes",
+        "POST",
+        br#"{"from":"entrance","to":"room-204"}"#.to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{route}");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn corrupt_invalid_or_misnamed_graph_files_are_skipped() {
+    let dir = temporary_directory();
+    let graphs_dir = dir.join("graphs");
+    let state = AppState {
+        graphs: GraphStore::open(&graphs_dir).unwrap(),
+        ..AppState::default()
+    };
+    assert_eq!(
+        send(state, "/graphs/good", "PUT", demo_graph("good", "Lobby"))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    fs::write(graphs_dir.join("corrupt.json"), b"{ not json").unwrap();
+    // Valid graph JSON, but the file name is not the hash of its id.
+    fs::write(
+        graphs_dir.join("misnamed.json"),
+        demo_graph("other", "Hall"),
+    )
+    .unwrap();
+    let mut invalid: Value = serde_json::from_slice(&demo_graph("bad", "x")).unwrap();
+    invalid["edges"][0]["to"] = Value::from("missing-node");
+    fs::write(
+        graphs_dir.join("invalid.json"),
+        serde_json::to_vec(&invalid).unwrap(),
+    )
+    .unwrap();
+    fs::write(graphs_dir.join("notes.txt"), b"ignored").unwrap();
+
+    let state = AppState {
+        graphs: GraphStore::open(&graphs_dir).unwrap(),
+        ..AppState::default()
+    };
+    let (status, list) = send(state.clone(), "/graphs", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::OK);
+    let ids: Vec<_> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(ids, ["good"]);
+    assert_eq!(
+        send(state, "/graphs/other", "GET", vec![]).await.0,
+        StatusCode::NOT_FOUND
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn scan_directory_tolerates_graph_subdirectory() {
+    let dir = temporary_directory();
+    GraphStore::open(dir.join("graphs")).unwrap();
+    ScanStore::open(&dir).unwrap();
+    fs::remove_dir_all(dir).unwrap();
 }
