@@ -38,6 +38,7 @@ final class ScanController: ObservableObject {
     @Published private(set) var captureView: RoomCaptureView?
     @Published private(set) var streamingView: ARView?
     @Published private(set) var streamStatus: StreamingCaptureStatus?
+    @Published private(set) var scanCoverage = DepthScanCoverage().snapshot()
     @Published private(set) var hasSelectedLocalStreamMap = false
     let isContinuous = AppConfig.continuousScanning
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
@@ -362,6 +363,7 @@ final class ScanController: ObservableObject {
         if phase == .scanning || phase == .processing { captureView?.captureSession.stop() }
         captureView = nil
         streamingView = nil
+        scanCoverage = DepthScanCoverage().snapshot()
         if phase != .unsupported { session.pause() }
     }
 
@@ -696,6 +698,7 @@ final class ScanController: ObservableObject {
                 streamStatusTimer = nil
                 streamStatusTask?.cancel()
                 streamStatus = nil
+                scanCoverage = DepthScanCoverage().snapshot()
                 trackingNotice = nil
                 streamAlignmentApplied = false
                 hasSelectedLocalStreamMap = false
@@ -959,6 +962,10 @@ final class ScanController: ObservableObject {
                 let capture = StreamingScanCapture(queue: queue)
                 capture.measurements = { [weak self] in self?.rawCapture.snapshot().observedFootprints ?? [] }
                 capture.onStatus = { [weak self] status in self?.streamStatus = status }
+                capture.onCoverage = { [weak self] coverage in
+                    guard let self, self.isActive, self.scanID == id else { return }
+                    self.scanCoverage = coverage
+                }
                 capture.onTrackingHint = { [weak self] hint in self?.trackingNotice = hint }
                 capture.onError = { [weak self] message in
                     self?.errorMessage = message

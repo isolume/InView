@@ -23,6 +23,12 @@ tracking behavior, memory, heat, and the accuracy of detected loop closures.
 - Each accepted RGB/depth sample is atomically saved before upload. A separate
   worker sends one immutable numbered chunk at a time. Retrying a lost response
   cannot create a duplicate frame. Original chunks remain available for reupload.
+- **Captured surfaces** highlights saved measurements in green directly over the
+  camera view. Tap it to hide or show coverage. Highlights use the surface currently
+  visible, so a nearer object hides captured geometry behind it; uncertain depth
+  and lost tracking hide the affected highlights. Green means captured on this
+  phone, not fully scanned or finished processing. The bounded preview can refresh
+  older highlights as an area is captured again; saved scan data is retained.
 - Connectivity does not block capture. Without a server, samples remain on the
   phone and a compact measured map can be reviewed. No complete depth model is
   reconstructed locally by this path.
