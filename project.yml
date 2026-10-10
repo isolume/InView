@@ -37,4 +37,15 @@ targets:
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
-    scheme: {}
+schemes:
+  AccessNav:
+    build:
+      targets:
+        AccessNav: all
+    run:
+      config: Debug
+      # RealityKit's own PBR shader (drawn by RoomCaptureView) trips Metal API Validation
+      # with a tonemap LUT type mismatch, which crashes debug runs. Not our code.
+      enableGPUValidationMode: disabled
+    archive:
+      config: Release
