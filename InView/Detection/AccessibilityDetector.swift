@@ -106,7 +106,8 @@ final class AccessibilityDetector: ObservableObject {
 
     private static let tickInterval: TimeInterval = 0.2
     private static let minimumSampleInterval: TimeInterval = 1.2
-    private static let maxRequestsInFlight = 3
+    /// One request at a time: a second encode and upload only slows the first, and frames are dropped while busy.
+    private static let maxRequestsInFlight = 1
     /// The camera must be this steady for this long before a frame is sent: sharper images, better raycasts.
     private static let maxAngularSpeed: Float = 25 * .pi / 180
     private static let maxLinearSpeed: Float = 0.35
@@ -168,14 +169,14 @@ final class AccessibilityDetector: ObservableObject {
         let camera = CameraSnapshot(frame.camera)
         let center = CGPoint(x: 0.5, y: 0.5)
         let slope = kind == .ramp ? measureSlope(around: center, camera: camera, in: session) : nil
-        let photo = FrameEncoder.portraitJPEG(from: frame.capturedImage).flatMap { Self.evidence(from: $0, point: center) }
+        let snapshot = FrameEncoder.snapshot(frame.capturedImage)
         let count = sightings.filter { $0.kind == kind }.count
         // The volunteer aimed on purpose, so even without a surface to hit, mark a spot a few meters out.
         let position = locate(center, camera: camera, in: session) ?? {
             let ray = camera.ray(through: center)
             return ray.origin + ray.direction * 3
         }()
-        record(
+        let id = record(
             kind,
             name: "\(kind.title) \(count + 1)",
             at: position,
@@ -184,8 +185,17 @@ final class AccessibilityDetector: ObservableObject {
             isManual: true,
             verified: true,
             slope: slope,
-            evidence: photo
+            evidence: nil
         )
+        guard let snapshot else { return }
+        Task { [weak self] in
+            let preview = await Task.detached(priority: .utility) {
+                FrameEncoder.portraitJPEG(from: snapshot, maxDimension: FrameEncoder.previewDimension)
+            }.value
+            guard let preview, let index = self?.sightings.firstIndex(where: { $0.id == id }) else { return }
+            // The volunteer's own photo beats whatever the model's frame showed.
+            self?.sightings[index].evidence = Self.evidence(from: preview, point: center)
+        }
     }
 
     func evidence(for id: UUID) -> Evidence? {
@@ -266,10 +276,10 @@ final class AccessibilityDetector: ObservableObject {
         analyze(frame)
     }
 
+    /// Copies what's needed out of the frame and lets it go before anything asynchronous starts.
     private func analyze(_ frame: ARFrame) {
-        guard let client else { return }
+        guard let client, let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return }
         let camera = CameraSnapshot(frame.camera)
-        let pixelBuffer = frame.capturedImage
         requestsInFlight += 1
         stats.framesSent += 1
         let number = stats.framesSent
@@ -277,11 +287,10 @@ final class AccessibilityDetector: ObservableObject {
         Task { [weak self] in
             defer { self?.requestsInFlight -= 1 }
             do {
-                let encode = Task.detached(priority: .utility) { FrameEncoder.portraitJPEG(from: pixelBuffer, maxDimension: 1536) }
-                guard let jpeg = await encode.value else { return }
+                guard let encoded = await Task.detached(priority: .utility) { FrameEncoder.encode(snapshot) }.value else { return }
                 let started = Date.now
-                let detections = try await client.detect(jpeg: jpeg)
-                self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, jpeg: jpeg)
+                let detections = try await client.detect(jpeg: encoded.jpeg)
+                self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, preview: encoded.preview)
             } catch {
                 self?.stats.framesFailed += 1
                 Log.detection.error("frame \(number) failed: \(error.localizedDescription, privacy: .public)")
@@ -290,7 +299,7 @@ final class AccessibilityDetector: ObservableObject {
         }
     }
 
-    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, jpeg: Data) {
+    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, preview: Data) {
         framesAnalyzed += 1
         stats.framesAnalyzed += 1
         stats.totalLatency += latency
@@ -352,7 +361,7 @@ final class AccessibilityDetector: ObservableObject {
                 isManual: false,
                 verified: verified,
                 slope: slope,
-                evidence: Self.evidence(from: jpeg, point: detection.target)
+                evidence: Self.evidence(from: preview, point: detection.target)
             )
         }
     }
@@ -433,6 +442,8 @@ final class AccessibilityDetector: ObservableObject {
         }
     }
 
+    /// Adds a sighting, or merges it into a nearby one of the same kind. Returns the sighting's id.
+    @discardableResult
     private func record(
         _ kind: VisionDetection.Kind,
         name: String,
@@ -443,7 +454,7 @@ final class AccessibilityDetector: ObservableObject {
         verified: Bool,
         slope: Float?,
         evidence: Evidence?
-    ) {
+    ) -> UUID {
         let floor = SIMD2(position.x, position.z)
         let away = floor - SIMD2(camera.transform.translation.x, camera.transform.translation.z)
         let facing = simd_length(away) > 0.1 ? simd_normalize(away) : SIMD2<Float>(0, -1)
@@ -458,7 +469,7 @@ final class AccessibilityDetector: ObservableObject {
             sighting.evidence = evidence
             sightings.append(sighting)
             Log.detection.info("    new sighting · \(sighting.summary, privacy: .public)")
-            return
+            return sighting.id
         }
 
         var sighting = sightings[match]
@@ -485,13 +496,12 @@ final class AccessibilityDetector: ObservableObject {
         sighting.confidence = max(sighting.confidence, confidence)
         sightings[match] = sighting
         Log.detection.info("    merged into sighting · \(sighting.summary, privacy: .public)")
+        return sighting.id
     }
 
-    private static func evidence(from jpeg: Data, point: CGPoint) -> Evidence? {
-        guard let image = UIImage(data: jpeg) else { return nil }
-        let scale = min(1, 600 / max(image.size.width, image.size.height))
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        return Evidence(image: image.preparingThumbnail(of: size) ?? image, point: point)
+    /// `UIImage(data:)` decodes lazily, so each sighting holds only the small JPEG until review shows it.
+    private static func evidence(from preview: Data, point: CGPoint) -> Evidence? {
+        UIImage(data: preview).map { Evidence(image: $0, point: point) }
     }
 }
 

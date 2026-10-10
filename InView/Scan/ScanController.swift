@@ -183,10 +183,14 @@ final class ScanController: ObservableObject {
     }
 
     private func captureStartView() {
-        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState else { return }
-        startView = FrameEncoder.portraitJPEG(from: frame.capturedImage, maxDimension: 720)
+        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
+              let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return }
         startViewTimer?.invalidate()
         startViewTimer = nil
+        Task { [weak self] in
+            let jpeg = await Task.detached(priority: .utility) { FrameEncoder.portraitJPEG(from: snapshot, maxDimension: 720) }.value
+            self?.startView = jpeg
+        }
     }
 }
 
