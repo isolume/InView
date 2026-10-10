@@ -10,6 +10,7 @@ import SwiftUI
 final class ScanController: ObservableObject {
     enum Phase: Equatable {
         case unsupported
+        case choosingFloor
         case scanning
         case processing
         /// RoomPlan ended the section on its own, usually after tracking failed. The room is kept, and the
@@ -17,6 +18,7 @@ final class ScanController: ObservableObject {
         case interrupted
         case savingWorldMap
         case processingScene
+        case switchingFloor
         case review
     }
 
@@ -36,12 +38,21 @@ final class ScanController: ObservableObject {
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
     /// The volunteer just walked through a doorway: RoomPlan keeps one room per section, so suggest a new one.
     @Published private(set) var suggestsNewSection = false
+    @Published private(set) var currentFloor: ScanFloorIdentity?
+    @Published private(set) var buildingName = "Building"
+    @Published private(set) var isChangingFloors = false
+    @Published private(set) var proposedFloorLevel: Int?
+    @Published private(set) var automaticFloorDetectionUnavailable = false
 
-    let session = ARSession()
-    let detector = AccessibilityDetector()
-    private let rawCapture = RawScanCapture()
+    private(set) var session = ARSession()
+    private(set) var detector = AccessibilityDetector()
+    private var rawCapture = RawScanCapture()
     private lazy var splatCapture = SplatCapture(scanID: scanID)
-    private let scanID = UUID()
+    private var scanID = UUID()
+    private let elevationMonitor = FloorElevationMonitor()
+    private var pendingFloor: ScanFloorIdentity?
+    private var floorChangePausedCapture = false
+    private var floorSwitchTask: Task<Void, Never>?
     private var captureBundle: CaptureBundle?
     private var localScene: ProcessedScene?
     private var sceneTask: Task<Void, Never>?
@@ -57,15 +68,23 @@ final class ScanController: ObservableObject {
         view.isModelEnabled = false
         view.delegate = captureDelegate
         // Live updates too, as Apple's RoomPlan sample does alongside the view's own delegate.
+        let id = scanID
+        sessionDelegate = CaptureSessionDelegate(
+            onUpdate: { [weak self] room in
+                guard self?.scanID == id else { return }
+                self?.liveRoomUpdated(room)
+            },
+            onEnd: { [weak self] data, error in
+                guard self?.scanID == id else { return }
+                self?.sectionEnded(data, error: error)
+            }
+        )
         view.captureSession.delegate = sessionDelegate
         return view
     }
 
     private let captureDelegate = CaptureViewDelegate()
-    private lazy var sessionDelegate = CaptureSessionDelegate(
-        onUpdate: { [weak self] room in self?.liveRoomUpdated(room) },
-        onEnd: { [weak self] data, error in self?.sectionEnded(data, error: error) }
-    )
+    private var sessionDelegate: CaptureSessionDelegate?
     private var sectionTask: Task<Void, Never>?
     private var sectionRequestID = UUID()
     private var rooms: [CapturedRoom] = []
@@ -87,7 +106,7 @@ final class ScanController: ObservableObject {
     private var hasStarted = false
     private var isActive = false
     private var worldMapRequestID = UUID()
-    private var sectionStartedAt: TimeInterval = 0
+    private var sectionPolicy = ScanSectionPolicy()
     private var resourceTimer: Timer?
     private var memoryObserver: NSObjectProtocol?
     private var pauseAfterProcessing = false
@@ -96,7 +115,25 @@ final class ScanController: ObservableObject {
     private var reportTask: Task<Void, Never>?
 
     init() {
-        phase = RoomCaptureSession.isSupported ? .scanning : .unsupported
+        phase = RoomCaptureSession.isSupported ? .choosingFloor : .unsupported
+        elevationMonitor.onMovement = { [weak self] in self?.pauseForFloorChange() }
+        elevationMonitor.onLanding = { [weak self] proposal in
+            guard let self, let currentFloor = self.currentFloor,
+                  self.isActive, self.isChangingFloors, self.pendingFloor == nil,
+                  self.phase == .scanning || self.phase == .processing || self.phase == .interrupted else { return }
+            let sum = currentFloor.level.addingReportingOverflow(proposal.floorDelta)
+            guard !sum.overflow else { return }
+            self.proposedFloorLevel = min(300, max(-20, sum.partialValue))
+        }
+        elevationMonitor.onUnavailable = { [weak self] in self?.automaticFloorDetectionUnavailable = true }
+    }
+
+    func startScanning(on floor: ScanFloorIdentity, buildingName: String) {
+        guard phase == .choosingFloor else { return }
+        currentFloor = floor
+        self.buildingName = buildingName
+        phase = .scanning
+        start()
     }
 
     func start() {
@@ -110,6 +147,7 @@ final class ScanController: ObservableObject {
         rawCapture.start(session: session)
         splatCapture.start(session: session)
         detector.start(session: session)
+        elevationMonitor.start()
         startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.captureStartView() }
         }
@@ -119,6 +157,11 @@ final class ScanController: ObservableObject {
     func addSection() { endSection(thenFinish: false) }
 
     func finish() {
+        if pendingFloor == nil {
+            elevationMonitor.stop()
+            isChangingFloors = false
+            proposedFloorLevel = nil
+        }
         // After an interruption there's no section to stop; RoomPlan already processed it.
         if phase == .interrupted {
             saveWorldMap()
@@ -129,13 +172,55 @@ final class ScanController: ObservableObject {
 
     /// Starts another section after RoomPlan ended one by itself.
     func continueScanning() {
-        guard isActive, phase == .interrupted else { return }
+        guard isActive, phase == .interrupted, !isChangingFloors, pendingFloor == nil else { return }
         guard ProcessInfo.processInfo.thermalState != .critical else {
             errorMessage = "Let the phone cool down before continuing. You can finish and save this map now."
             return
         }
         errorMessage = nil
         startSection()
+    }
+
+    func requestFloorChange() {
+        guard let currentFloor, phase == .scanning || phase == .interrupted else { return }
+        proposedFloorLevel = currentFloor.level + 1
+    }
+
+    func cancelFloorChange() {
+        let shouldResume = floorChangePausedCapture
+        proposedFloorLevel = nil
+        pendingFloor = nil
+        finishAfterProcessing = false
+        isChangingFloors = false
+        floorChangePausedCapture = false
+        elevationMonitor.rebase()
+        if shouldResume, errorMessage == nil, ProcessInfo.processInfo.thermalState != .critical {
+            if phase == .processing { pauseAfterProcessing = false }
+            else if phase == .interrupted { continueScanning() }
+        }
+    }
+
+    func confirmFloorChange(to floor: ScanFloorIdentity) {
+        guard let currentFloor, floor.buildingID == currentFloor.buildingID,
+              floor.id != currentFloor.id, floor.level != currentFloor.level,
+              phase == .scanning || phase == .processing || phase == .interrupted else { return }
+        pendingFloor = floor
+        proposedFloorLevel = nil
+        isChangingFloors = true
+        if phase == .processing { finishAfterProcessing = true }
+        else { finish() }
+    }
+
+    private func pauseForFloorChange() {
+        guard isActive, phase == .scanning || phase == .processing || phase == .interrupted else { return }
+        isChangingFloors = true
+        if phase == .scanning {
+            floorChangePausedCapture = true
+            endSection(thenFinish: false, pauseAfter: true)
+        } else if phase == .processing {
+            floorChangePausedCapture = !pauseAfterProcessing
+            pauseAfterProcessing = true
+        }
     }
 
     func dismissSectionSuggestion() {
@@ -164,6 +249,9 @@ final class ScanController: ObservableObject {
 
     func stop() {
         isActive = false
+        elevationMonitor.stop()
+        floorSwitchTask?.cancel()
+        floorSwitchTask = nil
         worldMapRequestID = UUID()
         sectionRequestID = UUID()
         sectionTask?.cancel()
@@ -243,12 +331,13 @@ final class ScanController: ObservableObject {
 
     /// Writes the map; the world map archive runs off the main thread.
     func save() async throws {
-        guard let draft, let worldMap else { return }
+        guard let draft, let worldMap else {
+            throw CaptureValidationError.invalid("This floor isn't ready to save yet.")
+        }
         // Build against the exact saved draft, even if its debounced review report is still pending.
         let report = try await ScanWork.run { try AccessibilityReport.make(map: draft) }
-        try await MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
-        if let captureBundle { try CaptureStore.select(captureBundle) }
-        else { CaptureStore.clearSelection() }
+        try await MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView,
+                                floor: currentFloor, buildingName: buildingName, captureID: captureBundle?.id)
     }
 
     func retryScene() {
@@ -283,7 +372,7 @@ final class ScanController: ObservableObject {
         liveDoors = []
         doorSides = [:]
         sectionStarted = .now
-        sectionStartedAt = ProcessInfo.processInfo.systemUptime
+        sectionPolicy.reset()
         suggestsNewSection = false
         doorMonitor?.invalidate()
         captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
@@ -296,6 +385,8 @@ final class ScanController: ObservableObject {
         guard isActive, phase == .scanning else { return }
         memory.remember(room)
         liveDoors = room.doors
+        let heights = room.floors.map { $0.transform.translation.y }.filter(\.isFinite).sorted()
+        if !heights.isEmpty { rawCapture.floorY = heights[heights.count / 2] }
     }
 
     /// Remembers what RoomPlan saw live that its processed room left out, so the map keeps it.
@@ -439,6 +530,7 @@ final class ScanController: ObservableObject {
         let recovered: [RoomParts]
         let raw: RawScanSnapshot
         let scanID: UUID
+        let floor: ScanFloorIdentity?
     }
 
     private func prepareScene() {
@@ -447,6 +539,7 @@ final class ScanController: ObservableObject {
         let points = detector.accessPoints()
         let stairs = detector.stairsFootprints()
         let scanID = scanID
+        let floor = currentFloor
         sceneError = nil
         phase = .processingScene
         isProcessingScene = true
@@ -458,9 +551,10 @@ final class ScanController: ObservableObject {
                 self.splatCapture.finish(meshes: raw.meshes)
                 try Task.checkCancellation()
                 self.draft = try await ScanWork.run {
-                    MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs)
+                    MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
+                                     observed: raw.observedFootprints ?? [])
                 }
-                let payload = ExportPayload(rooms: rooms, recovered: recovered, raw: raw, scanID: scanID)
+                let payload = ExportPayload(rooms: rooms, recovered: recovered, raw: raw, scanID: scanID, floor: floor)
                 let prepared = try await ScanWork.run {
                     let rawData = try ScanExporter.rawSnapshotData(payload.raw)
                     try Task.checkCancellation()
@@ -468,7 +562,7 @@ final class ScanController: ObservableObject {
                     // Originals survive even if their portable export is too large or unsupported.
                     try CaptureStore.stageOriginals(id: payload.scanID.uuidString, rawData: rawData, roomPlanData: roomData)
                     let bundle = try ScanExporter.bundle(rooms: payload.rooms, recovered: payload.recovered, raw: payload.raw,
-                                                         scanID: payload.scanID, mapID: payload.scanID)
+                                                         scanID: payload.scanID, mapID: payload.scanID, floor: payload.floor)
                     try CaptureStore.stageBundle(bundle)
                     // Depth remains archived for reprocessing; the navigation overview uses
                     // measured walls and objects and does not need a second point cloud.
@@ -481,9 +575,73 @@ final class ScanController: ObservableObject {
             } catch {
                 if !Task.isCancelled { self?.sceneError = error.localizedDescription }
             }
-            if !Task.isCancelled { self?.phase = .review }
+            if !Task.isCancelled {
+                self?.phase = .review
+                if self?.pendingFloor != nil { self?.completeFloorSwitch() }
+            }
         }
     }
+
+    /// Publish the previous floor before starting a fresh scan and coordinate frame upstairs.
+    private func completeFloorSwitch() {
+        guard let nextFloor = pendingFloor, floorSwitchTask == nil else { return }
+        phase = .switchingFloor
+        floorSwitchTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await save()
+                try Task.checkCancellation()
+                guard isActive else { return }
+                reportTask?.cancel()
+                detector.pause()
+                rawCapture.stop()
+                splatCapture.stop()
+                session.pause()
+                session = ARSession()
+                detector = AccessibilityDetector()
+                rawCapture = RawScanCapture()
+                scanID = UUID()
+                // The next floor is its own scan, so its splat photos belong in its own folder.
+                splatCapture = SplatCapture(scanID: scanID)
+                currentFloor = nextFloor
+                pendingFloor = nil
+                rooms = []
+                recovered = []
+                memory = RoomMemory()
+                liveDoors = []
+                doorSides = [:]
+                sectionCount = 0
+                worldMap = nil
+                startView = nil
+                unconfirmed = []
+                captureBundle = nil
+                localScene = nil
+                scene = nil
+                draft = nil
+                report = nil
+                errorMessage = nil
+                sceneError = nil
+                isChangingFloors = false
+                floorChangePausedCapture = false
+                hasStarted = false
+                finishAfterProcessing = false
+                pauseAfterProcessing = false
+                floorSwitchTask = nil
+                elevationMonitor.rebase()
+                phase = .scanning
+                start()
+            } catch {
+                guard !Task.isCancelled else { return }
+                floorSwitchTask = nil
+                errorMessage = "Couldn't save \(currentFloor?.name ?? "this floor"). \(error.localizedDescription)"
+                phase = .review
+            }
+        }
+    }
+
+    var nextFloorName: String? { pendingFloor?.name }
+
+    func retryFloorSwitch() { completeFloorSwitch() }
 
     private func processScene(_ bundle: CaptureBundle, backendURL: URL?) {
         sceneError = nil
@@ -533,10 +691,12 @@ final class ScanController: ObservableObject {
         }
     }
 
-    var canFinishInterruptedScan: Bool { !rooms.isEmpty }
+    var canFinishInterruptedScan: Bool { !rooms.isEmpty || rawCapture.hasObservedFloor }
 
     var interruptionHint: String {
-        sectionCount == 0 ? "No completed sections yet. Continue scanning a smaller area."
+        sectionCount == 0 ? (rawCapture.hasObservedFloor
+            ? "Measured floor coverage is kept. Continue scanning or finish and save."
+            : "No completed sections yet. Continue scanning a smaller area.")
             : "\(sectionCount == 1 ? "1 section is" : "\(sectionCount) sections are") kept. \(interruptionAdvice)"
     }
 
@@ -556,6 +716,8 @@ final class ScanController: ObservableObject {
     }
 
     private func beginResourceMonitoring() {
+        resourceTimer?.invalidate()
+        if let memoryObserver { NotificationCenter.default.removeObserver(memoryObserver) }
         resourceTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkResources() }
         }
@@ -574,8 +736,15 @@ final class ScanController: ObservableObject {
         case .serious:
             scanNotice = "The phone is warming up. Finish this section and take a short break."
         default:
-            scanNotice = ProcessInfo.processInfo.systemUptime - sectionStartedAt >= 180
-                ? "For a large area, start the next section to keep scanning smoothly." : nil
+            scanNotice = nil
+        }
+        guard phase == .scanning, let frame = session.currentFrame,
+              case .normal = frame.camera.trackingState,
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return }
+        let camera = frame.camera.transform.translation
+        if sectionPolicy.shouldSave(position: [camera.x, camera.z], timestamp: frame.timestamp) {
+            Log.scan.notice("saving a long section automatically; continuing in the same AR session")
+            endSection(thenFinish: false)
         }
     }
 
@@ -591,8 +760,10 @@ final class ScanController: ObservableObject {
               let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return }
         startViewTimer?.invalidate()
         startViewTimer = nil
+        let id = scanID
         Task { [weak self] in
             let jpeg = await Task.detached(priority: .utility) { FrameEncoder.portraitJPEG(from: snapshot, maxDimension: 720) }.value
+            guard self?.scanID == id, self?.isActive == true else { return }
             self?.startView = jpeg
         }
     }

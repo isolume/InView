@@ -21,7 +21,8 @@ private func height(of pose: [Float]) -> Float { pose[13] }
     let floor = try #require(scene.surfaces.first { $0.kind == "floor" })
     #expect(floor.outline?.count == outline.count)
     #expect(scene.objects.map(\.sourceCategory).sorted() == ["chair", "stairs"])
-    #expect(scene.objects.first { $0.sourceCategory == "chair" }?.modelKey == "chair_v2")
+    // A saved map's furniture goes through the photo catalogue, like a processed capture's.
+    #expect(scene.objects.first { $0.sourceCategory == "chair" }?.modelKey == "lounge_chair_v1")
     try scene.validate()
 }
 

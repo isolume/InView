@@ -4,6 +4,34 @@ use serde::Serialize;
 
 use crate::geometry::Vec3;
 
+mod photo_furniture;
+
+/// Choose a photographed display silhouette without changing the measured obstacle.
+/// Explicit labels remain available for objects whose coarse capture category is ambiguous.
+pub fn photo_model_key(category: &str, size: Vec3) -> Option<&'static str> {
+    let category = category.trim().to_ascii_lowercase();
+    match category.as_str() {
+        "chair" | "armchair" | "lounge_chair" | "lounge_chair_v1" => Some("lounge_chair_v1"),
+        "sofa" if size[1] <= 0.6 && size[0] / size[2] >= 2.8 => Some("bench_v1"),
+        "sofa" | "loveseat" | "modular_sofa" | "modular_sofa_v1" => Some("modular_sofa_v1"),
+        "table" if size[1] <= 0.62 && (0.8..=1.25).contains(&(size[0] / size[2])) => {
+            Some("drum_table_v1")
+        }
+        "table" | "folding_table" | "folding_table_v1" => Some("folding_table_v1"),
+        "drum_table" | "round_table" | "ottoman" | "drum_table_v1" => Some("drum_table_v1"),
+        "charging_stand" | "charging_stand_v1" => Some("charging_stand_v1"),
+        "lectern" | "podium" | "lectern_v1" => Some("lectern_v1"),
+        "sign_stand" | "sign_stand_v1" => Some("sign_stand_v1"),
+        "waste_bin" | "trash_bin" | "waste_bin_v1" => Some("waste_bin_v1"),
+        "open_bin" | "open_bin_v1" => Some("open_bin_v1"),
+        "bench" | "bench_v1" => Some("bench_v1"),
+        "square_planter" | "square_planter_v1" => Some("square_planter_v1"),
+        "railing" | "railing_v1" => Some("railing_v1"),
+        "floor_sign" | "caution_sign" | "floor_sign_v1" => Some("floor_sign_v1"),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ModelMesh {
     pub name: String,
@@ -29,6 +57,19 @@ pub fn furniture_meshes(key: &str, size: Vec3) -> Vec<ModelMesh> {
     };
     let mut model = ModelBuilder::new(catalog_size);
     match key {
+        "lounge_chair_v1" => photo_furniture::lounge_chair(&mut model),
+        "modular_sofa_v1" => photo_furniture::modular_sofa(&mut model),
+        "drum_table_v1" => photo_furniture::drum_table(&mut model),
+        "charging_stand_v1" => photo_furniture::charging_stand(&mut model),
+        "lectern_v1" => photo_furniture::lectern(&mut model),
+        "folding_table_v1" => photo_furniture::folding_table(&mut model),
+        "sign_stand_v1" => photo_furniture::sign_stand(&mut model),
+        "waste_bin_v1" => photo_furniture::waste_bin(&mut model),
+        "open_bin_v1" => photo_furniture::open_bin(&mut model),
+        "bench_v1" => photo_furniture::bench(&mut model),
+        "square_planter_v1" => photo_furniture::square_planter(&mut model),
+        "railing_v1" => photo_furniture::railing(&mut model),
+        "floor_sign_v1" => photo_furniture::floor_sign(&mut model),
         "chair_v2" | "chair_v1" => chair(&mut model),
         "sofa_v2" | "sofa_v1" => sofa(&mut model),
         "table_v2" | "table_v1" => table(&mut model),

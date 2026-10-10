@@ -47,6 +47,7 @@ struct NavigationMapSurface: View {
     @ViewBuilder private var indoor: some View {
         if let scene {
             RoomMapCanvas(scene: scene, selectedObjectID: .constant(nil), showsLabels: false,
+                          floorFootprints: map?.footprints.filter { $0.kind == .floor } ?? [],
                           topDown: topDown, resetID: resetID, viewportBottomInset: bottomInset,
                           routePoints: route?.waypoints ?? [], userPosition: userPosition,
                           userHeading: userHeading, floorY: map?.floorY ?? 0,

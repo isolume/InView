@@ -59,7 +59,12 @@ fn synthetic_room_produces_shell_furniture_and_measured_fallback() {
             .iter()
             .map(|object| object.model_key)
             .collect::<Vec<_>>(),
-        ["chair_v2", "sofa_v2", "table_v2", "bounds_v1"]
+        [
+            "lounge_chair_v1",
+            "modular_sofa_v1",
+            "folding_table_v1",
+            "bounds_v1"
+        ]
     );
     let unknown = &scene.objects[3];
     assert_eq!(unknown.source_category, "unrecognized_fixture");
@@ -208,7 +213,7 @@ fn confidence_changes_display_model_without_removing_measured_obstacles() {
     scan.objects[2].confidence = Confidence::Unknown;
     let default = scene::process(&scan, ProcessingOptions::default()).unwrap();
     assert_eq!(default.objects[0].model_key, "bounds_v1");
-    assert_eq!(default.objects[1].model_key, "sofa_v2");
+    assert_eq!(default.objects[1].model_key, "modular_sofa_v1");
     assert_eq!(default.objects[2].model_key, "bounds_v1");
     assert_eq!(default.objects.len(), scan.objects.len());
 

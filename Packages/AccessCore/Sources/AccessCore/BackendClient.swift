@@ -146,7 +146,13 @@ public struct BackendClient: Sendable {
     }
 
     private func verifiedScene(_ capture: CaptureBundle) async throws -> ProcessedScene {
-        let result = try await scene(scanID: capture.id)
+        var result = try await scene(scanID: capture.id)
+        // Earlier servers retain the raw capture but do not project optional outlines into scenes.
+        // Restore only omitted outlines from our immutable source; supplied geometry remains verified.
+        let originals = Dictionary(uniqueKeysWithValues: capture.surfaces.map { ($0.id, $0) })
+        for index in result.surfaces.indices where result.surfaces[index].polygonCorners == nil {
+            result.surfaces[index].polygonCorners = originals[result.surfaces[index].sourceID]?.polygonCorners
+        }
         do { try result.validate(source: capture) }
         catch { throw BackendClientError.invalidResponse(error.localizedDescription) }
         return result

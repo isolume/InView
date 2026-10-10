@@ -56,7 +56,8 @@ public struct IndoorFloorContent: Sendable {
         self.scene = selectedScene
         self.map = VenueMap(createdAt: map.createdAt, floorY: selected.elevation,
                             footprints: footprints, points: isRouteFloor ? map.points : [],
-                            geographicReference: map.geographicReference)
+                            geographicReference: map.geographicReference,
+                            requiresMeasuredFloorCoverage: map.requiresMeasuredFloorCoverage)
     }
 
     private static func stairsObject(_ footprint: Footprint, sourceID: String, floorY: Float) -> SceneObject? {

@@ -9,6 +9,7 @@ struct RoomMapCanvas: UIViewRepresentable {
     let scene: ProcessedScene
     @Binding var selectedObjectID: String?
     var showsLabels = false
+    var floorFootprints: [Footprint] = []
     var topDown = false
     var resetID = 0
     var showsDetails = false
@@ -41,6 +42,7 @@ struct RoomMapCanvas: UIViewRepresentable {
         view.onSelectPlace = onSelectPlace
         view.updatePlaces(places, floorY: floorY)
         view.update(scene, selectedObjectID: selectedObjectID, showsLabels: showsLabels,
+                    floorFootprints: floorFootprints,
                     topDown: topDown, resetID: resetID, showsDetails: showsDetails,
                     showsFullWalls: showsFullWalls, viewportBottomInset: viewportBottomInset,
                     routePoints: routePoints, userPosition: userPosition, userHeading: userHeading,
@@ -72,6 +74,9 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private let camera = SCNNode()
     private let sun = SCNNode()
     private var source: ProcessedScene?
+    private var savedFloors: [Footprint] = []
+    private var measuredFloors: [Footprint] = []
+    private var floorRegions: [(elevation: Float, region: BuildingFootprintCutaway.Region)] = []
     private var labels: [(id: String, position: SIMD3<Float>, view: RoomObjectLabel)] = []
     private var selection: String?
     private var labelsVisible = true
@@ -211,11 +216,18 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     }
 
     func update(_ source: ProcessedScene, selectedObjectID: String?, showsLabels: Bool,
+                floorFootprints: [Footprint],
                 topDown: Bool, resetID: Int, showsDetails: Bool, showsFullWalls: Bool,
                 viewportBottomInset: CGFloat, routePoints: [SIMD2<Float>], userPosition: SIMD2<Float>?,
                 userHeading: Float?, floorY: Float, destination: SIMD2<Float>?,
                 destinationTitle: String?, isNavigating: Bool) {
         let changed = self.source != source
+        if changed || savedFloors != floorFootprints {
+            savedFloors = floorFootprints
+            measuredFloors = floorFootprints.isEmpty ? source.surfaces.compactMap(measuredFloor) : floorFootprints
+            floorRegions = Self.mergeFloors(measuredFloors)
+            shellConfiguration = ""
+        }
         if changed {
             needsViewportRefresh = true
             self.source = source
@@ -380,17 +392,78 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         guard configuration != shellConfiguration else { return }
         shellConfiguration = configuration
         shell.childNodes.forEach { $0.removeFromParentNode() }
+        for floor in floorRegions { buildMeasuredFloor(floor.region, elevation: floor.elevation) }
         for surface in source.surfaces {
-            if surface.kind == "floor" { buildFloor(surface) }
+            if surface.kind == "floor", floorRegions.isEmpty { buildFloor(surface) }
             else if surface.kind == "wall" { buildWall(surface, source: source) }
         }
-        if !source.surfaces.contains(where: { $0.kind == "floor" }) {
+        if floorRegions.isEmpty, !source.surfaces.contains(where: { $0.kind == "floor" }) {
             let size = upper - lower
             let floor = box(SIMD3(max(1, size.x + 0.3), 0.16, max(1, size.z + 0.3)), color: "#f7f5ef", radius: 0.025)
             floor.simdPosition = SIMD3((lower.x + upper.x) / 2, lower.y - 0.09, (lower.z + upper.z) / 2)
             floor.categoryBitMask = 4
             shell.addChildNode(floor)
         }
+    }
+
+    private func measuredFloor(_ surface: SceneSurface) -> Footprint? {
+        guard surface.kind == "floor", let pose = matrix(surface.mapFromSurface),
+              let dimensions = vector(surface.measuredDimensionsM) else { return nil }
+        let polygon: [[Float]]
+        if let measured = surface.polygonCorners, measured.count >= 3 {
+            polygon = measured
+        } else {
+            let normal = (0..<3).min { dimensions[$0] < dimensions[$1] } ?? 1
+            let axes = (0..<3).filter { $0 != normal }
+            polygon = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map { signs in
+                var point = SIMD3<Float>.zero
+                point[axes[0]] = Float(signs[0]) * dimensions[axes[0]] / 2
+                point[axes[1]] = Float(signs[1]) * dimensions[axes[1]] / 2
+                return [point.x, point.y, point.z]
+            }
+        }
+        let corners = polygon.compactMap { corner -> SIMD2<Float>? in
+            guard let point = vector(corner) else { return nil }
+            let world = pose * SIMD4(point, 1)
+            return SIMD2(world.x, world.z)
+        }
+        guard corners.count == polygon.count else { return nil }
+        return Footprint(floor: corners, bottom: pose.columns.3.y)
+    }
+
+    private static func mergeFloors(_ floors: [Footprint]) -> [(elevation: Float, region: BuildingFootprintCutaway.Region)] {
+        var levels: [(elevation: Float, polygons: [[SIMD2<Float>]])] = []
+        for floor in floors.sorted(by: { ($0.bottom ?? 0) < ($1.bottom ?? 0) }) {
+            guard let elevation = floor.bottom, elevation.isFinite,
+                  floor.corners.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else { continue }
+            if let index = levels.firstIndex(where: { abs($0.elevation - elevation) < 0.3 }) {
+                levels[index].polygons.append(floor.corners)
+            } else { levels.append((elevation, [floor.corners])) }
+        }
+        return levels.flatMap { level in
+            // Preserve measured outlines on a complexity limit; never replace with a hull.
+            let regions = (try? BuildingFootprintCutaway.unionRegions(level.polygons))
+                ?? level.polygons.map { BuildingFootprintCutaway.Region(exterior: $0) }
+            return regions.map { (level.elevation, $0) }
+        }
+    }
+
+    private func buildMeasuredFloor(_ region: BuildingFootprintCutaway.Region, elevation: Float) {
+        let path = UIBezierPath()
+        path.usesEvenOddFillRule = true
+        for ring in [region.exterior] + region.holes {
+            guard let start = ring.first, ring.count >= 3 else { continue }
+            path.move(to: CGPoint(x: CGFloat(start.x), y: CGFloat(start.y)))
+            for point in ring.dropFirst() { path.addLine(to: CGPoint(x: CGFloat(point.x), y: CGFloat(point.y))) }
+            path.close()
+        }
+        let geometry = SCNShape(path: path, extrusionDepth: 0.18)
+        geometry.materials = [matte("#eef0eb")]
+        let node = SCNNode(geometry: geometry)
+        node.simdEulerAngles.x = .pi / 2
+        node.simdPosition.y = elevation - 0.09
+        node.categoryBitMask = 4
+        shell.addChildNode(node)
     }
 
     private func buildFloor(_ surface: SceneSurface) {
@@ -716,6 +789,9 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
 
     private func fitBounds(_ source: ProcessedScene) {
         var points = source.objects.flatMap(\.obstacleCorners).compactMap(vector)
+        for floor in measuredFloors {
+            points.append(contentsOf: floor.corners.map { SIMD3($0.x, floor.bottom ?? floorY, $0.y) })
+        }
         for surface in source.surfaces where ["floor", "wall"].contains(surface.kind) {
             guard let pose = matrix(surface.mapFromSurface), var size = vector(surface.renderDimensionsM) else { continue }
             if let outline = surface.outline {

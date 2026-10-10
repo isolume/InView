@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     capture::{Confidence, Coordinates, ScanBundle},
     geometry::{Bounds, Transform, Vec3, finite},
-    model_meshes::{ModelMesh, furniture_meshes},
+    model_meshes::{ModelMesh, furniture_meshes, photo_model_key},
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -86,6 +86,9 @@ pub struct SceneSurface {
     /// Thin display thickness for zero-thickness source surfaces, never navigation data.
     pub render_dimensions_m: Vec3,
     pub color: &'static str,
+    /// Captured surface-local outline, unchanged by display styling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub polygon_corners: Option<Vec<Vec3>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -120,17 +123,16 @@ pub fn process(bundle: &ScanBundle, options: ProcessingOptions) -> Result<Scene,
         .map(|object| {
             let category = object.category.trim().to_ascii_lowercase();
             let model_key = if object.confidence >= options.minimum_object_confidence {
-                match category.as_str() {
-                    "chair" => "chair_v2",
-                    "sofa" => "sofa_v2",
-                    "table" => "table_v2",
-                    "storage" | "cabinet" => "storage_v2",
-                    "bed" => "bed_v2",
-                    "sink" => "sink_v2",
-                    "plant" => "plant_v2",
-                    "rug" => "rug_v2",
-                    _ => "bounds_v1",
-                }
+                photo_model_key(&category, object.dimensions_m).unwrap_or_else(|| {
+                    match category.as_str() {
+                        "storage" | "cabinet" => "storage_v2",
+                        "bed" => "bed_v2",
+                        "sink" => "sink_v2",
+                        "plant" => "plant_v2",
+                        "rug" => "rug_v2",
+                        _ => "bounds_v1",
+                    }
+                })
             } else {
                 "bounds_v1"
             };
@@ -168,6 +170,7 @@ pub fn process(bundle: &ScanBundle, options: ProcessingOptions) -> Result<Scene,
             } else {
                 "#f4f1eb"
             },
+            polygon_corners: surface.polygon_corners.clone(),
         })
         .collect();
     let meshes = bundle
@@ -286,4 +289,63 @@ fn model_parts(key: &str, size: Vec3) -> Vec<ModelPart> {
         _ => add([0.0; 3], [1.0; 3], "#d3b58b"),
     }
     parts
+}
+
+#[cfg(test)]
+mod surface_polygon_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn processing_preserves_measured_concave_outline_and_local_pose() {
+        let outline = json!([
+            [-3, -2, 0],
+            [3, -2, 0],
+            [3, 0, 0],
+            [0, 0, 0],
+            [0, 2, 0],
+            [-3, 2, 0]
+        ]);
+        let value = json!({
+            "schema_version": 1, "id": "scan", "map_id": "building", "floor_id": "ground",
+            "coordinates": {"units": "meters", "up_axis": "y", "handedness": "right"},
+            "surfaces": [{
+                "id": "floor", "kind": "floor", "dimensions_m": [6, 4, 0],
+                "map_from_surface": [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 8, -1.2, 3, 1],
+                "polygon_corners": outline
+            }]
+        });
+        let bundle: ScanBundle = serde_json::from_value(value).unwrap();
+        let scene = process(&bundle, ProcessingOptions::default()).unwrap();
+        assert_eq!(
+            scene.surfaces[0].polygon_corners,
+            bundle.surfaces[0].polygon_corners
+        );
+        assert_eq!(
+            scene.surfaces[0].map_from_surface,
+            bundle.surfaces[0].map_from_surface
+        );
+        assert_eq!(scene.surfaces[0].measured_dimensions_m, [6.0, 4.0, 0.0]);
+        assert_eq!(scene.surfaces[0].render_dimensions_m, [6.0, 4.0, 0.025]);
+        let output = serde_json::to_value(&scene).unwrap();
+        let decoded: Vec<Vec3> =
+            serde_json::from_value(output["surfaces"][0]["polygon_corners"].clone()).unwrap();
+        assert_eq!(Some(decoded), bundle.surfaces[0].polygon_corners);
+    }
+
+    #[test]
+    fn legacy_scene_omits_missing_surface_outline() {
+        let bundle: ScanBundle = serde_json::from_value(json!({
+            "schema_version": 1, "id": "scan", "map_id": "building", "floor_id": "ground",
+            "coordinates": {"units": "meters", "up_axis": "y", "handedness": "right"},
+            "surfaces": [{
+                "id": "floor", "kind": "floor", "dimensions_m": [6, 0, 4],
+                "map_from_surface": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+            }]
+        }))
+        .unwrap();
+        let scene = process(&bundle, ProcessingOptions::default()).unwrap();
+        let output = serde_json::to_value(&scene).unwrap();
+        assert!(output["surfaces"][0].get("polygon_corners").is_none());
+    }
 }

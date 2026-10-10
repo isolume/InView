@@ -13,14 +13,38 @@ struct ScanView: View {
             switch controller.phase {
             case .unsupported:
                 UnsupportedDeviceView(onClose: close)
-            case .scanning, .processing, .interrupted, .savingWorldMap, .processingScene:
+            case .choosingFloor:
+                ScanFloorPicker(onCancel: close, onSelect: controller.startScanning)
+            case .scanning, .processing, .interrupted, .savingWorldMap, .processingScene, .switchingFloor:
                 captureScreen
             case .review:
-                MapReviewView(controller: controller, onClose: close)
+                if let nextFloor = controller.nextFloorName {
+                    VStack(spacing: 16) {
+                        Text(controller.errorMessage ?? "Save this floor before continuing.")
+                            .multilineTextAlignment(.center)
+                        Button("Continue to \(nextFloor)", action: controller.retryFloorSwitch)
+                            .buttonStyle(.borderedProminent)
+                        Button("Close", action: close).buttonStyle(.bordered)
+                    }.padding()
+                } else {
+                    MapReviewView(controller: controller, onClose: close)
+                }
             }
         }
         .onAppear { controller.start() }
         .onDisappear { controller.stop() }
+        .sheet(isPresented: Binding(
+            get: { controller.proposedFloorLevel != nil },
+            set: { if !$0, controller.proposedFloorLevel != nil { controller.cancelFloorChange() } }
+        )) {
+            ScanFloorPicker(currentFloor: controller.currentFloor,
+                            suggestedLevel: controller.proposedFloorLevel,
+                            isDetectedChange: controller.isChangingFloors,
+                            onCancel: controller.cancelFloorChange) { floor, _ in
+                controller.confirmFloorChange(to: floor)
+            }
+            .presentationDetents([.medium, .large])
+        }
     }
 
     private func close() {
@@ -47,6 +71,15 @@ struct ScanView: View {
                 VStack(spacing: 12) {
                     HStack(alignment: .top) {
                         CloseButton(action: close)
+                        if let floor = controller.currentFloor {
+                            Button(action: controller.requestFloorChange) {
+                                Label(floor.name, systemImage: "building.2")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(controller.phase != .scanning && controller.phase != .interrupted)
+                            .accessibilityLabel("\(floor.name). Change floor")
+                        }
                         Spacer()
                         DetectionStatus(detector: controller.detector, section: controller.sectionCount + 1)
                     }
@@ -59,11 +92,15 @@ struct ScanView: View {
                         StatusPill(text: "Processing section…", isWorking: true)
                             .glassEffectID("status", in: glass)
                     case .interrupted:
-                        interruptedPanel
+                        if controller.isChangingFloors { floorTransitionPanel }
+                        else { interruptedPanel }
                     case .savingWorldMap:
                         worldMapPanel
                     case .processingScene:
                         StatusPill(text: "Building map…", isWorking: true)
+                            .glassEffectID("status", in: glass)
+                    case .switchingFloor:
+                        StatusPill(text: "Saving \(controller.currentFloor?.name ?? "floor")…", isWorking: true)
                             .glassEffectID("status", in: glass)
                     default:
                         scanControls
@@ -74,6 +111,28 @@ struct ScanView: View {
             .animation(.smooth, value: controller.phase)
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: marks)
+    }
+
+    private var floorTransitionPanel: some View {
+        VStack(spacing: 12) {
+            Label("Changing floors…", systemImage: "arrow.up.arrow.down")
+                .font(.headline)
+            Text("Scanning is paused. Confirm your floor when you arrive.")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack {
+                Button("Choose floor", action: controller.requestFloorChange)
+                    .buttonStyle(.borderedProminent)
+                Button("Stay on this floor", action: controller.cancelFloorChange)
+                    .buttonStyle(.bordered)
+            }
+            if let error = controller.errorMessage {
+                Text(error).font(.footnote).foregroundStyle(.orange)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
     /// The volunteer walked through a doorway. RoomPlan keeps one room per section, so this is the moment to split.
@@ -181,9 +240,13 @@ struct ScanView: View {
                 .buttonStyle(.glassProminent)
             }
             .controlSize(.large)
-            Text(controller.scanNotice ?? "One room per section: add a section each time you go through a door.")
+            Text(controller.scanNotice ?? "Include the floor as you scan. Long scans save sections automatically.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if controller.automaticFloorDetectionUnavailable {
+                Text("Use the floor button when you move to another floor.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             if let error = controller.errorMessage {
                 StatusPill(text: error, systemImage: Theme.symbol(for: .barrier), isCompact: true)
                     .foregroundStyle(Theme.color(for: .barrier))
