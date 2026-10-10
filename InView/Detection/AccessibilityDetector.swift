@@ -47,9 +47,50 @@ final class AccessibilityDetector: ObservableObject {
             case .ramp, .stairs: return frames >= 2 && (verifiedFrames >= 1 || frames >= 4)
             }
         }
+
+        /// One line for the console.
+        var summary: String {
+            var line = "\(kind.rawValue) '\(name)': frames \(frames), verified \(verifiedFrames), confidence \(String(format: "%.2f", confidence))"
+            if let slope = slopeDegrees { line += String(format: ", slope %.1f°", slope) }
+            line += isManual ? ", manual" : ""
+            line += isConfirmed ? ", confirmed" : ", unconfirmed"
+            line += String(format: ", at (%.1f, %.1f, %.1f)", position.x, position.y, position.z)
+            return line
+        }
+    }
+
+    /// Tallies for the device console, to see why finds do or don't confirm.
+    struct Stats {
+        var ticks = 0
+        var steadyTicks = 0
+        var framesSent = 0
+        var framesAnalyzed = 0
+        var framesFailed = 0
+        /// Steady frames that were due but not sent because requests were still in flight.
+        var framesDroppedBusy = 0
+        var raycastHits = 0
+        var raycastMisses = 0
+        /// Model detections placed by a fallback guess because the raycast missed.
+        var guessedPositions = 0
+        var stairsVerified = 0
+        var stairsRejected = 0
+        var stairsInconclusive = 0
+        var slopesMeasured = 0
+        var slopesUnmeasured = 0
+        var totalLatency: TimeInterval = 0
+
+        var summary: String {
+            let latency = framesAnalyzed > 0 ? totalLatency / Double(framesAnalyzed) : 0
+            return "ticks \(ticks) (steady \(steadyTicks)) · frames sent \(framesSent), analyzed \(framesAnalyzed), failed \(framesFailed), "
+                + "dropped while busy \(framesDroppedBusy) · mean latency \(String(format: "%.1f", latency)) s · "
+                + "raycasts hit \(raycastHits), missed \(raycastMisses), guessed positions \(guessedPositions) · "
+                + "stairs verified \(stairsVerified), rejected \(stairsRejected), inconclusive \(stairsInconclusive) · "
+                + "slopes measured \(slopesMeasured), unmeasured \(slopesUnmeasured)"
+        }
     }
 
     @Published private(set) var sightings: [Sighting] = []
+    private(set) var stats = Stats()
     /// Claims LiDAR showed to be wrong: "stairs" that were flat floor or a wall, "ramps" that were level.
     @Published private(set) var rejectedClaims = 0
     @Published private(set) var framesAnalyzed = 0
@@ -98,11 +139,16 @@ final class AccessibilityDetector: ObservableObject {
     }
 
     func pause() {
+        guard timer != nil else { return }
         timer?.invalidate()
         timer = nil
         lastPose = nil
         steadySince = nil
         isWaitingForSteadyCamera = false
+        Log.detection.notice("paused · \(self.stats.summary, privacy: .public)")
+        for sighting in sightings {
+            Log.detection.notice("  \(sighting.summary, privacy: .public)")
+        }
     }
 
     /// Marks whatever is in the center of the screen. The fallback when the model misses something.
@@ -179,10 +225,15 @@ final class AccessibilityDetector: ObservableObject {
             && simd_distance(pose.translation, last.transform.translation) / elapsed < Self.maxLinearSpeed
         steadySince = isSteady ? (steadySince ?? now) : nil
         isWaitingForSteadyCamera = now - lastSent > 5 && !isSteady
+        stats.ticks += 1
+        if isSteady { stats.steadyTicks += 1 }
 
         guard let steadySince, now - steadySince >= Self.steadyFor,
-              now - lastSent >= Self.minimumSampleInterval,
-              requestsInFlight < Self.maxRequestsInFlight else { return }
+              now - lastSent >= Self.minimumSampleInterval else { return }
+        guard requestsInFlight < Self.maxRequestsInFlight else {
+            stats.framesDroppedBusy += 1
+            return
+        }
         lastSent = now
         analyze(frame)
     }
@@ -192,24 +243,38 @@ final class AccessibilityDetector: ObservableObject {
         let camera = CameraSnapshot(frame.camera)
         let pixelBuffer = frame.capturedImage
         requestsInFlight += 1
+        stats.framesSent += 1
+        let number = stats.framesSent
+        Log.detection.info("frame \(number) sent · steady \(self.stats.steadyTicks)/\(self.stats.ticks) ticks · in flight \(self.requestsInFlight)")
         Task { [weak self] in
             defer { self?.requestsInFlight -= 1 }
             do {
                 let encode = Task.detached(priority: .utility) { FrameEncoder.portraitJPEG(from: pixelBuffer, maxDimension: 1536) }
                 guard let jpeg = await encode.value else { return }
+                let started = Date.now
                 let detections = try await client.detect(jpeg: jpeg)
-                self?.handle(detections, camera: camera, jpeg: jpeg)
+                self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, jpeg: jpeg)
             } catch {
+                self?.stats.framesFailed += 1
+                Log.detection.error("frame \(number) failed: \(error.localizedDescription, privacy: .public)")
                 self?.lastError = error.localizedDescription
             }
         }
     }
 
-    private func handle(_ detections: [VisionDetection], camera: CameraSnapshot, jpeg: Data) {
+    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, jpeg: Data) {
         framesAnalyzed += 1
+        stats.framesAnalyzed += 1
+        stats.totalLatency += latency
         lastError = nil
+        Log.detection.info("frame \(number) analyzed in \(String(format: "%.1f", latency), privacy: .public) s: \(detections.count) detections")
         guard let session else { return }
-        for detection in detections where detection.confidence >= Self.minimumConfidence {
+        for detection in detections {
+            Log.detection.info("  \(detection.kind.rawValue, privacy: .public) '\(detection.name, privacy: .public)' \(String(format: "%.2f", detection.confidence), privacy: .public) at (\(String(format: "%.2f, %.2f", detection.target.x, detection.target.y), privacy: .public))")
+            guard detection.confidence >= Self.minimumConfidence else {
+                Log.detection.info("    skipped: below minimum confidence")
+                continue
+            }
             let target = FrameEncoder.capturedImagePoint(fromPortrait: detection.target)
             let position = locate(target, camera: camera, in: session)
             var verified = false
@@ -222,20 +287,27 @@ final class AccessibilityDetector: ObservableObject {
                 if let measured = slope {
                     guard Self.plausibleRampSlope.contains(measured) else {
                         rejectedClaims += 1
+                        Log.detection.info("    rejected: slope \(String(format: "%.1f", measured), privacy: .public)° isn't a ramp")
                         continue
                     }
                     verified = true
                 }
             case .stairs:
-                guard detection.confidence >= Self.minimumStairsConfidence else { continue }
+                guard detection.confidence >= Self.minimumStairsConfidence else {
+                    Log.detection.info("    skipped: below minimum stairs confidence")
+                    continue
+                }
                 switch checkStairs(around: detection.target, camera: camera, in: session) {
                 case .notStairs:
                     rejectedClaims += 1
+                    stats.stairsRejected += 1
+                    Log.detection.info("    rejected: LiDAR says not stairs")
                     continue
                 case .stairs:
                     verified = true
+                    stats.stairsVerified += 1
                 case .inconclusive:
-                    break
+                    stats.stairsInconclusive += 1
                 }
             }
             record(
@@ -266,21 +338,30 @@ final class AccessibilityDetector: ObservableObject {
                 }
             }
         }
-        return StairsCheck.classify(samples, viewer: camera.transform.translation)
+        let verdict = StairsCheck.classify(samples, viewer: camera.transform.translation)
+        Log.detection.info("    stairs check: \(samples.count) of 39 raycasts hit → \(String(describing: verdict), privacy: .public)")
+        return verdict
     }
 
     /// Casts a ray through a captured-image point onto the scanned surfaces, falling back to a point a few meters out.
     private func locate(_ imagePoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> SIMD3<Float> {
-        hit(imagePoint, camera: camera, in: session) ?? {
-            let ray = camera.ray(through: imagePoint)
-            return ray.origin + ray.direction * 3
-        }()
+        if let position = hit(imagePoint, camera: camera, in: session) {
+            Log.detection.info("    placed by raycast at (\(String(format: "%.1f, %.1f, %.1f", position.x, position.y, position.z), privacy: .public))")
+            return position
+        }
+        stats.guessedPositions += 1
+        let ray = camera.ray(through: imagePoint)
+        let guess = ray.origin + ray.direction * 3
+        Log.detection.info("    raycast missed; guessed 3 m along the ray at (\(String(format: "%.1f, %.1f, %.1f", guess.x, guess.y, guess.z), privacy: .public))")
+        return guess
     }
 
     private func hit(_ imagePoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> SIMD3<Float>? {
         let ray = camera.ray(through: imagePoint)
         let query = ARRaycastQuery(origin: ray.origin, direction: ray.direction, allowing: .estimatedPlane, alignment: .any)
-        return session.raycast(query).first?.worldTransform.translation
+        let position = session.raycast(query).first?.worldTransform.translation
+        if position == nil { stats.raycastMisses += 1 } else { stats.raycastHits += 1 }
+        return position
     }
 
     /// Raycasts a small grid around a point on the ramp and fits a plane to the hits.
@@ -297,7 +378,10 @@ final class AccessibilityDetector: ObservableObject {
                 if let position = hit(point, camera: camera, in: session) { samples.append(position) }
             }
         }
-        return SurfaceFit.slopeDegrees(of: samples)
+        let slope = SurfaceFit.slopeDegrees(of: samples)
+        if slope == nil { stats.slopesUnmeasured += 1 } else { stats.slopesMeasured += 1 }
+        Log.detection.info("    slope: \(samples.count) of \(steps * steps) raycasts hit → \(slope.map { String(format: "%.1f°", $0) } ?? "unmeasured", privacy: .public)")
+        return slope
     }
 
     // MARK: Merging
@@ -336,6 +420,7 @@ final class AccessibilityDetector: ObservableObject {
             if let slope { sighting.slopes.append(slope) }
             sighting.evidence = evidence
             sightings.append(sighting)
+            Log.detection.info("    new sighting · \(sighting.summary, privacy: .public)")
             return
         }
 
@@ -362,6 +447,7 @@ final class AccessibilityDetector: ObservableObject {
         }
         sighting.confidence = max(sighting.confidence, confidence)
         sightings[match] = sighting
+        Log.detection.info("    merged into sighting · \(sighting.summary, privacy: .public)")
     }
 
     private static func evidence(from jpeg: Data, point: CGPoint) -> Evidence? {
