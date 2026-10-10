@@ -233,7 +233,7 @@ fn valid_surface_polygon(corners: &[Vec3]) -> bool {
 }
 
 impl DepthFrame {
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         self.map_from_camera.validate()?;
         if !self.timestamp_seconds.is_finite() || self.timestamp_seconds < 0.0 {
             return Err("Frame timestamps must be finite nonnegative seconds.".into());

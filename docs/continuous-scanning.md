@@ -29,6 +29,10 @@ tracking behavior, memory, heat, and the accuracy of detected loop closures.
   and lost tracking hide the affected highlights. Green means captured on this
   phone, not fully scanned or finished processing. The bounded preview can refresh
   older highlights as an area is captured again; saved scan data is retained.
+- Uploads use lossless gzip when the server advertises support. The phone retains
+  the original JSON and measurements; older servers continue receiving ordinary
+  JSON. The uploader reuses the established stream between samples and reconciles
+  again on explicit retry or Finish.
 - Connectivity does not block capture. Without a server, samples remain on the
   phone and a compact measured map can be reviewed. No complete depth model is
   reconstructed locally by this path.
@@ -37,6 +41,16 @@ tracking behavior, memory, heat, and the accuracy of detected loop closures.
   saved stream and review its model after an app restart. A saved stream normally
   uses its original server; **Send to selected server** explicitly changes that
   binding. Opening the saved-scans list does not send camera data.
+- Upload progress reports acknowledged samples, then switches to building the
+  model after the server receives the full capture. Preparing and saving are
+  separate stages. A growing upload backlog does not mean reconstruction has
+  started.
+
+Continuous mode retains one separate depth observation for the compact local
+fallback, alongside measured floor and obstacle coverage. The full synchronized
+camera/depth history remains in the stream archive. Finish does not export a
+second full depth history. The RoomPlan comparison path retains its existing
+bounded depth archive.
 
 Local originals are under `Documents/Captures/<scan UUID>/stream/`. Server
 originals use `INVIEW_STREAM_DIR`, defaulting to `data/streams/`. These archives
@@ -64,10 +78,44 @@ duplicate faces. It is not volumetric TSDF fusion, automatic room segmentation,
 or textured reconstruction. Camera images are retained for registration and later
 processing. Mesh triangles never become assumed walkable floors.
 
+Large meshes automatically compact nearby measured vertices from 2 cm to 4 cm
+and then 8 cm cells. All later samples continue integrating; vertex and triangle
+counts trigger compaction rather than rejecting the scan. This reduces detail and
+can shrink narrow openings, so the model reports when compaction was needed.
+Full original measurements stay saved for later processing.
+
+The server then reduces the display mesh toward a soft target of 50,000 triangles,
+using topology-preserving simplification first and spatial cleanup when overlapping
+depth prevents useful reduction. Estimated display error can reach 20 cm; small
+features and fragmented openings can lose detail. Connected regions, substantial
+closed boundary loops and extent anchors receive protection. Original observations,
+measured floor polygons and obstacle bounds remain separate from this display pass.
+Source/display counts and estimated error are reported in reconstruction metadata.
+Both halves of the returned capture/scene use the same reduced mesh. Result and
+scene responses use lossless gzip when the client accepts it and it saves bytes.
+Known photo-catalog furniture is sent as model keys and measured placements; the
+app reuses its bundled models instead of downloading another copy for each object.
+
+Local server recognition can identify supported furniture categories from selected
+RGB views. It runs during upload, caches object masks, and fits measured object
+bounds using depth and the corrected poses. Distinct views confirm model placement;
+single or ambiguous views keep measured shapes. An existing unclassified obstacle
+can gain a category while retaining its measured geometry. Run
+`bash recognition/setup.sh` from `backend/` once to install the inference runtime.
+Inference stays on the scan server and does not send images to another service.
+If recognition is catching up, the app waits with cancellable backoff; if the worker
+fails, the model reports a measured-geometry fallback. Floor recognition and
+reviewed navigation geometry remain separate work.
+
 The result contains a compact derived capture, its matching scene, original and
 optimized keyframe poses, and alignment diagnostics. The app validates these
 together and corrects review pins and detected stairs using their observation
 times. The raw observations remain separate from the derived model.
+Finished result and scene responses are cached on the server with source and
+version checks. Retrying an interrupted response reuses the finished model rather
+than starting reconstruction again. Result requests use a three-minute request
+timeout and remain cancellable. Concurrent requests for the same capture
+share its work; response requests and active builders remain bounded.
 
 New review destinations can be placed after the backend result is ready, or after
 explicitly choosing **Use local map**. Choosing the local map fixes that review's
@@ -84,13 +132,14 @@ against the corrected model is implemented. An uncorrected model continues to us
 the existing relocalization path; absence of a verified loop is not an accuracy
 certification.
 
-The prototype caps one capture at 10,000 accepted samples or 2 GiB of chunk data.
-An individual chunk is at most 4 MiB. Those limits pause acceptance while keeping
-the accepted prefix finishable. Backend reconstruction also bounds keyframes,
-registration candidates, mesh size, concurrent workers, and its result size.
+Continuous capture has no default total sample, archive, mesh or result-size cap.
+Capacity depends on available disk and memory. An individual chunk is at most
+4 MiB, and each sample is validated before acknowledgement. Tests or other callers
+can still choose an explicit smaller local capture budget. Backend reconstruction
+bounds graph keyframes, registration candidates and concurrent workers.
 The current graph uses at most 64 keyframes, so long scans may lose revisit
-opportunities. Supporting arbitrary building sizes needs a submap strategy and
-larger-scale localization, not merely higher limits.
+opportunities. Whole-building drift correction and live guidance still benefit
+from a submap strategy and localization against the corrected model.
 
 Sections are not part of this scanner's user flow. Tracking loss, storage limits,
 memory warnings, critical heat, and moving to a different floor can still pause

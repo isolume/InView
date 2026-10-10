@@ -143,7 +143,7 @@ struct ScanView: View {
                 case .savingWorldMap:
                     worldMapPanel
                 case .processingScene:
-                    ProgressView("Building map…")
+                    ScanSceneProgress(controller: controller)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .background(.regularMaterial, in: Capsule())
@@ -416,6 +416,21 @@ struct MapReviewView: View {
     }
 }
 
+private struct ScanSceneProgress: View {
+    @ObservedObject var controller: ScanController
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let progress = controller.sceneUploadProgress {
+                Text(controller.sceneStatusLine).font(.subheadline)
+                ProgressView(value: progress).frame(width: 220)
+            } else {
+                ProgressView(controller.sceneStatusLine)
+            }
+        }
+    }
+}
+
 private struct RoomReviewSheet: View {
     @ObservedObject var controller: ScanController
     let onSaved: () -> Void
@@ -444,7 +459,7 @@ private struct MapReviewDetailsView: View {
             List {
                 if let draft = controller.draft {
                     if controller.isProcessingScene {
-                        Section { ProgressView("Building map…") }
+                        Section { ScanSceneProgress(controller: controller) }
                     } else if let error = controller.sceneError {
                         Section {
                             Text(error).font(.subheadline).foregroundStyle(.secondary)

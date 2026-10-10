@@ -90,6 +90,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private var destination: SIMD2<Float>?
     private var destinationTitle: String?
     private var destinationLabel: RoomObjectLabel?
+    /// Unit-size templates share geometry and materials; each instance owns its pose and scale.
+    private var catalogGeometries: [String: [SCNGeometry]] = [:]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -322,6 +324,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                         parent.addChildNode(SCNNode(geometry: geometry))
                     }
                 }
+            } else if let size = vector(object.measuredDimensionsM), size.min() > 0,
+                      let geometries = catalogGeometry(for: object.modelKey) {
+                parent.simdScale = size
+                for geometry in geometries { parent.addChildNode(SCNNode(geometry: geometry)) }
             } else {
                 for part in object.parts {
                     guard let size = vector(part.dimensionsM), let center = vector(part.center), size.min() > 0 else { continue }
@@ -332,6 +338,24 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             }
             room.addChildNode(parent)
         }
+    }
+
+    private func catalogGeometry(for key: String) -> [SCNGeometry]? {
+        if let cached = catalogGeometries[key] { return cached.isEmpty ? nil : cached }
+        guard let meshes = try? FurnitureModelCatalog.meshes(for: key, dimensions: [1, 1, 1]),
+              !meshes.isEmpty else {
+            catalogGeometries[key] = []
+            return nil
+        }
+        let geometries = meshes.compactMap {
+            meshGeometry(vertices: $0.vertices, normals: $0.normals, triangles: $0.triangles, color: "#c4cac8")
+        }
+        guard geometries.count == meshes.count else {
+            catalogGeometries[key] = []
+            return nil
+        }
+        catalogGeometries[key] = geometries
+        return geometries
     }
 
     private func meshGeometry(vertices: [[Float]], normals: [[Float]], triangles: [[Int]], color: String) -> SCNGeometry? {

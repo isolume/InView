@@ -1,12 +1,14 @@
 import Foundation
+import CryptoKit
 
-/// Budgets can be reduced for a device or test, but cannot exceed the server's hard limits.
+/// Continuous capture has no default aggregate budget. Callers can impose a smaller device
+/// or test budget without changing per-frame validation or the ability to finish saved frames.
 public struct StreamingCaptureLimits: Equatable, Sendable {
     public static let standard = StreamingCaptureLimits()
     public var maximumFrames: Int
     public var maximumSavedBytes: Int
 
-    public init(maximumFrames: Int = 10_000, maximumSavedBytes: Int = 2 * 1024 * 1024 * 1024) {
+    public init(maximumFrames: Int = .max, maximumSavedBytes: Int = .max) {
         self.maximumFrames = maximumFrames; self.maximumSavedBytes = maximumSavedBytes
     }
 }
@@ -44,14 +46,18 @@ public actor StreamingCaptureQueue {
     private var uploadsPaused = false
     private var permanentUploadFailure = false
     private var finishTask: Task<StreamSummary, Error>?
+    private var remoteIsReconciled = false
+    private var reconciliationRequested = false
+    private var acceptsGzip = false
+    /// Only fingerprints are retained, never an in-memory backlog of camera images.
+    private var validatedChunks: [Int: Data] = [:]
 
     /// Reopening restores saved progress but does not send anything until append/synchronize/finish.
     /// A saved server binding must match an explicitly supplied address; changing it is a separate action.
     public init(root: URL, manifest: StreamManifest, backendURL: URL?, session: URLSession = .shared,
                 limits: StreamingCaptureLimits = .standard) throws {
         try manifest.validate()
-        guard limits.maximumFrames > 0, limits.maximumFrames <= StreamingCaptureLimits.standard.maximumFrames,
-              limits.maximumSavedBytes > 0, limits.maximumSavedBytes <= StreamingCaptureLimits.standard.maximumSavedBytes else {
+        guard limits.maximumFrames > 0, limits.maximumSavedBytes > 0 else {
             throw StreamingCaptureError.invalidLimits
         }
         guard root.isFileURL else { throw StreamingCaptureError.storageFailure }
@@ -63,8 +69,6 @@ public actor StreamingCaptureQueue {
         let chunksURL = root.appendingPathComponent("chunks", isDirectory: true)
         let totals = try Self.savedChunkTotals(at: chunksURL)
         let count = totals.count
-        guard count <= StreamingCaptureLimits.standard.maximumFrames,
-              totals.bytes <= StreamingCaptureLimits.standard.maximumSavedBytes else { throw StreamingCaptureError.captureLimit }
         if manager.fileExists(atPath: manifestURL.path) {
             let original: StreamManifest = try Self.readJSON(from: manifestURL)
             guard original == manifest else { throw StreamingCaptureError.localConflict }
@@ -129,6 +133,7 @@ public actor StreamingCaptureQueue {
         captured += 1
         capturedBytes += data.count
         lastTimestamp = frame.timestampSeconds
+        validatedChunks[chunk.sequence] = Data(SHA256.hash(data: data))
         if !uploadsPaused, !permanentUploadFailure, state.backendURL != nil, uploadTask == nil, retryTask == nil { startWorker() }
         return snapshot()
     }
@@ -156,6 +161,7 @@ public actor StreamingCaptureQueue {
         uploadsPaused = false
         permanentUploadFailure = false
         retryTask?.cancel(); retryTask = nil
+        reconciliationRequested = true
         let task = uploadTask ?? startWorker()
         try await withTaskCancellationHandler {
             try await task.value
@@ -186,9 +192,7 @@ public actor StreamingCaptureQueue {
         guard state.finished else {
             throw BackendClientError.invalidResponse("Finish sending this scan before opening its map.")
         }
-        let result = try await client().result(id: manifest.id)
-        try result.validate(manifest: manifest)
-        return result
+        return try await client().result(manifest: manifest)
     }
 
     /// Cancel transport and retries while retaining every frame, including pending frames.
@@ -216,6 +220,8 @@ public actor StreamingCaptureQueue {
         try save(next)
         lastError = nil
         permanentUploadFailure = false
+        remoteIsReconciled = false
+        acceptsGzip = false
     }
 
     @discardableResult
@@ -235,6 +241,8 @@ public actor StreamingCaptureQueue {
             if uploadID == id { uploadTask = nil; uploadID = nil }
         } catch {
             if uploadID == id { uploadTask = nil; uploadID = nil }
+            remoteIsReconciled = false
+            acceptsGzip = false
             if !(error is CancellationError) {
                 lastError = error.localizedDescription
                 permanentUploadFailure = Self.isPermanent(error)
@@ -263,32 +271,42 @@ public actor StreamingCaptureQueue {
 
     private func drain() async throws {
         let backend = try client()
-        var acknowledgement = try await backend.begin(manifest)
-        try reconcile(acknowledgement)
         var restarts = 0
-        while state.uploaded < captured {
+        while reconciliationRequested || !remoteIsReconciled || state.uploaded < captured {
             try Task.checkCancellation()
-            guard !acknowledgement.finished else {
+            if reconciliationRequested || !remoteIsReconciled {
+                reconciliationRequested = false
+                let acknowledgement = try await backend.beginSession(manifest)
+                try reconcile(acknowledgement.summary)
+                acceptsGzip = acknowledgement.acceptsGzip
+                remoteIsReconciled = true
+            }
+            guard state.uploaded < captured else { continue }
+            guard !state.finished else {
                 throw BackendClientError.invalidResponse("The scan server ended this scan before all frames were sent.")
             }
             let sequence = state.uploaded
             let path = Self.chunkURL(root: root, sequence: sequence)
-            let data = try Self.readChunkData(from: path)
-            let chunk: StreamChunk
-            do { chunk = try JSONDecoder().decode(StreamChunk.self, from: data) }
-            catch { throw StreamingCaptureError.missingChunks }
-            guard chunk.sequence == sequence else { throw StreamingCaptureError.missingChunks }
-            try chunk.validate()
+            let fingerprint = validatedChunks[sequence]
+            // Disk reads, JSON parsing and JPEG validation must not hold up capture or status
+            // polls. Freshly saved chunks need only an integrity check; reopened chunks still
+            // undergo the complete validation before their fingerprint is remembered.
+            let prepared = try await Task.detached(priority: .utility) {
+                try Self.validatedChunkData(from: path, sequence: sequence, fingerprint: fingerprint)
+            }.value
+            try Task.checkCancellation()
+            validatedChunks[sequence] = prepared.fingerprint
             do {
-                acknowledgement = try await backend.uploadEncodedChunk(data, sequence: sequence, manifest: manifest)
+                let acknowledgement = try await backend.uploadEncodedChunk(prepared.data, sequence: sequence,
+                                                                           manifest: manifest, acceptsGzip: acceptsGzip)
                 guard acknowledgement.nextSequence == sequence + 1 else {
                     throw BackendClientError.invalidResponse("The scan server acknowledged unexpected frames.")
                 }
                 try reconcile(acknowledgement)
             } catch let error as BackendClientError where error.isMissingStream && restarts < 1 {
                 restarts += 1
-                acknowledgement = try await backend.begin(manifest)
-                try reconcile(acknowledgement)
+                remoteIsReconciled = false
+                acceptsGzip = false
             }
         }
     }
@@ -334,11 +352,12 @@ public actor StreamingCaptureQueue {
     }
 
     private func save(_ checkpoint: Checkpoint) throws {
+        guard checkpoint != state else { return }
         try Self.writeJSON(checkpoint, to: root.appendingPathComponent("checkpoint.json"))
         state = checkpoint
     }
 
-    private struct Checkpoint: Codable {
+    private struct Checkpoint: Codable, Equatable {
         var backendURL: String?
         var uploaded = 0
         var captureClosed = false
@@ -403,6 +422,21 @@ public actor StreamingCaptureQueue {
         let data = try readChunkData(from: url)
         do { return try JSONDecoder().decode(StreamChunk.self, from: data) }
         catch { throw StreamingCaptureError.missingChunks }
+    }
+
+    private static func validatedChunkData(from url: URL, sequence: Int, fingerprint: Data?) throws -> (data: Data, fingerprint: Data) {
+        let data = try readChunkData(from: url)
+        let actualFingerprint = Data(SHA256.hash(data: data))
+        if let fingerprint {
+            guard fingerprint == actualFingerprint else { throw StreamingCaptureError.missingChunks }
+        } else {
+            let chunk: StreamChunk
+            do { chunk = try JSONDecoder().decode(StreamChunk.self, from: data) }
+            catch { throw StreamingCaptureError.missingChunks }
+            guard chunk.sequence == sequence else { throw StreamingCaptureError.missingChunks }
+            try chunk.validate()
+        }
+        return (data, actualFingerprint)
     }
 
     private static func readJSON<T: Decodable>(from url: URL) throws -> T {

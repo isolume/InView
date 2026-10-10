@@ -16,6 +16,9 @@ struct SavedStreamUploadsView: View {
     @State private var preview: StreamResult?
     @State private var task: Task<Void, Never>?
     @State private var listingError: String?
+    @State private var activeQueue: StreamingCaptureQueue?
+    @State private var uploadProgress: StreamingCaptureStatus?
+    @State private var processingStage: ScanController.SceneStage = .preparing
 
     var body: some View {
         List {
@@ -29,13 +32,17 @@ struct SavedStreamUploadsView: View {
                     Button {
                         resume(scan)
                     } label: {
-                        if busyID == scan.id { ProgressView("Building model…") }
+                        if busyID == scan.id { ProgressView(busyLabel) }
                         else { Text("Resume upload and view model") }
                     }
                     .disabled(busyID != nil)
                     if AppConfig.backendURL != nil {
                         Button("Send to selected server") { resume(scan, moveToSelectedServer: true) }
                             .disabled(busyID != nil)
+                    }
+                    if busyID == scan.id, processingStage == .uploading,
+                       let uploadProgress, uploadProgress.captured > 0 {
+                        ProgressView(value: min(1, Double(uploadProgress.uploaded) / Double(uploadProgress.captured)))
                     }
                 }
                 .padding(.vertical, 4)
@@ -46,6 +53,14 @@ struct SavedStreamUploadsView: View {
             do { scans = try await ScanWork.run(priority: .utility) { try Self.savedScans() } }
             catch { listingError = error.localizedDescription }
         }
+        .task(id: busyID) {
+            guard busyID != nil else { return }
+            while !Task.isCancelled {
+                if let activeQueue { uploadProgress = await activeQueue.snapshot() }
+                do { try await Task.sleep(for: .seconds(1)) }
+                catch { return }
+            }
+        }
         .onDisappear { task?.cancel() }
         .fullScreenCover(isPresented: Binding(get: { preview != nil }, set: { if !$0 { preview = nil } })) {
             if let preview {
@@ -54,19 +69,37 @@ struct SavedStreamUploadsView: View {
         }
     }
 
+    private var busyLabel: String {
+        switch processingStage {
+        case .preparing: return "Preparing scan…"
+        case .uploading:
+            guard let uploadProgress else { return "Uploading scan…" }
+            if uploadProgress.pending == 0 { return "Finishing upload…" }
+            return "Uploading \(uploadProgress.uploaded) of \(uploadProgress.captured) samples…"
+        case .reconstructing: return "Building model…"
+        case .saving: return "Saving model…"
+        }
+    }
+
     private func resume(_ scan: SavedScan, moveToSelectedServer: Bool = false) {
         busyID = scan.id
+        status[scan.id] = nil
+        processingStage = .preparing
+        uploadProgress = nil
         let selectedServer = AppConfig.backendURL
         task = Task {
-            defer { busyID = nil }
+            defer { busyID = nil; activeQueue = nil }
             do {
                 let queue = try await ScanWork.run(priority: .utility) {
                     // nil preserves the original server binding from the checkpoint.
                     try StreamingCaptureQueue(root: scan.root, manifest: scan.manifest, backendURL: nil)
                 }
+                activeQueue = queue
                 if moveToSelectedServer, let selectedServer {
                     try await queue.configureBackend(selectedServer)
                 }
+                uploadProgress = await queue.snapshot()
+                processingStage = .uploading
                 do {
                     _ = try await queue.finish()
                 } catch StreamingCaptureError.notConfigured {
@@ -74,7 +107,9 @@ struct SavedStreamUploadsView: View {
                     try await queue.configureBackend(selectedServer)
                     _ = try await queue.finish()
                 }
+                processingStage = .reconstructing
                 let result = try await queue.result()
+                processingStage = .saving
                 try await ScanWork.run(priority: .utility) {
                     try JSONEncoder().encode(result).write(to: scan.root.appending(path: "result.json"), options: .atomic)
                 }
