@@ -57,6 +57,23 @@ public struct OccupancyGrid: Sendable {
         self.blocked = inflated
     }
 
+    private init(shape: GridShape, clearance: Float, blocked: [Bool]) {
+        self.shape = shape
+        self.clearance = clearance
+        self.blocked = blocked
+    }
+
+    /// A copy with round obstacles added, padded by this grid's clearance like everything else.
+    func blocking(_ obstacles: [SIMD2<Float>], radius: Float) -> OccupancyGrid {
+        let reach = radius + clearance
+        var cells = blocked
+        for obstacle in obstacles {
+            let disc = Footprint(kind: .obstacle, center: obstacle, size: SIMD2(repeating: 2 * reach), yaw: 0)
+            shape.fill(&cells, footprint: disc, size: disc.size, grow: 0, value: true) { simd_distance($0, obstacle) <= reach }
+        }
+        return OccupancyGrid(shape: shape, clearance: clearance, blocked: cells)
+    }
+
     public func isBlocked(_ index: Int) -> Bool { blocked[index] }
 
     public func center(of index: Int) -> SIMD2<Float> {
@@ -106,8 +123,16 @@ struct GridShape: Sendable {
         origin + (SIMD2(Float(x), Float(y)) + 0.5) * cellSize
     }
 
-    /// Sets every cell whose center lies inside the footprint, resized to `size` and grown by `grow`.
-    func fill(_ cells: inout [Bool], footprint: Footprint, size: SIMD2<Float>, grow: Float, value: Bool) {
+    /// Sets every cell whose center lies inside the footprint, resized to `size` and grown by `grow`,
+    /// and that also passes `include`.
+    func fill(
+        _ cells: inout [Bool],
+        footprint: Footprint,
+        size: SIMD2<Float>,
+        grow: Float,
+        value: Bool,
+        where include: (SIMD2<Float>) -> Bool = { _ in true }
+    ) {
         let half = size / 2 + grow
         let c = abs(cos(footprint.yaw)), s = abs(sin(footprint.yaw))
         let extent = SIMD2(c * half.x + s * half.y, s * half.x + c * half.y)
@@ -118,8 +143,9 @@ struct GridShape: Sendable {
         guard x0 <= x1, y0 <= y1 else { return }
         for y in y0...y1 {
             for x in x0...x1 {
-                let local = footprint.local(center(x: x, y: y))
-                if abs(local.x) <= half.x, abs(local.y) <= half.y {
+                let point = center(x: x, y: y)
+                let local = footprint.local(point)
+                if abs(local.x) <= half.x, abs(local.y) <= half.y, include(point) {
                     cells[y * width + x] = value
                 }
             }
