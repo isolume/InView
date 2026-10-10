@@ -57,7 +57,7 @@ describe the landscape sensor image, not the JPEG.
 |---|---|---|
 | `floor_map` | `stages/floor_map.py` | grid, floor height, outlines, obstacles, narrow passages, PNG; `data`: `FloorMap` rasters (`floor`, `obstacle`, `walked`, `walkable`, `narrow`, `grid`) |
 | `doors` | `stages/doors.py` | `[{id, kind, center_xz_m, span_xz_m, nominal_width_m, height_m, measured_clear_width_m, required_min_clear_width_m, meets_clear_width, meets_headroom, issues, method}]` |
-| `signs` | `stages/signs.py` | `Sign` list (see contracts.py; current stage emits the earlier candidate shape until the signage unit lands) |
+| `signs` | `stages/signs.py` (`signage/`) | `Sign` list (see contracts.py) plus legacy `kind`, `color`, `text`, `score`, `observation_count`; also `category_confidence`, `evidence`, `heights_m`, `legibility`, `i18n`, `notes`. Uses `floor_map` and `text` when present |
 | `roomplan` | RoomPlan semantics | `RoomplanProduct` |
 | `regions` | region segmentation | `Region` list |
 | `height_map`, `hazards` | terrain | `data`: elevation raster aligned with `floor_map.grid`; `Hazard` list |
