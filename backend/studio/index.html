@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f5f7">
+  <title>InView Studio — Spaces, made visible.</title>
+  <meta name="description" content="A private workspace for inspecting your indoor captures and building alignment evidence.">
+  <link rel="stylesheet" href="/studio/assets/studio.css">
+  <script type="module" src="/studio/assets/studio.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="brand" href="/studio" aria-label="InView Studio home"><span class="brand-symbol" aria-hidden="true"><span></span></span><span>inview</span></a>
+      <span class="topbar-rule" aria-hidden="true"></span>
+      <span class="topbar-label">Studio</span>
+      <div class="topbar-right"><span class="privacy-label"><span class="privacy-dot" aria-hidden="true"></span>Private workspace</span><button type="button" class="account-button" id="lockButton" title="Lock this tab" aria-label="Lock studio">IV</button></div>
+    </header>
+
+    <div class="workbench">
+      <aside class="sidebar" id="sidebar" aria-label="Capture library">
+        <div class="sidebar-heading"><span class="eyebrow">YOUR LIBRARY</span><button type="button" class="icon-button sidebar-close" id="closeLibrary" aria-label="Close library">×</button></div>
+        <div class="sidebar-title"><h2>Captures</h2><span class="number-pill" id="scanCount">0</span></div>
+        <p class="sidebar-description">The spaces you've explored, all in one place.</p>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-subhead"><span>RECENT</span><button type="button" class="icon-button" id="refreshScans" aria-label="Refresh captures" title="Refresh captures"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2-5.3M20 4v5h-5"/></svg></button></div>
+        <div class="scan-list" id="scanList" role="list" aria-live="polite"><p class="list-placeholder">Connecting to your workspace…</p></div>
+        <div class="sidebar-bottom"><span class="phone-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18.5h2"/></svg></span><div><strong>Capture on iPhone</strong><p>Your scans appear here after uploading from the InView app.</p></div></div>
+      </aside>
+      <button type="button" class="mobile-scrim" id="mobileScrim" aria-label="Close library" hidden></button>
+
+      <main class="content">
+        <div class="page-intro">
+          <div><span class="eyebrow intro-eyebrow">SPATIAL WORKSPACE <span class="eyebrow-rule"></span> YOUR ENVIRONMENT, CLEARER</span><h1 id="pageTitle">Spaces, made visible<span class="title-period">.</span></h1><p id="pageSubtitle" role="status" aria-live="polite">Choose a capture to explore the geometry behind a place.</p></div>
+          <button class="library-mobile" id="openLibrary" type="button" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg>Library</button>
+        </div>
+
+        <section class="scene-panel" aria-labelledby="sceneHeading">
+          <h2 id="sceneHeading" class="sr-only">Interactive spatial capture</h2>
+          <canvas id="sceneCanvas" tabindex="0" aria-label="3D capture. Drag to rotate, scroll or pinch to zoom, right-drag to pan. Press R to reset."></canvas>
+          <div class="scene-ambient" aria-hidden="true"></div>
+          <div class="scene-top"><span class="scene-indicator"><span class="indicator-dot" aria-hidden="true"></span><span id="sceneState">READY TO EXPLORE</span></span><button type="button" class="scene-icon-button" id="resetView" aria-label="Reset 3D view" title="Reset view (R)"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 11.5a7.5 7.5 0 1 0 2-5.3M4.5 4.5V9h4.5"/></svg></button></div>
+          <div class="empty-state" id="emptyState"><div class="empty-art" aria-hidden="true"><span class="art-grid"></span><span class="art-orbit orbit-one"></span><span class="art-orbit orbit-two"></span><span class="art-core"></span></div><span class="empty-eyebrow">A NEW PERSPECTIVE</span><h3>The room is yours to explore.</h3><p>Choose a capture from the library to see its measured space take shape.</p></div>
+          <div class="scene-loading" id="sceneLoading" hidden><span class="spinner" aria-hidden="true"></span>Preparing your capture…</div>
+          <div class="scene-bottom"><span id="sceneCaption">Measured geometry · Not a verified route</span><span class="scene-hint">DRAG TO ORBIT <i>·</i> SCROLL TO ZOOM</span></div>
+        </section>
+
+        <div class="view-toolbar"><div class="segmented" role="group" aria-label="Scene view"><button type="button" class="segment selected" data-mode="room" aria-pressed="true">Room</button><button type="button" class="segment" data-mode="depth" aria-pressed="false">Depth points</button><button type="button" class="segment" data-mode="mesh" aria-pressed="false">LiDAR mesh</button></div><label class="path-control"><input id="pathToggle" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span>Phone path</label></div>
+        <div class="native-controls" id="nativeControls" hidden><span class="eyebrow">LIDAR SOURCE</span><div class="segmented" role="group" aria-label="Native depth appearance"><button type="button" class="segment selected" data-native="smoothed" aria-pressed="true">Smoothed</button><button type="button" class="segment" data-native="raw" aria-pressed="false">Raw depth</button><button type="button" class="segment" data-native="color" aria-pressed="false">True color</button></div><span class="native-info" id="nativeInfo">Original iPhone depth buffers</span></div>
+        <div class="native-controls" id="meshControls" hidden><span class="eyebrow">MESH APPEARANCE</span><div class="segmented" role="group" aria-label="LiDAR mesh appearance"><button type="button" class="segment selected" data-mesh="original" aria-pressed="true">Original</button><button type="button" class="segment" data-mesh="smooth" aria-pressed="false">Smoothed</button><button type="button" class="segment" data-mesh="color" aria-pressed="false">Image-colored</button></div><span class="native-info" id="meshInfo">Captured ARKit triangles</span></div>
+        <div class="view-feedback" id="viewFeedback" role="status" aria-live="polite">Source captures are immutable. What you see here is a review preview, not a navigation clearance assessment.</div>
+
+        <section class="details" aria-labelledby="detailsHeading"><div class="section-header"><div><span class="eyebrow">A CLOSER LOOK</span><h2 id="detailsHeading">Inside the capture</h2></div><span class="section-caption" id="captureID">Select a scan to see its details</span></div><div class="stats"><div class="stat"><span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m12 2 9 5-9 5-9-5 9-5Zm-9 5v10l9 5 9-5V7M12 12v10"/></svg></span><span class="stat-label">MESH ANCHORS</span><strong id="meshStat">—</strong><small>Spatial surfaces</small></div><div class="stat"><span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="12" r="3"/></svg></span><span class="stat-label">DEPTH FRAMES</span><strong id="frameStat">—</strong><small>Camera observations</small></div><div class="stat"><span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m4 17 5-5 4 4 6-7M4 5v14h16"/></svg></span><span class="stat-label">SCENE ELEMENTS</span><strong id="objectStat">—</strong><small>Objects + surfaces</small></div></div></section>
+
+        <section class="analysis" aria-labelledby="analysisHeading"><div class="section-header"><div><span class="eyebrow">OPENCV ANALYSIS</span><h2 id="analysisHeading">Floor, doors, and signs</h2></div><span class="section-caption" id="analysisCaption">Select a scan to see its processed evidence</span></div><div class="analysis-body" id="analysisBody" hidden><figure class="analysis-map"><canvas id="analysisCanvas" width="720" height="720" role="img" aria-label="Top-down floor map: walkable floor, obstacles, narrow passages in red, doors in green or orange, signs as blue markers"></canvas><figcaption>Top-down X/Z · light: walkable · dark: obstacle · red: under 0.915 m · green/orange door: passes/fails · blue: sign or text</figcaption></figure><div class="analysis-findings"><div class="stats analysis-stats" id="analysisStats"></div><h3>Findings</h3><ul class="finding-list" id="analysisFindings"></ul><p class="caution" id="analysisNotice"></p></div></div><p class="analysis-empty" id="analysisEmpty">Run <code>inview-worker</code> to process this scan.</p></section>
+        <section class="building" aria-labelledby="buildingHeading"><div class="building-intro"><span class="eyebrow">THE BIGGER PICTURE</span><h2 id="buildingHeading">One building. A shared frame.</h2><p>Measured landmarks bring separate scans together. Each alignment is recorded as a version, never silently moved.</p><span class="caution">Alignment is provisional · Accessible routes require independent review</span></div><div class="building-card"><div class="building-card-header"><span class="map-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></svg></span><span>BUILDING MAP</span></div><label for="buildingSelect" class="sr-only">Choose a building</label><select id="buildingSelect"><option value="">No building selected</option></select><div class="building-status" id="buildingStatus" role="status">Select a capture to begin a building reference.</div><figure class="building-overview" id="buildingOverview" hidden><canvas id="overviewCanvas" width="636" height="400" role="img" aria-label="Top-down preview of aligned camera paths and sampled LiDAR surfaces"></canvas><figcaption id="overviewCaption">Top-down X/Z · Observations, not walkable space</figcaption></figure><div class="building-actions"><button type="button" class="secondary-button" id="createBuilding" disabled>New building</button><button type="button" class="primary-button" id="alignScan" disabled>Align capture <span aria-hidden="true">↗</span></button></div></div></section>
+        <footer>InView Studio <span aria-hidden="true">·</span> See the space. Respect the evidence.</footer>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal" id="authDialog" aria-labelledby="authTitle"><form method="dialog" id="authForm"><span class="modal-symbol" aria-hidden="true">✳</span><span class="eyebrow">PRIVATE BY DESIGN</span><h2 id="authTitle">Your workspace is yours.</h2><p>Enter the access token from your computer to view captures. It stays in this browser tab only.</p><label for="authToken">Access token</label><input id="authToken" type="password" required autocomplete="off" spellcheck="false"><p class="form-error" id="authError" role="alert" hidden>That token didn't work. Please try again.</p><div class="modal-actions"><button type="button" class="secondary-button" id="authCancel">Not now</button><button type="submit" class="primary-button">Unlock studio</button></div></form></dialog>
+  <dialog class="modal" id="createDialog" aria-labelledby="createTitle"><form method="dialog" id="createForm"><span class="eyebrow">NEW REFERENCE</span><h2 id="createTitle">Name this building.</h2><p>The selected capture becomes its permanent, arbitrary local origin. This does not verify walkable geometry.</p><label for="buildingName">Building name</label><input id="buildingName" maxlength="120" required placeholder="e.g. Engineering Hall"><p class="form-error" id="createError" role="alert" hidden></p><div class="modal-actions"><button type="button" class="secondary-button" id="createCancel">Cancel</button><button type="submit" class="primary-button">Create reference</button></div></form></dialog>
+  <dialog class="modal align-modal" id="alignDialog" aria-labelledby="alignTitle"><form method="dialog" id="alignForm"><span class="eyebrow">MEASURED ALIGNMENT</span><h2 id="alignTitle">Bring this scan into place.</h2><p>Enter three matching, well-separated landmarks as X, Y, Z meters. The first location is in the selected scan; the second is in the building reference. Do not estimate from GPS.</p><div class="pair-head"><span>IN THIS SCAN</span><span>IN THE BUILDING</span></div><div id="controlPairs"></div><p class="form-hint">Residuals above 0.35 m RMS or 0.60 m maximum are rejected. Passing does not certify accuracy.</p><p class="form-error" id="alignError" role="alert" hidden></p><div class="modal-actions"><button type="button" class="secondary-button" id="alignCancel">Cancel</button><button type="submit" class="primary-button">Save provisional alignment</button></div></form></dialog>
+</body>
+</html>

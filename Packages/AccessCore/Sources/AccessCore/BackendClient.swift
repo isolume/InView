@@ -29,6 +29,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
     case http(status: Int, code: String?, message: String)
     case invalidResponse(String)
     case captureConflict
+    case archiveTooLarge
 
     public var errorDescription: String? {
         switch self {
@@ -57,6 +58,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
         case .http(_, _, let message): return message
         case .invalidResponse(let message): return message
         case .captureConflict: return "A different capture already uses this identifier. Your saved scan has been kept."
+        case .archiveTooLarge: return "The scan package is too large to upload."
         }
     }
 
@@ -68,9 +70,11 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
         if case .http(status: 409, code: "scan_exists", message: _) = self { return true }
         return false
     }
-    /// Older backend deployments only accept the JSON capture endpoint.
+    /// Older backend deployments only accept the JSON capture endpoint. A package beyond the
+    /// archive limit (HTTP 413) can still be processed from its size-bounded portable JSON.
     public var isArchiveEndpointUnavailable: Bool {
-        if case let .http(status, _, _) = self { return status == 404 || status == 405 }
+        if case let .http(status, _, _) = self { return status == 404 || status == 405 || status == 413 }
+        if case .archiveTooLarge = self { return true }
         return false
     }
 }
@@ -79,9 +83,10 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
 public struct BackendClient: Sendable {
     public let baseURL: URL
     private let session: URLSession
+    private let accessToken: String?
 
-    public init(baseURL: URL, session: URLSession = .shared) {
-        self.baseURL = baseURL; self.session = session
+    public init(baseURL: URL, accessToken: String? = nil, session: URLSession = .shared) {
+        self.baseURL = baseURL; self.accessToken = accessToken; self.session = session
     }
 
     /// Checks the configured server without sending a capture or starting processing.
@@ -122,9 +127,8 @@ public struct BackendClient: Sendable {
         let data: Data
         do { data = try Data(contentsOf: archiveURL, options: [.mappedIfSafe]) }
         catch { throw BackendClientError.invalidCapture("The scan package could not be read for upload.") }
-        guard data.count <= 128 * 1024 * 1024 else {
-            throw BackendClientError.invalidCapture("The scan package is too large to upload.")
-        }
+        // Matches the backend's `MAX_PACKAGE_BYTES` for one uncompressed `.inviewscan.tar`.
+        guard data.count <= 256 * 1024 * 1024 else { throw BackendClientError.archiveTooLarge }
         do {
             let response = try await request(
                 path: ["scan-packages"], method: "POST", stage: .upload, body: data,
@@ -207,6 +211,8 @@ public struct BackendClient: Sendable {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = components.host, !host.isEmpty,
+              (accessToken == nil || accessToken?.isEmpty == true || scheme == "https" ||
+               ["localhost", "127.0.0.1", "::1"].contains(host.lowercased())),
               components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil else { throw BackendClientError.invalidURL }
         let safeCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_~")
@@ -223,6 +229,9 @@ public struct BackendClient: Sendable {
         request.httpMethod = method
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let accessToken, !accessToken.isEmpty {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
         if let body {
             request.setValue(contentType, forHTTPHeaderField: "Content-Type")
             request.httpBody = body

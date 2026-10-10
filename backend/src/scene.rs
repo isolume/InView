@@ -210,7 +210,7 @@ pub fn process(bundle: &ScanBundle, options: ProcessingOptions) -> Result<Scene,
             };
             let confidence = frame.depth.confidence.as_ref().map(|values| values[index]);
             if let Some(minimum) = options.minimum_depth_confidence
-                && !confidence.is_some_and(|value| value >= minimum)
+                && confidence.is_none_or(|value| value < minimum)
             {
                 continue;
             }

@@ -32,7 +32,7 @@ a summary, and rejects a reused scan ID with HTTP 409 `scan_exists`. Captures ar
 immutable within this service instance. Use another ID for a correction or rescan.
 `POST /scans` accepts up to 32 MiB for multiroom captures; other prototype endpoints
 retain their existing limits. `POST /scan-packages` accepts an uncompressed `.inviewscan.tar`
-up to 128 MiB. Every TAR entry must be a regular file at `<scan-id>/<filename>`, entry names
+up to 256 MiB (at most 4096 entries, 64 MiB each). Every TAR entry must be a regular file at `<scan-id>/<filename>`, entry names
 must be unique, and `capture.json` must validate and name the same scan ID. Binary sidecars are
 retained immutably in the process-local scan store and are never extracted to the filesystem.
 If present, `package-manifest.json` is parsed and validated against the capture and sidecars; it
@@ -147,20 +147,27 @@ source can restore the backend's in-memory capture after a restart.
 bounded adaptive JPEG keyframes paired with calibrated depth-frame IDs; sidecar files use
 `<frame-id>.color.jpg` and are listed in `metadata.assets.color_keyframes`. The local LiDAR
 review can render these as colorized points. The JSON endpoint intentionally does not send
-binary sidecars. `POST /scan-packages` receives the TAR sidecars with their portable capture;
-the current prototype retains them only in memory and does not yet decode native Apple assets.
+binary sidecars. `POST /scan-packages` receives the TAR sidecars with their portable capture.
+`GET /scans/{id}/raw-preview`, `/native-mesh`, and `/color/{file}` decode them: they read the
+manifest-indexed binary sidecars (`packageFormat: "binary_sidecars"`) and fall back to the base64
+buffers in `raw-snapshot.json` for packages made before sidecars existed
+(`"legacy_raw_snapshot"`). Up to 64 depth observations and 2048 mesh anchors are previewed.
 
 The iOS capture store produces `<scan-id>.inviewscan.tar`: a sequential TAR containing that
-scan's `capture.json`, `package-manifest.json`, RoomPlan original, raw depth/mesh snapshot, JPEG
-color keyframes, derived scene when available, and `worldmap.archive`. The app prefers the
-archive endpoint and falls back to the JSON endpoint only when connecting to an older backend
-that lacks it.
+scan's `capture.json`, `package-manifest.json`, RoomPlan original, binary depth/confidence/mesh
+sidecars, JPEG color keyframes, derived scene when available, and `worldmap.archive`.
+`raw-snapshot.json` stays on the phone: it duplicates every sidecar as base64. Captures saved
+before sidecars existed have them written from that snapshot when the archive is built. The app
+prefers the archive endpoint and falls back to the size-bounded JSON endpoint when the backend
+lacks it (404/405) or the package exceeds the archive limit (413, or over 256 MiB locally).
 
 `package-manifest.json` is the versioned AI/reconstruction handoff. It inventories every sidecar
 with path, role, media type, and byte length; declares the shared right-handed, meter, y-up ARKit
-frame; and lists each selected observation with its frame ID, timestamp, `map_from_camera`, RGB
+frame; and lists each selected observation — built from the complete raw capture, so it remains
+valid when `capture.json` omits portable frames for size — with its frame ID, timestamp, `map_from_camera`, RGB
 asset (when available), camera intrinsics, raw/smoothed depth sidecar filenames, confidence sidecar,
-and buffer layout. It also indexes each classified mesh anchor's exact vertex, index, normal, and
+buffer layout, and optional coarse location context (`environment`, including the iPhone's
+`recorded_at_unix_seconds`). It also indexes each classified mesh anchor's exact vertex, index, normal, and
 classification sidecars with their native offsets, strides, formats, and anchor transform. Workers
 must use that pose/calibration metadata to align OCR/VLM image findings with RoomPlan, depth, mesh,
 and routing geometry; Wi-Fi/BLE or image pixels alone must never establish map coordinates.

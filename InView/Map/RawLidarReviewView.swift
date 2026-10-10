@@ -300,9 +300,9 @@ private enum RawLidarSceneBuilder {
         camera.position = SCNVector3(0, 1, 2.5)
         camera.eulerAngles = SCNVector3(-0.3, 0, 0)
         scene.rootNode.addChildNode(camera)
-        scene.rootNode.addChildNode(axis(color: .systemRed, position: SCNVector3(0.3, 0, 0), rotation: SCNVector3(0, 0, .pi / 2)))
+        scene.rootNode.addChildNode(axis(color: .systemRed, position: SCNVector3(0.3, 0, 0), rotation: SCNVector3(0, 0, CGFloat.pi / 2)))
         scene.rootNode.addChildNode(axis(color: .systemGreen, position: SCNVector3(0, 0.3, 0), rotation: SCNVector3(0, 0, 0)))
-        scene.rootNode.addChildNode(axis(color: .systemBlue, position: SCNVector3(0, 0, 0.3), rotation: SCNVector3(.pi / 2, 0, 0)))
+        scene.rootNode.addChildNode(axis(color: .systemBlue, position: SCNVector3(0, 0, 0.3), rotation: SCNVector3(CGFloat.pi / 2, 0, 0)))
         scene.background.contents = UIColor.black
     }
 

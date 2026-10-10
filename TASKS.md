@@ -73,6 +73,12 @@ Current baseline: `roomplan.json`, `raw-snapshot.json`, `capture.json`, and `wor
 - [ ] Avoid sending large raw binary payloads as base64 JSON unless explicitly needed for a portable fallback.
 - [ ] Add backend tests for captures that include RoomPlan + raw LiDAR sidecars.
 - [ ] Persist backend output as a versioned building-map package that clients can download and reload for 2D, 3D, navigation, and relocalization.
+- [x] Start porting standalone scan-alignment work into the existing Rust service: building reference frames, measured/marker alignment, versioned metadata and timestamped pose evidence in PostgreSQL/TimescaleDB (see `backend/BUILDING_MAPS.md`).
+- [x] Persist immutable RoomPlan + raw LiDAR scan packages outside the current in-memory store and restore them after restart (`INVIEW_SCAN_DIR`); PostgreSQL holds only map metadata and temporal evidence.
+- [x] Port raw full-fidelity LiDAR sidecar decoding and the desktop viewer to the combined `.inviewscan.tar` contract; do **not** expose the old standalone `.lidarpack` protocol as the new default.
+- [x] Finish the standalone `InView/backend` merge: building overview (`GET /api/buildings/{id}/overview`, top-down aligned paths + mesh samples) and its Studio preview. The Python `.lidarpack` ingestion and SQLite importer are intentionally not ported (no legacy map rows existed).
+- [ ] Validate Timescale hypertable creation and TLS using actual TigerData credentials (not configured locally; `INVIEW_TEST_REQUIRE_TIMESCALE=1` exercises this once a URL is supplied).
+- [x] Add Bearer authentication to the Rust API; store the iOS token in Keychain and require a token for non-loopback binds. The HTTPS ngrok development tunnel now points at the authenticated Rust backend (local PostgreSQL only), not the old Python viewer.
 
 ## P1 — viewer/review integration
 
@@ -89,6 +95,7 @@ Current baseline: `roomplan.json`, `raw-snapshot.json`, `capture.json`, and `wor
 ## P2 — semantic processing, map products, and routing enrichment
 
 - [ ] Build 2D products: floor outline, occupancy/walkability grid, doors/openings, obstacles, and floor-specific route graph.
+  - First OpenCV pass in `backend/worker/` (`inview-worker`): walkable/obstacle grid, floor outline, free-standing obstacles, passages under 0.915 m, door/opening clear-width + headroom screening, and exit/accessibility sign + text-region candidates placed in 3D. Route graph generation and OCR (Tesseract optional) remain open; results are screening, not certification.
 - [ ] Build 3D products: cleaned/downsampled mesh or point cloud, surface classifications, and map-frame bounding volumes for out-of-room review.
 - [ ] Use raw LiDAR/mesh evidence to validate RoomPlan floors, walls, obstacles, door clearances, and ramp/stair geometry.
 - [ ] Extract/verify accessibility categories: elevator, stairs, ramp, automatic/manual door, accessible entrance, restroom, obstruction, and unknown.

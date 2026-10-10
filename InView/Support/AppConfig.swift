@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Build-time settings from Config/*.xcconfig, passed through Info.plist.
 enum AppConfig {
@@ -24,6 +25,42 @@ enum AppConfig {
     }
 
     static var backendURL: URL? { validatedBackendURL(backendAddress) }
+
+    private static let tokenService = "org.inview.scan-backend"
+    private static let tokenAccount = "api-access-token"
+
+    static var backendToken: String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService,
+            kSecAttrAccount as String: tokenAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let bytes = item as? Data else { return nil }
+        return String(data: bytes, encoding: .utf8)
+    }
+
+    @discardableResult static func setBackendToken(_ token: String) -> Bool {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService,
+            kSecAttrAccount as String: tokenAccount
+        ]
+        if trimmed.isEmpty { return [errSecSuccess, errSecItemNotFound].contains(SecItemDelete(query as CFDictionary)) }
+        guard let data = trimmed.data(using: .utf8) else { return false }
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        let result = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if result == errSecSuccess { return true }
+        guard result == errSecItemNotFound else { return false }
+        return SecItemAdd(query.merging(attributes) { _, value in value } as CFDictionary, nil) == errSecSuccess
+    }
 
     static func validatedBackendURL(_ address: String) -> URL? {
         guard let url = URL(string: address.trimmingCharacters(in: .whitespacesAndNewlines)),

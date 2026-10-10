@@ -425,7 +425,10 @@ async fn scan_package_validates_paths_and_processes_embedded_capture() {
     });
     let valid = package(vec![
         ("demo-room/capture.json", capture),
-        ("demo-room/package-manifest.json", serde_json::to_vec(&manifest).unwrap()),
+        (
+            "demo-room/package-manifest.json",
+            serde_json::to_vec(&manifest).unwrap(),
+        ),
         ("demo-room/raw-snapshot.json", b"{\"raw\":true}".to_vec()),
         ("demo-room/worldmap.archive", vec![1, 2, 3]),
     ]);

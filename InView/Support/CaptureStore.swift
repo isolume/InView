@@ -111,6 +111,11 @@ enum CaptureStore {
         try? directory(for: captureID).appending(path: "worldmap.archive")
     }
 
+    /// `raw-snapshot.json` repeats every native buffer as base64 next to portable copies of the
+    /// meshes and frames. The binary sidecars and manifest carry the same evidence at a fraction of
+    /// the size, so the snapshot stays on the phone for its review screens.
+    private static let excludedFromArchive: Set<String> = ["raw-snapshot.json"]
+
     /// Creates a portable sequential archive without expanding binary LiDAR buffers into the
     /// `CaptureBundle` JSON upload. The backend archive endpoint can ingest this immutable package.
     static func makeArchive(for captureID: String) throws -> URL {
@@ -123,7 +128,8 @@ enum CaptureStore {
             options: [.skipsHiddenFiles]
         )
         .filter { file in
-            file != archiveURL && (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            file != archiveURL && !excludedFromArchive.contains(file.lastPathComponent)
+                && (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
         }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
@@ -162,10 +168,17 @@ enum CaptureStore {
         let bundle = try JSONDecoder().decode(CaptureBundle.self, from: Data(contentsOf: captureURL))
         guard bundle.id == captureID else { throw CaptureValidationError.invalid("The capture package identifier does not match its source.") }
         let raw = try? JSONDecoder().decode(RawScanSnapshot.self, from: Data(contentsOf: rawURL))
+        // Captures saved before binary sidecars existed only have the base64 snapshot.
+        if let raw, !hasNativeLidarAssets(raw, in: directory) {
+            try stageNativeLidarAssets(raw, id: captureID)
+        }
         let files = try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]
         )
-        .filter { $0.lastPathComponent != "package-manifest.json" && $0.pathExtension != "tar" }
+        .filter {
+            $0.lastPathComponent != "package-manifest.json" && $0.pathExtension != "tar"
+                && !excludedFromArchive.contains($0.lastPathComponent)
+        }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
         let assets = try files.map { file in
             let name = file.lastPathComponent
@@ -174,7 +187,9 @@ enum CaptureStore {
         }
         let colorNames = Set(raw?.colorKeyframes.map(\.filename) ?? [])
         let buffers = Dictionary(uniqueKeysWithValues: (raw?.depthBuffers ?? []).map { ($0.id, $0) })
-        let observations = bundle.frames.map { frame in
+        // The portable bundle may omit frames to fit its JSON limit; the raw capture keeps them all,
+        // so every native depth buffer keeps its calibrated pose in the manifest.
+        let observations = (raw?.frames ?? bundle.frames).map { frame in
             let native = buffers[frame.id]
             let colorAsset = frame.colorAsset.flatMap { colorNames.contains($0) ? $0 : nil }
             return PackageManifest.Observation(
@@ -212,6 +227,11 @@ enum CaptureStore {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try encoder.encode(manifest).write(to: directory.appending(path: "package-manifest.json"), options: .atomic)
+    }
+
+    private static func hasNativeLidarAssets(_ snapshot: RawScanSnapshot, in directory: URL) -> Bool {
+        let names = snapshot.depthBuffers.map { rawDepthFilename($0.id) } + snapshot.meshBuffers.map { meshVerticesFilename($0.id) }
+        return names.allSatisfy { FileManager.default.fileExists(atPath: directory.appending(path: $0).path) }
     }
 
     private static func assetRole(for filename: String) -> String {

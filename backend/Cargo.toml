@@ -8,6 +8,12 @@ publish = false
 axum = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-native-tls", "postgres", "json", "chrono", "uuid"] }
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+subtle = "2"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync"] }
 tar = "0.4"
 tower-http = { version = "0.6", features = ["trace"] }

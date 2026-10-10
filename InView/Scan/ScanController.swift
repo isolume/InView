@@ -363,7 +363,7 @@ final class ScanController: ObservableObject {
     private func makeScene(_ bundle: CaptureBundle, backendURL: URL?) async throws -> ProcessedScene {
         let result: ProcessedScene
         if let backendURL {
-            let client = BackendClient(baseURL: backendURL)
+            let client = BackendClient(baseURL: backendURL, accessToken: AppConfig.backendToken)
             if let archiveURL = try? CaptureStore.makeArchive(for: bundle.id) {
                 do {
                     result = try await client.uploadArchiveAndProcess(at: archiveURL, capture: bundle)

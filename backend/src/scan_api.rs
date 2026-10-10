@@ -12,7 +12,7 @@ use crate::{
     capture::ScanBundle,
     error::ApiError,
     scene::{self, ProcessingOptions, Scene},
-    store::{ScanSummary, StoredScan},
+    store::{ScanInsertError, ScanSummary, StoredScan},
 };
 
 pub async fn list(State(state): State<AppState>) -> Json<Vec<ScanSummary>> {
@@ -34,13 +34,7 @@ pub async fn upload(
         package_manifest: None,
     };
     let summary = scan.summary();
-    state.scans.insert(scan).await.map_err(|()| {
-        ApiError::new(
-            StatusCode::CONFLICT,
-            "scan_exists",
-            "This scan already exists. Use a new id for another capture.",
-        )
-    })?;
+    state.scans.insert(scan, None).await.map_err(insert_error)?;
     Ok((StatusCode::CREATED, Json(summary)))
 }
 
@@ -58,13 +52,11 @@ pub async fn upload_package(
         package_manifest: package.manifest,
     };
     let summary = scan.summary();
-    state.scans.insert(scan).await.map_err(|()| {
-        ApiError::new(
-            StatusCode::CONFLICT,
-            "scan_exists",
-            "This scan already exists. Use a new id for another capture.",
-        )
-    })?;
+    state
+        .scans
+        .insert(scan, Some(payload.to_vec()))
+        .await
+        .map_err(insert_error)?;
     Ok((StatusCode::CREATED, Json(summary)))
 }
 
@@ -121,6 +113,24 @@ pub async fn preview(
     Ok(Html(include_str!("../preview.html")))
 }
 
+fn insert_error(error: ScanInsertError) -> ApiError {
+    match error {
+        ScanInsertError::Exists => ApiError::new(
+            StatusCode::CONFLICT,
+            "scan_exists",
+            "This scan already exists. Use a new id for another capture.",
+        ),
+        ScanInsertError::Storage(error) => {
+            tracing::error!(%error, "Could not persist immutable scan");
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "scan_storage_error",
+                "The scan could not be safely persisted.",
+            )
+        }
+    }
+}
+
 fn missing() -> ApiError {
     ApiError::new(
         StatusCode::NOT_FOUND,
@@ -131,4 +141,75 @@ fn missing() -> ApiError {
 
 fn json_error(error: JsonRejection) -> ApiError {
     ApiError::new(error.status(), "invalid_json", error.body_text())
+}
+
+/// Full camera path in the shared ARKit frame (package manifest first, then portable frames).
+pub async fn camera_track(
+    State(state): State<AppState>,
+    Path(scan_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let scan = state.scans.get(&scan_id).await.ok_or_else(missing)?;
+    let poses: Vec<Value> = scan
+        .camera_track()
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "timestamp_seconds": p.timestamp_seconds,
+                "unix_seconds": p.unix_seconds,
+                "position_m": p.map_from_camera.point([0., 0., 0.]),
+                "map_from_camera": p.map_from_camera,
+            })
+        })
+        .collect();
+    Ok(Json(
+        serde_json::json!({"scan_id": scan_id, "frame": "shared_arkit_session", "poses": poses}),
+    ))
+}
+
+pub async fn analysis(
+    State(state): State<AppState>,
+    Path(scan_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    state.scans.get(&scan_id).await.ok_or_else(missing)?;
+    let analysis = state.scans.analysis(&scan_id).await.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "analysis_not_found",
+            "This scan has not been processed by the analysis worker yet.",
+        )
+    })?;
+    Ok(Json((*analysis).clone()))
+}
+
+/// Accepts worker output. It is derived and replaceable; the source capture is never modified.
+pub async fn put_analysis(
+    State(state): State<AppState>,
+    Path(scan_id): Path<String>,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let Json(analysis) = payload.map_err(|e| ApiError::invalid(e.body_text()))?;
+    state.scans.get(&scan_id).await.ok_or_else(missing)?;
+    if analysis.get("schema_version").and_then(|v| v.as_u64()) != Some(1)
+        || analysis.get("scan_id").and_then(|v| v.as_str()) != Some(scan_id.as_str())
+        || analysis.get("frame").and_then(|v| v.as_str()) != Some("shared_arkit_session")
+    {
+        return Err(ApiError::invalid(
+            "Analysis must be schema_version 1, name this scan_id, and use the shared_arkit_session frame.",
+        ));
+    }
+    state
+        .scans
+        .put_analysis(&scan_id, analysis)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Could not persist scan analysis");
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "analysis_storage_error",
+                "The analysis could not be saved.",
+            )
+        })?;
+    Ok(Json(
+        serde_json::json!({"scan_id": scan_id, "stored": true}),
+    ))
 }

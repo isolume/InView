@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     io::{Cursor, Read},
     path::Component,
 };
@@ -8,10 +8,14 @@ use serde::Deserialize;
 use serde_json::Value;
 use tar::Archive;
 
-use crate::capture::ScanBundle;
+use crate::{capture::ScanBundle, geometry::Transform};
 
-const MAX_FILES: usize = 256;
-const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
+/// A full RoomPlan walk keeps up to 32 depth observations (4 files each) plus 4 files per
+/// ARKit mesh anchor, so the entry limit must cover hundreds of anchors.
+const MAX_FILES: usize = 4096;
+const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+/// Upper bound for one uncompressed `.inviewscan.tar` upload or persisted package.
+pub const MAX_PACKAGE_BYTES: usize = 256 * 1024 * 1024;
 
 /// Immutable binary sidecars carried with a capture. Paths are relative to the scan ID,
 /// never extracted onto the server filesystem.
@@ -24,7 +28,7 @@ pub struct ScanPackage {
 }
 
 #[derive(Deserialize)]
-struct PackageManifest {
+pub(crate) struct PackageManifest {
     schema_version: u32,
     capture_id: String,
     map_id: String,
@@ -32,9 +36,9 @@ struct PackageManifest {
     coordinate_frame: CoordinateFrame,
     assets: Vec<ManifestAsset>,
     #[serde(default)]
-    observations: Vec<ManifestObservation>,
+    pub observations: Vec<ManifestObservation>,
     #[serde(default)]
-    mesh_anchors: Vec<ManifestMeshAnchor>,
+    pub mesh_anchors: Vec<ManifestMeshAnchor>,
 }
 
 #[derive(Deserialize)]
@@ -51,25 +55,82 @@ struct ManifestAsset {
     media_type: String,
     bytes: usize,
 }
+/// One calibrated depth/RGB observation. The iPhone writes these from the full raw capture,
+/// so they remain usable when `capture.json` omits its portable frames for size.
 #[derive(Deserialize)]
-struct ManifestObservation {
-    id: String,
-    rgb_asset: Option<String>,
-    raw_depth: Option<ManifestDepth>,
+pub(crate) struct ManifestObservation {
+    pub id: String,
+    #[serde(default)]
+    pub timestamp_seconds: Option<f64>,
+    pub rgb_asset: Option<String>,
+    #[serde(default)]
+    pub map_from_camera: Option<Transform>,
+    #[serde(default)]
+    pub image: Option<ManifestImage>,
+    pub raw_depth: Option<ManifestDepth>,
+}
+#[derive(Clone, Copy, Deserialize)]
+pub(crate) struct ManifestImage {
+    pub width: usize,
+    pub height: usize,
+    pub fx: f64,
+    pub fy: f64,
+    pub cx: f64,
+    pub cy: f64,
 }
 #[derive(Deserialize)]
-struct ManifestDepth {
-    raw_asset: String,
-    confidence_asset: Option<String>,
-    smoothed_asset: Option<String>,
+pub(crate) struct ManifestDepth {
+    pub raw_asset: String,
+    pub confidence_asset: Option<String>,
+    pub smoothed_asset: Option<String>,
+    pub width: usize,
+    pub height: usize,
+    pub bytes_per_row: usize,
+    pub pixel_format: u32,
+    pub confidence_bytes_per_row: Option<usize>,
+    pub smoothed_width: Option<usize>,
+    pub smoothed_height: Option<usize>,
+    pub smoothed_bytes_per_row: Option<usize>,
+    pub smoothed_pixel_format: Option<u32>,
+    #[serde(default)]
+    pub environment: Option<EnvironmentSample>,
+}
+/// Coarse GPS/heading/barometer context. ARKit remains the only room-precision frame.
+#[derive(Clone, Copy, Deserialize)]
+pub(crate) struct EnvironmentSample {
+    pub recorded_at_unix_seconds: Option<f64>,
 }
 #[derive(Deserialize)]
-struct ManifestMeshAnchor {
-    id: String,
-    vertices_asset: String,
-    faces_asset: String,
-    normals_asset: String,
-    classification_asset: Option<String>,
+pub(crate) struct ManifestMeshAnchor {
+    pub id: String,
+    pub map_from_anchor: Transform,
+    pub vertices_asset: String,
+    pub faces_asset: String,
+    pub normals_asset: String,
+    pub classification_asset: Option<String>,
+    pub vertex_offset: usize,
+    pub vertex_stride: usize,
+    pub vertex_count: usize,
+    pub bytes_per_index: usize,
+    pub face_count: usize,
+    pub indices_per_face: usize,
+}
+
+impl ManifestImage {
+    fn valid(&self) -> bool {
+        (1..=16_384).contains(&self.width)
+            && (1..=16_384).contains(&self.height)
+            && [self.fx, self.fy, self.cx, self.cy]
+                .iter()
+                .all(|v| v.is_finite())
+            && self.fx > 0.
+            && self.fy > 0.
+    }
+}
+
+pub(crate) fn parse_manifest(value: &Value) -> Result<PackageManifest, String> {
+    serde_json::from_value(value.clone())
+        .map_err(|error| format!("package-manifest.json has an invalid shape: {error}"))
 }
 
 pub fn decode(bytes: &[u8]) -> Result<ScanPackage, String> {
@@ -163,8 +224,7 @@ fn validate_manifest(
     bundle: &ScanBundle,
     files: &BTreeMap<String, Vec<u8>>,
 ) -> Result<(), String> {
-    let manifest: PackageManifest = serde_json::from_value(value.clone())
-        .map_err(|error| format!("package-manifest.json has an invalid shape: {error}"))?;
+    let manifest = parse_manifest(value)?;
     if manifest.schema_version != 1
         || manifest.capture_id != bundle.id
         || manifest.map_id != bundle.map_id
@@ -200,8 +260,18 @@ fn validate_manifest(
             return Err("package-manifest.json contains an invalid asset record.".into());
         }
     }
+    let mut observation_ids = HashSet::new();
     for observation in &manifest.observations {
-        if !bundle.frames.iter().any(|frame| frame.id == observation.id) {
+        if !observation_ids.insert(observation.id.as_str()) {
+            return Err("package-manifest.json repeats a depth observation.".into());
+        }
+        let portable = bundle.frames.iter().any(|frame| frame.id == observation.id);
+        let calibrated = observation
+            .map_from_camera
+            .is_some_and(|pose| pose.validate().is_ok())
+            && observation.image.is_some_and(|image| image.valid());
+        // Large walks may omit portable frames from capture.json; the manifest then carries the pose.
+        if !(portable || calibrated && observation.raw_depth.is_some()) {
             return Err("package-manifest.json refers to an unknown depth frame.".into());
         }
         if let Some(rgb) = &observation.rgb_asset
@@ -225,7 +295,7 @@ fn validate_manifest(
         }
     }
     for mesh in &manifest.mesh_anchors {
-        if mesh.id.is_empty() {
+        if mesh.id.is_empty() || mesh.map_from_anchor.validate().is_err() {
             return Err("package-manifest.json contains an invalid mesh anchor.".into());
         }
         for asset in [

@@ -431,6 +431,29 @@ struct BackendIntegrationTests {
         #expect(BackendMockProtocol.failure == nil)
     }
 
+    @Test func oversizedOrUnsupportedArchivesFallBackToPortableJSON() {
+        #expect(BackendClientError.http(status: 413, code: "payload_too_large", message: "").isArchiveEndpointUnavailable)
+        #expect(BackendClientError.http(status: 404, code: "not_found", message: "").isArchiveEndpointUnavailable)
+        #expect(BackendClientError.archiveTooLarge.isArchiveEndpointUnavailable)
+        #expect(!BackendClientError.http(status: 422, code: "invalid_request", message: "").isArchiveEndpointUnavailable)
+    }
+
+    @Test func sendsBearerTokenToProtectedServer() async throws {
+        let (plain, session) = mockClient([
+            ExpectedRequest("GET", "/health", 200,
+                            Data("{\"status\":\"ok\",\"service\":\"inview-backend\"}".utf8), inspect: { request in
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer private-test-token")
+            }),
+        ])
+        defer { session.invalidateAndCancel() }
+        let client = BackendClient(baseURL: URL(string: "https://backend.invalid")!, accessToken: "private-test-token", session: session)
+        try await client.checkHealth()
+        #expect(BackendMockProtocol.steps.isEmpty)
+        #expect(BackendMockProtocol.failure == nil)
+        let insecure = BackendClient(baseURL: plain.baseURL, accessToken: "private-test-token", session: session)
+        await #expect(throws: BackendClientError.invalidURL) { try await insecure.checkHealth() }
+    }
+
     @Test func healthRejectsAnotherServiceUnavailableStatusAndMalformedResponses() async throws {
         let responses = [
             "{\"status\":\"ok\",\"service\":\"another-app\"}",

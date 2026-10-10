@@ -263,7 +263,7 @@ struct NavigateView: View {
         guard let bundle = saved.bundle else { return }
         if let url = AppConfig.backendURL {
             do {
-                let result = try await BackendClient(baseURL: url).uploadAndProcess(bundle)
+                let result = try await BackendClient(baseURL: url, accessToken: AppConfig.backendToken).uploadAndProcess(bundle)
                 try Task.checkCancellation()
                 try CaptureStore.saveScene(result, for: bundle)
                 scene = result
