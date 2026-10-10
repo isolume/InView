@@ -53,6 +53,22 @@ public enum Polygon {
         return triangles
     }
 
+    /// Whether `point` lies inside the polygon (even-odd rule).
+    public static func contains(_ point: SIMD2<Float>, in corners: [SIMD2<Float>]) -> Bool {
+        guard corners.count >= 3 else { return false }
+        var inside = false
+        var j = corners.count - 1
+        for i in corners.indices {
+            let a = corners[i], b = corners[j]
+            if (a.y > point.y) != (b.y > point.y),
+               point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x {
+                inside.toggle()
+            }
+            j = i
+        }
+        return inside
+    }
+
     private static func cross(_ a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float {
         a.x * b.y - a.y * b.x
     }

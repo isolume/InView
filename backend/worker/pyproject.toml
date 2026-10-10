@@ -1,0 +1,19 @@
+[project]
+name = "inview-worker"
+version = "0.1.0"
+description = "OpenCV processing for InView scans: floor maps, sign/text candidates, door clearance checks."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2,<3",
+    "opencv-contrib-python-headless>=4.10,<5",  # ximgproc thinning, dnn text models
+]
+
+[project.scripts]
+inview-worker = "inview_worker.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

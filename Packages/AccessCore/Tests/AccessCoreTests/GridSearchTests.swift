@@ -52,3 +52,30 @@ import Testing
     #expect(!grid.lineOfSight([.nan, 1.5], [2.5, 1.5]))
     #expect(!grid.lineOfSight([.greatestFiniteMagnitude, 1.5], [2.5, 1.5]))
 }
+
+@Test func costOnlyAuditSearchPreservesBlockedAndReachableCellsWithoutParentStorage() throws {
+    let map = room([divider, dividerDoor(at: 1.5, width: 0.7)], points: [point(.elevator, 2, -1)])
+    let grid = OccupancyGrid(map: map, clearance: 0.45)
+    let start = try #require(grid.nearestFreeIndex(to: [-2, -1], within: 1.5))
+    let full = grid.search(from: start)
+    let audit = try grid.search(from: start, storingParents: false, isCancelled: { false })
+    #expect(audit.cost == full.cost)
+    #expect(audit.parent.isEmpty)
+    #expect(full.parent.count == grid.width * grid.height)
+    #expect(audit.cost[start] == 0)
+    let inaccessible = try #require(grid.index(containing: [2, -1]))
+    #expect(!audit.cost[inaccessible].isFinite)
+}
+
+@Test func auditSearchThrowsWhenCancelledDuringTraversalInsteadOfReturningPartialReachability() throws {
+    let grid = OccupancyGrid(map: room(points: [point(.elevator, 2, -1)]), clearance: 0.45)
+    let start = try #require(grid.nearestFreeIndex(to: .zero, within: 1.5))
+    var checks = 0
+    #expect(throws: CancellationError.self) {
+        try grid.search(from: start, storingParents: false) {
+            checks += 1
+            return checks >= 3
+        }
+    }
+    #expect(checks == 3)
+}

@@ -1,0 +1,316 @@
+{
+  "_comment": "Multilingual place vocabulary for sign/label text. Terms are matched after normalisation (NFKC, casefold, Latin accents stripped, Arabic letter variants unified). A term is a string (weight 1.0) or [term, weight]; weights below 1 mark ambiguous words. 'negations' veto a category (e.g. NOT AN EXIT). 'names' are the display names published per language. Languages are BCP-47 codes; list order breaks ties when a term exists in several languages.",
+  "languages": ["en", "es", "fr", "de", "pt", "it", "zh", "ja", "ko", "ar", "hi"],
+  "categories": {
+    "emergency_exit": {
+      "names": {"en": "Emergency exit", "es": "Salida de emergencia", "fr": "Sortie de secours", "de": "Notausgang", "pt": "Saída de emergência", "it": "Uscita di emergenza", "zh": "安全出口", "ja": "非常口", "ko": "비상구", "ar": "مخرج الطوارئ", "hi": "आपातकालीन निकास"},
+      "terms": {
+        "en": ["emergency exit", "fire exit"],
+        "es": ["salida de emergencia", "salida de socorro"],
+        "fr": ["sortie de secours", "issue de secours"],
+        "de": ["notausgang"],
+        "pt": ["saida de emergencia"],
+        "it": ["uscita di emergenza", "uscita di sicurezza"],
+        "zh": ["安全出口", "紧急出口", "緊急出口", "太平门"],
+        "ja": ["非常口"],
+        "ko": ["비상구"],
+        "ar": ["مخرج الطوارئ", "مخرج طوارئ", "مخرج الطوارى"],
+        "hi": ["आपातकालीन निकास", "आपात निकास"]
+      },
+      "negations": {
+        "en": ["not an emergency exit", "not a fire exit"],
+        "de": ["kein notausgang"],
+        "ja": ["非常口ではありません"]
+      }
+    },
+    "exit": {
+      "names": {"en": "Exit", "es": "Salida", "fr": "Sortie", "de": "Ausgang", "pt": "Saída", "it": "Uscita", "zh": "出口", "ja": "出口", "ko": "출구", "ar": "مخرج", "hi": "निकास"},
+      "terms": {
+        "en": ["exit", "way out"],
+        "es": ["salida"],
+        "fr": ["sortie"],
+        "de": ["ausgang"],
+        "pt": ["saida"],
+        "it": ["uscita"],
+        "zh": ["出口"],
+        "ja": ["出口"],
+        "ko": ["출구", "나가는 곳"],
+        "ar": ["مخرج", "خروج"],
+        "hi": ["निकास", ["बाहर", 0.6]]
+      },
+      "negations": {
+        "en": ["no exit", "not an exit", "not exit"],
+        "es": ["sin salida", "no es salida", "no hay salida", "no es una salida"],
+        "fr": ["pas de sortie", "pas une sortie", "sans issue"],
+        "de": ["kein ausgang"],
+        "pt": ["sem saida", "nao e saida", "nao e uma saida"],
+        "it": ["nessuna uscita", "non e un uscita", "non e un'uscita", "vietata l'uscita"],
+        "zh": ["非出口", "不是出口", "此路不通"],
+        "ja": ["出口ではありません"],
+        "ko": ["출구 아님", "출구가 아닙니다"],
+        "ar": ["ليس مخرجا", "لا يوجد مخرج", "ليس مخرج"],
+        "hi": ["निकास नहीं"]
+      }
+    },
+    "entrance": {
+      "names": {"en": "Entrance", "es": "Entrada", "fr": "Entrée", "de": "Eingang", "pt": "Entrada", "it": "Ingresso", "zh": "入口", "ja": "入口", "ko": "입구", "ar": "مدخل", "hi": "प्रवेश"},
+      "terms": {
+        "en": ["entrance", "entry", "way in"],
+        "es": ["entrada", "acceso"],
+        "fr": ["entree", "acces"],
+        "de": ["eingang", "zugang"],
+        "pt": ["entrada"],
+        "it": ["ingresso", "entrata"],
+        "zh": ["入口"],
+        "ja": ["入口", "入り口"],
+        "ko": ["입구", "들어가는 곳"],
+        "ar": ["مدخل", "دخول"],
+        "hi": ["प्रवेश", "प्रवेश द्वार"]
+      },
+      "negations": {
+        "en": ["no entry", "do not enter", "no entrance", "not an entrance", "exit only"],
+        "es": ["prohibido el paso", "no entrar", "prohibida la entrada"],
+        "fr": ["entree interdite", "acces interdit", "defense d'entrer"],
+        "de": ["kein eingang", "kein zutritt", "zutritt verboten"],
+        "pt": ["proibida a entrada", "entrada proibida", "nao entre"],
+        "it": ["vietato l'ingresso", "divieto di accesso", "ingresso vietato"],
+        "zh": ["禁止入内", "禁止进入", "非入口"],
+        "ja": ["立入禁止", "進入禁止"],
+        "ko": ["출입금지", "출입 금지"],
+        "ar": ["ممنوع الدخول"],
+        "hi": ["प्रवेश निषेध", "प्रवेश वर्जित"]
+      }
+    },
+    "accessible_restroom": {
+      "names": {"en": "Accessible restroom", "es": "Baño accesible", "fr": "Toilettes accessibles", "de": "Barrierefreies WC", "pt": "Banheiro acessível", "it": "Bagno accessibile", "zh": "无障碍卫生间", "ja": "多目的トイレ", "ko": "장애인 화장실", "ar": "دورة مياه لذوي الإعاقة", "hi": "दिव्यांग शौचालय"},
+      "terms": {
+        "en": ["accessible restroom", "accessible toilet", "accessible toilets", "accessible washroom", "disabled toilet", "disabled toilets", "accessible wc", "family restroom"],
+        "es": ["bano accesible", "banos accesibles", "aseo adaptado", "aseos adaptados", "bano adaptado", "aseo accesible"],
+        "fr": ["toilettes accessibles", "toilettes pmr", "wc pmr", "toilettes adaptees"],
+        "de": ["barrierefreies wc", "barrierefreie toilette", "behinderten-wc", "behindertentoilette", "rollstuhlgerechtes wc"],
+        "pt": ["banheiro acessivel", "casa de banho adaptada", "sanitario acessivel", "banheiro adaptado"],
+        "it": ["bagno accessibile", "bagno per disabili", "servizi per disabili", "wc disabili"],
+        "zh": ["无障碍卫生间", "無障礙廁所", "无障碍厕所", "残疾人厕所", "多功能卫生间"],
+        "ja": ["多目的トイレ", "多機能トイレ", "だれでもトイレ", "車いす用トイレ", "バリアフリートイレ"],
+        "ko": ["장애인 화장실", "장애인화장실"],
+        "ar": ["دورة مياه لذوي الاعاقه", "دورة مياه لذوي الاحتياجات الخاصه", "حمام لذوي الاعاقه"],
+        "hi": ["दिव्यांग शौचालय", "विकलांग शौचालय"]
+      }
+    },
+    "restroom": {
+      "names": {"en": "Restroom", "es": "Baños", "fr": "Toilettes", "de": "Toiletten", "pt": "Banheiros", "it": "Bagni", "zh": "卫生间", "ja": "トイレ", "ko": "화장실", "ar": "دورات المياه", "hi": "शौचालय"},
+      "terms": {
+        "en": ["restroom", "restrooms", "toilet", "toilets", "washroom", "washrooms", "lavatory", "lavatories", "wc", "w.c.", ["bathroom", 0.8], ["men", 0.6], ["women", 0.6], ["ladies", 0.7], ["gentlemen", 0.7], ["gents", 0.7]],
+        "es": ["bano", "banos", "aseo", "aseos", "servicios", "sanitarios", ["damas", 0.6], ["caballeros", 0.6]],
+        "fr": ["toilettes", "toilette", "lavabos", ["dames", 0.6], ["messieurs", 0.6], ["hommes", 0.6], ["femmes", 0.6]],
+        "de": ["toiletten", "toilette", ["damen", 0.6], ["herren", 0.6]],
+        "pt": ["banheiro", "banheiros", "casa de banho", "sanitarios", ["homens", 0.6], ["mulheres", 0.6]],
+        "it": ["bagno", "bagni", "servizi igienici", "toilette", ["uomini", 0.6], ["donne", 0.6]],
+        "zh": ["卫生间", "衛生間", "洗手间", "洗手間", "厕所", "廁所", ["男", 0.5], ["女", 0.5]],
+        "ja": ["トイレ", "お手洗い", "化粧室", "便所"],
+        "ko": ["화장실"],
+        "ar": ["دورات المياه", "دورة مياه", "دورة المياه", "حمام", "حمامات", "مرحاض"],
+        "hi": ["शौचालय", "प्रसाधन", ["पुरुष", 0.6], ["महिला", 0.6]]
+      }
+    },
+    "elevator": {
+      "names": {"en": "Elevator", "es": "Ascensor", "fr": "Ascenseur", "de": "Aufzug", "pt": "Elevador", "it": "Ascensore", "zh": "电梯", "ja": "エレベーター", "ko": "엘리베이터", "ar": "مصعد", "hi": "लिफ़्ट"},
+      "terms": {
+        "en": ["elevator", "elevators", "lift", "lifts"],
+        "es": ["ascensor", "ascensores", "elevador"],
+        "fr": ["ascenseur", "ascenseurs"],
+        "de": ["aufzug", "aufzuge", "fahrstuhl", "lift"],
+        "pt": ["elevador", "elevadores"],
+        "it": ["ascensore", "ascensori"],
+        "zh": ["电梯", "電梯", "升降机", "升降機", "无障碍电梯"],
+        "ja": ["エレベーター", "エレベータ"],
+        "ko": ["엘리베이터", "승강기"],
+        "ar": ["مصعد", "المصعد", "مصاعد"],
+        "hi": ["लिफ़्ट", "लिफ्ट", "एलिवेटर"]
+      },
+      "negations": {
+        "en": ["elevator out of service", "lift out of order"],
+        "es": ["ascensor fuera de servicio"],
+        "fr": ["ascenseur hors service"],
+        "de": ["aufzug ausser betrieb"]
+      }
+    },
+    "escalator": {
+      "names": {"en": "Escalator", "es": "Escalera mecánica", "fr": "Escalator", "de": "Rolltreppe", "pt": "Escada rolante", "it": "Scala mobile", "zh": "自动扶梯", "ja": "エスカレーター", "ko": "에스컬레이터", "ar": "سلم متحرك", "hi": "एस्केलेटर"},
+      "terms": {
+        "en": ["escalator", "escalators"],
+        "es": ["escalera mecanica", "escaleras mecanicas"],
+        "fr": ["escalator", "escalier mecanique", "escalier roulant"],
+        "de": ["rolltreppe", "rolltreppen"],
+        "pt": ["escada rolante", "escadas rolantes"],
+        "it": ["scala mobile", "scale mobili"],
+        "zh": ["自动扶梯", "自動扶梯", "扶梯"],
+        "ja": ["エスカレーター", "エスカレータ"],
+        "ko": ["에스컬레이터"],
+        "ar": ["سلم متحرك", "سلالم متحركه", "درج كهربائي"],
+        "hi": ["एस्केलेटर", "स्वचालित सीढ़ी"]
+      }
+    },
+    "stairs": {
+      "names": {"en": "Stairs", "es": "Escaleras", "fr": "Escaliers", "de": "Treppe", "pt": "Escadas", "it": "Scale", "zh": "楼梯", "ja": "階段", "ko": "계단", "ar": "درج", "hi": "सीढ़ियाँ"},
+      "terms": {
+        "en": ["stairs", "stair", "stairway", "stairwell", "staircase"],
+        "es": ["escalera", "escaleras"],
+        "fr": ["escalier", "escaliers"],
+        "de": ["treppe", "treppen", "treppenhaus"],
+        "pt": ["escada", "escadas"],
+        "it": ["scala", "scale"],
+        "zh": ["楼梯", "樓梯"],
+        "ja": ["階段"],
+        "ko": ["계단"],
+        "ar": ["درج", "سلالم", "الدرج"],
+        "hi": ["सीढ़ी", "सीढ़ियाँ", "सीढ़ियां"]
+      }
+    },
+    "ramp": {
+      "names": {"en": "Ramp", "es": "Rampa", "fr": "Rampe", "de": "Rampe", "pt": "Rampa", "it": "Rampa", "zh": "坡道", "ja": "スロープ", "ko": "경사로", "ar": "منحدر", "hi": "रैंप"},
+      "terms": {
+        "en": ["ramp", "accessible ramp"],
+        "es": ["rampa"],
+        "fr": ["rampe d'acces", ["rampe", 0.7]],
+        "de": ["rampe", "rollstuhlrampe"],
+        "pt": ["rampa"],
+        "it": ["rampa"],
+        "zh": ["坡道", "无障碍坡道"],
+        "ja": ["スロープ"],
+        "ko": ["경사로"],
+        "ar": ["منحدر"],
+        "hi": ["रैंप", "ढलान"]
+      }
+    },
+    "information": {
+      "names": {"en": "Information", "es": "Información", "fr": "Information", "de": "Information", "pt": "Informações", "it": "Informazioni", "zh": "问讯处", "ja": "案内所", "ko": "안내", "ar": "استعلامات", "hi": "सूचना"},
+      "terms": {
+        "en": ["information", "info desk", "information desk", "help desk", "help point"],
+        "es": ["informacion", "punto de informacion"],
+        "fr": ["information", "informations", "accueil information"],
+        "de": ["information", "auskunft", "infopunkt"],
+        "pt": ["informacoes", "informacao", "balcao de informacoes"],
+        "it": ["informazioni", "punto informazioni"],
+        "zh": ["问讯处", "問訊處", "服务台", "服務台", "咨询台", "询问处"],
+        "ja": ["案内所", "インフォメーション", "総合案内"],
+        "ko": ["안내", "안내소", "안내데스크"],
+        "ar": ["استعلامات", "الاستعلامات", "معلومات"],
+        "hi": ["सूचना", "पूछताछ"]
+      }
+    },
+    "reception": {
+      "names": {"en": "Reception", "es": "Recepción", "fr": "Accueil", "de": "Empfang", "pt": "Recepção", "it": "Reception", "zh": "前台", "ja": "受付", "ko": "접수처", "ar": "الاستقبال", "hi": "स्वागत कक्ष"},
+      "terms": {
+        "en": ["reception", "front desk", "check-in", "check in", ["lobby", 0.7]],
+        "es": ["recepcion"],
+        "fr": ["reception", "accueil"],
+        "de": ["empfang", "rezeption", "anmeldung"],
+        "pt": ["recepcao", "rececao"],
+        "it": ["reception", "accettazione", "accoglienza"],
+        "zh": ["前台", "接待处", "接待處", "大堂"],
+        "ja": ["受付", "フロント", "ロビー"],
+        "ko": ["접수처", "접수", "프런트", "로비"],
+        "ar": ["الاستقبال", "استقبال"],
+        "hi": ["स्वागत कक्ष", "रिसेप्शन"]
+      }
+    },
+    "first_aid": {
+      "names": {"en": "First aid", "es": "Primeros auxilios", "fr": "Premiers secours", "de": "Erste Hilfe", "pt": "Primeiros socorros", "it": "Pronto soccorso", "zh": "急救", "ja": "救護室", "ko": "응급처치", "ar": "الإسعافات الأولية", "hi": "प्राथमिक चिकित्सा"},
+      "terms": {
+        "en": ["first aid", "aed", "defibrillator", "infirmary"],
+        "es": ["primeros auxilios", "botiquin", "desfibrilador", "enfermeria"],
+        "fr": ["premiers secours", "infirmerie", "defibrillateur", "poste de secours"],
+        "de": ["erste hilfe", "defibrillator", "sanitatsraum"],
+        "pt": ["primeiros socorros", "desfibrilhador", "desfibrilador", "enfermaria"],
+        "it": ["pronto soccorso", "primo soccorso", "defibrillatore", "infermeria"],
+        "zh": ["急救", "急救站", "医务室", "醫務室"],
+        "ja": ["救護室", "救急", "医務室", "応急手当", "aed"],
+        "ko": ["응급처치", "구급함", "의무실", "자동심장충격기"],
+        "ar": ["الاسعافات الاوليه", "اسعافات اوليه", "اسعاف"],
+        "hi": ["प्राथमिक चिकित्सा", "प्राथमिक उपचार"]
+      }
+    },
+    "fire_extinguisher": {
+      "names": {"en": "Fire extinguisher", "es": "Extintor", "fr": "Extincteur", "de": "Feuerlöscher", "pt": "Extintor", "it": "Estintore", "zh": "灭火器", "ja": "消火器", "ko": "소화기", "ar": "طفاية حريق", "hi": "अग्निशामक"},
+      "terms": {
+        "en": ["fire extinguisher", "extinguisher", "fire hose"],
+        "es": ["extintor", "extinguidor"],
+        "fr": ["extincteur"],
+        "de": ["feuerloscher"],
+        "pt": ["extintor"],
+        "it": ["estintore"],
+        "zh": ["灭火器", "滅火器", "消火栓"],
+        "ja": ["消火器", "消火栓"],
+        "ko": ["소화기", "소화전"],
+        "ar": ["طفاية حريق", "طفايه حريق", "مطفاه"],
+        "hi": ["अग्निशामक", "अग्निशमन यंत्र"]
+      }
+    },
+    "water_fountain": {
+      "names": {"en": "Water fountain", "es": "Fuente de agua", "fr": "Fontaine à eau", "de": "Trinkbrunnen", "pt": "Bebedouro", "it": "Fontanella", "zh": "饮水机", "ja": "給水機", "ko": "음수대", "ar": "برادة مياه", "hi": "पेयजल"},
+      "terms": {
+        "en": ["water fountain", "drinking fountain", "drinking water", "water refill"],
+        "es": ["fuente de agua", "agua potable", "bebedero"],
+        "fr": ["fontaine a eau", "eau potable"],
+        "de": ["trinkbrunnen", "trinkwasser", "wasserspender"],
+        "pt": ["bebedouro", "agua potavel"],
+        "it": ["fontanella", "acqua potabile", "erogatore d'acqua"],
+        "zh": ["饮水机", "飲水機", "饮用水", "直饮水"],
+        "ja": ["給水機", "水飲み場", "飲料水"],
+        "ko": ["음수대", "식수대", "정수기"],
+        "ar": ["برادة مياه", "مياه الشرب", "ماء الشرب"],
+        "hi": ["पेयजल", "पीने का पानी"]
+      }
+    },
+    "seating": {
+      "names": {"en": "Seating", "es": "Asientos", "fr": "Places assises", "de": "Sitzbereich", "pt": "Assentos", "it": "Posti a sedere", "zh": "座位区", "ja": "座席", "ko": "좌석", "ar": "منطقة جلوس", "hi": "बैठने की जगह"}
+    },
+    "corridor": {
+      "names": {"en": "Corridor", "es": "Pasillo", "fr": "Couloir", "de": "Flur", "pt": "Corredor", "it": "Corridoio", "zh": "走廊", "ja": "廊下", "ko": "복도", "ar": "ممر", "hi": "गलियारा"},
+      "terms": {
+        "en": ["corridor", "hallway", ["hall", 0.6]],
+        "es": ["pasillo"],
+        "fr": ["couloir"],
+        "de": ["flur", "korridor"],
+        "pt": ["corredor"],
+        "it": ["corridoio"],
+        "zh": ["走廊"],
+        "ja": ["廊下"],
+        "ko": ["복도"],
+        "ar": ["ممر"],
+        "hi": ["गलियारा"]
+      }
+    },
+    "room": {
+      "names": {"en": "Room", "es": "Sala", "fr": "Salle", "de": "Raum", "pt": "Sala", "it": "Stanza", "zh": "房间", "ja": "部屋", "ko": "방", "ar": "غرفة", "hi": "कमरा"}
+    }
+  },
+  "room": {
+    "names": {"en": "Room {n}", "es": "Sala {n}", "fr": "Salle {n}", "de": "Raum {n}", "pt": "Sala {n}", "it": "Stanza {n}", "zh": "{n}号房间", "ja": "{n}号室", "ko": "{n}호", "ar": "غرفة {n}", "hi": "कमरा {n}"},
+    "prefixes": {
+      "en": ["room", "rm", "suite", "ste", "office", "classroom", "lab", "studio", "unit"],
+      "es": ["sala", "salon", "aula", "habitacion", "oficina", "despacho"],
+      "fr": ["salle", "chambre", "bureau", "piece"],
+      "de": ["raum", "zimmer", "buro", "saal", "hörsaal"],
+      "pt": ["sala", "quarto", "gabinete"],
+      "it": ["stanza", "aula", "camera", "ufficio"],
+      "ar": ["غرفه", "غرفة", "قاعه", "قاعة", "مكتب"],
+      "hi": ["कमरा", "कक्ष"]
+    },
+    "suffixes": {
+      "zh": ["号房间", "號房間", "室", "房"],
+      "ja": ["号室", "室"],
+      "ko": ["호실", "호"]
+    }
+  },
+  "room_labels": {
+    "_comment": "RoomPlan section labels and common region labels -> display name; a label that also matches a category above becomes that category.",
+    "bathroom": "Bathroom",
+    "bedroom": "Bedroom",
+    "diningRoom": "Dining room",
+    "kitchen": "Kitchen",
+    "livingRoom": "Living room",
+    "unidentified": null
+  }
+}

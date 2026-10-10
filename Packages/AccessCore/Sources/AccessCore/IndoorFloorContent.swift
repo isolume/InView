@@ -31,6 +31,13 @@ public struct IndoorFloorContent: Sendable {
             return Footprint(kind: .obstacle, transform: Self.matrix(object.mapFromObject),
                              width: object.measuredDimensionsM[0], depth: object.measuredDimensionsM[2])
         }
+        // Portable scenes retain floor dimensions, while the saved map retains the measured
+        // outline. Keep that outline on its own level so a cutaway doesn't erase the space
+        // inside the bounding rectangle of a concave room.
+        footprints.append(contentsOf: map.footprints.filter { footprint in
+            guard footprint.kind == .floor, let elevation = footprint.bottom, elevation.isFinite else { return false }
+            return floors.min { abs($0.elevation - elevation) < abs($1.elevation - elevation) }?.id == selected.id
+        })
         if isRouteFloor {
             // Camera sightings and manually added stairs may exist only in the routing map.
             // Keep them on its active floor, and give scene-backed renderers the same annotation.
@@ -49,7 +56,8 @@ public struct IndoorFloorContent: Sendable {
         self.scene = selectedScene
         self.map = VenueMap(createdAt: map.createdAt, floorY: selected.elevation,
                             footprints: footprints, points: isRouteFloor ? map.points : [],
-                            geographicReference: map.geographicReference)
+                            geographicReference: map.geographicReference,
+                            requiresMeasuredFloorCoverage: map.requiresMeasuredFloorCoverage)
     }
 
     private static func stairsObject(_ footprint: Footprint, sourceID: String, floorY: Float) -> SceneObject? {

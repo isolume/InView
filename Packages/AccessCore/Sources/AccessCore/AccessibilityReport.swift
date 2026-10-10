@@ -34,7 +34,24 @@ public struct AccessibilityReport: Codable, Sendable {
     }
 
     public init(map: VenueMap, planner: RoutePlanner? = nil) {
-        let planner = planner ?? RoutePlanner(map: map)
+        // This compatibility initializer has no cancellation source; compute only throws
+        // when its explicitly supplied cancellation predicate becomes true.
+        self = try! Self.compute(map: map, planner: planner, isCancelled: { false })
+    }
+
+    /// Background reviews can stop an obsolete audit without publishing a partial report.
+    public static func make(map: VenueMap, planner: RoutePlanner? = nil) throws -> AccessibilityReport {
+        try compute(map: map, planner: planner, isCancelled: { Task.isCancelled })
+    }
+
+    private init(score: Int, findings: [Finding]) {
+        self.score = score
+        self.findings = findings
+    }
+
+    private static func compute(map: VenueMap, planner: RoutePlanner?,
+                                isCancelled: () -> Bool) throws -> AccessibilityReport {
+        guard !isCancelled() else { throw CancellationError() }
         var findings: [Finding] = []
 
         let doors = map.footprints.filter { $0.kind == .door }
@@ -78,20 +95,31 @@ public struct AccessibilityReport: Codable, Sendable {
         }
 
         // Every access point should be reachable step-free from where the scan began (usually the entrance).
-        for point in map.points {
-            guard let route = planner.route(from: .zero, to: point) else {
+        let clearances: [Float?]
+        if map.points.isEmpty {
+            // A scan with no destinations has no reachability questions; avoid building three floor grids.
+            clearances = []
+        } else {
+            guard !isCancelled() else { throw CancellationError() }
+            let planner = planner ?? RoutePlanner(map: map)
+            clearances = try planner.reachableClearances(from: .zero, to: map.points, isCancelled: isCancelled)
+        }
+        for (point, clearance) in zip(map.points, clearances) {
+            guard !isCancelled() else { throw CancellationError() }
+            guard let clearance else {
                 findings.append(Finding(severity: .barrier, title: "\(point.name) can't be reached", detail: "No step-free path from the entrance with enough room for a wheelchair."))
                 continue
             }
-            if route.isNarrow {
+            if clearance < RoutePlanner.clearances[0] {
                 findings.append(Finding(severity: .warning, title: "Tight squeeze to \(point.name)", detail: "The way there has passages narrower than 90 cm (36 in)."))
             }
         }
 
         let barriers = findings.filter { $0.severity == .barrier }.count
         let warnings = findings.filter { $0.severity == .warning }.count
-        score = max(0, 100 - barriers * Self.barrierPenalty - warnings * Self.warningPenalty)
-        self.findings = findings.sorted { $0.severity.rank < $1.severity.rank }
+        guard !isCancelled() else { throw CancellationError() }
+        return AccessibilityReport(score: max(0, 100 - barriers * Self.barrierPenalty - warnings * Self.warningPenalty),
+                                   findings: findings.sorted { $0.severity.rank < $1.severity.rank })
     }
 }
 

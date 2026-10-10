@@ -22,8 +22,17 @@ extension OccupancyGrid {
     /// Dijkstra over free cells, or A* when a goal is given. Moves are 8-connected and never
     /// cut across a blocked corner.
     func search(from start: Int, to goal: Int? = nil) -> SearchResult {
+        // Existing synchronous callers always finish a search. Background audits use the
+        // throwing overload so cancellation never looks like an unreachable destination.
+        try! search(from: start, to: goal, storingParents: true, isCancelled: { false })
+    }
+
+    /// Audits only need costs, and can avoid retaining a parent index for every floor cell.
+    func search(from start: Int, to goal: Int? = nil, storingParents: Bool,
+                isCancelled: () -> Bool) throws -> SearchResult {
+        guard !isCancelled() else { throw CancellationError() }
         var cost = [Float](repeating: .infinity, count: blocked.count)
-        var parent = [Int32](repeating: -1, count: blocked.count)
+        var parent = storingParents ? [Int32](repeating: -1, count: blocked.count) : []
         var open = Heap<Entry>()
         let goalX = goal.map { $0 % width }, goalY = goal.map { $0 / width }
 
@@ -35,7 +44,11 @@ extension OccupancyGrid {
 
         cost[start] = 0
         open.insert(Entry(priority: heuristic(start), cost: 0, index: start))
+        var iterations = 0
         while let entry = open.popMin() {
+            // Bound cancellation latency without testing it for every neighbor.
+            if iterations % 256 == 0, isCancelled() { throw CancellationError() }
+            iterations += 1
             let index = entry.index
             guard entry.cost <= cost[index] else { continue }
             if index == goal { break }
@@ -50,11 +63,12 @@ extension OccupancyGrid {
                 let next = entry.cost + (diagonal ? Self.diagonalStep : 1)
                 if next < cost[neighbor] {
                     cost[neighbor] = next
-                    parent[neighbor] = Int32(index)
+                    if storingParents { parent[neighbor] = Int32(index) }
                     open.insert(Entry(priority: next + heuristic(neighbor), cost: next, index: neighbor))
                 }
             }
         }
+        guard !isCancelled() else { throw CancellationError() }
         return SearchResult(cost: cost, parent: parent)
     }
 

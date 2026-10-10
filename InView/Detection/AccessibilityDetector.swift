@@ -34,12 +34,20 @@ final class AccessibilityDetector: ObservableObject {
         var frames = 1
         /// Frames where LiDAR agreed with the model (ramps and stairs only).
         var verifiedFrames = 0
-        /// Every slope measurement so far; the median is reported.
+        /// A bounded window of recent slope measurements; the median is reported.
         var slopes: [Float] = []
         var evidence: Evidence?
+        /// Time of the measurement used for position, so backend pose corrections can follow it.
+        var measurementTimestamp: TimeInterval?
 
         var slopeDegrees: Float? {
             slopes.isEmpty ? nil : slopes.sorted()[slopes.count / 2]
+        }
+
+        mutating func addSlope(_ slope: Float) {
+            guard slope.isFinite else { return }
+            if slopes.count == 64 { slopes.removeFirst() }
+            slopes.append(slope)
         }
 
         var isConfirmed: Bool {
@@ -116,9 +124,9 @@ final class AccessibilityDetector: ObservableObject {
     /// Stairs are a costly false alarm (they block routes), so the model must be surer.
     private static let minimumStairsConfidence: Float = 0.8
     /// A single sighting this sure counts as confirmed (for ramps and stairs, once LiDAR agrees too).
-    static let highConfidence: Float = 0.85
+    nonisolated static let highConfidence: Float = 0.85
     /// Ramps and stairs LiDAR could never check confirm after this many sightings.
-    static let unverifiedFrames = 4
+    nonisolated static let unverifiedFrames = 4
     /// Ramps are steeper than about 1:20; anything flatter is just floor. Much steeper is stairs or furniture.
     private static let plausibleRampSlope: ClosedRange<Float> = 1.5...15
     /// Stairs the camera spots are drawn this size, starting at the bottom step: (width, depth).
@@ -139,7 +147,13 @@ final class AccessibilityDetector: ObservableObject {
     private let client = VisionProvider.makeDetector()
     private weak var session: ARSession?
     private var timer: Timer?
+    private var analysisTask: Task<Void, Never>?
+    private var manualPhotoTask: Task<Void, Never>?
+    private var samplingGeneration = 0
+    private var isScanning = false
     private var requestsInFlight = 0
+    private var sightingIndex = ScanSightingIndex()
+    private var sightingOffsets: [UUID: Int] = [:]
     private var lastPose: (transform: simd_float4x4, time: TimeInterval)?
     private var steadySince: TimeInterval?
     private var lastSent: TimeInterval = 0
@@ -150,6 +164,7 @@ final class AccessibilityDetector: ObservableObject {
     }
 
     func resume() {
+        isScanning = true
         guard timer == nil, isEnabled else { return }
         timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -157,14 +172,22 @@ final class AccessibilityDetector: ObservableObject {
     }
 
     func pause() {
-        guard timer != nil else { return }
+        let wasRunning = isScanning
+        isScanning = false
+        samplingGeneration &+= 1
+        analysisTask?.cancel()
+        analysisTask = nil
+        manualPhotoTask?.cancel()
+        manualPhotoTask = nil
+        requestsInFlight = 0
         timer?.invalidate()
         timer = nil
         lastPose = nil
         steadySince = nil
         isWaitingForSteadyCamera = false
+        guard wasRunning else { return }
         Log.detection.notice("paused · \(self.stats.summary, privacy: .public)")
-        for sighting in sightings {
+        for sighting in sightings.suffix(16) {
             Log.detection.notice("  \(sighting.summary, privacy: .public)")
         }
     }
@@ -172,11 +195,12 @@ final class AccessibilityDetector: ObservableObject {
     /// Marks whatever is in the center of the screen. The fallback when the model misses something.
     /// For ramps, aim at the middle of the ramp so its slope can be measured; for stairs, at the bottom step.
     func addManual(_ kind: VisionDetection.Kind) {
-        guard let session, let frame = session.currentFrame else { return }
-        let camera = CameraSnapshot(frame.camera)
+        guard isScanning, let session, let frame = session.currentFrame else { return }
+        let camera = CameraSnapshot(frame.camera, timestamp: frame.timestamp)
         let center = CGPoint(x: 0.5, y: 0.5)
         let slope = kind == .ramp ? measureSlope(around: center, camera: camera, in: session) : nil
-        let snapshot = FrameEncoder.snapshot(frame.capturedImage)
+        // Rapid taps still create every requested pin, but cannot queue sensor-sized photo copies.
+        let snapshot = manualPhotoTask == nil ? FrameEncoder.snapshot(frame.capturedImage) : nil
         let count = sightings.filter { $0.kind == kind }.count
         // The volunteer aimed on purpose, so even without a surface to hit, mark a spot a few meters out.
         let position = locate(center, camera: camera, in: session) ?? {
@@ -195,18 +219,42 @@ final class AccessibilityDetector: ObservableObject {
             evidence: nil
         )
         guard let snapshot else { return }
-        Task { [weak self] in
-            let preview = await Task.detached(priority: .utility) {
-                FrameEncoder.portraitJPEG(from: snapshot, maxDimension: FrameEncoder.previewDimension)
-            }.value
-            guard let preview, let index = self?.sightings.firstIndex(where: { $0.id == id }) else { return }
+        let generation = samplingGeneration
+        let encodeTask = Task.detached(priority: .utility) {
+            FrameEncoder.portraitJPEG(from: snapshot, maxDimension: FrameEncoder.previewDimension)
+        }
+        manualPhotoTask = Task { [weak self] in
+            defer {
+                if self?.samplingGeneration == generation { self?.manualPhotoTask = nil }
+            }
+            let preview = await withTaskCancellationHandler {
+                await encodeTask.value
+            } onCancel: {
+                encodeTask.cancel()
+            }
+            guard !Task.isCancelled, self?.samplingGeneration == generation,
+                  let preview, let index = self?.sightingOffsets[id] else { return }
             // The volunteer's own photo beats whatever the model's frame showed.
             self?.sightings[index].evidence = Self.evidence(from: preview, point: center)
         }
     }
 
     func evidence(for id: UUID) -> Evidence? {
-        sightings.first { $0.id == id }?.evidence
+        sightingOffsets[id].flatMap { sightings[$0].evidence }
+    }
+
+    /// Live tags are local scenery. A large scan keeps all finds for review, while only nearby finds
+    /// are considered and at most sixteen tags are projected on each overlay refresh.
+    func nearbySightings(to position: SIMD3<Float>) -> [Sighting] {
+        sightingIndex.nearby(position, radius: 18, maximumHeightDifference: 4)
+            .compactMap { sightingOffsets[$0] }
+            .sorted {
+                let first = simd_length_squared(sightings[$0].position - position)
+                let second = simd_length_squared(sightings[$1].position - position)
+                return first == second ? $0 < $1 : first < second
+            }
+            .prefix(16)
+            .map { sightings[$0] }
     }
 
     func accessPoints() -> [AccessPoint] {
@@ -257,7 +305,7 @@ final class AccessibilityDetector: ObservableObject {
 
     /// Sends a frame when the camera has been steady for a moment and enough time has passed since the last one.
     private func tick() {
-        guard let session, let frame = session.currentFrame, case .normal = frame.camera.trackingState else { return }
+        guard isScanning, let session, let frame = session.currentFrame, case .normal = frame.camera.trackingState else { return }
         let now = frame.timestamp
         let pose = frame.camera.transform
         defer { lastPose = (pose, now) }
@@ -269,7 +317,8 @@ final class AccessibilityDetector: ObservableObject {
         let isSteady = angle / elapsed < Self.maxAngularSpeed
             && simd_distance(pose.translation, last.transform.translation) / elapsed < Self.maxLinearSpeed
         steadySince = isSteady ? (steadySince ?? now) : nil
-        isWaitingForSteadyCamera = now - lastSent > 5 && !isSteady
+        let waiting = now - lastSent > 5 && !isSteady
+        if isWaitingForSteadyCamera != waiting { isWaitingForSteadyCamera = waiting }
         stats.ticks += 1
         if isSteady { stats.steadyTicks += 1 }
 
@@ -286,19 +335,37 @@ final class AccessibilityDetector: ObservableObject {
     /// Copies what's needed out of the frame and lets it go before anything asynchronous starts.
     private func analyze(_ frame: ARFrame) {
         guard let client, let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return }
-        let camera = CameraSnapshot(frame.camera)
+        let camera = CameraSnapshot(frame.camera, timestamp: frame.timestamp)
         requestsInFlight += 1
         stats.framesSent += 1
         let number = stats.framesSent
+        let generation = samplingGeneration
+        // This detached job owns the pixel copy and releases it as soon as encoding ends. The
+        // network task below captures only its small JPEG result, never the sensor-sized buffer.
+        let encodeTask = Task.detached(priority: .utility) { FrameEncoder.encode(snapshot) }
         Log.detection.info("frame \(number) sent · steady \(self.stats.steadyTicks)/\(self.stats.ticks) ticks · in flight \(self.requestsInFlight)")
-        Task { [weak self] in
-            defer { self?.requestsInFlight -= 1 }
+        analysisTask = Task { [weak self] in
+            defer {
+                if self?.samplingGeneration == generation {
+                    self?.requestsInFlight = 0
+                    self?.analysisTask = nil
+                }
+            }
             do {
-                guard let encoded = await Task.detached(priority: .utility) { FrameEncoder.encode(snapshot) }.value else { return }
+                let encoded = await withTaskCancellationHandler {
+                    await encodeTask.value
+                } onCancel: {
+                    encodeTask.cancel()
+                }
+                guard let encoded else { return }
+                try Task.checkCancellation()
                 let started = Date.now
                 let detections = try await client.detect(jpeg: encoded.jpeg)
-                await self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, preview: encoded.preview)
+                try Task.checkCancellation()
+                guard self?.samplingGeneration == generation else { return }
+                await self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, preview: encoded.preview, generation: generation)
             } catch {
+                guard !Task.isCancelled, self?.samplingGeneration == generation else { return }
                 self?.stats.framesFailed += 1
                 Log.detection.error("frame \(number) failed: \(error.localizedDescription, privacy: .public)")
                 self?.lastError = error.localizedDescription
@@ -308,15 +375,19 @@ final class AccessibilityDetector: ObservableObject {
 
     /// Places and checks each detection. The raycasts run on the main actor, where ARSession is known to be
     /// safe to call, so the loop yields between detections to keep the UI and ARKit callbacks moving.
-    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, preview: Data) async {
+    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, preview: Data, generation: Int) async {
+        guard isScanning, samplingGeneration == generation, !Task.isCancelled else { return }
         framesAnalyzed += 1
         stats.framesAnalyzed += 1
         stats.totalLatency += latency
         lastError = nil
         Log.detection.info("frame \(number) analyzed in \(String(format: "%.1f", latency), privacy: .public) s: \(detections.count) detections")
+        // Every find from this frame shares the same JPEG-backed image, rather than retaining one
+        // UIImage/JPEG object for every elevator, ramp or staircase returned by the model.
+        let evidenceImage = UIImage(data: preview)
         for (index, detection) in detections.enumerated() {
             if index > 0 { await Task.yield() }
-            guard let session else { return }
+            guard isScanning, samplingGeneration == generation, !Task.isCancelled, let session else { return }
             Log.detection.info("  \(detection.kind.rawValue, privacy: .public) '\(detection.name, privacy: .public)' \(String(format: "%.2f", detection.confidence), privacy: .public) at (\(String(format: "%.2f, %.2f", detection.target.x, detection.target.y), privacy: .public))")
             guard detection.confidence >= Self.minimumConfidence else {
                 Log.detection.info("    skipped: below minimum confidence")
@@ -335,7 +406,8 @@ final class AccessibilityDetector: ObservableObject {
             case .elevator:
                 break
             case .ramp:
-                slope = measureSlope(around: FrameEncoder.capturedImagePoint(fromPortrait: detection.surface), camera: camera, in: session)
+                slope = await measureSlopeInBatches(around: FrameEncoder.capturedImagePoint(fromPortrait: detection.surface), camera: camera, in: session)
+                guard !Task.isCancelled, samplingGeneration == generation else { return }
                 if let measured = slope {
                     guard Self.plausibleRampSlope.contains(measured) else {
                         rejectedClaims += 1
@@ -349,7 +421,9 @@ final class AccessibilityDetector: ObservableObject {
                     Log.detection.info("    skipped: below minimum stairs confidence")
                     continue
                 }
-                switch checkStairs(around: detection.target, camera: camera, in: session) {
+                let verdict = await checkStairs(around: detection.target, camera: camera, in: session)
+                guard !Task.isCancelled, samplingGeneration == generation else { return }
+                switch verdict {
                 case .notStairs:
                     rejectedClaims += 1
                     stats.stairsRejected += 1
@@ -371,7 +445,7 @@ final class AccessibilityDetector: ObservableObject {
                 isManual: false,
                 verified: verified,
                 slope: slope,
-                evidence: Self.evidence(from: preview, point: detection.target)
+                evidence: evidenceImage.map { Evidence(image: $0, point: detection.target) }
             )
         }
     }
@@ -380,18 +454,23 @@ final class AccessibilityDetector: ObservableObject {
 
     /// Raycasts a strip of the image around the claimed stairs, above and below the bottom step so stairs
     /// going up or down are both covered, and asks whether the surface there climbs like stairs.
-    private func checkStairs(around portraitPoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> StairsCheck.Verdict {
+    private func checkStairs(around portraitPoint: CGPoint, camera: CameraSnapshot, in session: ARSession) async -> StairsCheck.Verdict {
         var samples: [SIMD3<Float>] = []
+        var casts = 0
         for column in Self.stairsSampleColumns {
             for row in Self.stairsSampleRows {
+                if casts > 0 && casts.isMultiple(of: 4) {
+                    await Task.yield()
+                    guard !Task.isCancelled else { return .inconclusive }
+                }
                 let point = CGPoint(x: min(1, max(0, portraitPoint.x + column)), y: min(1, max(0, portraitPoint.y + row)))
                 if let hit = hit(FrameEncoder.capturedImagePoint(fromPortrait: point), camera: camera, in: session) {
                     samples.append(hit)
                 }
+                casts += 1
             }
         }
         let verdict = StairsCheck.classify(samples, viewer: camera.transform.translation)
-        let casts = Self.stairsSampleColumns.count * Self.stairsSampleRows.count
         Log.detection.info("    stairs check: \(samples.count) of \(casts) raycasts hit → \(String(describing: verdict), privacy: .public)")
         return verdict
     }
@@ -428,8 +507,26 @@ final class AccessibilityDetector: ObservableObject {
 
     /// Raycasts a small grid around a point on the ramp and fits a plane to the hits.
     private func measureSlope(around center: CGPoint, camera: CameraSnapshot, in session: ARSession) -> Float? {
-        let steps = Self.slopeSampleSteps
+        finishSlopeMeasurement(slopeSamplePoints(around: center).compactMap { hit($0, camera: camera, in: session) })
+    }
+
+    /// Automatic detections yield every four casts, instead of blocking one render frame for the
+    /// whole LiDAR verification grid. Manual marks use the same samples and physical checks.
+    private func measureSlopeInBatches(around center: CGPoint, camera: CameraSnapshot, in session: ARSession) async -> Float? {
         var samples: [SIMD3<Float>] = []
+        for (index, point) in slopeSamplePoints(around: center).enumerated() {
+            if index > 0 && index.isMultiple(of: 4) {
+                await Task.yield()
+                guard !Task.isCancelled else { return nil }
+            }
+            if let position = hit(point, camera: camera, in: session) { samples.append(position) }
+        }
+        return finishSlopeMeasurement(samples)
+    }
+
+    private func slopeSamplePoints(around center: CGPoint) -> [CGPoint] {
+        let steps = Self.slopeSampleSteps
+        var points: [CGPoint] = []
         for row in 0..<steps {
             for column in 0..<steps {
                 let offset = CGPoint(
@@ -437,12 +534,16 @@ final class AccessibilityDetector: ObservableObject {
                     y: (CGFloat(row) / CGFloat(steps - 1) - 0.5) * Self.slopeSampleSpan
                 )
                 let point = CGPoint(x: center.x + offset.x, y: center.y + offset.y)
-                if let position = hit(point, camera: camera, in: session) { samples.append(position) }
+                points.append(point)
             }
         }
+        return points
+    }
+
+    private func finishSlopeMeasurement(_ samples: [SIMD3<Float>]) -> Float? {
         let slope = SurfaceFit.slopeDegrees(of: samples)
         if slope == nil { stats.slopesUnmeasured += 1 } else { stats.slopesMeasured += 1 }
-        Log.detection.info("    slope: \(samples.count) of \(steps * steps) raycasts hit → \(slope.map { String(format: "%.1f°", $0) } ?? "unmeasured", privacy: .public)")
+        Log.detection.info("    slope: \(samples.count) of \(Self.slopeSampleSteps * Self.slopeSampleSteps) raycasts hit → \(slope.map { String(format: "%.1f°", $0) } ?? "unmeasured", privacy: .public)")
         return slope
     }
 
@@ -475,15 +576,21 @@ final class AccessibilityDetector: ObservableObject {
         let away = floor - SIMD2(camera.transform.translation.x, camera.transform.translation.z)
         let facing = simd_length(away) > 0.1 ? simd_normalize(away) : SIMD2<Float>(0, -1)
 
-        let match = sightings.firstIndex {
-            $0.kind == kind && simd_distance(SIMD2($0.position.x, $0.position.z), floor) < Self.mergeDistance(for: kind)
-        }
+        let match = sightingIndex.nearby(position, radius: Self.mergeDistance(for: kind), maximumHeightDifference: 1.5)
+            .compactMap { sightingOffsets[$0] }
+            .filter { sightings[$0].kind == kind }
+            .min {
+                simd_distance(sightings[$0].position, position) < simd_distance(sightings[$1].position, position)
+            }
         guard let match else {
             var sighting = Sighting(kind: kind, name: name, position: position, facing: facing, confidence: confidence, isManual: isManual)
+            sighting.measurementTimestamp = camera.timestamp
             sighting.verifiedFrames = verified ? 1 : 0
-            if let slope { sighting.slopes.append(slope) }
+            if let slope { sighting.addSlope(slope) }
             sighting.evidence = evidence
+            sightingOffsets[sighting.id] = sightings.count
             sightings.append(sighting)
+            sightingIndex.update(sighting.id, at: sighting.position)
             Log.detection.info("    new sighting · \(sighting.summary, privacy: .public)")
             return sighting.id
         }
@@ -492,25 +599,37 @@ final class AccessibilityDetector: ObservableObject {
         if isManual {
             // A volunteer's mark beats the model's estimate.
             sighting.position = position
+            sighting.measurementTimestamp = camera.timestamp
             sighting.isManual = true
         } else if !sighting.isManual {
             if kind == .stairs {
                 // The lowest point seen is the bottom step.
-                if position.y < sighting.position.y { sighting.position = position }
+                if position.y < sighting.position.y {
+                    sighting.position = position
+                    sighting.measurementTimestamp = camera.timestamp
+                }
             } else {
-                sighting.position += (position - sighting.position) / Float(sighting.frames + 1)
+                if AppConfig.continuousScanning {
+                    // A point belongs to a single observation's pose; averaging poses with drift
+                    // would prevent the backend correction from being applied consistently.
+                    sighting.position = position
+                    sighting.measurementTimestamp = camera.timestamp
+                } else {
+                    sighting.position += (position - sighting.position) / Float(sighting.frames + 1)
+                }
             }
         }
         let blended = sighting.facing * Float(sighting.frames) + facing
         if simd_length(blended) > 1e-3 { sighting.facing = simd_normalize(blended) }
         sighting.frames += 1
         if verified { sighting.verifiedFrames += 1 }
-        if let slope { sighting.slopes.append(slope) }
+        if let slope { sighting.addSlope(slope) }
         if let evidence, isManual || confidence >= sighting.confidence || sighting.evidence == nil {
             sighting.evidence = evidence
         }
         sighting.confidence = max(sighting.confidence, confidence)
         sightings[match] = sighting
+        sightingIndex.update(sighting.id, at: sighting.position)
         Log.detection.info("    merged into sighting · \(sighting.summary, privacy: .public)")
         return sighting.id
     }
@@ -527,11 +646,13 @@ struct CameraSnapshot {
     let transform: simd_float4x4
     let intrinsics: simd_float3x3
     let imageResolution: CGSize
+    let timestamp: TimeInterval?
 
-    init(_ camera: ARCamera) {
+    init(_ camera: ARCamera, timestamp: TimeInterval? = nil) {
         transform = camera.transform
         intrinsics = camera.intrinsics
         imageResolution = camera.imageResolution
+        self.timestamp = timestamp
     }
 
     /// World-space ray through a normalized point of the captured image.

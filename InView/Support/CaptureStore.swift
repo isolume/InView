@@ -8,11 +8,19 @@ enum CaptureStore {
 
     static func stage(_ bundle: CaptureBundle, rawData: Data, roomPlanData: Data) throws {
         try stageOriginals(id: bundle.id, rawData: rawData, roomPlanData: roomPlanData)
+        try stageBundle(bundle)
+    }
+
+    /// Originals have already been secured; do not rewrite large archives to save their projection.
+    static func stageBundle(_ bundle: CaptureBundle) throws {
+        try Task.checkCancellation()
         let directory = try directory(for: bundle.id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try JSONEncoder().encode(bundle).write(to: directory.appending(path: "capture.json"), options: .atomic)
     }
 
     static func stageOriginals(id: String, rawData: Data, roomPlanData: Data) throws {
+        try Task.checkCancellation()
         let directory = try directory(for: id)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try rawData.write(to: directory.appending(path: "raw-snapshot.json"), options: .atomic)
@@ -20,10 +28,12 @@ enum CaptureStore {
     }
 
     static func saveScene(_ scene: ProcessedScene, for bundle: CaptureBundle) throws {
+        try Task.checkCancellation()
         guard scene.sourceScanID == bundle.id, scene.mapID == bundle.mapID, scene.floorID == bundle.floorID else {
             throw CaptureValidationError.invalid("The room view belongs to a different scan.")
         }
         try scene.validate(source: bundle)
+        try Task.checkCancellation()
         try JSONEncoder().encode(scene).write(to: try directory(for: bundle.id).appending(path: "scene.json"), options: .atomic)
     }
 
@@ -36,8 +46,15 @@ enum CaptureStore {
     }
 
     static func loadSavedBundle() -> CaptureBundle? {
-        guard let idData = try? Data(contentsOf: activeURL),
-              let id = try? JSONDecoder().decode(String.self, from: idData),
+        let id: String?
+        if MapStore.currentFloor != nil {
+            id = MapStore.activeCaptureID
+        } else if let idData = try? Data(contentsOf: activeURL) {
+            id = try? JSONDecoder().decode(String.self, from: idData)
+        } else {
+            id = nil
+        }
+        guard let id,
               let directory = try? directory(for: id),
               let data = try? Data(contentsOf: directory.appending(path: "capture.json")),
               let bundle = try? JSONDecoder().decode(CaptureBundle.self, from: data),
@@ -58,6 +75,33 @@ enum CaptureStore {
     static var savedBundleURL: URL? {
         guard let bundle = loadSavedBundle(), let directory = try? directory(for: bundle.id) else { return nil }
         return directory.appending(path: "capture.json")
+    }
+
+    /// Posed photos for training a Gaussian splat of the scan, written while scanning.
+    static func splatDirectory(for id: String) throws -> URL {
+        try directory(for: id).appending(path: "splat", directoryHint: .isDirectory)
+    }
+
+    /// The capture's own directory (sidecars, originals, saved scene).
+    static func captureDirectory(for id: String) throws -> URL {
+        try directory(for: id)
+    }
+
+    /// Writes an extra evidence file (`semantics.json`, `text-observations.json`, `camera-track.json`)
+    /// into the capture directory, from where it is sent with the scan.
+    static func stageSidecar(_ data: Data, named filename: String, id: String) throws {
+        let reserved: Set<String> = ["capture.json", "package-manifest.json", "raw-snapshot.json"]
+        guard !filename.isEmpty, filename.count <= 64, !filename.hasPrefix("."), !reserved.contains(filename),
+              filename.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "-_.".contains($0)) }) else {
+            throw CaptureValidationError.invalid("The capture sidecar name is invalid.")
+        }
+        let directory = try directory(for: id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: directory.appending(path: filename), options: .atomic)
+    }
+
+    static func streamRoot(for id: String) throws -> URL {
+        try directory(for: id).appending(path: "stream", directoryHint: .isDirectory)
     }
 
     private static func directory(for id: String) throws -> URL {

@@ -13,3 +13,11 @@ xcuserdata/
 build/
 
 .DS_Store
+
+# Python model-export tooling
+__pycache__/
+*.pyc
+
+# Local continuous scan sensor archives
+/backend/data/streams/
+/data/streams/

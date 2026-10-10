@@ -19,7 +19,7 @@ public struct CaptureUploadSummary: Codable, Equatable, Sendable {
 }
 
 public enum BackendRequestStage: Equatable, Sendable {
-    case upload, original, scene, health
+    case upload, original, scene, health, analysis
 }
 
 public enum BackendClientError: Error, LocalizedError, Equatable {
@@ -29,6 +29,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
     case http(status: Int, code: String?, message: String)
     case invalidResponse(String)
     case captureConflict
+    case archiveTooLarge
 
     public var errorDescription: String? {
         switch self {
@@ -42,6 +43,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
                 case .original: return "Checking the saved scan took too long. Try again."
                 case .scene: return "The 3D map took too long to respond. Try again."
                 case .health: return "The scan server took too long to respond. Check its address and your connection."
+                case .analysis: return "The scan's navigation details took too long to load. Try again."
                 }
             case .cannotFindHost: return "Could not find the scan server. Check its address."
             case .notConnectedToInternet: return "Could not connect to the scan server. Check your connection."
@@ -57,6 +59,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
         case .http(_, _, let message): return message
         case .invalidResponse(let message): return message
         case .captureConflict: return "A different capture already uses this identifier. Your saved scan has been kept."
+        case .archiveTooLarge: return "The scan package is too large to upload."
         }
     }
 
@@ -64,19 +67,32 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
         if case .http(status: 404, code: "scan_not_found", message: _) = self { return true }
         return false
     }
+    var isMissingAnalysis: Bool {
+        if case .http(status: 404, code: "analysis_not_found", message: _) = self { return true }
+        return false
+    }
     var isExistingCapture: Bool {
         if case .http(status: 409, code: "scan_exists", message: _) = self { return true }
+        return false
+    }
+    /// Older backend deployments only accept the JSON capture endpoint. A package beyond the
+    /// archive limit (HTTP 413) can still be processed from its size-bounded portable JSON.
+    public var isArchiveEndpointUnavailable: Bool {
+        if case let .http(status, _, _) = self { return status == 404 || status == 405 || status == 413 }
+        if case .archiveTooLarge = self { return true }
         return false
     }
 }
 
 /// Uploads an immutable draft capture and retrieves verified geometry for a native preview.
 public struct BackendClient: Sendable {
+    private static let maximumUploadBytes = 32 * 1024 * 1024
     public let baseURL: URL
     private let session: URLSession
+    private let accessToken: String?
 
-    public init(baseURL: URL, session: URLSession = .shared) {
-        self.baseURL = baseURL; self.session = session
+    public init(baseURL: URL, accessToken: String? = nil, session: URLSession = .shared) {
+        self.baseURL = baseURL; self.accessToken = accessToken; self.session = session
     }
 
     /// Checks the configured server without sending a capture or starting processing.
@@ -95,6 +111,10 @@ public struct BackendClient: Sendable {
         let data: Data
         do { data = try JSONEncoder().encode(capture) }
         catch { throw BackendClientError.invalidCapture("The capture could not be prepared for upload.") }
+        try Task.checkCancellation()
+        guard data.count <= Self.maximumUploadBytes else {
+            throw BackendClientError.invalidCapture("This scan is too large to send. You can use its local map instead.")
+        }
         do {
             let response = try await request(path: ["scans"], method: "POST", stage: .upload, body: data)
             let summary: CaptureUploadSummary = try decode(response)
@@ -109,6 +129,41 @@ public struct BackendClient: Sendable {
         }
     }
 
+    /// Uploads the immutable TAR package produced by the native capture store. The package retains
+    /// binary LiDAR, RGB, RoomPlan, and relocalization sidecars which do not belong in JSON.
+    @discardableResult
+    public func uploadArchive(at archiveURL: URL, capture: CaptureBundle) async throws -> CaptureUploadSummary {
+        try validateCapture(capture)
+        let data: Data
+        do { data = try Data(contentsOf: archiveURL, options: [.mappedIfSafe]) }
+        catch { throw BackendClientError.invalidCapture("The scan package could not be read for upload.") }
+        // Matches the backend's `MAX_PACKAGE_BYTES` for one uncompressed `.inviewscan.tar`.
+        guard data.count <= 256 * 1024 * 1024 else { throw BackendClientError.archiveTooLarge }
+        do {
+            let response = try await request(
+                path: ["scan-packages"], method: "POST", stage: .upload, body: data,
+                contentType: "application/x-tar"
+            )
+            let summary: CaptureUploadSummary = try decode(response)
+            guard summary == capture.summary else {
+                throw BackendClientError.invalidResponse("The backend acknowledged a different capture.")
+            }
+            return summary
+        } catch let error as BackendClientError where error.isExistingCapture {
+            try await verifyOriginal(capture)
+            return capture.summary
+        }
+    }
+
+    public func uploadArchiveAndProcess(at archiveURL: URL, capture: CaptureBundle) async throws -> ProcessedScene {
+        try await uploadArchive(at: archiveURL, capture: capture)
+        do { return try await verifiedScene(capture) }
+        catch let error as BackendClientError where error.isMissingCapture {
+            try await uploadArchive(at: archiveURL, capture: capture)
+            return try await verifiedScene(capture)
+        }
+    }
+
     /// Fetches an already uploaded scene. Use process(capture) to recover from a backend restart.
     public func scene(scanID: String) async throws -> ProcessedScene {
         let response = try await request(path: ["scans", scanID, "scene"], method: "GET", stage: .scene)
@@ -116,6 +171,20 @@ public struct BackendClient: Sendable {
         do { try scene.validate(expectedScanID: scanID) }
         catch { throw BackendClientError.invalidResponse(error.localizedDescription) }
         return scene
+    }
+
+    /// Fetches the worker's navigation analysis (places, door checks, hazards, routes) for an uploaded
+    /// scan. Returns nil while the worker has not produced one yet (404 `analysis_not_found`); a
+    /// missing scan or any other failure throws.
+    public func analysis(scanID: String) async throws -> ScanAnalysis? {
+        let response: Data
+        do { response = try await request(path: ["scans", scanID, "analysis"], method: "GET", stage: .analysis) }
+        catch let error as BackendClientError where error.isMissingAnalysis { return nil }
+        let analysis: ScanAnalysis = try decode(response)
+        guard analysis.scanID == scanID else {
+            throw BackendClientError.invalidResponse("The backend returned the analysis of a different scan.")
+        }
+        return analysis
     }
 
     /// Reuses a matching remote capture or restores the locally saved capture after a restart.
@@ -141,7 +210,13 @@ public struct BackendClient: Sendable {
     }
 
     private func verifiedScene(_ capture: CaptureBundle) async throws -> ProcessedScene {
-        let result = try await scene(scanID: capture.id)
+        var result = try await scene(scanID: capture.id)
+        // Earlier servers retain the raw capture but do not project optional outlines into scenes.
+        // Restore only omitted outlines from our immutable source; supplied geometry remains verified.
+        let originals = Dictionary(uniqueKeysWithValues: capture.surfaces.map { ($0.id, $0) })
+        for index in result.surfaces.indices where result.surfaces[index].polygonCorners == nil {
+            result.surfaces[index].polygonCorners = originals[result.surfaces[index].sourceID]?.polygonCorners
+        }
         do { try result.validate(source: capture) }
         catch { throw BackendClientError.invalidResponse(error.localizedDescription) }
         return result
@@ -161,10 +236,13 @@ public struct BackendClient: Sendable {
     }
 
     private func request(path: [String], method: String, stage: BackendRequestStage,
-                         timeout: TimeInterval = 45, body: Data? = nil) async throws -> Data {
+                         timeout: TimeInterval = 45, body: Data? = nil,
+                         contentType: String = "application/json") async throws -> Data {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = components.host, !host.isEmpty,
+              (accessToken == nil || accessToken?.isEmpty == true || scheme == "https" ||
+               ["localhost", "127.0.0.1", "::1"].contains(host.lowercased())),
               components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil else { throw BackendClientError.invalidURL }
         let safeCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_~")
@@ -181,8 +259,11 @@ public struct BackendClient: Sendable {
         request.httpMethod = method
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let accessToken, !accessToken.isEmpty {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
         if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
             request.httpBody = body
         }
         let data: Data

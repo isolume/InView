@@ -133,6 +133,23 @@ private func localObject(_ category: String, confidence: CaptureConfidence = .hi
     try scene.validate(source: source)
 }
 
+@Test func navigationSceneSkipsDepthProjectionAndPreservesMeasuredGeometryAndRawSource() throws {
+    let camera = CaptureCameraCalibration(imageWidth: 200, imageHeight: 200, fx: 200, fy: 200, cx: 100, cy: 100)
+    let depth = CaptureDepthImage(width: 200, height: 200, valuesM: Array(repeating: 1, count: 40_000),
+                                  confidence: Array(repeating: 2, count: 40_000))
+    let frame = CaptureDepthFrame(id: "raw", timestampSeconds: 0, mapFromCamera: localPose(), camera: camera, depth: depth)
+    let floor = CaptureSurface(id: "floor", kind: "floor", mapFromSurface: localPose(), dimensionsM: [10, 0, 10])
+    let source = localCapture(objects: [localObject("chair")], surfaces: [floor], frames: [frame])
+    let navigation = try LocalSceneBuilder.make(from: source, includeDepthPoints: false)
+    let full = try LocalSceneBuilder.make(from: source)
+    #expect(navigation.pointCloud.isEmpty)
+    #expect(!full.pointCloud.isEmpty)
+    #expect(navigation.objects == full.objects)
+    #expect(navigation.surfaces == full.surfaces)
+    #expect(source.frames == [frame])
+    try navigation.validate(source: source)
+}
+
 @Test func localSceneRejectsInvalidCaptureAndOverflowingDerivedGeometry() throws {
     #expect(throws: CaptureValidationError.self) { try LocalSceneBuilder.make(from: localCapture()) }
     var object = localObject("chair")

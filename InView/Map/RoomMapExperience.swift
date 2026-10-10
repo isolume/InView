@@ -11,6 +11,7 @@ struct RoomMapExperience: View {
     var primaryAction: (() -> Void)? = nil
     var secondaryTitle: String? = nil
     var reviewDestination: AnyView? = nil
+    var streamEvidenceID: String? = nil
     var currentMapPosition: (() -> SIMD2<Float>?)? = nil
     var onPlaceBuilding: ((BuildingMapReference) throws -> Void)? = nil
     var error: Binding<String?> = .constant(nil)
@@ -18,6 +19,7 @@ struct RoomMapExperience: View {
     @State private var topDown = false
     @State private var resetID = 0
     @State private var showsReview = false
+    @State private var showsScanData = false
     @State private var showsSheet = false
     @State private var presentation = MapPresentation.indoor
     @State private var showsPlacement = false
@@ -34,48 +36,35 @@ struct RoomMapExperience: View {
                                      destinationTitle: floorContent.isRouteFloor ? map?.points.first?.title : nil) { showsPlacement = true }
                     .ignoresSafeArea()
             }
+            .overlay(alignment: .topTrailing) {
+                FloorPicker(floors: floors, floorID: floorSelection).padding(.horizontal, 16).padding(.top, 8)
+            }
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark", action: onClose).labelStyle(.iconOnly)
+                    Button("Close", systemImage: "xmark", role: .close, action: onClose)
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if floors.count > 1 {
-                        Menu {
-                            Picker("Floor", selection: floorSelection) {
-                                ForEach(floors) { floor in Text(floor.title).tag(Optional(floor.id)) }
-                            }
-                        } label: { Text(floorContent.floor?.title ?? "Floor") }
-                        .accessibilityLabel("Choose floor")
-                    }
-                    Menu {
-                        Picker("Map appearance", selection: $presentation) {
-                            ForEach(MapPresentation.allCases) { option in
-                                Text(option.title).tag(option).disabled(option != .indoor && onPlaceBuilding == nil)
-                            }
-                        }
-                        Divider()
-                        Button("Recenter", systemImage: "scope") { resetID += 1 }
-                        if map != nil, onPlaceBuilding != nil {
-                            Button("Place building", systemImage: "mappin.and.ellipse") { showsPlacement = true }
-                        }
-                    } label: { Image(systemName: "ellipsis") }
-                    .accessibilityLabel("Map options")
-                    Button(topDown ? "3D" : "2D") { topDown.toggle() }
-                        .accessibilityLabel(topDown ? "Show 3D" : "Show 2D")
-                }
+                MapToolbarItems(presentation: $presentation, topDown: $topDown,
+                                canPlaceBuilding: map != nil && onPlaceBuilding != nil,
+                                onShowScanData: streamEvidenceID == nil ? nil : { showsScanData = true },
+                                onRecenter: { resetID += 1 }, onPlaceBuilding: { showsPlacement = true })
             }
             .sheet(isPresented: $showsSheet) {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text(title).font(.title2.bold())
-                    HStack {
-                        if let primaryTitle, let primaryAction {
-                            Button(primaryTitle, action: primaryAction)
-                                .frame(maxWidth: .infinity).buttonStyle(.borderedProminent)
-                        }
+                    Text(title).font(.panelTitle)
+                    HStack(spacing: 10) {
                         if let secondaryTitle {
-                            Button(secondaryTitle) { showsReview = true }.buttonStyle(.bordered)
+                            Button(action: { showsReview = true }) {
+                                Label(secondaryTitle, systemImage: "list.bullet").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                        }
+                        if let primaryTitle, let primaryAction {
+                            Button(action: primaryAction) {
+                                Label(primaryTitle, systemImage: "checkmark").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glassProminent)
                         }
                     }
                     .controlSize(.large)
@@ -87,6 +76,9 @@ struct RoomMapExperience: View {
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
                 .fullScreenCover(isPresented: $showsReview) { reviewDestination }
+                .fullScreenCover(isPresented: $showsScanData) {
+                    if let streamEvidenceID { RawLidarReviewView(scanID: streamEvidenceID) }
+                }
                 .fullScreenCover(isPresented: $showsPlacement) {
                     if let map, let onPlaceBuilding {
                         BuildingPlacementView(map: map, currentMapPosition: currentMapPosition) { reference in
@@ -118,11 +110,19 @@ struct RoomMapExperience: View {
 enum RoomItemStyle {
     static func title(_ category: String) -> String {
         switch category.lowercased() {
-        case "sofa": return "Sofa"
-        case "chair": return "Chair"
-        case "table": return "Table"
+        case "sofa", "modular_sofa", "loveseat": return "Sofa"
+        case "chair", "armchair", "lounge_chair": return "Chair"
+        case "table", "folding_table": return "Table"
+        case "drum_table", "round_table", "ottoman": return "Round table"
+        case "charging_stand": return "Charging stand"
+        case "lectern", "podium": return "Lectern"
+        case "sign_stand": return "Sign"
+        case "floor_sign", "caution_sign": return "Floor sign"
+        case "waste_bin", "trash_bin", "open_bin": return "Bin"
+        case "bench": return "Bench"
+        case "railing": return "Railing"
         case "storage", "cabinet": return "Storage"
-        case "plant": return "Plant"
+        case "plant", "square_planter": return "Plant"
         case "rug": return "Rug"
         case "bed": return "Bed"
         case "sink": return "Sink"
@@ -141,11 +141,18 @@ enum RoomItemStyle {
     }
     static func symbol(_ category: String) -> String {
         switch category.lowercased() {
-        case "sofa": return "sofa.fill"
-        case "chair": return "chair.lounge.fill"
-        case "table": return "table.furniture.fill"
+        case "sofa", "modular_sofa", "loveseat": return "sofa.fill"
+        case "chair", "armchair", "lounge_chair": return "chair.lounge.fill"
+        case "table", "folding_table", "drum_table", "round_table", "ottoman": return "table.furniture.fill"
+        case "charging_stand": return "bolt.fill"
+        case "lectern", "podium": return "music.mic"
+        case "sign_stand": return "signpost.right.fill"
+        case "floor_sign", "caution_sign": return "exclamationmark.triangle.fill"
+        case "waste_bin", "trash_bin", "open_bin": return "trash.fill"
+        case "bench": return "chair.fill"
+        case "railing": return "rectangle.split.3x1.fill"
         case "storage", "cabinet": return "cabinet.fill"
-        case "plant": return "leaf.fill"
+        case "plant", "square_planter": return "leaf.fill"
         case "rug": return "square.fill"
         case "bed": return "bed.double.fill"
         case "sink": return "sink.fill"
@@ -162,6 +169,6 @@ enum RoomItemStyle {
         }
     }
     static func tint(_ category: String) -> Color {
-        Color(red: 0.50, green: 0.53, blue: 0.54)
+        Theme.furniture
     }
 }

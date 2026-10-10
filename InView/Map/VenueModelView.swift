@@ -156,17 +156,14 @@ struct MapPanel: View {
                     MapPreviewView(map: map, onTap: onTap)
                 case .model where isModelAllowed:
                     VenueModelView(map: map)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                         .overlay(alignment: .bottomTrailing) {
-                            Text("Drag to orbit · pinch to zoom")
-                                .font(.caption2)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.regularMaterial, in: Capsule())
+                            StatusPill(text: "Drag to orbit · pinch to zoom", isCompact: true)
                                 .padding(8)
+                                .allowsHitTesting(false)
                         }
                 case .model:
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                         .fill(Color(.secondarySystemBackground))
                         .overlay {
                             Label("3D view paused", systemImage: "cube.transparent")
@@ -184,20 +181,21 @@ struct MapPanel: View {
 
 private struct MapLegend: View {
     var body: some View {
+        // The same marks the plan draws: badges for access points, swatches for areas and doors.
         let items: [(String, AnyView)] = [
-            ("Elevator", AnyView(Circle().fill(Theme.accent))),
-            ("Ramp", AnyView(Circle().fill(.teal))),
-            ("Stairs", AnyView(RoundedRectangle(cornerRadius: 2).fill(Theme.stairs.opacity(0.35)).overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.stairs)))),
-            ("Door", AnyView(Capsule().fill(.green))),
-            ("Narrow door", AnyView(Capsule().fill(.orange))),
-            ("Window", AnyView(Capsule().fill(PlanInk.window))),
-            ("Furniture", AnyView(RoundedRectangle(cornerRadius: 2).fill(PlanInk.wood).overlay(RoundedRectangle(cornerRadius: 2).stroke(PlanInk.ink, lineWidth: 0.5)))),
+            ("Elevator", AnyView(KindBadge(kind: AccessPoint.Kind.elevator, size: 18))),
+            ("Ramp", AnyView(KindBadge(kind: AccessPoint.Kind.ramp, size: 18))),
+            ("Stairs", AnyView(RoundedRectangle(cornerRadius: 3).fill(Theme.stairs.opacity(0.18)).overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.stairs, lineWidth: 1.5)).frame(width: 16, height: 14))),
+            ("Door", AnyView(Capsule().fill(Theme.color(for: .good)).frame(width: 16, height: 5))),
+            ("Narrow door", AnyView(Capsule().fill(Theme.color(for: .warning)).frame(width: 16, height: 5))),
+            ("Window", AnyView(Capsule().fill(PlanInk.window).frame(width: 16, height: 5))),
+            ("Furniture", AnyView(RoundedRectangle(cornerRadius: 3).fill(PlanInk.wood).overlay(RoundedRectangle(cornerRadius: 3).stroke(PlanInk.ink, lineWidth: 0.5)).frame(width: 16, height: 14))),
         ]
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), alignment: .leading)], alignment: .leading, spacing: 6) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), alignment: .leading)], alignment: .leading, spacing: 8) {
             ForEach(items, id: \.0) { item in
                 HStack(spacing: 6) {
-                    item.1.frame(width: 12, height: 12)
-                    Text(item.0).font(.caption2).foregroundStyle(.secondary)
+                    item.1.frame(width: 18, height: 18)
+                    Text(item.0).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

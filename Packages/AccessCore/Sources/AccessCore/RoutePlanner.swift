@@ -66,6 +66,30 @@ public final class RoutePlanner: Sendable {
         return bestRoute(from: start, among: [destination], grids: grids(avoiding: conditions.obstacles))
     }
 
+    /// The widest usable clearance to each point, in the supplied order. Unlike creating
+    /// individual routes, an audit shares one entrance search per clearance and needs no paths.
+    func reachableClearances(from start: SIMD2<Float>, to points: [AccessPoint],
+                             isCancelled: () -> Bool = { false }) throws -> [Float?] {
+        guard !isCancelled() else { throw CancellationError() }
+        var clearances = [Float?](repeating: nil, count: points.count)
+        guard !points.isEmpty else { return clearances }
+        for grid in grids {
+            guard !isCancelled() else { throw CancellationError() }
+            guard let startIndex = grid.nearestFreeIndex(to: start, within: Self.startSearchRadius) else { continue }
+            let search = try grid.search(from: startIndex, storingParents: false, isCancelled: isCancelled)
+            for (index, point) in points.enumerated() where clearances[index] == nil {
+                guard !isCancelled() else { throw CancellationError() }
+                // Match route(to:)'s goal snapping exactly, including points measured on a wall.
+                if grid.closestIndex(to: point.floorPoint, within: Self.goalSearchRadius,
+                                     where: { search.cost[$0].isFinite }) != nil {
+                    clearances[index] = grid.clearance
+                }
+            }
+            if clearances.allSatisfy({ $0 != nil }) { break }
+        }
+        return clearances
+    }
+
     /// Recomputes a route from the user's new position. Keeps the destination when it is still usable
     /// and reachable; otherwise picks the next best one.
     public func reroute(_ route: Route, from start: SIMD2<Float>, conditions: RouteConditions = RouteConditions()) -> Route? {

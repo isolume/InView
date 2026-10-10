@@ -132,12 +132,17 @@ public struct CaptureSurface: Codable, Equatable, Sendable {
     public var kind: String
     public var mapFromSurface: [Float]
     public var dimensionsM: [Float]
+    /// Measured outline in the surface's local centered coordinates, without a repeated closing vertex.
+    public var polygonCorners: [[Float]]?
 
-    public init(id: String, kind: String, mapFromSurface: [Float], dimensionsM: [Float]) {
+    public init(id: String, kind: String, mapFromSurface: [Float], dimensionsM: [Float],
+                polygonCorners: [[Float]]? = nil) {
         self.id = id; self.kind = kind; self.mapFromSurface = mapFromSurface; self.dimensionsM = dimensionsM
+        self.polygonCorners = polygonCorners
     }
     enum CodingKeys: String, CodingKey {
         case id, kind, mapFromSurface = "map_from_surface", dimensionsM = "dimensions_m"
+        case polygonCorners = "polygon_corners"
     }
 }
 
@@ -147,14 +152,17 @@ public struct CaptureMesh: Codable, Equatable, Sendable {
     public var vertices: [[Float]]
     public var triangles: [[Int]]
     public var classifications: [String]?
+    /// One sRGB color per vertex, packed as 0xRRGGBB, sampled from the scan's photos.
+    public var colors: [UInt32]?
 
     public init(id: String, mapFromAnchor: [Float], vertices: [[Float]], triangles: [[Int]],
-                classifications: [String]? = nil) {
+                classifications: [String]? = nil, colors: [UInt32]? = nil) {
         self.id = id; self.mapFromAnchor = mapFromAnchor; self.vertices = vertices
-        self.triangles = triangles; self.classifications = classifications
+        self.triangles = triangles; self.classifications = classifications; self.colors = colors
     }
     enum CodingKeys: String, CodingKey {
         case id, mapFromAnchor = "map_from_anchor", vertices, triangles, classifications
+        case colors = "vertex_colors"
     }
 }
 
@@ -236,12 +244,16 @@ extension CaptureBundle {
                                && validVector(surface.dimensionsM) && surface.dimensionsM.allSatisfy { $0 >= 0 }
                                && surface.dimensionsM.filter { $0 > 0 }.count >= 2
                                && validRigidTransform(surface.mapFromSurface), "A surface has invalid measurements.")
+            if let polygon = surface.polygonCorners {
+                try requireCapture(validSurfacePolygon(polygon), "A surface has an invalid outline.")
+            }
         }
         for mesh in meshes {
             try requireCapture(validRigidTransform(mesh.mapFromAnchor) && !mesh.vertices.isEmpty
                                && mesh.vertices.allSatisfy(validVector)
                                && validTriangles(mesh.triangles, count: mesh.vertices.count)
-                               && (mesh.classifications == nil || mesh.classifications?.count == mesh.triangles.count),
+                               && (mesh.classifications == nil || mesh.classifications?.count == mesh.triangles.count)
+                               && validVertexColors(mesh.colors, count: mesh.vertices.count),
                                "A mesh has invalid geometry.")
         }
         for frame in frames {
@@ -273,6 +285,22 @@ func requireCapture(_ condition: Bool, _ message: String) throws {
 
 func validVector(_ value: [Float]) -> Bool { value.count == 3 && value.allSatisfy(\.isFinite) }
 
+/// Accepts either local XY or XZ surface planes, including concave measured outlines.
+func validSurfacePolygon(_ corners: [[Float]]) -> Bool {
+    guard (3...128).contains(corners.count), corners.allSatisfy(validVector) else { return false }
+    // Work relative to the first vertex so translated coordinates cannot cancel the area.
+    let origin = corners[0].map(Double.init)
+    var twiceArea = [Double](repeating: 0, count: 3)
+    for index in corners.indices {
+        let a = zip(corners[index].map(Double.init), origin).map(-)
+        let b = zip(corners[(index + 1) % corners.count].map(Double.init), origin).map(-)
+        twiceArea[0] += a[1] * b[2] - a[2] * b[1]
+        twiceArea[1] += a[2] * b[0] - a[0] * b[2]
+        twiceArea[2] += a[0] * b[1] - a[1] * b[0]
+    }
+    return twiceArea.allSatisfy(\.isFinite) && twiceArea.reduce(0) { $0 + $1 * $1 } > 4e-12
+}
+
 func validRigidTransform(_ matrix: [Float]) -> Bool {
     guard matrix.count == 16 && matrix.allSatisfy(\.isFinite) else { return false }
     func near(_ a: Float, _ b: Float) -> Bool { abs(a - b) <= 0.0001 }
@@ -282,6 +310,11 @@ func validRigidTransform(_ matrix: [Float]) -> Bool {
     let cross = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]]
     return near(dot(x, x), 1) && near(dot(y, y), 1) && near(dot(z, z), 1)
         && near(dot(x, y), 0) && near(dot(x, z), 0) && near(dot(y, z), 0) && near(dot(cross, z), 1)
+}
+
+func validVertexColors(_ colors: [UInt32]?, count: Int) -> Bool {
+    guard let colors else { return true }
+    return colors.count == count && colors.allSatisfy { $0 <= 0xFF_FFFF }
 }
 
 func validTriangles(_ triangles: [[Int]], count: Int) -> Bool {

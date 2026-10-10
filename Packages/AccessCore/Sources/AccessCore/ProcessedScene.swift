@@ -130,14 +130,23 @@ public struct SceneSurface: Codable, Equatable, Sendable {
     public var measuredDimensionsM: [Float]
     public var renderDimensionsM: [Float]
     public var color: String
+    /// A floor's exact outline as map (x, z) points, for rooms that aren't rectangles. The pose and dimensions
+    /// still describe its bounding rectangle.
+    public var outline: [[Float]]?
+    /// Original measured outline in surface-local coordinates, retained separately from display thickness.
+    public var polygonCorners: [[Float]]?
     public init(sourceID: String, kind: String, mapFromSurface: [Float], measuredDimensionsM: [Float],
-                renderDimensionsM: [Float], color: String) {
+                renderDimensionsM: [Float], color: String, outline: [[Float]]? = nil,
+                polygonCorners: [[Float]]? = nil) {
         self.sourceID = sourceID; self.kind = kind; self.mapFromSurface = mapFromSurface
         self.measuredDimensionsM = measuredDimensionsM; self.renderDimensionsM = renderDimensionsM; self.color = color
+        self.outline = outline
+        self.polygonCorners = polygonCorners
     }
     enum CodingKeys: String, CodingKey {
         case sourceID = "source_id", kind, mapFromSurface = "map_from_surface"
-        case measuredDimensionsM = "measured_dimensions_m", renderDimensionsM = "render_dimensions_m", color
+        case measuredDimensionsM = "measured_dimensions_m", renderDimensionsM = "render_dimensions_m", color, outline
+        case polygonCorners = "polygon_corners"
     }
 }
 
@@ -146,10 +155,16 @@ public struct SceneMesh: Codable, Equatable, Sendable {
     public var vertices: [[Float]]
     public var triangles: [[Int]]
     public var classifications: [String]?
-    public init(sourceID: String, vertices: [[Float]], triangles: [[Int]], classifications: [String]? = nil) {
+    /// One sRGB color per vertex, packed as 0xRRGGBB.
+    public var colors: [UInt32]?
+    public init(sourceID: String, vertices: [[Float]], triangles: [[Int]], classifications: [String]? = nil,
+                colors: [UInt32]? = nil) {
         self.sourceID = sourceID; self.vertices = vertices; self.triangles = triangles; self.classifications = classifications
+        self.colors = colors
     }
-    enum CodingKeys: String, CodingKey { case sourceID = "source_id", vertices, triangles, classifications }
+    enum CodingKeys: String, CodingKey {
+        case sourceID = "source_id", vertices, triangles, classifications, colors = "vertex_colors"
+    }
 }
 
 public struct ScenePoint: Codable, Equatable, Sendable {
@@ -213,11 +228,13 @@ extension ProcessedScene {
                         && surface.measuredDimensionsM.filter { $0 > 0 }.count >= 2
                         && validVector(surface.renderDimensionsM) && surface.renderDimensionsM.allSatisfy { $0 > 0 }
                         && color(surface.color))
+            if let polygon = surface.polygonCorners { try require(validSurfacePolygon(polygon)) }
         }
         for mesh in meshes {
             try require(!mesh.vertices.isEmpty && mesh.vertices.allSatisfy(validVector)
                         && validTriangles(mesh.triangles, count: mesh.vertices.count)
-                        && (mesh.classifications == nil || mesh.classifications?.count == mesh.triangles.count))
+                        && (mesh.classifications == nil || mesh.classifications?.count == mesh.triangles.count)
+                        && validVertexColors(mesh.colors, count: mesh.vertices.count))
         }
         try require(pointCloud.count <= options.maxPoints && pointCloud.allSatisfy {
             !$0.sourceFrameID.isEmpty && validVector($0.position) && ($0.confidence == nil || (0...2).contains($0.confidence!))
@@ -241,7 +258,9 @@ extension ProcessedScene {
             for surface in surfaces {
                 let original = inputSurfaces[surface.sourceID]!
                 try require(surface.kind == original.kind && surface.mapFromSurface == original.mapFromSurface
-                            && surface.measuredDimensionsM == original.dimensionsM, "The scene changed a captured surface's measurements.")
+                            && surface.measuredDimensionsM == original.dimensionsM
+                            && surface.polygonCorners == original.polygonCorners,
+                            "The scene changed a captured surface's measurements.")
             }
         }
     }

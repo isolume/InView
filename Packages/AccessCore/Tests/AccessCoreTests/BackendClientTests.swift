@@ -151,6 +151,24 @@ struct BackendIntegrationTests {
         #expect(throws: CaptureValidationError.self) { try capture.validate() }
     }
 
+    @Test func oversizedCaptureStillBuildsLocallyAndNeverStartsAnUpload() async throws {
+        var capture = try exampleCapture()
+        capture.roomplanOriginal = .string(String(repeating: "x", count: 32 * 1024 * 1024))
+        // An archive's size does not prevent the local map from using its measured geometry.
+        let scene = try LocalSceneBuilder.make(from: capture, includeDepthPoints: false)
+        #expect(scene.objects.count == capture.objects.count)
+        #expect(scene.surfaces.count == capture.surfaces.count)
+        let (client, session) = mockClient([])
+        defer { session.invalidateAndCancel() }
+        do {
+            _ = try await client.upload(capture)
+            Issue.record("An oversized upload should be rejected before networking")
+        } catch let error as BackendClientError {
+            #expect(error == .invalidCapture("This scan is too large to send. You can use its local map instead."))
+        }
+        #expect(BackendMockProtocol.failure == nil)
+    }
+
     @Test func rejectsSceneShapeAndCaptureIdentityMismatch() throws {
         let capture = try exampleCapture()
         var scene = try exampleScene()
@@ -210,6 +228,72 @@ struct BackendIntegrationTests {
         #expect(scene.sourceScanID == capture.id)
         #expect(BackendMockProtocol.steps.isEmpty)
         #expect(BackendMockProtocol.failure == nil)
+    }
+
+    @Test func olderBackendMissingOutlineRestoresTheImmutableCapturedFloorPolygon() async throws {
+        var capture = try exampleCapture()
+        let outline: [[Float]] = [
+            [-3, 0, -2.5], [3, 0, -2.5], [3, 0, 0], [0, 0, 0], [0, 0, 2.5], [-3, 0, 2.5],
+        ]
+        capture.surfaces[0].polygonCorners = outline
+        for reuseSavedCapture in [false, true] {
+            let steps = reuseSavedCapture ? [
+                ExpectedRequest("GET", "/scans/demo-room/scene", 200, rustSceneFixture),
+                ExpectedRequest("GET", "/scans/demo-room", 200, try JSONEncoder().encode(capture)),
+            ] : [
+                ExpectedRequest("POST", "/scans", 201, try summaryData(capture)),
+                ExpectedRequest("GET", "/scans/demo-room/scene", 200, rustSceneFixture),
+            ]
+            let (client, session) = mockClient(steps)
+            defer { session.invalidateAndCancel() }
+            let scene: ProcessedScene
+            if reuseSavedCapture { scene = try await client.process(capture) }
+            else { scene = try await client.uploadAndProcess(capture) }
+            #expect(scene.surfaces[0].polygonCorners == outline)
+            #expect(scene.surfaces[0].mapFromSurface == capture.surfaces[0].mapFromSurface)
+            #expect(scene.surfaces[0].measuredDimensionsM == capture.surfaces[0].dimensionsM)
+            #expect(capture.surfaces[0].polygonCorners == outline)
+            try scene.validate(source: capture)
+            #expect(BackendMockProtocol.steps.isEmpty)
+            #expect(BackendMockProtocol.failure == nil)
+        }
+    }
+
+    @Test func backendSuppliedDifferentOutlineStillFailsSourceVerification() async throws {
+        var capture = try exampleCapture()
+        capture.surfaces[0].polygonCorners = [[-3, 0, -2.5], [3, 0, -2.5], [3, 0, 2.5], [-3, 0, 2.5]]
+        var changed = try exampleScene()
+        changed.surfaces[0].polygonCorners = [[-2, 0, -2.5], [2, 0, -2.5], [2, 0, 2.5], [-2, 0, 2.5]]
+        let (client, session) = mockClient([
+            ExpectedRequest("POST", "/scans", 201, try summaryData(capture)),
+            ExpectedRequest("GET", "/scans/demo-room/scene", 200, try JSONEncoder().encode(changed)),
+        ])
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: BackendClientError.invalidResponse("The scene changed a captured surface's measurements.")) {
+            try await client.uploadAndProcess(capture)
+        }
+        #expect(BackendMockProtocol.steps.isEmpty)
+        #expect(BackendMockProtocol.failure == nil)
+    }
+
+    @Test func missingOutlineCompatibilityCannotHideChangedSurfacePoseOrDimensions() async throws {
+        var capture = try exampleCapture()
+        capture.surfaces[0].polygonCorners = [[-3, 0, -2.5], [3, 0, -2.5], [3, 0, 2.5], [-3, 0, 2.5]]
+        for changedPose in [false, true] {
+            var changed = try exampleScene()
+            if changedPose { changed.surfaces[0].mapFromSurface[12] += 1 }
+            else { changed.surfaces[0].measuredDimensionsM[0] += 1 }
+            let (client, session) = mockClient([
+                ExpectedRequest("POST", "/scans", 201, try summaryData(capture)),
+                ExpectedRequest("GET", "/scans/demo-room/scene", 200, try JSONEncoder().encode(changed)),
+            ])
+            defer { session.invalidateAndCancel() }
+            await #expect(throws: BackendClientError.invalidResponse("The scene changed a captured surface's measurements.")) {
+                try await client.uploadAndProcess(capture)
+            }
+            #expect(BackendMockProtocol.steps.isEmpty)
+            #expect(BackendMockProtocol.failure == nil)
+        }
     }
 
     @Test func acceptsDuplicateOnlyAfterVerifyingOriginalCapture() async throws {
@@ -431,6 +515,29 @@ struct BackendIntegrationTests {
         #expect(BackendMockProtocol.failure == nil)
     }
 
+    @Test func oversizedOrUnsupportedArchivesFallBackToPortableJSON() {
+        #expect(BackendClientError.http(status: 413, code: "payload_too_large", message: "").isArchiveEndpointUnavailable)
+        #expect(BackendClientError.http(status: 404, code: "not_found", message: "").isArchiveEndpointUnavailable)
+        #expect(BackendClientError.archiveTooLarge.isArchiveEndpointUnavailable)
+        #expect(!BackendClientError.http(status: 422, code: "invalid_request", message: "").isArchiveEndpointUnavailable)
+    }
+
+    @Test func sendsBearerTokenToProtectedServer() async throws {
+        let (plain, session) = mockClient([
+            ExpectedRequest("GET", "/health", 200,
+                            Data("{\"status\":\"ok\",\"service\":\"inview-backend\"}".utf8), inspect: { request in
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer private-test-token")
+            }),
+        ])
+        defer { session.invalidateAndCancel() }
+        let client = BackendClient(baseURL: URL(string: "https://backend.invalid")!, accessToken: "private-test-token", session: session)
+        try await client.checkHealth()
+        #expect(BackendMockProtocol.steps.isEmpty)
+        #expect(BackendMockProtocol.failure == nil)
+        let insecure = BackendClient(baseURL: plain.baseURL, accessToken: "private-test-token", session: session)
+        await #expect(throws: BackendClientError.invalidURL) { try await insecure.checkHealth() }
+    }
+
     @Test func healthRejectsAnotherServiceUnavailableStatusAndMalformedResponses() async throws {
         let responses = [
             "{\"status\":\"ok\",\"service\":\"another-app\"}",
@@ -469,5 +576,46 @@ struct BackendIntegrationTests {
         #expect(expected.localizedDescription.contains("build the 3D map"))
         #expect(BackendMockProtocol.steps.isEmpty)
         #expect(BackendMockProtocol.failure == nil)
+    }
+}
+
+extension BackendIntegrationTests {
+    @Test func fetchesAnalysisWithAuthorizationAndEscapedID() async throws {
+        let (_, session) = mockClient([
+            ExpectedRequest("GET", "/api/scans/scan-1/analysis", 200, realisticAnalysisJSON, inspect: { request in
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
+                #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+            }),
+            ExpectedRequest("GET", "/api/scans/a%2Fb/analysis", 404, errorData("analysis_not_found")),
+        ])
+        defer { session.invalidateAndCancel() }
+        let client = BackendClient(baseURL: URL(string: "https://backend.invalid/api/")!,
+                                   accessToken: "secret-token", session: session)
+        let analysis = try #require(try await client.analysis(scanID: "scan-1"))
+        #expect(analysis.places.count == 7)
+        #expect(try await client.analysis(scanID: "a/b") == nil)
+        #expect(BackendMockProtocol.steps.isEmpty)
+        #expect(BackendMockProtocol.failure == nil)
+    }
+
+    @Test func analysisErrorsOtherThanNotYetAnalysedThrow() async throws {
+        let (client, session) = mockClient([
+            ExpectedRequest("GET", "/scans/missing/analysis", 404, errorData("scan_not_found")),
+            ExpectedRequest("GET", "/scans/scan-2/analysis", 200, realisticAnalysisJSON),
+            ExpectedRequest("GET", "/scans/scan-3/analysis", 200, Data("[]".utf8)),
+        ])
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: BackendClientError.http(status: 404, code: "scan_not_found", message: "Backend request failed.")) {
+            try await client.analysis(scanID: "missing")
+        }
+        // The response names scan-1, not the requested scan.
+        await #expect(throws: BackendClientError.self) { try await client.analysis(scanID: "scan-2") }
+        await #expect(throws: BackendClientError.self) { try await client.analysis(scanID: "scan-3") }
+        #expect(BackendMockProtocol.steps.isEmpty)
+    }
+
+    @Test func analysisRefusesTokenOverPlainHTTPToRemoteHost() async throws {
+        let client = BackendClient(baseURL: URL(string: "http://backend.invalid")!, accessToken: "secret-token")
+        await #expect(throws: BackendClientError.invalidURL) { try await client.analysis(scanID: "scan-1") }
     }
 }

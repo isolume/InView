@@ -182,14 +182,14 @@ private final class PointMarker {
             setLabel("\(point.name) · \(Int(distance.rounded())) m", accent: tint, background: tint)
             entity.scale = SIMD3(repeating: 1.3)
         case .arrived:
-            setLabel("Arrived · \(point.name)", accent: .systemGreen, background: .systemGreen)
+            setLabel("Arrived · \(point.name)", accent: Theme.uiColor(for: .good), background: Theme.uiColor(for: .good))
             entity.scale = SIMD3(repeating: 1.3)
         }
     }
 
     /// The kind's color: blue elevators, teal ramps; orange for ramps too steep to count on.
     private var tint: UIColor {
-        point.isTooSteep ? .systemOrange : point.kind.uiTint
+        point.isTooSteep ? Theme.uiColor(for: .warning) : point.kind.uiTint
     }
 
     /// The name, plus the measured slope for ramps and a note when staff must operate it.

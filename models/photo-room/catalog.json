@@ -1,0 +1,256 @@
+{
+  "version": 1,
+  "style": "InView soft gray",
+  "units": "meters",
+  "up_axis": "Y",
+  "front_axis": "-Z",
+  "dimensions_are_approximate": true,
+  "models": [
+    {
+      "id": "lounge-chair",
+      "key": "lounge_chair_v1",
+      "title": "Lounge chair",
+      "dimensions_m": [
+        0.9,
+        0.9,
+        0.87
+      ],
+      "reference_photos": [
+        "IMG_5415.HEIC",
+        "IMG_5417.HEIC",
+        "IMG_5419.HEIC",
+        "IMG_5423.HEIC"
+      ],
+      "file": "glb/lounge-chair.glb",
+      "mesh_count": 9,
+      "triangle_count": 13068,
+      "usdz_file": "usdz/lounge-chair.usdz"
+    },
+    {
+      "id": "modular-sofa",
+      "key": "modular_sofa_v1",
+      "title": "Modular sofa",
+      "dimensions_m": [
+        2.2,
+        0.8,
+        0.83
+      ],
+      "reference_photos": [
+        "IMG_5417.HEIC",
+        "IMG_5423.HEIC"
+      ],
+      "file": "glb/modular-sofa.glb",
+      "mesh_count": 14,
+      "triangle_count": 15896,
+      "usdz_file": "usdz/modular-sofa.usdz"
+    },
+    {
+      "id": "large-drum-table",
+      "key": "drum_table_v1",
+      "title": "Large drum table",
+      "dimensions_m": [
+        1.05,
+        0.43,
+        1.05
+      ],
+      "reference_photos": [
+        "IMG_5419.HEIC"
+      ],
+      "file": "glb/large-drum-table.glb",
+      "mesh_count": 2,
+      "triangle_count": 1280,
+      "usdz_file": "usdz/large-drum-table.usdz"
+    },
+    {
+      "id": "small-drum-table",
+      "key": "drum_table_v1",
+      "title": "Small drum table",
+      "dimensions_m": [
+        0.54,
+        0.46,
+        0.54
+      ],
+      "reference_photos": [
+        "IMG_5420.HEIC"
+      ],
+      "file": "glb/small-drum-table.glb",
+      "mesh_count": 2,
+      "triangle_count": 1280,
+      "usdz_file": "usdz/small-drum-table.usdz"
+    },
+    {
+      "id": "charging-stand",
+      "key": "charging_stand_v1",
+      "title": "Charging stand",
+      "dimensions_m": [
+        0.39,
+        0.77,
+        0.36
+      ],
+      "reference_photos": [
+        "IMG_5415.HEIC",
+        "IMG_5419.HEIC"
+      ],
+      "file": "glb/charging-stand.glb",
+      "mesh_count": 15,
+      "triangle_count": 10224,
+      "usdz_file": "usdz/charging-stand.usdz"
+    },
+    {
+      "id": "lectern",
+      "key": "lectern_v1",
+      "title": "Lectern",
+      "dimensions_m": [
+        0.6,
+        1.25,
+        0.48
+      ],
+      "reference_photos": [
+        "IMG_5420.HEIC"
+      ],
+      "file": "glb/lectern.glb",
+      "mesh_count": 11,
+      "triangle_count": 11712,
+      "usdz_file": "usdz/lectern.usdz"
+    },
+    {
+      "id": "folding-table",
+      "key": "folding_table_v1",
+      "title": "Folding table",
+      "dimensions_m": [
+        1.22,
+        0.74,
+        0.61
+      ],
+      "reference_photos": [
+        "IMG_5423.HEIC"
+      ],
+      "file": "glb/folding-table.glb",
+      "mesh_count": 9,
+      "triangle_count": 13068,
+      "usdz_file": "usdz/folding-table.usdz"
+    },
+    {
+      "id": "sign-stand",
+      "key": "sign_stand_v1",
+      "title": "Sign stand",
+      "dimensions_m": [
+        0.34,
+        1.55,
+        0.34
+      ],
+      "reference_photos": [
+        "IMG_5421.HEIC",
+        "IMG_5422.HEIC"
+      ],
+      "file": "glb/sign-stand.glb",
+      "mesh_count": 4,
+      "triangle_count": 3496,
+      "usdz_file": "usdz/sign-stand.usdz"
+    },
+    {
+      "id": "waste-bin",
+      "key": "waste_bin_v1",
+      "title": "Waste bin",
+      "dimensions_m": [
+        0.43,
+        0.95,
+        0.43
+      ],
+      "reference_photos": [
+        "IMG_5423.HEIC"
+      ],
+      "file": "glb/waste-bin.glb",
+      "mesh_count": 3,
+      "triangle_count": 3888,
+      "usdz_file": "usdz/waste-bin.usdz"
+    },
+    {
+      "id": "open-bin",
+      "key": "open_bin_v1",
+      "title": "Open bin",
+      "dimensions_m": [
+        0.28,
+        0.38,
+        0.23
+      ],
+      "reference_photos": [
+        "IMG_5421.HEIC",
+        "IMG_5422.HEIC"
+      ],
+      "file": "glb/open-bin.glb",
+      "mesh_count": 1,
+      "triangle_count": 192,
+      "usdz_file": "usdz/open-bin.usdz"
+    },
+    {
+      "id": "bench",
+      "key": "bench_v1",
+      "title": "Balcony bench",
+      "dimensions_m": [
+        2.05,
+        0.48,
+        0.53
+      ],
+      "reference_photos": [
+        "IMG_5426.HEIC"
+      ],
+      "file": "glb/bench.glb",
+      "mesh_count": 14,
+      "triangle_count": 20328,
+      "usdz_file": "usdz/bench.usdz"
+    },
+    {
+      "id": "square-planter",
+      "key": "square_planter_v1",
+      "title": "Square planter",
+      "dimensions_m": [
+        0.72,
+        1.25,
+        0.72
+      ],
+      "reference_photos": [
+        "IMG_5426.HEIC"
+      ],
+      "file": "glb/square-planter.glb",
+      "mesh_count": 18,
+      "triangle_count": 6508,
+      "usdz_file": "usdz/square-planter.usdz"
+    },
+    {
+      "id": "balcony-railing",
+      "key": "railing_v1",
+      "title": "Balcony railing",
+      "dimensions_m": [
+        2.4,
+        1.05,
+        0.11
+      ],
+      "reference_photos": [
+        "IMG_5424.HEIC",
+        "IMG_5425.HEIC"
+      ],
+      "file": "glb/balcony-railing.glb",
+      "mesh_count": 12,
+      "triangle_count": 16004,
+      "usdz_file": "usdz/balcony-railing.usdz"
+    },
+    {
+      "id": "floor-sign",
+      "key": "floor_sign_v1",
+      "title": "Floor sign",
+      "dimensions_m": [
+        0.3,
+        0.63,
+        0.42
+      ],
+      "reference_photos": [
+        "IMG_5426.HEIC"
+      ],
+      "file": "glb/floor-sign.glb",
+      "mesh_count": 9,
+      "triangle_count": 1708,
+      "usdz_file": "usdz/floor-sign.usdz"
+    }
+  ]
+}

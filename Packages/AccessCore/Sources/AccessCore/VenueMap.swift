@@ -11,7 +11,7 @@ public struct Footprint: Codable, Hashable, Sendable {
         case opening
         /// A window in a wall. Drawn on plans; the wall around it is what blocks.
         case window
-        /// The walkable floor of one scanned room, for drawing. Never blocks.
+        /// Measured floor coverage. Maps with floors keep routes within their union.
         case floor
 
         var blocksWheelchairs: Bool { self == .wall || self == .obstacle || self == .stairs || self == .window }
@@ -146,18 +146,24 @@ public struct VenueMap: Codable, Sendable {
     public var points: [AccessPoint]
     /// Geographic placement of the scan's origin; existing indoor maps may have none.
     public var geographicReference: BuildingMapReference?
+    /// New scans require observed floor; nil preserves floorless legacy-map compatibility.
+    public var requiresMeasuredFloorCoverage: Bool?
+    /// A nonrigid backend correction needs localization against that corrected map before live AR routing.
+    public var requiresOptimizedLocalization: Bool?
 
     public init(
         createdAt: Date = .now,
         floorY: Float,
         footprints: [Footprint],
         points: [AccessPoint],
-        geographicReference: BuildingMapReference? = nil
+        geographicReference: BuildingMapReference? = nil,
+        requiresMeasuredFloorCoverage: Bool? = nil
     ) {
         self.createdAt = createdAt
         self.floorY = floorY
         self.footprints = footprints
         self.points = points
         self.geographicReference = geographicReference
+        self.requiresMeasuredFloorCoverage = requiresMeasuredFloorCoverage
     }
 }
