@@ -2,7 +2,8 @@
 
 The first processing path uses ARKit geometry and optional RoomPlan labels together.
 It preserves the submitted capture and produces a replaceable scene description.
-The `/scans` captures remain in memory and disappear on restart, like the graph store.
+Set `INVIEW_SCAN_DIR` to persist `/scans`, analyses, and graphs across restarts.
+Without that setting, scans and graphs stay in memory.
 The continuous `/streams` path described below durably retains observations on disk.
 
 ## Continuous capture prototype
@@ -18,12 +19,12 @@ Optional local furniture recognition derives labels and measured object bounds
 from the uploaded RGB/depth observations, as described below.
 
 The executable saves streams to `data/streams` relative to its working directory.
-Set `INVIEW_STREAM_DIR` to choose a different local directory. Only this stream
-store survives restart; `/scans` and `/graphs` retain their existing behavior.
+Set `INVIEW_STREAM_DIR` to choose a different local directory. The scan and graph
+stores also survive restart when `INVIEW_SCAN_DIR` is configured.
 `AppState::default()` uses a private temporary stream store for tests and embedders;
 the executable explicitly opens the durable directory. Run only one backend
-process against a given directory. The prototype has no authentication; use the
-same trusted development-network boundary as the existing endpoints.
+process against a given directory. Remote binds require `INVIEW_API_TOKEN` and an
+HTTPS reverse proxy; authenticated clients supply a Bearer token.
 
 | Method | Endpoint | Payload / response |
 |--------|----------|--------------------|
@@ -366,45 +367,29 @@ into these records. Native RoomPlan JSON is archived separately in `roomplan.jso
 rather than duplicated as a large `roomplan_original` tree in every portable capture.
 The optional field remains supported when importing other providers' bundles.
 `RawScanCapture.swift` polls the same session without replacing its delegate,
-<<<<<<< HEAD
 selecting up to six calibrated depth keyframes within an 8 MiB retained-payload
-budget. It does not request or repeatedly copy a second raw mesh reconstruction;
+budget for RoomPlan sections. It does not repeatedly copy a second raw mesh;
 RoomPlan's measured surfaces and objects supply navigation geometry, supplemented
-by bounded confirmed ARKit floor and low-barrier planes. High-confidence depth
-side measurements can also produce generic small-obstacle objects, using repeated
-observations near a measured floor. Their saved, rendered and routing bounds agree;
-no furniture identity is inferred. Native depth bytes are copied before one
-background worker decodes them; busy samples are skipped.
-=======
-copies the latest classified mesh snapshot, and keeps up to 48 calibrated depth keyframes spread
-over the whole walk (see [Capture format changes](#capture-format-changes)).
-For each selected keyframe it retains original raw `sceneDepth`, confidence bytes, and,
-when ARKit provides it, original `smoothedSceneDepth` bytes as separate local native buffers.
->>>>>>> origin/feat/navigation-pipeline
+by confirmed ARKit floor and low-barrier planes. High-confidence depth samples
+can produce generic small-obstacle bounds from repeated observations near a
+measured floor. Native depth bytes are copied before one background worker
+decodes them; busy samples are skipped. Continuous capture stores its RGB/depth
+history in the stream archive and copies classified mesh anchors once at Finish.
 These records preserve the shared ARKit frame; no export origin reset is applied.
 Overlapping sections use the latest component with the same RoomPlan identifier.
 Recovered floor and wall extensions are retained when not wholly covered, and
 the routing map and portable scene share the same supplement selection. Long
 sections save and continue automatically without resetting the AR session.
 
-<<<<<<< HEAD
-The app archives native RoomPlan JSON and selected depth bytes locally before upload.
-Local processing has no upload-size limit and does not project a display point cloud
-that navigation doesn't render. The network client enforces the 32 MiB limit only
-when sending a capture; an oversized upload can still use its complete local map.
-Native RoomPlan/semantic data is never silently truncated.
-=======
-The app archives native RoomPlan JSON, the portable `capture.json`, copied mesh/depth
-bytes, and `worldmap.archive` in the same `Documents/Captures/<scan-id>/` directory before
-upload. `worldmap.archive` is an Apple-only ARWorldMap relocalization asset and is referenced
-from `metadata.assets.world_map`. The current JSON upload does not send binary sidecars yet.
-If a bundle exceeds the 32 MiB limit, optional whole depth/mesh layers remain
-local and their omission is recorded in metadata. Native RoomPlan/semantic data is
-never silently truncated; if that layer alone is too large, upload reports an error.
->>>>>>> origin/feat/navigation-pipeline
+The app archives native RoomPlan JSON, portable `capture.json`, selected sensor
+buffers, and `worldmap.archive` in `Documents/Captures/<scan-id>/` before upload.
+Local processing has no upload-size limit. JSON upload has a 32 MiB limit;
+`POST /scan-packages` sends the TAR sidecars under the package limit. An oversized
+upload can still use its complete local map. Native RoomPlan/semantic data is
+never silently truncated.
 The saved active capture identifies its cached scene, so a failed new scan cannot
 replace a previously saved room view. Network failures support retry; the saved
-source can restore the backend's in-memory capture after a restart.
+source can be uploaded again when the backend has no persistent scan directory.
 
 `color_asset` and other asset references are opaque strings. The native raw snapshot now retains
 bounded adaptive JPEG keyframes paired with calibrated depth-frame IDs; sidecar files use

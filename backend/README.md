@@ -1,24 +1,17 @@
-# InView backend (draft)
+# InView backend
 
-An early Rust backend based on [the team plan](../larp.md). The API and graph format
-are provisional and can change alongside the iOS app. This folder is now the merge target for building-frame work from the standalone LiDAR prototype. Existing RoomPlan scan/routing APIs remain unchanged. See [Building maps](BUILDING_MAPS.md) for the PostgreSQL/TimescaleDB-backed Rust slice and authenticated `start-server.sh` launcher.
+Rust service for scan ingestion, measured scene reconstruction, reviewed graph
+routing, and persistent building reference frames. The iPhone app owns AR
+capture and navigation. The Python [worker](worker/README.md) derives floor maps,
+text, signage, places, hazards, and navigation graphs from saved scans.
 
-## My part
+Set `INVIEW_SCAN_DIR` to persist immutable source captures and replaceable
+analyses/graphs. Continuous streams use `INVIEW_STREAM_DIR` (default
+`data/streams`). Building reference frames and alignment observations use
+PostgreSQL, with TimescaleDB when available. See [Building maps](BUILDING_MAPS.md)
+and the authenticated `start-server.sh` launcher for database configuration.
 
-Accept reviewed navigation graphs and select routes between named nodes. The scan
-prototype also accepts portable capture bundles and derives clean model placements,
-map-space meshes, and sampled depth points. iPhone capture, AR alignment, live
-progress, and production rendering stay with their owners in the team plan.
-
-## What I researched
-
-- [Axum](https://docs.rs/axum/latest/axum/) and Tokio provide a small Rust HTTP service.
-- The team plan calls for filtering route requirements before Dijkstra, preserving
-  each scan's coordinates, and separating ground paths from connector trips.
-
-## What I want to build
-
-When `INVIEW_SCAN_DIR` is configured, source scans persist there as immutable local files, worker analyses as replaceable files under `analysis/`, and navigation graphs as replaceable files under `graphs/` (otherwise graphs stay in memory). Building reference frames, versioned alignment transforms and pose observations use PostgreSQL/TimescaleDB. HTTP handlers, graph types, storage and route selection remain separated.
+## Endpoints
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
@@ -56,19 +49,22 @@ cargo run --release
 ```
 
 The default address is `127.0.0.1:3000`. `INVIEW_BIND` overrides it, for example
-`INVIEW_BIND=0.0.0.0:3000 cargo run --release` for a phone on the same trusted development
-network. There is no authentication yet; the service is for local development.
+`INVIEW_BIND=0.0.0.0:3000` behind an HTTPS reverse proxy. Non-loopback binds
+require `INVIEW_API_TOKEN` (at least 32 ASCII non-whitespace characters). When a
+token is configured, all data endpoints and `/health` require `Authorization:
+Bearer <token>`. The studio shell is public; it prompts for the token before
+fetching capture data. The iPhone rejects tokens sent to a remote plain HTTP URL.
 `RUST_LOG=inview_backend=debug,tower_http=debug` enables request logging.
 `INVIEW_STREAM_DIR` selects durable stream storage (default `data/streams` relative
 to this working directory). Keep one backend process per directory. See
 [SCANS.md](SCANS.md#continuous-capture-prototype) for the wire contract, reconstruction
-method and bounds. Existing scan and graph stores remain in memory.
+method and bounds. Scans and graphs persist when `INVIEW_SCAN_DIR` is set.
 
 For local furniture recognition, install the separate inference runtime once:
 
 ```sh
 bash recognition/setup.sh
-INVIEW_BIND=0.0.0.0:3000 cargo run --release
+cargo run --release --locked
 ```
 
 Setup downloads public dependencies and pretrained weights into an isolated,
@@ -145,61 +141,40 @@ coordinate conventions, supported processing, and the remaining iPhone adapter.
 - Invalid JSON and graph/request validation return structured errors. Unknown
   fields are rejected to catch misspelled requirements. The graph-level `metadata`
   object holds experimental scan references and other data outside this small core.
-- Graph requests have a 2 MiB limit. Store large scan assets elsewhere once an
-  upload/storage approach is chosen. Replacing a graph affects subsequent requests;
+- Graph requests have a 2 MiB limit. Use scan packages for large capture assets. Replacing a graph affects subsequent requests;
   each active route computation uses a single graph snapshot.
 - Graph persistence: with `INVIEW_SCAN_DIR`, each accepted graph is written atomically
   (temp file, fsync, rename) to `INVIEW_SCAN_DIR/graphs/<sha256(graph id)>.json` before
   the PUT is acknowledged, and all graphs are reloaded at startup. Unreadable, invalid
   or misnamed graph files are logged and skipped rather than blocking startup.
 - The Python worker's `publishers/graph.py` PUTs the analysis `nav_graph` product
-  (`id = "<scan_id>-nav"`) here after storing the analysis, so once a navigation-graph
-  stage provides it, a processed scan is routable via `POST /graphs/<scan_id>-nav/routes`.
-  Scans without a `nav_graph` (all scans until that stage lands) are skipped; 422
+  (`id = "<scan_id>-nav"`) here after storing the analysis. A scan with a navigation graph is routable via `POST /graphs/<scan_id>-nav/routes`.
+  Scans without a `nav_graph` are skipped; 422
   validation errors are logged by the worker.
 - The iOS app (`BackendClient.analysis(scanID:)`) polls `GET /scans/{id}/analysis` in the
-  background after processing and merges `places` (once a places stage provides them)
+  background after processing and merges `places`
   into the draft map's destination points with stable IDs, never replacing points the
   volunteer added.
 
-## What I need from the team
+## Operational limits
 
-- Map creation: a real scan bundle and graph, coordinate metadata, and reviewed
-  connector landings/served floors. Match these draft fields together before app integration.
-- Navigation: agree on route properties and where maneuvers/progress are produced.
-- Data: choose persistence and scan-asset storage when the capture format is known.
+Use one backend process per storage directory. Geometry endpoints share a
+four-request admission limit; excess requests return 503 `processing_busy`.
+Continuous reconstruction permits two builders at once. SIGINT and SIGTERM drain
+active HTTP requests. Accepted durable writes finish even if the client disconnects.
 
-## My build order
+Back up the scan directory together with the database. Without `INVIEW_SCAN_DIR`,
+source scans and graphs disappear on restart. The [Vultr configuration](infra/README.md)
+provides HTTPS and container-persistent local files; it does not provision a database.
 
-1. Local graph storage/routing and portable scan ingestion/scene processing (this scaffold).
-2. Exercise a real capture and graph with the iOS app and revise both draft contracts.
-3. Add persistent capture/assets, better reconstruction, and shared maneuver output as needed.
-4. Add authentication, availability updates, and integrations once their scope is clear.
-
-## Risks I see
-
-Without `INVIEW_SCAN_DIR`, source scans disappear on restart; PostgreSQL startup requires that directory. Graphs persist only with that directory. The Rust API uses Bearer authentication when `INVIEW_API_TOKEN` is configured. The current ngrok tunnel provides HTTPS for the Rust backend; its storage is **local PostgreSQL**, not TigerData, until cloud credentials are supplied and verified.
-Geometry validation cannot prove wall clearance, scan alignment, connector identity,
-or real-world accessibility; map review must establish those properties. The scan
-`/scans` prototype uses supplied object labels. Continuous `/streams` scans can use
-the separate local furniture recognizer; uncertain results retain measured shapes.
-The `/scans` store retains
-original capture JSON in memory, including unknown fields; large binary assets are
-references only. Route output
-is planning geometry, not live AR guidance. The draft has no graph revision handling
-for active journeys, positioning, speech, turn instructions, or rerouting sessions.
-
-## Open questions
-
-- What do the first real capture bundle and `graph.json` exports look like?
-- Does route selection stay in Rust, move to the proposed Python pipeline, or run on device?
-- Which accessibility properties can the team verify for the demo?
-- What belongs in Tiger Data, and where should scan bundles live?
+Geometry validation checks data consistency, not real-world clearance or
+accessibility. Alignment and connector properties still require review. Routing
+returns planning geometry; live positioning, speech, and rerouting run on the phone.
 
 ## Checks
 
 ```sh
 cargo fmt --check
-cargo test
+cargo test --locked
 cargo clippy --all-targets -- -D warnings
 ```

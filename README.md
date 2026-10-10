@@ -4,7 +4,7 @@ Volunteers scan a floor once with a LiDAR iPhone. A vision model (OpenAI by defa
 
 A wheelchair user then opens InView, which recognizes the room from the saved AR map. They follow AR arrows and spoken, captioned directions along a step-free route to the nearest usable elevator or ramp. The route goes around stairs, obstacles LiDAR sees on the way, and ramps steeper than the ADA allows.
 
-Scans are processed and saved on the phone by default. An optional Rust server can process scan geometry into the same 3D scene used by navigation. Photon messaging and ElevenLabs voice remain separate team work; navigation currently uses the system voice. Team plans: [larp.md](larp.md) and [photon.md](photon.md).
+Continuous scanning is enabled by default and saves camera/depth samples on the phone. A Rust server builds the full reconstructed scene; without one, captures remain available for later upload and local review. Turn off **Continuous scanning** in scan processing settings for RoomPlan sections and on-device processing. Navigation uses ElevenLabs when configured, with a system-voice fallback. Photon messaging plans are in [photon.md](photon.md).
 
 ## Setup
 
@@ -22,10 +22,10 @@ open InView.xcodeproj
 - `OPENAI_API_KEY`: elevator, ramp and stairs detection while scanning. Without it, mark things by hand.
 - `DEVELOPMENT_TEAM`: your Apple team ID, needed to run on the phone. You can also pick the team in Xcode under Signing & Capabilities.
 - `MAPBOX_ACCESS_TOKEN` (optional): a public token beginning with `pk.`, for surrounding maps and building placement. Indoor-only navigation works without it.
-- `INVIEW_BACKEND_URL` (optional): a scan processing server. Leave blank for on-device processing; you can also set or clear it in the app’s scan processing settings. Write URLs as `http:/$()/host:3000` in xcconfig.
+- `INVIEW_BACKEND_URL` (optional): a scan processing server. RoomPlan sections can process on-device with this blank; you can also set or clear it in the app’s scan processing settings. Write URLs as `http:/$()/host:3000` in xcconfig.
 - `VISION_PROVIDER = gemini` plus `GEMINI_API_KEY` switches detection to Gemini. Nothing else changes.
 - Optional: `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `low`; one request is in flight at a time, so latency directly limits how many frames get checked), `GEMINI_MODEL` (default `gemini-3.8-flash`).
-- `ELEVENLABS_API_KEY` (optional): spoken turn-by-turn prompts use ElevenLabs when set, and the system voice otherwise. Optional: `ELEVENLABS_VOICE_ID` (default the stock "Rachel" voice) and `ELEVENLABS_MODEL` (default `eleven_turbo_v2_5`, chosen for low latency). Each line is synthesized live and given 2.5 s to return audio; a missing key, a slow network, or any error falls straight back to the system voice so navigation prompts are never delayed or dropped. Synthesized lines are cached in memory, since routes repeat phrases like "Turn right now."
+- `ELEVENLABS_API_KEY` (optional): spoken turn-by-turn prompts use ElevenLabs when set, and the system voice otherwise. Optional: `ELEVENLABS_VOICE_ID` (default the stock "Rachel" voice) and `ELEVENLABS_MODEL` (default `eleven_turbo_v2_5`, chosen for low latency). Each line is synthesized live and given 2.5 s to return audio; a missing key, a slow network, or any error falls back to the system voice. Prompts play in order; urgent prompts cancel older speech. Synthesized lines are cached in memory, since routes repeat phrases like "Turn right now."
 
 Re-run `xcodegen` after adding or removing files. The scheme turns off Metal API Validation, because RealityKit's own shaders trip it in debug runs.
 
@@ -46,32 +46,27 @@ The repo uses jj with small conventional commits.
 
 ## Optional scan processing server
 
-With no address configured, finishing a scan creates the 3D map on the phone,
-without uploading it to a processing server. Review points and unconfirmed finds,
-then save the map for navigation. Server errors also offer **Use local map**.
+For RoomPlan sections, finishing a scan builds the map on the phone. Review
+points and unconfirmed finds, then save it for navigation. Server processing
+errors offer **Use local map**. Continuous scans save their sensor archive locally;
+connect a server to reconstruct the full scene or upload a saved scan later.
 
-To use the Rust processing service, start it on the Mac:
-
-```sh
-cargo run --manifest-path backend/Cargo.toml
-```
-
-Open **Scan processing** at the bottom of the map's sheet and enter the server address. For Simulator, use
-`http://127.0.0.1:3000`. For an iPhone, use an address reachable from that device
-and bind the service to that interface. For the same Wi-Fi network:
+To run the server for Simulator on the Mac:
 
 ```sh
-INVIEW_BIND="$(ipconfig getifaddr en0):3000" cargo run --manifest-path backend/Cargo.toml
+cargo run --locked --manifest-path backend/Cargo.toml
 ```
 
-Allow local network access when iOS asks. Clearing the address returns to local
-processing. The backend is a development service without authentication or durable
-storage. A processing failure preserves the original capture on the phone for a
-retry. Saved navigation geometry can be opened without the processing server.
+Enter `http://127.0.0.1:3000` in **Scan processing**. The default loopback bind
+allows unauthenticated development. Remote binds require `INVIEW_API_TOKEN`;
+put an HTTPS reverse proxy in front and enter its HTTPS address and access token
+in the app. Authenticated clients reject remote plain HTTP. The access token is
+kept in the phone's Keychain.
 
-To reach the backend from a phone off your Mac's Wi-Fi (e.g. at a venue), host it
-on a small Vultr instance instead: see [backend/infra](backend/infra) for the
-Terraform config and setup steps.
+Set `INVIEW_SCAN_DIR` to persist original scans, analyses, and graphs. Streams
+persist in `INVIEW_STREAM_DIR` (default `data/streams`). Building-map endpoints
+also require PostgreSQL. See [backend setup](backend/README.md) and
+[Vultr deployment](backend/infra/README.md) for configuration.
 
 The app is one map, like Apple Maps. It opens straight onto the saved floor in 3D,
 built from the map itself when the scan's processed room isn't on the phone, so any
