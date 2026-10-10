@@ -33,6 +33,8 @@ struct PackageManifest {
     assets: Vec<ManifestAsset>,
     #[serde(default)]
     observations: Vec<ManifestObservation>,
+    #[serde(default)]
+    mesh_anchors: Vec<ManifestMeshAnchor>,
 }
 
 #[derive(Deserialize)]
@@ -53,6 +55,21 @@ struct ManifestAsset {
 struct ManifestObservation {
     id: String,
     rgb_asset: Option<String>,
+    raw_depth: Option<ManifestDepth>,
+}
+#[derive(Deserialize)]
+struct ManifestDepth {
+    raw_asset: String,
+    confidence_asset: Option<String>,
+    smoothed_asset: Option<String>,
+}
+#[derive(Deserialize)]
+struct ManifestMeshAnchor {
+    id: String,
+    vertices_asset: String,
+    faces_asset: String,
+    normals_asset: String,
+    classification_asset: Option<String>,
 }
 
 pub fn decode(bytes: &[u8]) -> Result<ScanPackage, String> {
@@ -191,6 +208,38 @@ fn validate_manifest(
             && !files.contains_key(rgb)
         {
             return Err("package-manifest.json refers to a missing RGB keyframe.".into());
+        }
+        if let Some(depth) = &observation.raw_depth {
+            for asset in [
+                Some(&depth.raw_asset),
+                depth.confidence_asset.as_ref(),
+                depth.smoothed_asset.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if !files.contains_key(asset) {
+                    return Err("package-manifest.json refers to a missing depth sidecar.".into());
+                }
+            }
+        }
+    }
+    for mesh in &manifest.mesh_anchors {
+        if mesh.id.is_empty() {
+            return Err("package-manifest.json contains an invalid mesh anchor.".into());
+        }
+        for asset in [
+            Some(&mesh.vertices_asset),
+            Some(&mesh.faces_asset),
+            Some(&mesh.normals_asset),
+            mesh.classification_asset.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if !files.contains_key(asset) {
+                return Err("package-manifest.json refers to a missing mesh sidecar.".into());
+            }
         }
     }
     Ok(())

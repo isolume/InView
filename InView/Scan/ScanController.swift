@@ -330,6 +330,7 @@ final class ScanController: ObservableObject {
                     try CaptureStore.stage(bundle, rawData: rawData, roomPlanData: roomData)
                     try CaptureStore.stageWorldMap(payload.worldMap, id: payload.scanID.uuidString)
                     try CaptureStore.stageColorKeyframes(payload.raw.colorKeyframes, id: payload.scanID.uuidString)
+                    try CaptureStore.stageNativeLidarAssets(payload.raw, id: payload.scanID.uuidString)
                     return (bundle, try LocalSceneBuilder.make(from: bundle))
                 }.value
                 try Task.checkCancellation()

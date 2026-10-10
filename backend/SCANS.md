@@ -159,9 +159,11 @@ that lacks it.
 `package-manifest.json` is the versioned AI/reconstruction handoff. It inventories every sidecar
 with path, role, media type, and byte length; declares the shared right-handed, meter, y-up ARKit
 frame; and lists each selected observation with its frame ID, timestamp, `map_from_camera`, RGB
-asset (when available), camera intrinsics, and raw/smoothed depth buffer layout. Workers must use
-that pose/calibration metadata to align OCR/VLM image findings with RoomPlan, depth, mesh, and
-routing geometry; Wi-Fi/BLE or image pixels alone must never establish map coordinates.
+asset (when available), camera intrinsics, raw/smoothed depth sidecar filenames, confidence sidecar,
+and buffer layout. It also indexes each classified mesh anchor's exact vertex, index, normal, and
+classification sidecars with their native offsets, strides, formats, and anchor transform. Workers
+must use that pose/calibration metadata to align OCR/VLM image findings with RoomPlan, depth, mesh,
+and routing geometry; Wi-Fi/BLE or image pixels alone must never establish map coordinates.
 
 Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/videos/play/wwdc2023/10192/),
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).

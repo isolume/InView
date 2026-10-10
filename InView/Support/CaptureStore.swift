@@ -27,6 +27,38 @@ enum CaptureStore {
         }
     }
 
+    /// Write native LiDAR buffers as binary sidecars instead of requiring reconstruction workers to
+    /// decode base64 JSON. Row strides, pixel formats, transforms, and calibration stay in the
+    /// manifest/raw snapshot; these files are the exact copied ARKit bytes.
+    static func stageNativeLidarAssets(_ snapshot: RawScanSnapshot, id: String) throws {
+        let directory = try directory(for: id)
+        for depth in snapshot.depthBuffers {
+            try depth.depth.write(to: directory.appending(path: rawDepthFilename(depth.id)), options: .atomic)
+            if let confidence = depth.confidence {
+                try confidence.write(to: directory.appending(path: confidenceFilename(depth.id)), options: .atomic)
+            }
+            if let smoothed = depth.smoothedDepth {
+                try smoothed.write(to: directory.appending(path: smoothedDepthFilename(depth.id)), options: .atomic)
+            }
+        }
+        for mesh in snapshot.meshBuffers {
+            try mesh.vertices.write(to: directory.appending(path: meshVerticesFilename(mesh.id)), options: .atomic)
+            try mesh.faces.write(to: directory.appending(path: meshFacesFilename(mesh.id)), options: .atomic)
+            try mesh.normals.write(to: directory.appending(path: meshNormalsFilename(mesh.id)), options: .atomic)
+            if let classification = mesh.classification {
+                try classification.write(to: directory.appending(path: meshClassificationFilename(mesh.id)), options: .atomic)
+            }
+        }
+    }
+
+    private static func rawDepthFilename(_ id: String) -> String { "\(id).depth-f32le" }
+    private static func confidenceFilename(_ id: String) -> String { "\(id).confidence-u8" }
+    private static func smoothedDepthFilename(_ id: String) -> String { "\(id).smoothed-depth-f32le" }
+    private static func meshVerticesFilename(_ id: String) -> String { "\(id).mesh-vertices" }
+    private static func meshFacesFilename(_ id: String) -> String { "\(id).mesh-faces" }
+    private static func meshNormalsFilename(_ id: String) -> String { "\(id).mesh-normals" }
+    private static func meshClassificationFilename(_ id: String) -> String { "\(id).mesh-classification-u8" }
+
     static func stageOriginals(id: String, rawData: Data, roomPlanData: Data) throws {
         let directory = try directory(for: id)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -150,20 +182,32 @@ enum CaptureStore {
                 mapFromCamera: frame.mapFromCamera,
                 image: .init(width: frame.camera.imageWidth, height: frame.camera.imageHeight,
                              fx: frame.camera.fx, fy: frame.camera.fy, cx: frame.camera.cx, cy: frame.camera.cy),
-                rawDepth: native.map { .init(asset: "raw-snapshot.json", width: $0.width, height: $0.height,
-                                               bytesPerRow: $0.bytesPerRow, pixelFormat: $0.pixelFormat,
-                                               confidenceBytesPerRow: $0.confidenceBytesPerRow,
-                                               environment: $0.environment,
-                                               smoothedWidth: $0.smoothedWidth, smoothedHeight: $0.smoothedHeight,
-                                               smoothedBytesPerRow: $0.smoothedBytesPerRow,
+                rawDepth: native.map { .init(rawAsset: rawDepthFilename($0.id), confidenceAsset: $0.confidence == nil ? nil : confidenceFilename($0.id),
+                                               smoothedAsset: $0.smoothedDepth == nil ? nil : smoothedDepthFilename($0.id),
+                                               width: $0.width, height: $0.height, bytesPerRow: $0.bytesPerRow,
+                                               pixelFormat: $0.pixelFormat, confidenceBytesPerRow: $0.confidenceBytesPerRow,
+                                               environment: $0.environment, smoothedWidth: $0.smoothedWidth,
+                                               smoothedHeight: $0.smoothedHeight, smoothedBytesPerRow: $0.smoothedBytesPerRow,
                                                smoothedPixelFormat: $0.smoothedPixelFormat) }
+            )
+        }
+        let meshAnchors = (raw?.meshBuffers ?? []).map { mesh in
+            PackageManifest.MeshAnchor(
+                id: mesh.id, mapFromAnchor: mesh.mapFromAnchor,
+                verticesAsset: meshVerticesFilename(mesh.id), facesAsset: meshFacesFilename(mesh.id),
+                normalsAsset: meshNormalsFilename(mesh.id), classificationAsset: mesh.classification == nil ? nil : meshClassificationFilename(mesh.id),
+                vertexOffset: mesh.vertexOffset, vertexStride: mesh.vertexStride, vertexFormat: mesh.vertexFormat,
+                vertexCount: mesh.vertexCount, bytesPerIndex: mesh.bytesPerIndex, faceCount: mesh.faceCount,
+                indicesPerFace: mesh.indicesPerFace, normalOffset: mesh.normalOffset, normalStride: mesh.normalStride,
+                normalFormat: mesh.normalFormat, classificationOffset: mesh.classificationOffset,
+                classificationStride: mesh.classificationStride
             )
         }
         let manifest = PackageManifest(
             captureID: bundle.id, mapID: bundle.mapID, floorID: bundle.floorID,
-            assets: assets, observations: observations,
             coordinateFrame: .init(units: bundle.coordinates.units, upAxis: bundle.coordinates.upAxis,
-                                   handedness: bundle.coordinates.handedness, name: "shared_arkit_session")
+                                   handedness: bundle.coordinates.handedness, name: "shared_arkit_session"),
+            assets: assets, observations: observations, meshAnchors: meshAnchors
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -177,6 +221,13 @@ enum CaptureStore {
         if filename == "worldmap.archive" { return "arkit_world_map" }
         if filename == "scene.json" { return "derived_scene" }
         if filename.hasSuffix(".color.jpg") { return "rgb_keyframe" }
+        if filename.hasSuffix(".depth-f32le") { return "raw_depth_float32" }
+        if filename.hasSuffix(".smoothed-depth-f32le") { return "smoothed_depth_float32" }
+        if filename.hasSuffix(".confidence-u8") { return "depth_confidence" }
+        if filename.hasSuffix(".mesh-vertices") { return "mesh_vertices" }
+        if filename.hasSuffix(".mesh-faces") { return "mesh_indices" }
+        if filename.hasSuffix(".mesh-normals") { return "mesh_normals" }
+        if filename.hasSuffix(".mesh-classification-u8") { return "mesh_classification" }
         return "opaque_sidecar"
     }
 
@@ -254,7 +305,9 @@ private struct PackageManifest: Codable {
             var cy: Float
         }
         struct NativeDepth: Codable {
-            var asset: String
+            var rawAsset: String
+            var confidenceAsset: String?
+            var smoothedAsset: String?
             var width: Int
             var height: Int
             var bytesPerRow: Int
@@ -266,7 +319,8 @@ private struct PackageManifest: Codable {
             var smoothedBytesPerRow: Int?
             var smoothedPixelFormat: UInt32?
             enum CodingKeys: String, CodingKey {
-                case asset, width, height, bytesPerRow = "bytes_per_row", pixelFormat = "pixel_format"
+                case rawAsset = "raw_asset", confidenceAsset = "confidence_asset", smoothedAsset = "smoothed_asset"
+                case width, height, bytesPerRow = "bytes_per_row", pixelFormat = "pixel_format"
                 case confidenceBytesPerRow = "confidence_bytes_per_row", environment, smoothedWidth = "smoothed_width"
                 case smoothedHeight = "smoothed_height", smoothedBytesPerRow = "smoothed_bytes_per_row"
                 case smoothedPixelFormat = "smoothed_pixel_format"
@@ -284,6 +338,35 @@ private struct PackageManifest: Codable {
         }
     }
 
+    struct MeshAnchor: Codable {
+        var id: String
+        var mapFromAnchor: [Float]
+        var verticesAsset: String
+        var facesAsset: String
+        var normalsAsset: String
+        var classificationAsset: String?
+        var vertexOffset: Int
+        var vertexStride: Int
+        var vertexFormat: UInt
+        var vertexCount: Int
+        var bytesPerIndex: Int
+        var faceCount: Int
+        var indicesPerFace: Int
+        var normalOffset: Int
+        var normalStride: Int
+        var normalFormat: UInt
+        var classificationOffset: Int?
+        var classificationStride: Int?
+        enum CodingKeys: String, CodingKey {
+            case id, mapFromAnchor = "map_from_anchor", verticesAsset = "vertices_asset", facesAsset = "faces_asset"
+            case normalsAsset = "normals_asset", classificationAsset = "classification_asset", vertexOffset = "vertex_offset"
+            case vertexStride = "vertex_stride", vertexFormat = "vertex_format", vertexCount = "vertex_count"
+            case bytesPerIndex = "bytes_per_index", faceCount = "face_count", indicesPerFace = "indices_per_face"
+            case normalOffset = "normal_offset", normalStride = "normal_stride", normalFormat = "normal_format"
+            case classificationOffset = "classification_offset", classificationStride = "classification_stride"
+        }
+    }
+
     var schemaVersion = 1
     var captureID: String
     var mapID: String
@@ -291,8 +374,9 @@ private struct PackageManifest: Codable {
     var coordinateFrame: CoordinateFrame
     var assets: [Asset]
     var observations: [Observation]
+    var meshAnchors: [MeshAnchor]
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version", captureID = "capture_id", mapID = "map_id", floorID = "floor_id"
-        case coordinateFrame = "coordinate_frame", assets, observations
+        case coordinateFrame = "coordinate_frame", assets, observations, meshAnchors = "mesh_anchors"
     }
 }
