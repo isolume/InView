@@ -1,6 +1,6 @@
 import simd
 
-/// A top-down grid of the venue floor. Blocked cells are anywhere a wheelchair can't be:
+/// A top-down grid of the scanned floor. Blocked cells are anywhere a wheelchair can't be:
 /// walls, furniture, stairs, and a clearance margin around all of them.
 public struct OccupancyGrid: Sendable {
     /// ADA minimum clear width for a doorway (32 in). Narrower doors stay closed to routing.
@@ -17,7 +17,7 @@ public struct OccupancyGrid: Sendable {
     public var height: Int { shape.height }
 
     public init(map: VenueMap, clearance: Float, cellSize: Float = 0.1, padding: Float = 1.5) {
-        // The marker at the origin is always on the map, even before anything is scanned.
+        // The scan's starting point at the origin is always on the map.
         var lower = SIMD2<Float>(repeating: 0)
         var upper = SIMD2<Float>(repeating: 0)
         for point in map.footprints.flatMap(\.corners) + map.points.map(\.floorPoint) {
@@ -93,7 +93,7 @@ public struct OccupancyGrid: Sendable {
     }
 }
 
-/// Grid geometry: where cells sit on the venue floor.
+/// Grid geometry: where cells sit on the floor.
 struct GridShape: Sendable {
     let origin: SIMD2<Float>
     let cellSize: Float

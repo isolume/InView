@@ -23,7 +23,8 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
 
     public var id: UUID
     public var kind: Kind
-    /// Position in the venue frame, in meters. x and z span the floor; y is up.
+    /// Position in the map's coordinates (the scan session's world space), in meters.
+    /// x and z span the floor; y is up.
     public var position: SIMD3<Float>
     public var source: Source
     public var confidence: Float

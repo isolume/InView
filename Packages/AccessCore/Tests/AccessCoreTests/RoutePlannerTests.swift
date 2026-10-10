@@ -84,15 +84,3 @@ private func crossing(of route: Route) -> Float? {
     #expect(second.destination.id == first.destination.id)
     #expect(second.length < first.length)
 }
-
-@Test func venueFrameIsGravityAlignedAndRoundTrips() throws {
-    // A marker lying flat on a table, turned 30 degrees.
-    var marker = simd_float4x4(simd_quatf(angle: .pi / 6, axis: [0, 1, 0]) * simd_quatf(angle: -.pi / 2, axis: [1, 0, 0]))
-    marker.columns.3 = [1, 0.75, -2, 1]
-    let frame = try #require(VenueFrame(markerTransforms: [marker]))
-
-    let point = SIMD3<Float>(3, 0.2, 1)
-    #expect(simd_distance(frame.toWorld(frame.toVenue(point)), point) < 1e-4)
-    #expect(simd_length(frame.toVenue(SIMD3(1, 0.75, -2))) < 1e-4)
-    #expect(abs(frame.worldFromVenue.columns.1.y - 1) < 1e-5)
-}

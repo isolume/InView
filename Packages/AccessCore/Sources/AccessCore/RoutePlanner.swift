@@ -2,7 +2,7 @@ import simd
 
 public struct Route: Sendable {
     public let destination: AccessPoint
-    /// Smoothed path on the venue floor as (x, z), starting where the user stands.
+    /// Smoothed path on the floor as (x, z), starting where the user stands.
     public let waypoints: [SIMD2<Float>]
     /// Meters along the waypoints.
     public let length: Float
@@ -15,7 +15,7 @@ public struct Route: Sendable {
     public var isNarrow: Bool { clearance < RoutePlanner.clearances[0] }
 }
 
-/// Finds wheelchair routes over a saved venue map. Immutable, so it is safe to use off the main thread.
+/// Finds wheelchair routes over a saved map. Immutable, so it is safe to use off the main thread.
 public final class RoutePlanner: Sendable {
     /// Clearances to try, widest first. 0.45 m keeps 90 cm passages (ADA 36 in); the tighter
     /// levels keep navigation working in cramped spaces like a hackathon floor.

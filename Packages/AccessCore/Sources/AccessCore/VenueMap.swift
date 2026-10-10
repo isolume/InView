@@ -15,11 +15,11 @@ public struct Footprint: Codable, Hashable, Sendable {
     }
 
     public var kind: Kind
-    /// Center on the floor, as venue (x, z).
+    /// Center on the floor, as (x, z).
     public var center: SIMD2<Float>
     /// Extent along the footprint's own x axis, then across it.
     public var size: SIMD2<Float>
-    /// Angle from venue +x to the footprint's x axis, turning toward +z.
+    /// Angle from +x to the footprint's x axis, turning toward +z.
     public var yaw: Float
 
     public init(kind: Kind, center: SIMD2<Float>, size: SIMD2<Float>, yaw: Float) {
@@ -31,7 +31,7 @@ public struct Footprint: Codable, Hashable, Sendable {
 
     /// Projects a 3D box (RoomPlan surface or object) onto the floor.
     /// - Parameters:
-    ///   - transform: The box's pose in the venue frame.
+    ///   - transform: The box's pose in map coordinates.
     ///   - width: Extent along the box's local x axis.
     ///   - depth: Extent along the box's local z axis.
     public init(kind: Kind, transform: simd_float4x4, width: Float, depth: Float) {
@@ -44,7 +44,7 @@ public struct Footprint: Codable, Hashable, Sendable {
         )
     }
 
-    /// Expresses a venue floor point in this footprint's own axes.
+    /// Expresses a floor point in this footprint's own axes.
     public func local(_ point: SIMD2<Float>) -> SIMD2<Float> {
         let offset = point - center
         let c = cos(yaw), s = sin(yaw)
@@ -59,10 +59,11 @@ public struct Footprint: Codable, Hashable, Sendable {
     }
 }
 
-/// Everything a navigation session needs, stored relative to the printed check-in marker.
+/// Everything a navigation session needs, in the scan session's world coordinates.
+/// Navigation relocalizes against the saved ARWorldMap to get back into the same space.
 public struct VenueMap: Codable, Sendable {
     public var createdAt: Date
-    /// Floor height in the venue frame. The marker sits at y = 0, usually on a table.
+    /// Floor height. y = 0 is where the phone was when the scan started.
     public var floorY: Float
     public var footprints: [Footprint]
     public var points: [AccessPoint]
