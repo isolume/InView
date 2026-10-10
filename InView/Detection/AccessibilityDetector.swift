@@ -6,8 +6,10 @@ import UIKit
 /// Samples steady camera frames during a scan, asks a vision model for elevators, ramps and stairs, pins
 /// each one in 3D by casting rays onto the scanned surfaces, and checks the model's claims against LiDAR.
 ///
-/// A detection only counts once it's been seen in more than one frame, and ramps and stairs also need
-/// LiDAR to agree at least once (or many more sightings when LiDAR can't tell). Hand-marked pins count right away.
+/// A detection only counts when a raycast puts it on a scanned surface. It's confirmed once it's been seen
+/// in two frames, or in one frame with high confidence; ramps and stairs also need LiDAR to agree at least
+/// once (or many more sightings when LiDAR can't tell). Hand-marked pins count right away. Finds that never
+/// confirm are kept for the volunteer to decide on in review.
 @MainActor
 final class AccessibilityDetector: ObservableObject {
     /// The frame a detection was found in, for the volunteer to check in review.
@@ -42,9 +44,11 @@ final class AccessibilityDetector: ObservableObject {
 
         var isConfirmed: Bool {
             if isManual { return true }
+            // Every sighting sits on a LiDAR surface already; one sure look at it is enough.
+            let seenEnough = frames >= 2 || confidence >= AccessibilityDetector.highConfidence
             switch kind {
-            case .elevator: return frames >= 2
-            case .ramp, .stairs: return frames >= 2 && (verifiedFrames >= 1 || frames >= 4)
+            case .elevator: return seenEnough
+            case .ramp, .stairs: return (seenEnough && verifiedFrames >= 1) || frames >= AccessibilityDetector.unverifiedFrames
             }
         }
 
@@ -70,8 +74,8 @@ final class AccessibilityDetector: ObservableObject {
         var framesDroppedBusy = 0
         var raycastHits = 0
         var raycastMisses = 0
-        /// Model detections placed by a fallback guess because the raycast missed.
-        var guessedPositions = 0
+        /// Model detections dropped because no raycast put them on a surface.
+        var unplacedDetections = 0
         var stairsVerified = 0
         var stairsRejected = 0
         var stairsInconclusive = 0
@@ -83,7 +87,7 @@ final class AccessibilityDetector: ObservableObject {
             let latency = framesAnalyzed > 0 ? totalLatency / Double(framesAnalyzed) : 0
             return "ticks \(ticks) (steady \(steadyTicks)) · frames sent \(framesSent), analyzed \(framesAnalyzed), failed \(framesFailed), "
                 + "dropped while busy \(framesDroppedBusy) · mean latency \(String(format: "%.1f", latency)) s · "
-                + "raycasts hit \(raycastHits), missed \(raycastMisses), guessed positions \(guessedPositions) · "
+                + "raycasts hit \(raycastHits), missed \(raycastMisses), unplaced detections \(unplacedDetections) · "
                 + "stairs verified \(stairsVerified), rejected \(stairsRejected), inconclusive \(stairsInconclusive) · "
                 + "slopes measured \(slopesMeasured), unmeasured \(slopesUnmeasured)"
         }
@@ -110,10 +114,16 @@ final class AccessibilityDetector: ObservableObject {
     private static let minimumConfidence: Float = 0.6
     /// Stairs are a costly false alarm (they block routes), so the model must be surer.
     private static let minimumStairsConfidence: Float = 0.8
+    /// A single sighting this sure counts as confirmed (for ramps and stairs, once LiDAR agrees too).
+    static let highConfidence: Float = 0.85
+    /// Ramps and stairs LiDAR could never check confirm after this many sightings.
+    static let unverifiedFrames = 4
     /// Ramps are steeper than about 1:20; anything flatter is just floor. Much steeper is stairs or furniture.
     private static let plausibleRampSlope: ClosedRange<Float> = 1.5...15
     /// Stairs the camera spots are drawn this size, starting at the bottom step: (width, depth).
     static let spottedStairsSize = SIMD2<Float>(1.2, 1.5)
+    /// A floor-plane hit further out than this is a grazing ray, not where the model pointed.
+    private static let maxFloorPlaneDistance: Float = 6
     /// Slope samples form a grid this wide around the surface point, in normalized image units.
     private static let slopeSampleSpan: CGFloat = 0.08
     private static let slopeSampleSteps = 7
@@ -160,10 +170,15 @@ final class AccessibilityDetector: ObservableObject {
         let slope = kind == .ramp ? measureSlope(around: center, camera: camera, in: session) : nil
         let photo = FrameEncoder.portraitJPEG(from: frame.capturedImage).flatMap { Self.evidence(from: $0, point: center) }
         let count = sightings.filter { $0.kind == kind }.count
+        // The volunteer aimed on purpose, so even without a surface to hit, mark a spot a few meters out.
+        let position = locate(center, camera: camera, in: session) ?? {
+            let ray = camera.ray(through: center)
+            return ray.origin + ray.direction * 3
+        }()
         record(
             kind,
             name: "\(kind.title) \(count + 1)",
-            at: locate(center, camera: camera, in: session),
+            at: position,
             seenFrom: camera,
             confidence: 1,
             isManual: true,
@@ -178,34 +193,47 @@ final class AccessibilityDetector: ObservableObject {
     }
 
     func accessPoints() -> [AccessPoint] {
-        sightings.filter(\.isConfirmed).compactMap { sighting in
-            guard let kind = sighting.kind.accessPointKind else { return nil }
-            return AccessPoint(
-                id: sighting.id,
-                kind: kind,
-                name: sighting.name,
-                position: sighting.position,
-                source: sighting.isManual ? .manual : .detected,
-                confidence: sighting.confidence,
-                slopeDegrees: sighting.slopeDegrees
-            )
-        }
+        sightings.filter(\.isConfirmed).compactMap(Self.accessPoint(for:))
     }
 
     /// Footprints for confirmed stairs, extending from the bottom step up the stairs.
     func stairsFootprints() -> [Footprint] {
-        sightings.filter { $0.kind == .stairs && $0.isConfirmed }.map { sighting in
-            let size = Self.spottedStairsSize
-            let bottom = SIMD2(sighting.position.x, sighting.position.z)
-            // The footprint's y axis runs up the stairs.
-            return Footprint(
-                kind: .stairs,
-                center: bottom + sighting.facing * size.y / 2,
-                size: size,
-                yaw: atan2(-sighting.facing.x, sighting.facing.y),
-                id: sighting.id
-            )
-        }
+        sightings.filter(\.isConfirmed).compactMap(Self.stairsFootprint(for:))
+    }
+
+    /// Finds that were placed on a surface and never ruled out, but weren't seen often enough to count.
+    /// Review asks the volunteer about each one.
+    func unconfirmedSightings() -> [Sighting] {
+        sightings.filter { !$0.isConfirmed }
+    }
+
+    /// The access point for an elevator or ramp sighting; nil for stairs.
+    static func accessPoint(for sighting: Sighting) -> AccessPoint? {
+        guard let kind = sighting.kind.accessPointKind else { return nil }
+        return AccessPoint(
+            id: sighting.id,
+            kind: kind,
+            name: sighting.name,
+            position: sighting.position,
+            source: sighting.isManual ? .manual : .detected,
+            confidence: sighting.confidence,
+            slopeDegrees: sighting.slopeDegrees
+        )
+    }
+
+    /// The footprint for a stairs sighting, extending from the bottom step up the stairs; nil otherwise.
+    static func stairsFootprint(for sighting: Sighting) -> Footprint? {
+        guard sighting.kind == .stairs else { return nil }
+        let size = spottedStairsSize
+        let bottom = SIMD2(sighting.position.x, sighting.position.z)
+        // The footprint's y axis runs up the stairs.
+        return Footprint(
+            kind: .stairs,
+            center: bottom + sighting.facing * size.y / 2,
+            size: size,
+            yaw: atan2(-sighting.facing.x, sighting.facing.y),
+            id: sighting.id
+        )
     }
 
     // MARK: Sampling
@@ -276,7 +304,12 @@ final class AccessibilityDetector: ObservableObject {
                 continue
             }
             let target = FrameEncoder.capturedImagePoint(fromPortrait: detection.target)
-            let position = locate(target, camera: camera, in: session)
+            guard let position = locate(target, camera: camera, in: session) else {
+                // A guessed position would never line up with the next sighting, so it could never confirm.
+                stats.unplacedDetections += 1
+                Log.detection.info("    dropped: no raycast hit, so it can't be placed")
+                continue
+            }
             var verified = false
             var slope: Float?
             switch detection.kind {
@@ -343,17 +376,21 @@ final class AccessibilityDetector: ObservableObject {
         return verdict
     }
 
-    /// Casts a ray through a captured-image point onto the scanned surfaces, falling back to a point a few meters out.
-    private func locate(_ imagePoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> SIMD3<Float> {
+    /// Casts a ray through a captured-image point onto the scanned surfaces. When the mesh there is still
+    /// patchy, the floor planes ARKit has found, extended, catch points on the floor. Nil when nothing does.
+    private func locate(_ imagePoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> SIMD3<Float>? {
         if let position = hit(imagePoint, camera: camera, in: session) {
             Log.detection.info("    placed by raycast at (\(String(format: "%.1f, %.1f, %.1f", position.x, position.y, position.z), privacy: .public))")
             return position
         }
-        stats.guessedPositions += 1
         let ray = camera.ray(through: imagePoint)
-        let guess = ray.origin + ray.direction * 3
-        Log.detection.info("    raycast missed; guessed 3 m along the ray at (\(String(format: "%.1f, %.1f, %.1f", guess.x, guess.y, guess.z), privacy: .public))")
-        return guess
+        let floor = ARRaycastQuery(origin: ray.origin, direction: ray.direction, allowing: .existingPlaneInfinite, alignment: .horizontal)
+        if let position = session.raycast(floor).first?.worldTransform.translation, simd_distance(position, ray.origin) < Self.maxFloorPlaneDistance {
+            Log.detection.info("    placed on a floor plane at (\(String(format: "%.1f, %.1f, %.1f", position.x, position.y, position.z), privacy: .public))")
+            return position
+        }
+        Log.detection.info("    raycast missed, and no floor plane under the ray")
+        return nil
     }
 
     private func hit(_ imagePoint: CGPoint, camera: CameraSnapshot, in session: ARSession) -> SIMD3<Float>? {
