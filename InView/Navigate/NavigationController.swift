@@ -30,7 +30,8 @@ final class NavigationController: ObservableObject {
     let startView = MapStore.loadStartView()
 
     private static let rerouteInterval: TimeInterval = 1
-    private static let obstacleCheckInterval: TimeInterval = 0.5
+    /// Reading the depth map is the costliest thing a tick does; a chair in the way can wait a second.
+    private static let obstacleCheckInterval: TimeInterval = 1
     private static let arrivalDistance: Float = 1.2
     private static let slowRelocalization: TimeInterval = 15
 
@@ -96,17 +97,15 @@ final class NavigationController: ObservableObject {
         phase = .ready
     }
 
+    /// Relocalization plus the two things routing needs: floor planes for the marker height, and scene depth
+    /// for obstacles. No scene reconstruction mesh and no occlusion: they cost more tracking headroom than
+    /// hiding arrows behind walls is worth.
     private func run(initialWorldMap: ARWorldMap?) {
         let configuration = ARWorldTrackingConfiguration()
         configuration.initialWorldMap = initialWorldMap
         configuration.planeDetection = [.horizontal]
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             configuration.frameSemantics.insert(.sceneDepth)
-        }
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            // Lets real walls hide the arrows behind them.
-            configuration.sceneReconstruction = .mesh
-            arView.environment.sceneUnderstanding.options.insert(.occlusion)
         }
         arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     }
