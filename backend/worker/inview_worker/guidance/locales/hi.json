@@ -1,0 +1,48 @@
+{
+  "locale": "hi",
+  "name": "हिन्दी",
+  "direction": "ltr",
+  "number": {"decimal": ".", "group": ",", "min_grouping": 1},
+  "messages": {
+    "distance": "{n, plural, one {# मीटर} other {# मीटर}}",
+    "distance_ahead": "{n, plural, one {# मीटर} other {# मीटर}}",
+    "width": "{w} मी",
+    "clause.depart": "{origin} से चलना शुरू करें",
+    "clause.depart_plain": "चलना शुरू करें",
+    "clause.turn": "{maneuver, select, slight_left {थोड़ा बाएँ मुड़ें} left {बाएँ मुड़ें} slight_right {थोड़ा दाएँ मुड़ें} right {दाएँ मुड़ें} u_turn {पीछे मुड़ें} other {सीधे चलते रहें}}",
+    "clause.turn_after": "{landmark} के बाद {turn}",
+    "clause.turn_before": "{landmark} से पहले {turn}",
+    "clause.door": "दरवाज़े से गुज़रें",
+    "clause.door_narrow": "संकरे दरवाज़े से गुज़रें (खुली चौड़ाई {width})",
+    "clause.caution": "सावधान: {ahead} आगे {hazard} है",
+    "clause.transition": "मंज़िल {floor} तक जाने के लिए {connector, select, elevator {लिफ़्ट लें} stairs {सीढ़ियाँ लें} escalator {एस्केलेटर लें} other {कनेक्टर लें}}{direction, select, up { (ऊपर)} down { (नीचे)} other {}}",
+    "clause.arrive": "आप {destination} पहुँच गए हैं",
+    "clause.arrive_side": "आप {destination} पहुँच गए हैं, {side, select, left {आपकी बाईं ओर} right {आपकी दाईं ओर} other {ठीक सामने}}",
+    "landmark.sign_text": "{text} संकेत",
+    "landmark.sign_category": "{category} संकेत",
+    "landmark.sign": "संकेत",
+    "landmark.door": "दरवाज़े",
+    "sentence.continue": "{clause}, फिर {distance} तक चलते रहें।",
+    "sentence.plain": "{clause}।"
+  },
+  "place_phrases": {
+    "entrance": "प्रवेश द्वार", "exit": "निकास", "emergency_exit": "आपातकालीन निकास",
+    "restroom": "शौचालय", "accessible_restroom": "सुगम्य शौचालय", "elevator": "लिफ़्ट",
+    "stairs": "सीढ़ियाँ", "escalator": "एस्केलेटर", "ramp": "रैंप", "door": "दरवाज़ा",
+    "room": "कमरा", "corridor": "गलियारा", "information": "सूचना केंद्र",
+    "reception": "रिसेप्शन", "seating": "बैठने की जगह", "water_fountain": "पेयजल नल",
+    "fire_extinguisher": "अग्निशामक", "first_aid": "प्राथमिक चिकित्सा", "landmark": "पहचान चिह्न",
+    "other": "आपका गंतव्य"
+  },
+  "sign_categories": {
+    "exit": "निकास", "emergency_exit": "आपातकालीन निकास", "entrance": "प्रवेश", "restroom": "शौचालय",
+    "accessible_restroom": "सुगम्य शौचालय", "elevator": "लिफ़्ट", "stairs": "सीढ़ियाँ",
+    "escalator": "एस्केलेटर", "ramp": "रैंप", "information": "सूचना", "first_aid": "प्राथमिक चिकित्सा",
+    "fire_extinguisher": "अग्निशामक", "directional": "दिशा", "informational": "सूचना"
+  },
+  "hazards": {
+    "step": "एक पायदान", "stairs": "सीढ़ियाँ", "ramp": "रैंप", "level_change": "स्तर में बदलाव",
+    "drop_off": "गहरा किनारा", "low_headroom": "कम ऊँचाई", "protruding_object": "बाहर निकली वस्तु",
+    "other": "बाधा"
+  }
+}

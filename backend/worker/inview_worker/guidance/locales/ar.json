@@ -1,0 +1,48 @@
+{
+  "locale": "ar",
+  "name": "العربية",
+  "direction": "rtl",
+  "number": {"decimal": "٫", "group": "٬", "min_grouping": 1, "digits": "٠١٢٣٤٥٦٧٨٩"},
+  "messages": {
+    "distance": "{n, plural, zero {# متر} one {متر واحد} two {مترين} few {# أمتار} many {# مترًا} other {# متر}}",
+    "distance_ahead": "{n, plural, zero {# متر} one {متر واحد} two {مترين} few {# أمتار} many {# مترًا} other {# متر}}",
+    "width": "{w} م",
+    "clause.depart": "ابدأ من {origin}",
+    "clause.depart_plain": "ابدأ السير",
+    "clause.turn": "{maneuver, select, slight_left {انحرف قليلًا إلى اليسار} left {انعطف يسارًا} slight_right {انحرف قليلًا إلى اليمين} right {انعطف يمينًا} u_turn {استدر للخلف} other {تابع السير مباشرةً}}",
+    "clause.turn_after": "{turn} بعد {landmark}",
+    "clause.turn_before": "{turn} قبل {landmark}",
+    "clause.door": "اعبر الباب",
+    "clause.door_narrow": "اعبر الباب الضيق (عرضه الصافي {width})",
+    "clause.caution": "تنبيه: {hazard} على بُعد {ahead}",
+    "clause.transition": "{connector, select, elevator {استقل المصعد} stairs {استخدم الدرج} escalator {استقل السلم المتحرك} other {استخدم الممر الواصل}}{direction, select, up { صعودًا} down { نزولًا} other {}} إلى الطابق {floor}",
+    "clause.arrive": "وصلت إلى {destination}",
+    "clause.arrive_side": "وصلت إلى {destination}، {side, select, left {على يسارك} right {على يمينك} other {أمامك مباشرةً}}",
+    "landmark.sign_text": "لافتة {text}",
+    "landmark.sign_category": "لافتة {category}",
+    "landmark.sign": "اللافتة",
+    "landmark.door": "الباب",
+    "sentence.continue": "{clause}، ثم تابع لمسافة {distance}.",
+    "sentence.plain": "{clause}."
+  },
+  "place_phrases": {
+    "entrance": "المدخل", "exit": "المخرج", "emergency_exit": "مخرج الطوارئ",
+    "restroom": "دورة المياه", "accessible_restroom": "دورة المياه المهيأة", "elevator": "المصعد",
+    "stairs": "الدرج", "escalator": "السلم المتحرك", "ramp": "المنحدر", "door": "الباب",
+    "room": "الغرفة", "corridor": "الممر", "information": "مكتب الاستعلامات",
+    "reception": "الاستقبال", "seating": "منطقة الجلوس", "water_fountain": "نافورة الشرب",
+    "fire_extinguisher": "طفاية الحريق", "first_aid": "حقيبة الإسعافات الأولية", "landmark": "المعلم",
+    "other": "وجهتك"
+  },
+  "sign_categories": {
+    "exit": "المخرج", "emergency_exit": "مخرج الطوارئ", "entrance": "المدخل", "restroom": "دورة المياه",
+    "accessible_restroom": "دورة المياه المهيأة", "elevator": "المصعد", "stairs": "الدرج",
+    "escalator": "السلم المتحرك", "ramp": "المنحدر", "information": "الاستعلامات", "first_aid": "الإسعافات الأولية",
+    "fire_extinguisher": "طفاية الحريق", "directional": "الاتجاهات", "informational": "المعلومات"
+  },
+  "hazards": {
+    "step": "درجة", "stairs": "درج", "ramp": "منحدر", "level_change": "تغير في المستوى",
+    "drop_off": "حافة منحدرة", "low_headroom": "سقف منخفض", "protruding_object": "جسم بارز",
+    "other": "عائق"
+  }
+}

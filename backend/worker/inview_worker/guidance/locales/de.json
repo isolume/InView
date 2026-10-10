@@ -1,0 +1,48 @@
+{
+  "locale": "de",
+  "name": "Deutsch",
+  "direction": "ltr",
+  "number": {"decimal": ",", "group": ".", "min_grouping": 1},
+  "messages": {
+    "distance": "{n, plural, one {# Meter} other {# Meter}}",
+    "distance_ahead": "{n, plural, one {# Meter} other {# Metern}}",
+    "width": "{w} m",
+    "clause.depart": "Starten Sie hier: {origin}",
+    "clause.depart_plain": "Gehen Sie los",
+    "clause.turn": "{maneuver, select, slight_left {Halten Sie sich links} left {Biegen Sie links ab} slight_right {Halten Sie sich rechts} right {Biegen Sie rechts ab} u_turn {Kehren Sie um} other {Gehen Sie geradeaus}}",
+    "clause.turn_after": "{turn}, kurz nach dem Orientierungspunkt {landmark}",
+    "clause.turn_before": "{turn}, kurz vor dem Orientierungspunkt {landmark}",
+    "clause.door": "Gehen Sie durch die Tür",
+    "clause.door_narrow": "Gehen Sie durch die schmale Tür ({width} lichte Breite)",
+    "clause.caution": "Achtung: {hazard} in {ahead}",
+    "clause.transition": "{connector, select, elevator {Nehmen Sie den Aufzug} stairs {Nehmen Sie die Treppe} escalator {Nehmen Sie die Rolltreppe} other {Nehmen Sie die Verbindung}}{direction, select, up { nach oben} down { nach unten} other {}} zur Etage {floor}",
+    "clause.arrive": "Sie erreichen das Ziel: {destination}",
+    "clause.arrive_side": "Sie erreichen das Ziel: {destination}, {side, select, left {auf der linken Seite} right {auf der rechten Seite} other {direkt vor Ihnen}}",
+    "landmark.sign_text": "Schild „{text}“",
+    "landmark.sign_category": "Schild „{category}“",
+    "landmark.sign": "Schild",
+    "landmark.door": "Tür",
+    "sentence.continue": "{clause}. Gehen Sie dann {distance} weiter.",
+    "sentence.plain": "{clause}."
+  },
+  "place_phrases": {
+    "entrance": "Eingang", "exit": "Ausgang", "emergency_exit": "Notausgang",
+    "restroom": "Toiletten", "accessible_restroom": "barrierefreie Toilette", "elevator": "Aufzug",
+    "stairs": "Treppe", "escalator": "Rolltreppe", "ramp": "Rampe", "door": "Tür",
+    "room": "Raum", "corridor": "Flur", "information": "Information",
+    "reception": "Empfang", "seating": "Sitzbereich", "water_fountain": "Trinkbrunnen",
+    "fire_extinguisher": "Feuerlöscher", "first_aid": "Erste Hilfe", "landmark": "Orientierungspunkt",
+    "other": "Ziel"
+  },
+  "sign_categories": {
+    "exit": "Ausgang", "emergency_exit": "Notausgang", "entrance": "Eingang", "restroom": "Toiletten",
+    "accessible_restroom": "barrierefreie Toilette", "elevator": "Aufzug", "stairs": "Treppe",
+    "escalator": "Rolltreppe", "ramp": "Rampe", "information": "Information", "first_aid": "Erste Hilfe",
+    "fire_extinguisher": "Feuerlöscher", "directional": "Wegweiser", "informational": "Information"
+  },
+  "hazards": {
+    "step": "eine Stufe", "stairs": "eine Treppe", "ramp": "eine Rampe", "level_change": "ein Höhenunterschied",
+    "drop_off": "eine Absturzkante", "low_headroom": "geringe Durchgangshöhe", "protruding_object": "ein hervorstehendes Objekt",
+    "other": "ein Hindernis"
+  }
+}

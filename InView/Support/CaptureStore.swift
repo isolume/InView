@@ -82,6 +82,24 @@ enum CaptureStore {
         try directory(for: id).appending(path: "splat", directoryHint: .isDirectory)
     }
 
+    /// The capture's own directory (sidecars, originals, saved scene).
+    static func captureDirectory(for id: String) throws -> URL {
+        try directory(for: id)
+    }
+
+    /// Writes an extra evidence file (`semantics.json`, `text-observations.json`, `camera-track.json`)
+    /// into the capture directory, from where it is sent with the scan.
+    static func stageSidecar(_ data: Data, named filename: String, id: String) throws {
+        let reserved: Set<String> = ["capture.json", "package-manifest.json", "raw-snapshot.json"]
+        guard !filename.isEmpty, filename.count <= 64, !filename.hasPrefix("."), !reserved.contains(filename),
+              filename.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "-_.".contains($0)) }) else {
+            throw CaptureValidationError.invalid("The capture sidecar name is invalid.")
+        }
+        let directory = try directory(for: id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: directory.appending(path: filename), options: .atomic)
+    }
+
     static func streamRoot(for id: String) throws -> URL {
         try directory(for: id).appending(path: "stream", directoryHint: .isDirectory)
     }
