@@ -15,6 +15,8 @@ struct NavigationMapSurface: View {
     var userHeading: Float? = nil
     var destination: SIMD2<Float>? = nil
     var destinationTitle: String? = nil
+    var places: [MapPlace] = []
+    var onSelectPlace: ((MapPlace) -> Void)? = nil
     let onPlaceBuilding: () -> Void
 
     var body: some View {
@@ -48,7 +50,8 @@ struct NavigationMapSurface: View {
                           topDown: topDown, resetID: resetID, viewportBottomInset: bottomInset,
                           routePoints: route?.waypoints ?? [], userPosition: userPosition,
                           userHeading: userHeading, floorY: map?.floorY ?? 0,
-                          destination: destination, destinationTitle: destinationTitle, isNavigating: true)
+                          destination: destination, destinationTitle: destinationTitle, isNavigating: true,
+                          places: places, onSelectPlace: onSelectPlace)
         } else if let map {
             MapPreviewView(map: map, route: route, userPosition: userPosition,
                            userHeading: userHeading ?? 0, showsScanStart: false)

@@ -5,12 +5,15 @@ import RealityKit
 import UIKit
 
 /// The map and camera share one navigation session, including spoken directions and live obstacles.
+/// The map shows as soon as it's loaded; the camera only runs once the rider asks for directions or AR.
 @MainActor
 final class NavigationController: ObservableObject {
     enum Phase: Equatable {
         /// Disk reads and routing grids are prepared away from the main thread.
         case loading
         case noMap
+        /// The map is showing and the camera is off.
+        case browsing
         case locating
         case ready
         case routing
@@ -29,6 +32,8 @@ final class NavigationController: ObservableObject {
     /// Radians clockwise from -Z toward +X.
     @Published private(set) var heading: Float = 0
     @Published private(set) var startView: UIImage?
+    /// Directions need the scan's AR map to find the rider; a map without one can still be explored.
+    @Published private(set) var canGuide = false
 
     let isDemo: Bool
     lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -60,18 +65,23 @@ final class NavigationController: ObservableObject {
     private var demoPath: [SIMD2<Float>] = []
     private var demoDistance: Float = 0
     private var lastDemoTick = Date.now
+    /// Start the route as soon as the rider is found, when they asked for directions before that.
+    private var routesWhenLocated = false
 
-    init(isDemo: Bool = false) {
+    /// - Parameter map: The saved map, when the caller already has it, so it shows before loading finishes.
+    init(isDemo: Bool = false, map: VenueMap? = nil) {
         self.isDemo = isDemo
-        if isDemo {
-            map = NavigationDemo.map
-            planner = map.map(RoutePlanner.init)
-            position = NavigationDemo.startPosition
-            heading = NavigationDemo.heading
-            route = NavigationDemo.route
-            selectedDestination = route?.destination
-            phase = map == nil ? .noMap : .ready
+        guard isDemo else {
+            self.map = map
+            return
         }
+        self.map = NavigationDemo.map
+        planner = self.map.map(RoutePlanner.init)
+        position = NavigationDemo.startPosition
+        heading = NavigationDemo.heading
+        route = NavigationDemo.route
+        selectedDestination = route?.destination
+        phase = self.map == nil ? .noMap : .ready
     }
 
     private struct Loaded: @unchecked Sendable {
@@ -81,11 +91,12 @@ final class NavigationController: ObservableObject {
         let startView: UIImage?
     }
 
+    /// Loads what directions need. The demo starts moving; a real map waits for `beginGuidance`.
     func start() {
         guard !isActive else { return }
         isActive = true
         guard phase == .loading else {
-            begin()
+            if isDemo { begin() }
             return
         }
         guard !isLoading else { return }
@@ -104,32 +115,76 @@ final class NavigationController: ObservableObject {
             worldMap = loaded.worldMap
             planner = loaded.planner
             startView = loaded.startView
-            phase = map == nil || worldMap == nil ? .noMap : .locating
-            if isActive { begin() }
+            canGuide = worldMap != nil
+            phase = map == nil ? .noMap : .browsing
         }
+    }
+
+    /// Turns the camera on and finds the rider in the scanned space; then routes, when `thenRoute`.
+    func beginGuidance(thenRoute: Bool) {
+        guard !isDemo, isActive, let worldMap, phase == .browsing else { return }
+        routesWhenLocated = thenRoute
+        isRelocalizationSlow = false
+        phase = .locating
+        locatingSince = .now
+        run(initialWorldMap: worldMap)
+        begin()
+    }
+
+    /// Switches to a newly saved map: the session starts over with it.
+    func reload(map newMap: VenueMap?) {
+        guard !isDemo else { return }
+        stop()
+        map = newMap
+        worldMap = nil
+        planner = nil
+        startView = nil
+        renderer = nil
+        canGuide = false
+        route = nil
+        selectedDestination = nil
+        caption = nil
+        phase = .loading
+        start()
+    }
+
+    /// Turns the camera off and returns to exploring the map.
+    func endGuidance() {
+        guard !isDemo, map != nil else { return }
+        stopSession()
+        route = nil
+        caption = nil
+        renderer?.clearRoute()
+        routesWhenLocated = false
+        phase = .browsing
     }
 
     func stop() {
         isActive = false
+        stopSession()
+        if phase == .routing { phase = .ready }
+        // A real session can't resume where it was without the camera; it returns to the map.
+        if !isDemo, ![.loading, .noMap].contains(phase) {
+            route = nil
+            caption = nil
+            routesWhenLocated = false
+            phase = .browsing
+        }
+    }
+
+    private func stopSession() {
         timer?.invalidate()
         timer = nil
         routingGeneration += 1
         isRouting = false
         pendingReason = nil
-        if phase == .routing { phase = .ready }
         voice.deactivate()
         if !isDemo { arView.session.pause() }
     }
 
     private func begin() {
         guard timer == nil, phase != .noMap else { return }
-        if isDemo {
-            lastDemoTick = .now
-        } else {
-            guard let worldMap else { return }
-            run(initialWorldMap: worldMap)
-            if phase == .locating { locatingSince = .now }
-        }
+        if isDemo { lastDemoTick = .now }
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -160,6 +215,10 @@ final class NavigationController: ObservableObject {
     }
 
     func navigateToNearest() {
+        if phase == .browsing {
+            beginGuidance(thenRoute: true)
+            return
+        }
         guard phase == .ready || phase == .noRoute || phase == .arrived,
               planner != nil, userPosition() != nil else { return }
         routingGeneration += 1
@@ -172,6 +231,10 @@ final class NavigationController: ObservableObject {
     }
 
     func selectDestination(_ destination: AccessPoint?) {
+        if phase == .browsing || phase == .locating {
+            selectedDestination = destination
+            return
+        }
         guard phase == .ready || phase == .arrived || phase == .noRoute else { return }
         routingGeneration += 1
         isRouting = false
@@ -266,6 +329,10 @@ final class NavigationController: ObservableObject {
         renderer = PathRenderer(scene: arView.scene, map: map)
         phase = .ready
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if routesWhenLocated {
+            routesWhenLocated = false
+            navigateToNearest()
+        }
     }
 
     private var conditions: RouteConditions {

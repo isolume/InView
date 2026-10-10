@@ -4,7 +4,7 @@ import SwiftUI
 struct InViewApp: App {
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            MapScreen()
         }
     }
 }
