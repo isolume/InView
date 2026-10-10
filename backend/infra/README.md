@@ -14,10 +14,13 @@ one `vc2-1c-1gb` instance, no database, no load balancer.
 
    ```sh
    cd backend
-   docker build -t ghcr.io/<your-username>/inview-backend:latest .
    docker login ghcr.io -u <your-username>
-   docker push ghcr.io/<your-username>/inview-backend:latest
+   docker buildx build --platform linux/amd64 -t ghcr.io/<your-username>/inview-backend:latest --push .
    ```
+
+   Vultr's `vc2-1c-1gb` plan is x86_64. Building with a plain `docker build` on an
+   Apple Silicon Mac produces an arm64-only image that the instance can't pull —
+   use `buildx` with `--platform linux/amd64` as above even when building locally.
 
    Make the package public in GitHub (Packages → inview-backend → Package settings
    → Change visibility), or configure a pull secret — the cloud-init script below

@@ -31,7 +31,7 @@ resource "vultr_instance" "backend" {
   label             = var.instance_label
   region            = var.region
   plan              = var.plan
-  os_id             = 1743 # Debian 12 x64
+  os_id             = 1743 # Ubuntu 22.04 x64 on Vultr's current catalog
   ssh_key_ids       = [vultr_ssh_key.deploy.id]
   firewall_group_id = vultr_firewall_group.backend.id
   hostname          = var.instance_label
