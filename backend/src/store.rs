@@ -299,12 +299,19 @@ fn load_analyses(directory: &Path) -> io::Result<BTreeMap<String, Arc<Value>>> {
         let parsed = fs::read(&path)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-        match parsed.and_then(|v| Some((v.get("scan_id")?.as_str()?.to_owned(), v))) {
-            Some((id, value)) => {
-                analyses.insert(id, Arc::new(value));
-            }
-            None => tracing::warn!(path = %path.display(), "Ignoring unreadable scan analysis"),
+        let Some((id, value)) =
+            parsed.and_then(|v| Some((v.get("scan_id")?.as_str()?.to_owned(), v)))
+        else {
+            tracing::warn!(path = %path.display(), "Ignoring unreadable scan analysis");
+            continue;
+        };
+        // Like scans and graphs, an analysis is only trusted at its own hashed filename, so a stale
+        // or copied file can never be served for another scan after a restart.
+        if path.file_stem().and_then(|v| v.to_str()) != Some(scan_filename(&id).as_str()) {
+            tracing::warn!(path = %path.display(), scan_id = %id, "Ignoring misnamed scan analysis");
+            continue;
         }
+        analyses.insert(id, Arc::new(value));
     }
     Ok(analyses)
 }

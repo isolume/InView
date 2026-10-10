@@ -394,3 +394,66 @@ async fn scan_directory_tolerates_graph_subdirectory() {
     ScanStore::open(&dir).unwrap();
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn misnamed_analysis_files_are_ignored_after_restart() {
+    use sha2::{Digest, Sha256};
+    let hashed = |id: &str| format!("{:x}.json", Sha256::digest(id.as_bytes()));
+    let directory = temporary_directory();
+    let state = AppState {
+        scans: ScanStore::open(&directory).unwrap(),
+        ..AppState::default()
+    };
+    let scan = include_bytes!("../examples/scan.json").to_vec();
+    assert_eq!(
+        send(state.clone(), "/scans", "POST", scan.clone()).await.0,
+        StatusCode::CREATED
+    );
+    let mut other: Value = serde_json::from_slice(&scan).unwrap();
+    other["id"] = serde_json::json!("other-room");
+    assert_eq!(
+        send(
+            state.clone(),
+            "/scans",
+            "POST",
+            serde_json::to_vec(&other).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let genuine = serde_json::json!({"schema_version":1,"scan_id":"demo-room","frame":"shared_arkit_session","run":"genuine"});
+    let (status, _) = send(
+        state,
+        "/scans/demo-room/analysis",
+        "PUT",
+        serde_json::to_vec(&genuine).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let analysis_dir = directory.join("analysis");
+    // A stale copy at an arbitrary name, and a demo-room analysis stored under other-room's hash.
+    let impostor = serde_json::json!({"schema_version":1,"scan_id":"demo-room","frame":"shared_arkit_session","run":"impostor"});
+    fs::write(
+        analysis_dir.join("stale-copy.json"),
+        serde_json::to_vec(&impostor).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        analysis_dir.join(hashed("other-room")),
+        serde_json::to_vec(&impostor).unwrap(),
+    )
+    .unwrap();
+
+    let reopened = AppState {
+        scans: ScanStore::open(&directory).unwrap(),
+        ..AppState::default()
+    };
+    let (status, stored) = send(reopened.clone(), "/scans/demo-room/analysis", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(stored["run"], "genuine");
+    let (status, _) = send(reopened, "/scans/other-room/analysis", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    fs::remove_dir_all(directory).unwrap();
+}
