@@ -90,6 +90,10 @@ struct VenueModelView: UIViewRepresentable {
 }
 
 /// The map as a floor plan or a 3D model, with a legend.
+///
+/// The 3D model is a RealityKit view, and only one RealityKit or AR view should be alive at a time, so it is
+/// created only while 3D is picked, and taken down whenever `isModelAllowed` is false (for example while
+/// the scan or navigation camera is up over this panel).
 struct MapPanel: View {
     enum Style: String, CaseIterable {
         case plan = "Plan"
@@ -100,6 +104,8 @@ struct MapPanel: View {
     var height: CGFloat = 300
     /// Plan only: tapping reports the floor point under the finger.
     var onTap: ((SIMD2<Float>) -> Void)?
+    /// False while another AR or RealityKit view is on screen; the 3D model then gives way to a placeholder.
+    var isModelAllowed = true
     @State private var style: Style = .plan
 
     var body: some View {
@@ -113,7 +119,7 @@ struct MapPanel: View {
                 switch style {
                 case .plan:
                     MapPreviewView(map: map, onTap: onTap)
-                case .model:
+                case .model where isModelAllowed:
                     VenueModelView(map: map)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(alignment: .bottomTrailing) {
@@ -123,6 +129,14 @@ struct MapPanel: View {
                                 .padding(.vertical, 4)
                                 .background(.regularMaterial, in: Capsule())
                                 .padding(8)
+                        }
+                case .model:
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                        .overlay {
+                            Label("3D view paused", systemImage: "cube.transparent")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                 }
             }

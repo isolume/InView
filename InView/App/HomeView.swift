@@ -47,7 +47,8 @@ struct HomeView: View {
                                 }
                             }
                             VStack(alignment: .leading, spacing: 12) {
-                                MapPanel(map: savedMap, height: 260)
+                                // The scan and navigate covers each run their own AR view; the 3D model must not stay alive under them.
+                                MapPanel(map: savedMap, height: 260, isModelAllowed: mode == nil)
                                 Text(summary(of: savedMap)).font(.footnote).foregroundStyle(.secondary)
                             }
                             .card()
