@@ -283,7 +283,7 @@ struct ScanView: View {
                 .disabled(controller.isContinuous && !controller.canFinishContinuousScan)
             }
             .controlSize(.large)
-            Text(controller.scanNotice ?? controller.trackingNotice ?? (controller.isContinuous
+            Text(controller.scanNotice ?? controller.trackingNotice ?? controller.ceilingNotice ?? (controller.isContinuous
                  ? "Move slowly and include the floor as you scan."
                  : "Include the floor as you scan. Long scans save sections automatically."))
                 .font(.footnote)
@@ -489,6 +489,7 @@ private struct MapReviewDetailsView: View {
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
+                    if controller.isContinuous { ceilingSection }
                     if !controller.unconfirmed.isEmpty {
                         Section {
                             ForEach(controller.unconfirmed) { sighting in
@@ -659,6 +660,28 @@ private struct MapReviewDetailsView: View {
                 saveError = error.localizedDescription
             }
             isSaving = false
+        }
+    }
+
+    /// What LiDAR captured above the floor, so a volunteer can rescan before saving.
+    private var ceilingSection: some View {
+        Section {
+            if let ceiling = controller.ceiling {
+                LabeledContent("Height", value: String(format: "%.1f m", ceiling.heightM))
+                if let coverage = ceiling.floorCoverage {
+                    LabeledContent("Captured", value: "\(Int((coverage * 100).rounded()))% of the floor")
+                } else {
+                    LabeledContent("Captured", value: String(format: "%.0f m²", ceiling.areaM2))
+                }
+            } else {
+                Text("Not captured").foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Ceiling")
+        } footer: {
+            Text(controller.ceiling == nil
+                 ? "Tilt the phone up as you scan so LiDAR can reach the ceiling."
+                 : "Measured by LiDAR. Tilt the phone up over areas without ceiling to fill them in.")
         }
     }
 

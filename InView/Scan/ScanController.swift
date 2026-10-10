@@ -39,6 +39,10 @@ final class ScanController: ObservableObject {
     @Published private(set) var sceneStage: SceneStage = .preparing
     @Published private(set) var scanNotice: String?
     @Published private(set) var trackingNotice: String?
+    /// Asks the volunteer to tilt up when the area around them has no captured ceiling yet.
+    @Published private(set) var ceilingNotice: String?
+    /// Measured from ARKit's labeled mesh when a continuous scan finishes.
+    @Published private(set) var ceiling: CeilingMeasurement?
     @Published private(set) var captureView: RoomCaptureView?
     @Published private(set) var streamingView: ARView?
     @Published private(set) var streamStatus: StreamingCaptureStatus?
@@ -197,7 +201,7 @@ final class ScanController: ObservableObject {
     private var reportTask: Task<Void, Never>?
 
     init() {
-        rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
+        rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous, reconstructsMesh: isContinuous)
         let supported = isContinuous
             ? ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
             : RoomCaptureSession.isSupported
@@ -227,6 +231,10 @@ final class ScanController: ObservableObject {
         hasStarted = true
         isActive = true
         if isContinuous {
+            rawCapture.onCeilingHint = { [weak self] shown in
+                let notice = shown ? "Tilt the phone up now and then to capture the ceiling." : nil
+                if self?.ceilingNotice != notice { self?.ceilingNotice = notice }
+            }
             rawCapture.prepare(session: session)
             let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
             view.session = session
@@ -640,6 +648,8 @@ final class ScanController: ObservableObject {
         self.worldMap = worldMap
         startViewTimer?.invalidate()
         startViewTimer = nil
+        // The latest mesh, after ARKit's own corrections, before the session stops.
+        rawCapture.captureReconstructedMesh(from: session)
         session.pause()
         captureView?.delegate = nil
         captureView?.captureSession.delegate = nil
@@ -679,13 +689,27 @@ final class ScanController: ObservableObject {
                 if let streamingCapture {
                     self.streamStatus = try await streamingCapture.finishCapture()
                 }
-                let raw = await self.rawCapture.finishSnapshot()
+                let captured = await self.rawCapture.finishSnapshot()
+                var raw = try await ScanWork.run { try RawScanCapture.reconstruct(captured) }
+                // The mesh also seeds the splat's starting point cloud.
                 self.splatCapture.finish(meshes: raw.meshes)
                 try Task.checkCancellation()
-                self.draft = try await ScanWork.run {
-                    MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
-                                     observed: raw.observedFootprints ?? [])
+                let welded = raw
+                let built = try await ScanWork.run {
+                    let map = MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
+                                               observed: welded.observedFootprints ?? [])
+                    return (map, welded.meshes.first.flatMap { CeilingMeasurement.measure($0, floorY: map.floorY) })
                 }
+                self.draft = built.0
+                self.ceiling = built.1
+                if let ceiling = built.1, case .object(var metadata) = raw.metadata {
+                    metadata["ceiling_height_m"] = .number(Double(ceiling.heightM))
+                    metadata["ceiling_elevation"] = .number(Double(ceiling.elevation))
+                    metadata["ceiling_area_m2"] = .number(Double(ceiling.areaM2))
+                    metadata["ceiling_floor_coverage"] = ceiling.floorCoverage.map { .number(Double($0)) } ?? .null
+                    raw.metadata = .object(metadata)
+                }
+                Log.scan.notice("ceiling: \(built.1.map { String(format: "%.2f m high over %.1f m²", $0.heightM, $0.areaM2) } ?? "not captured", privacy: .public)")
                 let payload = ExportPayload(rooms: rooms, recovered: recovered, raw: raw, scanID: scanID, floor: floor)
                 let prepared = try await ScanWork.run {
                     let rawData = try ScanExporter.rawSnapshotData(payload.raw)
@@ -742,7 +766,9 @@ final class ScanController: ObservableObject {
                 session.pause()
                 session = ARSession()
                 detector = AccessibilityDetector()
-                rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
+                rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous, reconstructsMesh: isContinuous)
+                ceilingNotice = nil
+                ceiling = nil
                 scanID = UUID()
                 // The next floor is its own scan, so its splat photos belong in its own folder.
                 splatCapture = SplatCapture(scanID: scanID)

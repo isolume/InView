@@ -12,7 +12,14 @@ tracking behavior, memory, heat, and the accuracy of detected loop closures.
 ## Capture and transport
 
 - One shared AR session supplies camera tracking, scene depth, and compact floor
-  and obstacle measurements. Full on-device mesh reconstruction stays disabled.
+  and obstacle measurements. ARKit's classified scene reconstruction also runs:
+  it fuses every LiDAR frame into one mesh, so surfaces seen only at grazing
+  angles, like a ceiling while the phone faces forward, still fill in. The mesh
+  is copied once, when the scan finishes, never during capture.
+- While scanning, the app checks ARKit's ceiling-labeled faces near the volunteer
+  every 1.5 seconds and asks them to tilt up when the area around them has none.
+  After two seconds of looking up without finding a ceiling (too high for LiDAR),
+  it stays quiet until they move 3 m on.
 - At most one keyframe is copied, encoded, and written at a time. Camera images
   remain in the depth sensor's orientation. JPEG dimensions and camera calibration
   are scaled together; depth uses the same normalized image coordinates.
@@ -34,8 +41,27 @@ tracking behavior, memory, heat, and the accuracy of detected loop closures.
   JSON. The uploader reuses the established stream between samples and reconciles
   again on explicit retry or Finish.
 - Connectivity does not block capture. Without a server, samples remain on the
-  phone and a compact measured map can be reviewed. No complete depth model is
-  reconstructed locally by this path.
+  phone and a compact measured map can be reviewed, with ARKit's mesh as its 3D
+  model. The backend's depth reconstruction is separate and does not use it.
+
+## On-device mesh and ceiling
+
+At Finish, the mesh anchors' native buffers are copied on the main actor; decoding
+happens on a background task. `ReconstructedMesh` merges the anchors into one mesh in map
+coordinates, welding vertices in 2 cm cells (4, 8, then 16 cm until it fits 150,000
+triangles). Faces keep ARKit's label (wall, floor, ceiling, table, seat, door,
+window) and are wound towards ARKit's normals, the side the sensor saw. The 3D map
+draws it single-sided, like a dollhouse: from above, near walls and the ceiling fall
+away. Ceiling faces are also left out of the drawing and of floor cutaways. With
+several floor levels, each level's cutaway keeps only its own faces. Unlabeled meshes are still left
+out of cutaways. The mesh is display geometry only; routing still uses measured
+floor coverage.
+
+`CeilingMeasurement` compares ceiling and floor faces on a 25 cm plan grid. Review
+shows the median ceiling height and how much of the floor has ceiling captured above
+it; the capture metadata records both. The welded mesh also seeds the splat's
+starting point cloud. The raw archive keeps the native mesh buffers; the welded mesh
+is in the capture bundle.
 - Finish seals the local capture before contacting the server. A failed upload
   remains retryable. **Scan processing → Saved scans** can explicitly resume a
   saved stream and review its model after an app restart. A saved stream normally

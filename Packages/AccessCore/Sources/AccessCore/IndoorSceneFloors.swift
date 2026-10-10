@@ -67,6 +67,16 @@ public enum IndoorSceneFloors {
             result.surfaces = []
             return result
         }
+        // A labeled mesh says which faces are ceiling, so it can stay. On a single level, the
+        // usual scan, it's kept as is and renderers leave its ceiling out.
+        result.meshes = scene.meshes.compactMap { mesh in
+            guard let labels = mesh.classifications, labels.count == mesh.triangles.count else { return nil }
+            if levels.count == 1 { return mesh }
+            let key = "\(scene.sourceScanID)|\(mesh.sourceID)|\(mesh.triangles.count)|\(levels.map(\.elevation))|\(selectedIndex)|\(includeLowerFloors)"
+            return meshCuts.value(for: key) {
+                cut(mesh, labels: labels, levels: levels, selectedIndex: selectedIndex, includeLowerFloors: includeLowerFloors)
+            }
+        }
         result.floorID = levels[selectedIndex].id
 
         func isVisible(_ elevation: Float) -> Bool {
@@ -95,11 +105,61 @@ public enum IndoorSceneFloors {
         return result
     }
 
+    /// The faces of a labeled mesh on the selected level, without its ceiling. A face belongs to
+    /// the highest level at or just below its lowest corner, so the tops of a room's walls stay
+    /// with the room rather than the floor above.
+    private static func cut(_ mesh: SceneMesh, labels: [String], levels: [IndoorSceneFloor],
+                            selectedIndex: Int, includeLowerFloors: Bool) -> SceneMesh? {
+        guard let first = levels.first, let last = levels.last else { return nil }
+        var remap = [Int](repeating: -1, count: mesh.vertices.count)
+        var vertices: [[Float]] = []
+        var triangles: [[Int]] = []
+        var classifications: [String] = []
+        for (index, triangle) in mesh.triangles.enumerated() where labels[index] != ReconstructedMesh.ceiling {
+            guard triangle.count == 3, triangle.allSatisfy({ mesh.vertices.indices.contains($0) && mesh.vertices[$0].count == 3 }),
+                  let base = triangle.map({ mesh.vertices[$0][1] }).min(), base.isFinite,
+                  base >= first.elevation - roomTolerance, base < last.elevation + topLevelAllowance else { continue }
+            let level = levels.lastIndex { $0.elevation <= base + meshLevelTolerance } ?? 0
+            guard includeLowerFloors ? level <= selectedIndex : level == selectedIndex else { continue }
+            triangles.append(triangle.map { vertex in
+                if remap[vertex] < 0 {
+                    remap[vertex] = vertices.count
+                    vertices.append(mesh.vertices[vertex])
+                }
+                return remap[vertex]
+            })
+            classifications.append(labels[index])
+        }
+        guard !triangles.isEmpty else { return nil }
+        return SceneMesh(sourceID: mesh.sourceID, vertices: vertices, triangles: triangles, classifications: classifications)
+    }
+
+    /// SwiftUI rebuilds floor content on every update; a cut is made once per floor choice.
+    private static let meshCuts = MeshCutCache()
+
+    private final class MeshCutCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entries: [String: SceneMesh?] = [:]
+
+        func value(for key: String, make: () -> SceneMesh?) -> SceneMesh? {
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = entries[key] { return cached }
+            // A handful of floors per open map; dropping everything bounds memory across maps.
+            if entries.count >= 8 { entries.removeAll() }
+            let value = make()
+            entries[key] = value
+            return value
+        }
+    }
+
     private struct FloorMeasurement {
         var elevation: Float
         var area: Double
     }
 
+    /// Floors in one reconstructed mesh sit within a few centimeters of their level.
+    private static let meshLevelTolerance: Float = 0.15
     private static let roomTolerance: Float = 0.5
     private static let minimumLevelSeparation: Float = 2
     // There is no next measured floor above the top level. This bounds stray geometry while

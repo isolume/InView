@@ -127,3 +127,48 @@ private func floorScene(_ surfaces: [SceneSurface], objects: [SceneObject] = [])
     #expect(result.objects.isEmpty)
     #expect(result.surfaces.isEmpty)
 }
+
+/// One triangle per entry: three corners at `base`, `base`, `top`, so its lowest corner is `base`.
+private func labeledMesh(_ faces: [(label: String, base: Float, top: Float)]) -> SceneMesh {
+    var vertices: [[Float]] = []
+    var triangles: [[Int]] = []
+    for (index, face) in faces.enumerated() {
+        let x = Float(index)
+        vertices.append(contentsOf: [[x, face.base, 0], [x + 1, face.base, 0], [x, face.top, 1]])
+        triangles.append([index * 3, index * 3 + 1, index * 3 + 2])
+    }
+    return SceneMesh(sourceID: ReconstructedMesh.sourceID, vertices: vertices, triangles: triangles,
+                     classifications: faces.map(\.label))
+}
+
+@Test func singleLevelCutawaysKeepALabeledMeshUnchanged() throws {
+    var source = floorScene([floorSurface("room", elevation: 0)])
+    let mesh = labeledMesh([("floor", 0, 0), ("wall", 0, 2.6), ("ceiling", 2.7, 2.7)])
+    source.meshes = [mesh]
+    let selected = try #require(IndoorSceneFloors.floors(in: source).first)
+    // Renderers leave the ceiling out; keeping the same mesh avoids recutting it on every update.
+    #expect(IndoorSceneFloors.scene(source, on: selected).meshes == [mesh])
+}
+
+@Test func multilevelCutawaysKeepEachLevelsLabeledFacesWithoutItsCeiling() throws {
+    var source = floorScene([floorSurface("ground", elevation: 0), floorSurface("upper", elevation: 3)])
+    source.meshes = [labeledMesh([
+        ("floor", 0, 0), ("wall", 0.1, 2.6),
+        // The top of a ground-floor wall stays downstairs; its ceiling goes.
+        ("wall", 2.0, 2.8), ("ceiling", 2.8, 2.8),
+        ("floor", 3, 3), ("seat", 3.05, 3.5),
+    ])]
+    let floors = IndoorSceneFloors.floors(in: source)
+    #expect(floors.count == 2)
+    let ground = try #require(IndoorSceneFloors.scene(source, on: floors[0]).meshes.first)
+    #expect(ground.classifications == ["floor", "wall", "wall"])
+    #expect(ground.vertices.count == 9)
+    #expect(ground.vertices.allSatisfy { $0[1] < 3 })
+    let upper = try #require(IndoorSceneFloors.scene(source, on: floors[1]).meshes.first)
+    #expect(upper.classifications == ["floor", "seat"])
+    #expect(upper.triangles == [[0, 1, 2], [3, 4, 5]])
+    let both = try #require(IndoorSceneFloors.scene(source, on: floors[1], includeLowerFloors: true).meshes.first)
+    #expect(both.classifications == ["floor", "wall", "wall", "floor", "seat"])
+    // Repeated SwiftUI updates reuse the cut.
+    #expect(IndoorSceneFloors.scene(source, on: floors[1]).meshes.first == upper)
+}

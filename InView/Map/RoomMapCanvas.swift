@@ -100,6 +100,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private var flat = false
     private var lastResetID = 0
     private var detailsBuilt = false
+    /// ARKit's labeled mesh is the model: its walls replace the shell's, and floors sit beneath it.
+    private var meshModel = false
     private var shellConfiguration = ""
     private var bottomInset: CGFloat = 0
     private var lower = SIMD3<Float>(repeating: -0.5)
@@ -254,6 +256,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             details.childNodes.forEach { $0.removeFromParentNode() }
             detailsBuilt = false
             shellConfiguration = ""
+            meshModel = source.meshes.contains { $0.sourceID == ReconstructedMesh.sourceID }
             buildObjects(source)
             buildLabels(source)
             resetOrbit()
@@ -273,7 +276,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                          floorY: floorY, destination: destination, destinationTitle: destinationTitle)
         // Reconstructed stream geometry is the model, including when compact floor measurements exist.
         let streamModel = source.meshes.contains { $0.sourceID == "stream-depth-fusion" }
-        details.isHidden = !(streamModel || showsDetails || (source.objects.isEmpty && source.surfaces.isEmpty))
+        details.isHidden = !(streamModel || meshModel || showsDetails || (source.objects.isEmpty && source.surfaces.isEmpty))
         if !details.isHidden && !detailsBuilt { buildDetails(source); detailsBuilt = true }
         fitBounds(source)
         updateShellIfNeeded()
@@ -495,14 +498,14 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private func updateShellIfNeeded() {
         guard let source else { return }
         let key = source.surfaces.filter { $0.kind == "wall" }.map { "\($0.sourceID):\(wallHeight($0))" }.joined(separator: "|")
-        let configuration = "\(fullWalls)-\(flat)-\(key)"
+        let configuration = "\(fullWalls)-\(flat)-\(meshModel)-\(key)"
         guard configuration != shellConfiguration else { return }
         shellConfiguration = configuration
         shell.childNodes.forEach { $0.removeFromParentNode() }
         for floor in floorRegions { buildMeasuredFloor(floor.region, elevation: floor.elevation) }
         for surface in source.surfaces {
             if surface.kind == "floor", floorRegions.isEmpty { buildFloor(surface) }
-            else if surface.kind == "wall" { buildWall(surface, source: source) }
+            else if surface.kind == "wall", !meshModel { buildWall(surface, source: source) }
         }
         if floorRegions.isEmpty, !source.surfaces.contains(where: { $0.kind == "floor" }) {
             let size = upper - lower
@@ -568,7 +571,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         geometry.materials = [matte("#eef0eb")]
         let node = SCNNode(geometry: geometry)
         node.simdEulerAngles.x = .pi / 2
-        node.simdPosition.y = elevation - 0.09
+        node.simdPosition.y = elevation - 0.09 - floorDrop
         node.categoryBitMask = 4
         shell.addChildNode(node)
     }
@@ -587,7 +590,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         var slabSize = measured
         slabSize[normalAxis] = 0.18
         let slab = box(slabSize, color: "#f7f5ef", radius: 0.018)
-        slab.simdPosition[normalAxis] = -sign * 0.09
+        slab.simdPosition[normalAxis] = -sign * (0.09 + floorDrop)
         slab.categoryBitMask = 4
         parent.addChildNode(slab)
         shell.addChildNode(parent)
@@ -607,10 +610,13 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         shape.materials = [matte("#f7f5ef")]
         let slab = SCNNode(geometry: shape)
         slab.eulerAngles.x = -.pi / 2
-        slab.simdPosition = SIMD3(0, height - 0.09, 0)
+        slab.simdPosition = SIMD3(0, height - 0.09 - floorDrop, 0)
         slab.categoryBitMask = 4
         shell.addChildNode(slab)
     }
+
+    /// A measured floor slab sits just under a mesh's own floor, filling its holes without flickering through it.
+    private var floorDrop: Float { meshModel ? 0.03 : 0 }
 
     private struct WallRectangle {
         var minimum: SIMD2<Float>
@@ -698,6 +704,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func buildDetails(_ source: ProcessedScene) {
+        if let mesh = source.meshes.first(where: { $0.sourceID == ReconstructedMesh.sourceID }) {
+            buildReconstructedMesh(mesh)
+            return
+        }
         if let mesh = source.meshes.first(where: { $0.sourceID == "stream-depth-fusion" }) {
             // Keep the indexed measured surface intact; skipping arbitrary triangles leaves holes.
             let positions = mesh.vertices.compactMap(vector)
@@ -759,6 +769,51 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             point.castsShadow = false
             details.addChildNode(point)
         }
+    }
+
+    /// ARKit's fused mesh, drawn single-sided like a dollhouse: its faces point to the side the
+    /// sensor saw, so from above the near walls fall away and the room stays open. Ceilings are left
+    /// out, and each kind of surface gets its own quiet material.
+    private func buildReconstructedMesh(_ mesh: SceneMesh) {
+        let positions = mesh.vertices.compactMap(vector)
+        guard positions.count == mesh.vertices.count else { return }
+        let labels = mesh.classifications.flatMap { $0.count == mesh.triangles.count ? $0 : nil }
+        let groups: [(labels: Set<String>, color: String)] = [
+            ([ReconstructedMesh.floor], "#eef0eb"),
+            (["wall"], "#dfe2dd"),
+            (["door", "window"], "#bcc7c8"),
+            (["table", "seat"], "#c4cac8"),
+        ]
+        var indices = [[UInt32]](repeating: [], count: groups.count + 1)
+        var normals = [SIMD3<Float>](repeating: .zero, count: positions.count)
+        for (index, triangle) in mesh.triangles.enumerated() {
+            let label = labels?[index] ?? ReconstructedMesh.unlabeled
+            guard label != ReconstructedMesh.ceiling, triangle.count == 3,
+                  triangle.allSatisfy({ positions.indices.contains($0) }) else { continue }
+            let a = positions[triangle[0]], b = positions[triangle[1]], c = positions[triangle[2]]
+            let normal = simd_cross(b - a, c - a)
+            for vertex in triangle { normals[vertex] += normal }
+            let group = groups.firstIndex { $0.labels.contains(label) } ?? groups.count
+            indices[group].append(contentsOf: triangle.map(UInt32.init))
+        }
+        var elements: [SCNGeometryElement] = []
+        var materials: [SCNMaterial] = []
+        for (group, faces) in indices.enumerated() where !faces.isEmpty {
+            elements.append(SCNGeometryElement(indices: faces, primitiveType: .triangles))
+            let material = matte(group < groups.count ? groups[group].color : "#d3d8d4")
+            material.isDoubleSided = false
+            materials.append(material)
+        }
+        guard !elements.isEmpty else { return }
+        let directions = normals.map { simd_length_squared($0) > 1e-12 ? simd_normalize($0) : SIMD3<Float>(0, 1, 0) }
+        let geometry = SCNGeometry(sources: [SCNGeometrySource(vertices: positions.map(scn)),
+                                             SCNGeometrySource(normals: directions.map(scn))],
+                                   elements: elements)
+        geometry.materials = materials
+        let node = SCNNode(geometry: geometry)
+        node.categoryBitMask = 8
+        node.castsShadow = false
+        details.addChildNode(node)
     }
 
     private func updateNavigation(routePoints: [SIMD2<Float>], userPosition: SIMD2<Float>?,
