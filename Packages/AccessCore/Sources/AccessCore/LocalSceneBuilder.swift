@@ -6,14 +6,29 @@ public enum LocalSceneBuilder {
         try capture.validate()
         let options = SceneProcessingOptions()
         var warnings: [String] = []
-        let objects = try capture.objects.map { object in
+        var objects: [SceneObject] = []
+        objects.reserveCapacity(capture.objects.count)
+        for object in capture.objects {
             let key = modelKey(for: object)
-            let corners = try (0..<8).map { corner in
-                try mapPoint((0..<3).map { axis in
-                    object.dimensionsM[axis] * (corner & (1 << axis) == 0 ? -0.5 : 0.5)
-                }, using: object.mapFromObject)
+            var corners: [[Float]] = []
+            corners.reserveCapacity(8)
+            for corner in 0..<8 {
+                let local: [Float] = [
+                    object.dimensionsM[0] * (corner & 1 == 0 ? -0.5 : 0.5),
+                    object.dimensionsM[1] * (corner & 2 == 0 ? -0.5 : 0.5),
+                    object.dimensionsM[2] * (corner & 4 == 0 ? -0.5 : 0.5),
+                ]
+                corners.append(try mapPoint(local, using: object.mapFromObject))
             }
-            return SceneObject(
+            var minimum: [Float] = [Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude]
+            var maximum: [Float] = [-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude]
+            for corner in corners {
+                for axis in 0..<3 {
+                    minimum[axis] = min(minimum[axis], corner[axis])
+                    maximum[axis] = max(maximum[axis], corner[axis])
+                }
+            }
+            objects.append(SceneObject(
                 sourceID: object.id,
                 sourceCategory: object.category,
                 sourceConfidence: object.confidence,
@@ -21,12 +36,9 @@ public enum LocalSceneBuilder {
                 mapFromObject: object.mapFromObject,
                 measuredDimensionsM: object.dimensionsM,
                 obstacleCorners: corners,
-                obstacleBounds: SceneBounds(
-                    min: (0..<3).map { axis in corners.map { $0[axis] }.min()! },
-                    max: (0..<3).map { axis in corners.map { $0[axis] }.max()! }
-                ),
+                obstacleBounds: SceneBounds(min: minimum, max: maximum),
                 parts: parts(for: key, dimensions: object.dimensionsM)
-            )
+            ))
         }
         if objects.contains(where: { $0.modelKey == "bounds_v1" }) {
             warnings.append("Some items are shown using their measured shape.")
@@ -138,11 +150,11 @@ public enum LocalSceneBuilder {
     }
 
     private static func mapPoint(_ point: [Double], using matrix: [Float]) throws -> [Float] {
-        let result = (0..<3).map { row in
-            Double(matrix[row]) * point[0] + Double(matrix[4 + row]) * point[1]
-                + Double(matrix[8 + row]) * point[2] + Double(matrix[12 + row])
-        }.map(Float.init)
-        guard result.allSatisfy(\.isFinite) else { throw invalidMeasurements() }
+        let x = Double(matrix[0]) * point[0] + Double(matrix[4]) * point[1] + Double(matrix[8]) * point[2] + Double(matrix[12])
+        let y = Double(matrix[1]) * point[0] + Double(matrix[5]) * point[1] + Double(matrix[9]) * point[2] + Double(matrix[13])
+        let z = Double(matrix[2]) * point[0] + Double(matrix[6]) * point[1] + Double(matrix[10]) * point[2] + Double(matrix[14])
+        let result: [Float] = [Float(x), Float(y), Float(z)]
+        guard result.allSatisfy({ $0.isFinite }) else { throw invalidMeasurements() }
         return result
     }
 

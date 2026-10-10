@@ -28,6 +28,7 @@ final class ScanController: ObservableObject {
     }
     @Published private(set) var report: AccessibilityReport?
     @Published private(set) var scene: ProcessedScene?
+    @Published private(set) var rawSnapshot: RawScanSnapshot?
     @Published private(set) var sceneError: String?
     @Published private(set) var isProcessingScene = false
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
@@ -249,7 +250,13 @@ final class ScanController: ObservableObject {
         session.pause()
         draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints(), spottedStairs: detector.stairsFootprints())
         unconfirmed = detector.unconfirmedSightings()
-        prepareScene(raw: rawCapture.snapshot())
+        Task { [weak self] in
+            guard let self else { return }
+            let raw = await rawCapture.finalizedSnapshot()
+            guard phase == .savingWorldMap else { return }
+            rawSnapshot = raw
+            prepareScene(raw: raw)
+        }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
@@ -258,10 +265,16 @@ final class ScanController: ObservableObject {
         let rooms: [CapturedRoom]
         let raw: RawScanSnapshot
         let scanID: UUID
+        let worldMap: ARWorldMap
     }
 
     private func prepareScene(raw: RawScanSnapshot) {
-        let payload = ExportPayload(rooms: rooms, raw: raw, scanID: scanID)
+        guard let worldMap else {
+            sceneError = "The AR map was not saved."
+            phase = .review
+            return
+        }
+        let payload = ExportPayload(rooms: rooms, raw: raw, scanID: scanID, worldMap: worldMap)
         sceneError = nil
         phase = .processingScene
         isProcessingScene = true
@@ -273,9 +286,13 @@ final class ScanController: ObservableObject {
                     let roomData = try ScanExporter.nativeRoomPlanData(rooms: payload.rooms)
                     // Originals survive even if their portable export is too large or unsupported.
                     try CaptureStore.stageOriginals(id: payload.scanID.uuidString, rawData: rawData, roomPlanData: roomData)
-                    let bundle = try ScanExporter.bundle(rooms: payload.rooms, raw: payload.raw,
-                                                         scanID: payload.scanID, mapID: payload.scanID)
+                    let bundle = try ScanExporter.bundle(
+                        rooms: payload.rooms, raw: payload.raw, scanID: payload.scanID, mapID: payload.scanID,
+                        worldMapAsset: "worldmap.archive"
+                    )
                     try CaptureStore.stage(bundle, rawData: rawData, roomPlanData: roomData)
+                    try CaptureStore.stageWorldMap(payload.worldMap, id: payload.scanID.uuidString)
+                    try CaptureStore.stageColorKeyframes(payload.raw.colorKeyframes, id: payload.scanID.uuidString)
                     return (bundle, try LocalSceneBuilder.make(from: bundle))
                 }.value
                 try Task.checkCancellation()

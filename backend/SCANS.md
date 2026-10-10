@@ -120,22 +120,34 @@ This envelope is **not** Apple's native `CapturedRoom` JSON. The app adapter in
 `AccessNav/Scan/ScanExporter.swift` exports RoomPlan dimensions/transforms/categories
 into these records and retains the native export in `roomplan_original`.
 `RawScanCapture.swift` polls the same session without replacing its delegate,
-copies the latest mesh snapshot, and selects up to six calibrated depth keyframes.
+copies the latest classified mesh snapshot, and selects up to six calibrated depth keyframes.
+For each selected keyframe it retains original raw `sceneDepth`, confidence bytes, and,
+when ARKit provides it, original `smoothedSceneDepth` bytes as separate local native buffers.
 These records preserve the shared ARKit frame; no export origin reset is applied.
 Overlapping sections use the latest component with the same RoomPlan identifier.
 
-The app archives native RoomPlan JSON and copied mesh/depth bytes locally before
-upload. If a bundle exceeds the 32 MiB limit, optional whole depth/mesh layers remain
+The app archives native RoomPlan JSON, the portable `capture.json`, copied mesh/depth
+bytes, and `worldmap.archive` in the same `Documents/Captures/<scan-id>/` directory before
+upload. `worldmap.archive` is an Apple-only ARWorldMap relocalization asset and is referenced
+from `metadata.assets.world_map`. The current JSON upload does not send binary sidecars yet.
+If a bundle exceeds the 32 MiB limit, optional whole depth/mesh layers remain
 local and their omission is recorded in metadata. Native RoomPlan/semantic data is
 never silently truncated; if that layer alone is too large, upload reports an error.
 The saved active capture identifies its cached scene, so a failed new scan cannot
 replace a previously saved room view. Network failures support retry; the saved
 source can restore the backend's in-memory capture after a restart.
 
-`color_asset` and other asset references are opaque strings. This API does not fetch,
-decode, upload, or durably store image/world-map/USDZ binaries. RGB coloring is not
-implemented. The current 32 MiB request limit is suitable for small prototype bundles;
-large captures need a separate binary-asset storage/upload design.
+`color_asset` and other asset references are opaque strings. The native raw snapshot now retains
+bounded adaptive JPEG keyframes paired with calibrated depth-frame IDs; sidecar files use
+`<frame-id>.color.jpg` and are listed in `metadata.assets.color_keyframes`. The local LiDAR
+review can render these as colorized points. This JSON API does not yet fetch, decode, upload,
+or durably store image/world-map/USDZ binaries. The current 32 MiB request limit is suitable for small prototype bundles.
+
+The iOS capture store can now produce `<scan-id>.inviewscan.tar`: a sequential TAR containing
+that scan's `capture.json`, RoomPlan original, raw depth/mesh snapshot, derived scene when
+available, and `worldmap.archive`. The existing JSON endpoint does not consume this archive yet;
+the next backend endpoint must validate/extract it, retain the immutable original assets, and
+then pass `capture.json` through the current normalization path.
 
 Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/videos/play/wwdc2023/10192/),
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).

@@ -150,10 +150,13 @@ final class NavigationController: ObservableObject {
         return SIMD2(translation.x, translation.z)
     }
 
-    func startFromScanOrigin() {
-        guard phase == .locating else { return }
-        run(initialWorldMap: nil)
-        didLocate()
+    /// Restarts ARKit with the saved map. We never reinterpret an arbitrary new AR origin as the
+    /// saved building frame: routes are valid only after ARKit genuinely relocalizes.
+    func retryLocalization() {
+        guard phase == .locating, let worldMap else { return }
+        isRelocalizationSlow = false
+        locatingSince = .now
+        run(initialWorldMap: worldMap)
     }
 
     func navigateToNearest() {

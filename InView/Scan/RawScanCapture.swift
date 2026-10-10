@@ -3,19 +3,31 @@ import ARKit
 import CoreVideo
 import Foundation
 import Metal
+import UIKit
 import simd
 
 /// A copied snapshot, independent of ARKit's mutable Metal and pixel buffers.
-struct RawScanSnapshot: Codable {
+struct RawScanSnapshot: Codable, Sendable {
     var meshes: [CaptureMesh]
     var frames: [CaptureDepthFrame]
     var meshBuffers: [RawMeshBuffers]
     var depthBuffers: [RawDepthBuffers]
+    /// Adaptive RGB keyframes are tied to a calibrated depth-frame ID and encoded off the AR callback.
+    var colorKeyframes: [RawColorKeyframe]
     var metadata: JSONValue
 }
 
+struct RawColorKeyframe: Codable, Sendable {
+    var frameID: String
+    var width: Int
+    var height: Int
+    var jpeg: Data
+
+    var filename: String { "\(frameID).color.jpg" }
+}
+
 /// Native bytes stay local even when their portable JSON layer exceeds the upload limit.
-struct RawMeshBuffers: Codable {
+struct RawMeshBuffers: Codable, Sendable {
     var id: String
     var mapFromAnchor: [Float]
     var vertices: Data
@@ -36,7 +48,10 @@ struct RawMeshBuffers: Codable {
     var classificationStride: Int?
 }
 
-struct RawDepthBuffers: Codable {
+/// Full-fidelity depth buffers retained locally. `CaptureDepthFrame` remains the bounded portable
+/// layer; these original bytes are for export/backend reconstruction and must remain in the same
+/// shared ARKit session frame as the RoomPlan result.
+struct RawDepthBuffers: Codable, Sendable {
     var id: String
     var width: Int
     var height: Int
@@ -45,6 +60,12 @@ struct RawDepthBuffers: Codable {
     var depth: Data
     var confidenceBytesPerRow: Int?
     var confidence: Data?
+    /// ARKit's filtered depth, retained separately so backend processing never has to infer it.
+    var smoothedWidth: Int?
+    var smoothedHeight: Int?
+    var smoothedBytesPerRow: Int?
+    var smoothedPixelFormat: UInt32?
+    var smoothedDepth: Data?
 }
 
 /// Polls the shared RoomPlan session; it never replaces its ARSessionDelegate.
@@ -56,6 +77,8 @@ final class RawScanCapture {
     private var meshBuffers: [RawMeshBuffers] = []
     private var frames: [CaptureDepthFrame] = []
     private var depthBuffers: [RawDepthBuffers] = []
+    private var colorKeyframes: [RawColorKeyframe] = []
+    private var colorTask: Task<Void, Never>?
     private var lastDepthPose: simd_float4x4?
     private var lastDepthTimestamp: TimeInterval?
     private var meshReadFailures = 0
@@ -114,9 +137,15 @@ final class RawScanCapture {
         session = nil
     }
 
+    func finalizedSnapshot() async -> RawScanSnapshot {
+        await colorTask?.value
+        return snapshot()
+    }
+
     func snapshot() -> RawScanSnapshot {
         RawScanSnapshot(
             meshes: meshes, frames: frames, meshBuffers: meshBuffers, depthBuffers: depthBuffers,
+            colorKeyframes: colorKeyframes,
             metadata: .object([
                 "status": .string("bounded_keyframes_and_latest_mesh_snapshot"),
                 "mesh_requested": .bool(meshEnabled),
@@ -130,8 +159,11 @@ final class RawScanCapture {
                 "mesh_read_failures": .number(Double(meshReadFailures)),
                 "depth_read_failures": .number(Double(depthReadFailures)),
                 "sensor_stream_complete": .bool(false),
-                "color_frames_collected": .bool(false),
-                "native_buffer_archive": .string("local_only_includes_row_stride_and_original_float_bits"),
+                "color_frames_collected": .bool(!colorKeyframes.isEmpty),
+                "color_keyframe_count": .number(Double(colorKeyframes.count)),
+                "color_keyframe_encoding": .string("adaptive_jpeg_max_720px"),
+                "smoothed_depth_collected": .bool(depthBuffers.contains { $0.smoothedDepth != nil }),
+                "native_buffer_archive": .string("local_only_includes_raw_and_smoothed_depth_row_strides_original_float_bits_and_confidence"),
             ])
         )
     }
@@ -154,17 +186,35 @@ final class RawScanCapture {
         meshBuffers = currentBuffers
         guard shouldKeepDepth(frame), let depth = frame.sceneDepth else { return }
         do {
-            let copied = try copyDepth(depth, frame: frame)
+            let copied = try copyDepth(depth, smoothedDepth: frame.smoothedSceneDepth, frame: frame)
             frames.append(copied.0)
             depthBuffers.append(copied.1)
+            captureColorKeyframe(frame.capturedImage, frameID: copied.0.id)
             lastDepthTimestamp = frame.timestamp
             lastDepthPose = frame.camera.transform
             if frames.count > maximumDepthFrames {
-                frames.removeFirst()
+                let evicted = frames.removeFirst()
                 depthBuffers.removeFirst()
+                colorKeyframes.removeAll { $0.frameID == evicted.id }
                 evictedDepthFrames += 1
             }
         } catch { depthReadFailures += 1 }
+    }
+
+    private func captureColorKeyframe(_ buffer: CVPixelBuffer, frameID: String) {
+        // Color is optional evidence. Never queue another encode while RoomPlan/ARKit needs resources.
+        guard colorTask == nil, let snapshot = FrameEncoder.snapshot(buffer) else { return }
+        colorTask = Task { [weak self] in
+            let jpeg = await Task.detached(priority: .utility) {
+                FrameEncoder.portraitJPEG(from: snapshot, maxDimension: 720)
+            }.value
+            guard let self else { return }
+            defer { self.colorTask = nil }
+            guard let jpeg, self.frames.contains(where: { $0.id == frameID }),
+                  let image = UIImage(data: jpeg)?.cgImage else { return }
+            self.colorKeyframes.removeAll { $0.frameID == frameID }
+            self.colorKeyframes.append(RawColorKeyframe(frameID: frameID, width: image.width, height: image.height, jpeg: jpeg))
+        }
     }
 
     private func shouldKeepDepth(_ frame: ARFrame) -> Bool {
@@ -245,7 +295,7 @@ final class RawScanCapture {
         )
     }
 
-    private func copyDepth(_ depth: ARDepthData, frame: ARFrame) throws -> (CaptureDepthFrame, RawDepthBuffers) {
+    private func copyDepth(_ depth: ARDepthData, smoothedDepth: ARDepthData?, frame: ARFrame) throws -> (CaptureDepthFrame, RawDepthBuffers) {
         let buffer = depth.depthMap
         let width = CVPixelBufferGetWidth(buffer)
         let height = CVPixelBufferGetHeight(buffer)
@@ -284,6 +334,7 @@ final class RawScanCapture {
             confidenceBytes = Data(bytes: base, count: rowStride * height)
             confidenceStride = rowStride
         }
+        let smoothed = try smoothedDepth.map(copyOriginalDepthBuffer)
         let calibration = frame.camera.intrinsics
         let image = frame.camera.imageResolution
         let id = UUID().uuidString
@@ -299,9 +350,28 @@ final class RawScanCapture {
             RawDepthBuffers(
                 id: id, width: width, height: height, bytesPerRow: stride,
                 pixelFormat: CVPixelBufferGetPixelFormatType(buffer), depth: Data(bytes: pointer, count: stride * height),
-                confidenceBytesPerRow: confidenceStride, confidence: confidenceBytes
+                confidenceBytesPerRow: confidenceStride, confidence: confidenceBytes,
+                smoothedWidth: smoothed?.width, smoothedHeight: smoothed?.height,
+                smoothedBytesPerRow: smoothed?.bytesPerRow, smoothedPixelFormat: smoothed?.pixelFormat,
+                smoothedDepth: smoothed?.data
             )
         )
+    }
+
+    private func copyOriginalDepthBuffer(_ depth: ARDepthData) throws -> (width: Int, height: Int, bytesPerRow: Int, pixelFormat: UInt32, data: Data) {
+        let buffer = depth.depthMap
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(buffer)
+        guard pixelFormat == kCVPixelFormatType_DepthFloat32,
+              width > 0, height > 0, bytesPerRow >= width * MemoryLayout<Float>.size,
+              CVPixelBufferLockBaseAddress(buffer, .readOnly) == kCVReturnSuccess else {
+            throw ReadError.unsupportedDepth
+        }
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { throw ReadError.unsupportedDepth }
+        return (width, height, bytesPerRow, pixelFormat, Data(bytes: base, count: bytesPerRow * height))
     }
 
     private func classification(_ value: UInt8) -> String {

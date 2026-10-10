@@ -11,6 +11,7 @@ struct RoomMapExperience: View {
     var primaryAction: (() -> Void)? = nil
     var secondaryTitle: String? = nil
     var reviewDestination: AnyView? = nil
+    var rawSnapshot: RawScanSnapshot? = nil
     var currentMapPosition: (() -> SIMD2<Float>?)? = nil
     var onPlaceBuilding: ((BuildingMapReference) throws -> Void)? = nil
     var error: Binding<String?> = .constant(nil)
@@ -18,6 +19,7 @@ struct RoomMapExperience: View {
     @State private var topDown = false
     @State private var resetID = 0
     @State private var showsReview = false
+    @State private var showsRawReview = false
     @State private var showsSheet = false
     @State private var presentation = MapPresentation.indoor
     @State private var showsPlacement = false
@@ -50,6 +52,12 @@ struct RoomMapExperience: View {
                         .accessibilityLabel("Choose floor")
                     }
                     Menu {
+                        if rawSnapshot != nil {
+                            Button("LiDAR data", systemImage: "point.3.connected.trianglepath.dotted") {
+                                showsRawReview = true
+                            }
+                            Divider()
+                        }
                         Picker("Map appearance", selection: $presentation) {
                             ForEach(MapPresentation.allCases) { option in
                                 Text(option.title).tag(option).disabled(option != .indoor && onPlaceBuilding == nil)
@@ -87,6 +95,11 @@ struct RoomMapExperience: View {
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
                 .fullScreenCover(isPresented: $showsReview) { reviewDestination }
+                .fullScreenCover(isPresented: $showsRawReview) {
+                    if let rawSnapshot {
+                        RawLidarReviewView(snapshot: rawSnapshot)
+                    }
+                }
                 .fullScreenCover(isPresented: $showsPlacement) {
                     if let map, let onPlaceBuilding {
                         BuildingPlacementView(map: map, currentMapPosition: currentMapPosition) { reference in

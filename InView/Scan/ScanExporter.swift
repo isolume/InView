@@ -16,7 +16,8 @@ enum ScanExporter {
     }
 
     static func bundle(
-        rooms: [CapturedRoom], raw: RawScanSnapshot?, scanID: UUID, mapID: UUID
+        rooms: [CapturedRoom], raw: RawScanSnapshot?, scanID: UUID, mapID: UUID,
+        worldMapAsset: String? = nil
     ) throws -> CaptureBundle {
         let native = try JSONDecoder().decode(JSONValue.self, from: nativeRoomPlanData(rooms: rooms))
         // Adjacent sections can report the same component. Retain its latest measured state.
@@ -42,6 +43,7 @@ enum ScanExporter {
         }
         var meshes = raw?.meshes ?? []
         var frames = raw?.frames ?? []
+        let colorAssets = raw?.colorKeyframes.map(\.filename) ?? []
         var omissions: [String] = []
 
         func makeBundle() -> CaptureBundle {
@@ -58,6 +60,12 @@ enum ScanExporter {
                     "raw_capture": raw?.metadata ?? .object(["status": .string("not_collected")]),
                     "raw_upload_omissions": .array(omissions.map(JSONValue.string)),
                     "raw_original_storage": .string("local_raw_scan_archive"),
+                    "assets": .object([
+                        "roomplan": .string("roomplan.json"),
+                        "raw_snapshot": .string("raw-snapshot.json"),
+                        "world_map": worldMapAsset.map(JSONValue.string) ?? .null,
+                        "color_keyframes": .array(colorAssets.map(JSONValue.string)),
+                    ]),
                 ]),
                 roomplanOriginal: native
             )
