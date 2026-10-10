@@ -63,6 +63,10 @@ processing. The backend is a development service without authentication or durab
 storage. A processing failure preserves the original capture on the phone for a
 retry. Saved navigation geometry can be opened without the processing server.
 
+To reach the backend from a phone off your Mac's Wi-Fi (e.g. at a venue), host it
+on a small Vultr instance instead: see [backend/infra](backend/infra) for the
+Terraform config and setup steps.
+
 **Try navigation demo** works without a scan or processing server, including in
 Simulator. It previews a route from reception through a hallway to a meeting room,
 then moves the position marker along that route when **Start demo** is pressed.
