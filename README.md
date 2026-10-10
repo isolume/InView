@@ -113,7 +113,7 @@ its floor. The navigation demo adds a synthetic upper room to demonstrate a
 partially mapped building. Its geographic placement is an example, not a scan of
 the real building at that address.
 
-Use **Next room** while scanning to capture connected rooms and hallways in the
+Use **Next section** while scanning to capture connected rooms and hallways in the
 same session, then **Finish** to process the combined scan. **Review points** lets
 a volunteer name destinations anywhere on the map. Navigation offers those
 places alongside elevators and ramps. Overlapping sections use each component's
@@ -135,9 +135,9 @@ maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
 2. **Map a space.** Slowly pan around the table area first, then walk to the elevator and the ramp. Pause on each one for a couple of seconds; frames are only analyzed while the camera is steady. Scan one room per section: when you go through a doorway the app offers **Add section**; take it, so RoomPlan keeps the room you just left exactly as scanned.
    - Finds appear as small colored tags as they're spotted: dashed with a "?" until confirmed.
    - **Elevator / Ramp / Stairs** mark whatever is under the crosshair. For a ramp, aim at its middle so its slope gets measured. For stairs, aim at the bottom step.
-   - **Next room** splits a big area. Keep each section under about 5 minutes.
+   - **Next section** splits a big area, including a large open room. Keep sections short; the app suggests a new section after three minutes.
 3. **Finish**. If saving the AR map fails, move around a little and tap **Try again**.
-   - If the scanner stops a section by itself (it says **Scanning stopped**), what it scanned is kept. Move to a spot with more detail in view and tap **Continue scanning**, or **Finish**.
+   - If scanning stops, completed sections are kept. Follow the message: use a smaller section for a size limit, improve tracking, or let the phone cool down. **Continue scanning** resumes the same map; **Finish** saves completed sections.
 4. Review:
    - Decide on anything under **Unconfirmed – keep?**: tap the photo, then **Keep** or **Drop**.
    - Check each find's photo.
@@ -177,7 +177,7 @@ piece of work.
 
 ### Scanning pipeline
 
-1. RoomPlan scans floors, walls, doors, windows, furniture and stairs. It shares one `ARSession` across sections, so everything is in one coordinate space. RoomPlan models one room per section, and when a section runs on into another room its processed result re-fits to the new room and drops the first; so `ScanController` also records RoomPlan's live updates (`RoomMemory`), and `MapBuilder` puts back whatever the processed room left out, unless it overlaps something kept. A doorway-crossing check suggests starting a new section.
+1. RoomPlan scans floors, walls, doors, windows, furniture and stairs. It shares one `ARSession` across sections, so everything is in one coordinate space. RoomPlan models one room per section, and when a section runs on into another room its processed result re-fits to the new room and drops the first; so `ScanController` also records RoomPlan's live updates (`RoomMemory`). The routing map and portable 3D capture share `MapBuilder`'s recovery rules, adding what the processed room left out unless it overlaps something kept. A doorway-crossing check suggests starting a new section. The session delegate supplies each completed section to one background `RoomBuilder` task, with the built-in preview processing disabled.
 2. `AccessibilityDetector` watches camera motion. It sends a frame to the vision model only when the camera has been steady (≤ 25°/s and ≤ 0.35 m/s for 0.3 s), at most every 1.2 s, and only one request at a time; steady frames that come due while one is in flight are dropped. The frame's pixels are copied out of ARKit's buffer synchronously (`FrameEncoder.snapshot`), then scaled and encoded off the main thread on a CPU Core Image context: a 1024 px JPEG for the model (OpenAI high detail) and a 600 px one kept as the evidence photo. No `ARFrame` or camera buffer is held across the request.
 3. Each find is placed in 3D by raycasting the model's point onto LiDAR surfaces. If that misses, a raycast against ARKit's extended floor planes is tried (accepted only ≥ 1 m below the phone and < 6 m out); if that misses too, the detection is dropped rather than guessed, because a guessed spot never merges with the next sighting. Placed finds are checked against geometry:
    - **Stairs** need confidence ≥ 0.8, and `StairsCheck` must see a 18–58° climb over a 2 × 9 raycast strip.
@@ -230,7 +230,7 @@ piece of work.
 
 ## Status and known issues (October 10, 2026)
 
-The merged core logic is unit-tested (110 tests), including local scene processing, optional-server clients and floor display annotations. The app builds. It was tried briefly on an iPhone 17 Pro, which turned up the problems below; the fixes for them have **not** been run on a device yet.
+The merged core logic is unit-tested (153 tests), including local scene processing, optional-server clients, floor polygons, continuous cutaway boundaries and scan resource limits. Scan performance and section completion were checked on an iPhone 15 Pro Max; the incoming room recovery and cutaway changes still need a device check after integration.
 
 1. **Outline boxes replaced by tags.** Scanning shows one small capsule tag per find (`DetectionOverlay`, 10 Hz), and navigation marks stairs with a red "Stairs" billboard over a floor dot (`StairsMarker`). Point markers and chevrons use the kind's color.
 2. **Finds that never confirmed.** Fixed by placing finds only where a raycast hits (no more 3 m guesses), letting one high-confidence sighting count once it's on a surface (and LiDAR-checked for ramps and stairs), and sending the rest to review as **Unconfirmed – keep?**. The detector logs every frame, placement, LiDAR verdict and merge, plus a summary when each section ends; on the device run
@@ -241,10 +241,11 @@ The merged core logic is unit-tested (110 tests), including local scene processi
 
    or filter Console.app on the `detection` category. The summary line reports ticks vs steady ticks, frames sent/analyzed/failed/dropped while busy, mean latency, raycast hits/misses, unplaced detections, stairs verdicts and slope measurements, which is enough to see which of the three suspected causes dominates. If latency is still the bottleneck, `OPENAI_REASONING_EFFORT = none` is the next step.
 3. **Resource pressure.** The home screen's 3D model `ARView` is taken down while the scan or navigate cover is up, so one RealityKit/AR view exists at a time. Camera frames are copied out of ARKit before any async work and encoded on the CPU at 1024 px, one request in flight. Raycasts per detection went from 88 to 34. Navigation no longer runs scene reconstruction or occlusion (scene depth stays, for obstacles) and checks obstacles once a second. The world map is unarchived, and the routing grids built, off the main thread behind a "Loading map…" state; saving archives it off the main thread too.
-4. **RoomPlan ending a section on its own** now keeps the room, re-runs the shared AR session and shows **Scanning stopped** with **Continue scanning** / **Finish**.
+4. **RoomPlan ending a section on its own** processes the partial result and shows **Scanning stopped** with **Continue scanning** / **Finish**. If section processing itself fails, previous completed sections remain available. Tracking stays in the same coordinates; a critically hot phone pauses until it cools.
 5. **A room scanned first was missing after walking on to the rest of the floor.** RoomPlan re-fits a section to the room the volunteer ends up in. Live updates are now remembered and the dropped surfaces and objects recovered (see "How it works"), and the app suggests a new section at each doorway. Recovery is deduplicated against the processed room with 0.3 m slack; if walls still double up on a device, raise `MapBuilder.recoveredSlack`.
 6. **The plan and 3D model looked empty.** Both were redrawn: see `MapPreviewView` and `VenueModelBuilder`. Floors and windows only appear in maps scanned after this change; older saved maps draw without them.
-7. **Harmless system noise you can ignore:**
+7. **Growing scans.** Capture no longer copies every raw mesh anchor repeatedly. RoomPlan supplies map geometry, while optional depth keyframes use a bounded background worker. Live tags query nearby finds and project at most 16; the header shows counts rather than an ever-growing list. RoomPlan's miniature model is disabled, and its camera view is released before map construction. Native archives are saved once, separate from the compact navigation capture; local processing has no upload-size limit. Accessibility reports reuse entrance searches across destinations. See [scan performance measurements](docs/scan-performance.md).
+8. **Harmless system noise you can ignore:**
    - CoreMotion plist permission errors
    - `FigCaptureSourceRemote` asserts
    - `DREIsRunningInDeviceRecoveryEnvironment`
@@ -252,4 +253,4 @@ The merged core logic is unit-tested (110 tests), including local scene processi
    - `Attempting to enable an already-enabled session` (RoomPlan restarting the shared session between sections)
    - `ForceClearSceneUnderstandingMeshShadowSingleChannel`
    - `EnvironmentResource with no skybox texture` (the 3D view's default lighting)
-8. **Untested on a device:** everything in items 1–6 above, RoomPlan's `polygonCorners` frame (assumed local to the floor surface, as `dimensions` are), the generated `EnvironmentResource` lighting, plus relocalization reliability, the OpenAI request shape, pin placement accuracy, obstacle rerouting, door snapping, and whether `CIContext`'s software renderer is honored on iOS (if not, encoding silently uses the GPU again). Also, chair backs and headboards in the plan and 3D model sit on an assumed side, because RoomPlan doesn't report which way furniture faces.
+9. **Still to verify on a device:** the incoming live-room recovery and cutaway styling, RoomPlan's `polygonCorners` frame (assumed local to the floor surface, as `dimensions` are), the generated `EnvironmentResource` lighting, plus relocalization reliability, the OpenAI request shape, pin placement accuracy, obstacle rerouting, door snapping, and whether `CIContext`'s software renderer is honored on iOS (if not, encoding silently uses the GPU again). Also, chair backs and headboards in the plan and 3D model sit on an assumed side, because RoomPlan doesn't report which way furniture faces. Scan performance and the Next section → Finish → 3D review transition were checked on an iPhone 15 Pro Max before this integration.

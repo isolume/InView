@@ -72,3 +72,42 @@ import Testing
     #expect(decoded.furniture == nil)
     #expect(decoded.height == nil)
 }
+
+@Test func cancellableAccessibilityAuditPreservesSavedFindingsAndScore() throws {
+    var ramp = point(.ramp, -2, 1)
+    ramp.slopeDegrees = 7.2
+    ramp.requiresAssistance = true
+    let map = room([
+        wall(from: [1.5, -3], to: [1.5, 3]),
+        Footprint(kind: .door, center: [1.5, 1.5], size: [0.7, 0.15], yaw: .pi / 2),
+        Footprint(kind: .stairs, center: [-3, -2], size: [0.8, 0.8], yaw: 0),
+    ], points: [point(.elevator, 3.5, -1), ramp])
+    let oldAPI = AccessibilityReport(map: map)
+    let cancellable = try AccessibilityReport.make(map: map)
+    #expect(cancellable.score == oldAPI.score)
+    #expect(cancellable.findings == oldAPI.findings)
+    #expect(cancellable.findings.contains { $0.title == "1 door is too narrow" })
+    #expect(cancellable.findings.contains { $0.title == "Elevator can't be reached" })
+    #expect(cancellable.findings.contains { $0.title == "Ramp needs staff to operate" })
+}
+
+@Test func aCancelledAccessibilityAuditDoesNotProduceAReport() async {
+    let map = room(points: [point(.elevator, 2, 0)])
+    let task = Task.detached {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return try AccessibilityReport.make(map: map)
+    }
+    await #expect(throws: CancellationError.self) { try await task.value }
+}
+
+@Test func auditWithoutDestinationsStillChecksDoorsAndStairs() throws {
+    let map = room([
+        Footprint(kind: .door, center: [4, 0], size: [0.7, 0.15], yaw: .pi / 2),
+        Footprint(kind: .stairs, center: [2, 0], size: [1, 1], yaw: 0),
+    ], points: [])
+    let report = try AccessibilityReport.make(map: map)
+    #expect(report.findings.contains { $0.title == "1 door is too narrow" && $0.severity == .barrier })
+    #expect(report.findings.contains { $0.title == "Stairs with no step-free alternative" && $0.severity == .barrier })
+    #expect(report.findings.contains { $0.title == "No elevator mapped" && $0.severity == .warning })
+    #expect(report.score == 53)
+}

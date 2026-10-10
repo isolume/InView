@@ -1,13 +1,101 @@
 import Foundation
 
 /// Cuts measured room footprints out of an exterior without expanding the mapped area.
-/// Results are disjoint convex pieces, suitable for individual native map extrusions.
+/// Boundary regions preserve courtyard openings without introducing walls between triangulated pieces.
 public enum BuildingFootprintCutaway {
+    /// A connected exterior with its enclosed cutouts. Rings are open, with the exterior
+    /// counterclockwise and holes clockwise, matching GeoJSON's winding convention.
+    public struct Region: Equatable, Sendable {
+        public let exterior: [SIMD2<Float>]
+        public let holes: [[SIMD2<Float>]]
+
+        public init(exterior: [SIMD2<Float>], holes: [[SIMD2<Float>]] = []) {
+            self.exterior = exterior
+            self.holes = holes
+        }
+    }
+
+    /// Returns convex pieces for callers that need to triangulate the remaining footprint.
     public static func subtract(
         mapped: [[SIMD2<Float>]],
         from exterior: [SIMD2<Float>],
         holes: [[SIMD2<Float>]] = []
     ) throws -> [[SIMD2<Float>]] {
+        var budget = WorkBudget()
+        let (pieces, tolerance) = try subtractPieces(mapped: mapped, from: exterior, holes: holes, budget: &budget)
+        return try pieces.compactMap { piece in
+            // Normalize again at the public Float boundary so rounding cannot emit repeated vertices.
+            let rounded = roundedRing(piece, tolerance: tolerance)
+            guard rounded.count >= 3, area(rounded) > tolerance * tolerance else { return nil }
+            guard rounded.count <= Limits.pieceVertices else { throw BuildingFootprintCutawayError.geometryTooComplex }
+            return rounded.map { SIMD2<Float>(Float($0.x), Float($0.y)) }
+        }
+    }
+
+    /// Returns actual connected boundaries rather than individual subtraction fragments.
+    /// Extruding one region keeps internal triangle edges from becoming visible walls.
+    public static func subtractRegions(
+        mapped: [[SIMD2<Float>]],
+        from exterior: [SIMD2<Float>],
+        holes: [[SIMD2<Float>]] = []
+    ) throws -> [Region] {
+        var budget = WorkBudget()
+        let (pieces, tolerance) = try subtractPieces(mapped: mapped, from: exterior, holes: holes,
+                                                     allowConcaveMasks: true, budget: &budget)
+        return try boundaryRegions(pieces, tolerance: tolerance, budget: &budget)
+    }
+
+    /// Combines measured floor sections into contiguous surfaces with no overlap.
+    /// Enclosed unmapped gaps remain holes, and disconnected floors remain separate regions.
+    public static func unionRegions(_ polygons: [[SIMD2<Float>]]) throws -> [Region] {
+        guard polygons.count <= Limits.masks,
+              polygons.reduce(0, { $0 + $1.count }) <= Limits.totalVertices else {
+            throw BuildingFootprintCutawayError.geometryTooComplex
+        }
+        let allPoints = polygons.flatMap { $0 }
+        guard allPoints.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else {
+            throw BuildingFootprintCutawayError.invalidPolygon
+        }
+        guard allPoints.allSatisfy({ abs($0.x) <= Limits.coordinateMagnitude && abs($0.y) <= Limits.coordinateMagnitude }) else {
+            throw BuildingFootprintCutawayError.geometryTooComplex
+        }
+        let scale = allPoints.reduce(1.0) { max($0, abs(Double($1.x)), abs(Double($1.y))) }
+        let tolerance = 1e-9 * scale
+        var budget = WorkBudget()
+        var covered: [[Point]] = []
+        var pieces: [[Point]] = []
+        let rings = try polygons.map {
+            canonicalRing(try polygon($0, maximumVertices: Limits.polygonVertices, tolerance: tolerance))
+        }.sorted(by: ringPrecedes)
+        for ring in rings {
+            let triangles = try convexPieces(ring, tolerance: tolerance, budget: &budget)
+            for triangle in triangles {
+                var additional = [triangle]
+                for mask in covered {
+                    var remainder: [[Point]] = []
+                    for piece in additional {
+                        try budget.consume(mask.count + piece.count)
+                        remainder.append(contentsOf: try subtract(mask, from: piece, tolerance: tolerance, budget: &budget))
+                        guard remainder.count + pieces.count <= Limits.pieces else {
+                            throw BuildingFootprintCutawayError.geometryTooComplex
+                        }
+                    }
+                    additional = remainder
+                    if additional.isEmpty { break }
+                }
+                guard pieces.count + additional.count <= Limits.pieces else { throw BuildingFootprintCutawayError.geometryTooComplex }
+                pieces.append(contentsOf: additional)
+            }
+            guard covered.count + triangles.count <= Limits.pieces else { throw BuildingFootprintCutawayError.geometryTooComplex }
+            covered.append(contentsOf: triangles)
+        }
+        return try boundaryRegions(pieces, tolerance: tolerance, budget: &budget)
+    }
+
+    private static func subtractPieces(
+        mapped: [[SIMD2<Float>]], from exterior: [SIMD2<Float>], holes: [[SIMD2<Float>]],
+        allowConcaveMasks: Bool = false, budget: inout WorkBudget
+    ) throws -> ([[Point]], Double) {
         guard mapped.count <= Limits.masks, holes.count <= Limits.holes,
               exterior.count + holes.reduce(0, { $0 + $1.count }) + mapped.reduce(0, { $0 + $1.count }) <= Limits.totalVertices else {
             throw BuildingFootprintCutawayError.geometryTooComplex
@@ -22,25 +110,33 @@ public enum BuildingFootprintCutaway {
         // Work in Double to avoid accumulating Float error across sequential cuts.
         let scale = allPoints.reduce(1.0) { max($0, abs(Double($1.x)), abs(Double($1.y))) }
         let tolerance = 1e-9 * scale
-        let outer = try polygon(exterior, maximumVertices: Limits.polygonVertices, tolerance: tolerance)
-        let courtyards = try holes.map { try polygon($0, maximumVertices: Limits.polygonVertices, tolerance: tolerance) }
-        let rooms = try mapped.map { points -> [Point] in
-            let room = try polygon(points, maximumVertices: Limits.maskVertices, tolerance: tolerance)
-            guard convex(room, tolerance: tolerance) else { throw BuildingFootprintCutawayError.nonConvexMappedPolygon }
-            return room
+        let validatedOuter = try polygon(exterior, maximumVertices: Limits.polygonVertices, tolerance: tolerance)
+        let outer = allowConcaveMasks ? canonicalRing(validatedOuter) : validatedOuter
+        let courtyards = try holes.map { points in
+            let ring = try polygon(points, maximumVertices: Limits.polygonVertices, tolerance: tolerance)
+            return allowConcaveMasks ? canonicalRing(ring) : ring
         }
+        let rooms = try mapped.flatMap { points -> [[Point]] in
+            let maximum = allowConcaveMasks ? Limits.polygonVertices : Limits.maskVertices
+            let room = try polygon(points, maximumVertices: maximum, tolerance: tolerance)
+            if allowConcaveMasks { return try convexPieces(canonicalRing(room), tolerance: tolerance, budget: &budget) }
+            guard convex(room, tolerance: tolerance) else { throw BuildingFootprintCutawayError.nonConvexMappedPolygon }
+            return [room]
+        }
+        guard rooms.count <= Limits.pieces else { throw BuildingFootprintCutawayError.geometryTooComplex }
         try validateHoles(courtyards, within: outer, tolerance: tolerance)
 
-        var budget = WorkBudget()
         var pieces = try convexPieces(outer, tolerance: tolerance, budget: &budget)
         var masks: [[Point]] = []
         for courtyard in courtyards {
             masks.append(contentsOf: try convexPieces(courtyard, tolerance: tolerance, budget: &budget))
         }
         masks.append(contentsOf: rooms)
+        if allowConcaveMasks { masks = masks.map(canonicalRing).sorted(by: ringPrecedes) }
         for mask in masks {
             var remainder: [[Point]] = []
             for piece in pieces {
+                if allowConcaveMasks { try budget.consume(mask.count + piece.count) }
                 let cut = try subtract(mask, from: piece, tolerance: tolerance, budget: &budget)
                 guard remainder.count + cut.count <= Limits.pieces else {
                     throw BuildingFootprintCutawayError.geometryTooComplex
@@ -51,14 +147,7 @@ public enum BuildingFootprintCutaway {
             if pieces.isEmpty { break }
         }
 
-        return try pieces.compactMap { piece in
-            // Normalize again at the public Float boundary so rounding cannot emit repeated vertices.
-            let values = piece.map { SIMD2<Float>(Float($0.x), Float($0.y)) }
-            let rounded = cleaned(values.map { Point(Double($0.x), Double($0.y)) }, tolerance: tolerance)
-            guard rounded.count >= 3, area(rounded) > tolerance * tolerance else { return nil }
-            guard rounded.count <= Limits.pieceVertices else { throw BuildingFootprintCutawayError.geometryTooComplex }
-            return rounded.map { SIMD2<Float>(Float($0.x), Float($0.y)) }
-        }
+        return (pieces, tolerance)
     }
 
     private typealias Point = SIMD2<Double>
@@ -71,6 +160,7 @@ public enum BuildingFootprintCutaway {
         static let totalVertices = 2_048
         static let pieces = 1_024
         static let pieceVertices = 64
+        static let boundaryEdges = 16_384
         static let work = 2_000_000
         static let coordinateMagnitude: Float = 100_000
     }
@@ -81,6 +171,222 @@ public enum BuildingFootprintCutaway {
             guard amount <= Limits.work - spent else { throw BuildingFootprintCutawayError.geometryTooComplex }
             spent += amount
         }
+    }
+
+    private struct Edge: Hashable {
+        let start: Int
+        let end: Int
+        var reversed: Edge { Edge(start: end, end: start) }
+    }
+
+    private struct VertexCell: Hashable {
+        let x: Int64
+        let y: Int64
+    }
+
+    /// Shared intersections can differ by a few Double ulps after independent clipping.
+    /// Nearby-cell matching joins those intersections before any topology is assembled.
+    private struct VertexRegistry {
+        var points: [Point] = []
+        var cells: [VertexCell: [Int]] = [:]
+        let tolerance: Double
+
+        mutating func identify(_ point: Point, budget: inout WorkBudget) throws -> Int {
+            let cell = VertexCell(x: Int64(floor(point.x / tolerance)), y: Int64(floor(point.y / tolerance)))
+            for x in (cell.x - 1)...(cell.x + 1) {
+                for y in (cell.y - 1)...(cell.y + 1) {
+                    let candidates = cells[VertexCell(x: x, y: y)] ?? []
+                    try budget.consume(candidates.count + 1)
+                    if let index = candidates.first(where: { distance(points[$0], point) <= tolerance }) { return index }
+                }
+            }
+            let index = points.count
+            points.append(point)
+            cells[cell, default: []].append(index)
+            return index
+        }
+    }
+
+    private static func boundaryRegions(
+        _ pieces: [[Point]], tolerance: Double, budget: inout WorkBudget
+    ) throws -> [Region] {
+        guard !pieces.isEmpty else { return [] }
+        let pointCount = pieces.reduce(0) { $0 + $1.count }
+        guard pointCount <= Limits.boundaryEdges else { throw BuildingFootprintCutawayError.geometryTooComplex }
+        try budget.consume(pointCount)
+        var registry = VertexRegistry(tolerance: tolerance)
+        var identifiers: [Point: Int] = [:]
+        // Sorting makes intersection snapping independent of the order rooms were cut.
+        for point in pieces.flatMap({ $0 }).sorted(by: pointPrecedes) where identifiers[point] == nil {
+            identifiers[point] = try registry.identify(point, budget: &budget)
+        }
+        let points = registry.points
+        var edges: Set<Edge> = []
+        for piece in pieces {
+            let vertices = piece.map { identifiers[$0]! }
+            for i in vertices.indices {
+                let edge = Edge(start: vertices[i], end: vertices[(i + 1) % vertices.count])
+                if edge.start != edge.end { try addBoundary(edge, to: &edges) }
+            }
+        }
+
+        // A clipped triangle can meet only part of another triangle's edge. Split at
+        // every surviving endpoint before cancellation, so those T junctions disappear too.
+        let endpoints = Set(edges.flatMap { [$0.start, $0.end] })
+        let byX = endpoints.sorted { points[$0].x == points[$1].x ? $0 < $1 : points[$0].x < points[$1].x }
+        let byY = endpoints.sorted { points[$0].y == points[$1].y ? $0 < $1 : points[$0].y < points[$1].y }
+        var boundary: Set<Edge> = []
+        for edge in edges.sorted(by: edgePrecedes) {
+            let a = points[edge.start], b = points[edge.end]
+            let xRange = coordinateRange(byX, points: points, axis: 0,
+                                         minimum: min(a.x, b.x) - tolerance, maximum: max(a.x, b.x) + tolerance)
+            let yRange = coordinateRange(byY, points: points, axis: 1,
+                                         minimum: min(a.y, b.y) - tolerance, maximum: max(a.y, b.y) + tolerance)
+            let candidates = xRange.count <= yRange.count ? byX[xRange] : byY[yRange]
+            try budget.consume(candidates.count)
+            let direction = b - a
+            let lengthSquared = dot(direction, direction)
+            var splits: [(Int, Double)] = [(edge.start, 0), (edge.end, 1)]
+            for vertex in candidates where vertex != edge.start && vertex != edge.end {
+                let point = points[vertex]
+                guard onSegment(point, a, b, tolerance: tolerance) else { continue }
+                let fraction = dot(point - a, direction) / lengthSquared
+                if fraction > 0 && fraction < 1 { splits.append((vertex, fraction)) }
+            }
+            splits.sort { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 < $1.1 }
+            for i in 1..<splits.count {
+                try addBoundary(Edge(start: splits[i - 1].0, end: splits[i].0), to: &boundary)
+            }
+            guard boundary.count <= Limits.boundaryEdges else { throw BuildingFootprintCutawayError.geometryTooComplex }
+        }
+        guard !boundary.isEmpty else { return [] }
+
+        let ordered = boundary.sorted(by: edgePrecedes)
+        let outgoing = Dictionary(grouping: ordered, by: \.start)
+        var unvisited = boundary
+        var rings: [[Point]] = []
+        for first in ordered where unvisited.contains(first) {
+            var ring: [Point] = []
+            var current = first
+            while true {
+                try budget.consume(1)
+                guard unvisited.remove(current) != nil else { throw BuildingFootprintCutawayError.invalidPolygon }
+                ring.append(points[current.start])
+                if current.end == first.start { break }
+                let candidates = (outgoing[current.end] ?? []).filter { unvisited.contains($0) }
+                guard !candidates.isEmpty else { throw BuildingFootprintCutawayError.invalidPolygon }
+                // Keep filled area on the left, including where independent regions touch
+                // at a vertex. Taking the leftmost continuation avoids a figure-eight ring.
+                let incoming = points[current.end] - points[current.start]
+                current = candidates.max { first, second in
+                    let firstTurn = turn(incoming, points[first.end] - points[first.start])
+                    let secondTurn = turn(incoming, points[second.end] - points[second.start])
+                    return firstTurn == secondTurn ? edgePrecedes(second, first) : firstTurn < secondTurn
+                }!
+            }
+            for loop in simpleLoops(ring) {
+                let normalized = roundedRing(loop, tolerance: tolerance)
+                if normalized.count >= 3 && abs(area(normalized)) > tolerance * tolerance {
+                    rings.append(canonicalRing(normalized))
+                }
+            }
+        }
+
+        let outers = rings.filter { area($0) > 0 }.sorted(by: ringPrecedes)
+        let holes = rings.filter { area($0) < 0 }.sorted(by: ringPrecedes)
+        var assigned = Array(repeating: [[Point]](), count: outers.count)
+        for hole in holes {
+            var containing: Int?
+            var containingArea = Double.infinity
+            for i in outers.indices {
+                try budget.consume(outers[i].count)
+                if inside(hole[0], polygon: outers[i], tolerance: tolerance) {
+                    let size = area(outers[i])
+                    if size < containingArea { containing = i; containingArea = size }
+                }
+            }
+            guard let containing else { throw BuildingFootprintCutawayError.invalidPolygon }
+            assigned[containing].append(hole)
+        }
+        return outers.indices.map { i in
+            Region(exterior: outers[i].map(floatPoint), holes: assigned[i].map { $0.map(floatPoint) })
+        }
+    }
+
+    private static func addBoundary(_ edge: Edge, to edges: inout Set<Edge>) throws {
+        if edges.remove(edge.reversed) == nil {
+            guard edges.insert(edge).inserted else { throw BuildingFootprintCutawayError.invalidPolygon }
+        }
+    }
+
+    private static func coordinateRange(
+        _ vertices: [Int], points: [Point], axis: Int, minimum: Double, maximum: Double
+    ) -> Range<Int> {
+        func lowerBound(_ value: Double, inclusive: Bool) -> Int {
+            var lower = 0, upper = vertices.count
+            while lower < upper {
+                let middle = (lower + upper) / 2
+                let coordinate = points[vertices[middle]][axis]
+                if coordinate < value || (!inclusive && coordinate == value) { lower = middle + 1 }
+                else { upper = middle }
+            }
+            return lower
+        }
+        return lowerBound(minimum, inclusive: true)..<lowerBound(maximum, inclusive: false)
+    }
+
+    private static func turn(_ incoming: Point, _ outgoing: Point) -> Double {
+        atan2(incoming.x * outgoing.y - incoming.y * outgoing.x, dot(incoming, outgoing))
+    }
+
+    /// A cutout can touch another cutout or the exterior at exactly one vertex.
+    /// Split that boundary walk into simple loops before assigning holes, instead of
+    /// publishing a self-touching figure-eight ring to the map renderer.
+    private static func simpleLoops(_ ring: [Point]) -> [[Point]] {
+        guard let first = ring.first else { return [] }
+        var path: [Point] = []
+        var indices: [Point: Int] = [:]
+        var loops: [[Point]] = []
+        for point in ring + [first] {
+            if let start = indices[point] {
+                let loop = Array(path[start...])
+                if loop.count >= 3 { loops.append(loop) }
+                for removed in loop { indices.removeValue(forKey: removed) }
+                path.removeSubrange(start...)
+            }
+            indices[point] = path.count
+            path.append(point)
+        }
+        return loops
+    }
+
+    private static func roundedRing(_ points: [Point], tolerance: Double) -> [Point] {
+        // Remove Double-precision collinear intersections before Float rounding can
+        // turn them into tiny bends along an otherwise straight measured boundary.
+        let simplified = cleaned(points, tolerance: tolerance)
+        return cleaned(simplified.map { Point(Double(Float($0.x)), Double(Float($0.y))) }, tolerance: tolerance)
+    }
+
+    private static func floatPoint(_ point: Point) -> SIMD2<Float> {
+        SIMD2<Float>(point.x == 0 ? 0 : Float(point.x), point.y == 0 ? 0 : Float(point.y))
+    }
+
+    private static func pointPrecedes(_ first: Point, _ second: Point) -> Bool {
+        first.x == second.x ? first.y < second.y : first.x < second.x
+    }
+
+    private static func edgePrecedes(_ first: Edge, _ second: Edge) -> Bool {
+        first.start == second.start ? first.end < second.end : first.start < second.start
+    }
+
+    private static func canonicalRing(_ ring: [Point]) -> [Point] {
+        let first = ring.indices.min { pointPrecedes(ring[$0], ring[$1]) }!
+        return Array(ring[first...] + ring[..<first])
+    }
+
+    private static func ringPrecedes(_ first: [Point], _ second: [Point]) -> Bool {
+        for (a, b) in zip(first, second) where a != b { return pointPrecedes(a, b) }
+        return first.count < second.count
     }
 
     private static func polygon(_ input: [SIMD2<Float>], maximumVertices: Int, tolerance: Double) throws -> [Point] {

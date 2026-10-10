@@ -5,7 +5,7 @@ import SwiftUI
 /// Pins a small colored tag over every find, on the live scanning camera: blue elevators, teal ramps, red
 /// stairs. Tags are dashed and end in "?" while a find is still being confirmed.
 ///
-/// Refreshes at 10 Hz: the tags only need to track the camera well enough to show where each find is.
+/// Refreshes at 10 Hz, projecting only a bounded set of nearby finds even in a large building scan.
 struct DetectionOverlay: View {
     @ObservedObject var detector: AccessibilityDetector
     let session: ARSession
@@ -45,7 +45,7 @@ struct DetectionOverlay: View {
         guard size.width > 0, size.height > 0, let camera = session.currentFrame?.camera else { return [] }
         let viewFromWorld = camera.transform.inverse
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -Self.margin, dy: -Self.margin)
-        return detector.sightings.compactMap { sighting in
+        return detector.nearbySightings(to: camera.transform.translation).compactMap { sighting in
             let anchor = sighting.position + SIMD3(0, Self.tagHeight, 0)
             // Skip anything behind the camera, where projection would flip it.
             guard (viewFromWorld * SIMD4(anchor, 1)).z < -0.1 else { return nil }
