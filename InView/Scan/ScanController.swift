@@ -325,7 +325,17 @@ final class ScanController: ObservableObject {
     private func makeScene(_ bundle: CaptureBundle, backendURL: URL?) async throws -> ProcessedScene {
         let result: ProcessedScene
         if let backendURL {
-            result = try await BackendClient(baseURL: backendURL).uploadAndProcess(bundle)
+            let client = BackendClient(baseURL: backendURL)
+            if let archiveURL = try? CaptureStore.makeArchive(for: bundle.id) {
+                do {
+                    result = try await client.uploadArchiveAndProcess(at: archiveURL, capture: bundle)
+                } catch let error as BackendClientError where error.isArchiveEndpointUnavailable {
+                    // Support a rolling backend deployment while retaining the JSON-only path.
+                    result = try await client.uploadAndProcess(bundle)
+                }
+            } else {
+                result = try await client.uploadAndProcess(bundle)
+            }
         } else if let localScene {
             result = localScene
         } else {

@@ -377,6 +377,68 @@ async fn call(
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
+fn package(files: Vec<(&str, Vec<u8>)>) -> Vec<u8> {
+    let mut builder = tar::Builder::new(Vec::new());
+    for (path, contents) in files {
+        let mut header = tar::Header::new_ustar();
+        header.set_mode(0o644);
+        header.set_size(contents.len() as u64);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, path, contents.as_slice())
+            .unwrap();
+    }
+    builder.into_inner().unwrap()
+}
+
+async fn call_package(app: &Router, payload: Vec<u8>) -> (StatusCode, Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/scan-packages")
+                .header("content-type", "application/x-tar")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+#[tokio::test]
+async fn scan_package_validates_paths_and_processes_embedded_capture() {
+    let app = app(AppState::default());
+    let source = fixture();
+    let valid = package(vec![
+        (
+            "demo-room/capture.json",
+            serde_json::to_vec(&source).unwrap(),
+        ),
+        ("demo-room/raw-snapshot.json", b"{\"raw\":true}".to_vec()),
+        ("demo-room/worldmap.archive", vec![1, 2, 3]),
+    ]);
+    let (status, summary) = call_package(&app, valid).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(summary["id"], "demo-room");
+    assert_eq!(call(&app, "GET", "/scans/demo-room", None).await.1, source);
+    assert_eq!(
+        call(&app, "GET", "/scans/demo-room/scene", None).await.0,
+        StatusCode::OK
+    );
+
+    let malicious = package(vec![(
+        "other/capture.json",
+        serde_json::to_vec(&fixture()).unwrap(),
+    )]);
+    let (status, error) = call_package(&app, malicious).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(error["error"]["code"], "invalid_input");
+}
+
 #[tokio::test]
 async fn multiroom_originals_can_exceed_the_single_room_upload_budget() {
     let app = app(AppState::default());

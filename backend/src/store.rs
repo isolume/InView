@@ -18,6 +18,9 @@ pub struct GraphStore {
 pub struct StoredScan {
     pub original: Value,
     pub bundle: ScanBundle,
+    /// Raw RoomPlan, LiDAR, color, and relocalization assets from a scan package.
+    /// The current store is process-local, so these remain immutable in memory with the scan.
+    pub package_assets: Option<BTreeMap<String, Vec<u8>>>,
 }
 
 #[derive(Clone, Default)]

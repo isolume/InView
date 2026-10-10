@@ -68,6 +68,11 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
         if case .http(status: 409, code: "scan_exists", message: _) = self { return true }
         return false
     }
+    /// Older backend deployments only accept the JSON capture endpoint.
+    public var isArchiveEndpointUnavailable: Bool {
+        if case let .http(status, _, _) = self { return status == 404 || status == 405 }
+        return false
+    }
 }
 
 /// Uploads an immutable draft capture and retrieves verified geometry for a native preview.
@@ -106,6 +111,42 @@ public struct BackendClient: Sendable {
         } catch let error as BackendClientError where error.isExistingCapture {
             try await verifyOriginal(capture, encoded: data)
             return capture.summary
+        }
+    }
+
+    /// Uploads the immutable TAR package produced by the native capture store. The package retains
+    /// binary LiDAR, RGB, RoomPlan, and relocalization sidecars which do not belong in JSON.
+    @discardableResult
+    public func uploadArchive(at archiveURL: URL, capture: CaptureBundle) async throws -> CaptureUploadSummary {
+        try validateCapture(capture)
+        let data: Data
+        do { data = try Data(contentsOf: archiveURL, options: [.mappedIfSafe]) }
+        catch { throw BackendClientError.invalidCapture("The scan package could not be read for upload.") }
+        guard data.count <= 128 * 1024 * 1024 else {
+            throw BackendClientError.invalidCapture("The scan package is too large to upload.")
+        }
+        do {
+            let response = try await request(
+                path: ["scan-packages"], method: "POST", stage: .upload, body: data,
+                contentType: "application/x-tar"
+            )
+            let summary: CaptureUploadSummary = try decode(response)
+            guard summary == capture.summary else {
+                throw BackendClientError.invalidResponse("The backend acknowledged a different capture.")
+            }
+            return summary
+        } catch let error as BackendClientError where error.isExistingCapture {
+            try await verifyOriginal(capture)
+            return capture.summary
+        }
+    }
+
+    public func uploadArchiveAndProcess(at archiveURL: URL, capture: CaptureBundle) async throws -> ProcessedScene {
+        try await uploadArchive(at: archiveURL, capture: capture)
+        do { return try await verifiedScene(capture) }
+        catch let error as BackendClientError where error.isMissingCapture {
+            try await uploadArchive(at: archiveURL, capture: capture)
+            return try await verifiedScene(capture)
         }
     }
 
@@ -161,7 +202,8 @@ public struct BackendClient: Sendable {
     }
 
     private func request(path: [String], method: String, stage: BackendRequestStage,
-                         timeout: TimeInterval = 45, body: Data? = nil) async throws -> Data {
+                         timeout: TimeInterval = 45, body: Data? = nil,
+                         contentType: String = "application/json") async throws -> Data {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = components.host, !host.isEmpty,
@@ -182,7 +224,7 @@ public struct BackendClient: Sendable {
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
             request.httpBody = body
         }
         let data: Data

@@ -1,5 +1,6 @@
 use axum::{
     Json,
+    body::Bytes,
     extract::{Path, State, rejection::JsonRejection},
     http::StatusCode,
     response::Html,
@@ -26,7 +27,34 @@ pub async fn upload(
     let bundle: ScanBundle = serde_json::from_value(original.clone())
         .map_err(|error| ApiError::invalid(error.to_string()))?;
     bundle.validate().map_err(ApiError::invalid)?;
-    let scan = StoredScan { original, bundle };
+    let scan = StoredScan {
+        original,
+        bundle,
+        package_assets: None,
+    };
+    let summary = scan.summary();
+    state.scans.insert(scan).await.map_err(|()| {
+        ApiError::new(
+            StatusCode::CONFLICT,
+            "scan_exists",
+            "This scan already exists. Use a new id for another capture.",
+        )
+    })?;
+    Ok((StatusCode::CREATED, Json(summary)))
+}
+
+/// Accepts the iOS-produced uncompressed `.inviewscan.tar`. Entries are validated in-memory,
+/// never extracted to disk, before `capture.json` enters the normal immutable scan pipeline.
+pub async fn upload_package(
+    State(state): State<AppState>,
+    payload: Bytes,
+) -> Result<(StatusCode, Json<ScanSummary>), ApiError> {
+    let package = crate::scan_package::decode(&payload).map_err(ApiError::invalid)?;
+    let scan = StoredScan {
+        original: package.original,
+        bundle: package.bundle,
+        package_assets: Some(package.assets),
+    };
     let summary = scan.summary();
     state.scans.insert(scan).await.map_err(|()| {
         ApiError::new(

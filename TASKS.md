@@ -67,7 +67,7 @@ Current baseline: `roomplan.json`, `raw-snapshot.json`, `capture.json`, and `wor
 
 ## P1 — backend format alignment
 
-- [ ] Make the backend receive and validate the self-contained `.inviewscan.tar` package with structured RoomPlan, raw LiDAR sidecars, ARWorldMap archive, sensor metadata, and a versioned manifest.
+- [x] Make the backend receive and validate the self-contained `.inviewscan.tar` package with structured RoomPlan, raw LiDAR sidecars, ARWorldMap archive, and color assets. Sensor metadata and a versioned manifest remain follow-up work.
 - [ ] Keep `CaptureBundle` JSON as the portable structured interchange layer; add raw sidecars/combined archive rather than replacing it.
 - [ ] Update `backend/SCANS.md` with asset names, coordinate convention, transforms, dimensions, compression, and compatibility versions.
 - [ ] Avoid sending large raw binary payloads as base64 JSON unless explicitly needed for a portable fallback.

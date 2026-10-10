@@ -31,7 +31,11 @@ Importing or processing scans never creates navigation graphs or accessible rout
 a summary, and rejects a reused scan ID with HTTP 409 `scan_exists`. Captures are
 immutable within this service instance. Use another ID for a correction or rescan.
 `POST /scans` accepts up to 32 MiB for multiroom captures; other prototype endpoints
-retain their existing limits. `GET /scans/{id}` returns the original JSON semantically unchanged; JSON whitespace,
+retain their existing limits. `POST /scan-packages` accepts an uncompressed `.inviewscan.tar`
+up to 128 MiB. Every TAR entry must be a regular file at `<scan-id>/<filename>`, entry names
+must be unique, and `capture.json` must validate and name the same scan ID. Binary sidecars are
+retained immutably in the process-local scan store and are never extracted to the filesystem.
+`GET /scans/{id}` returns the original JSON semantically unchanged; JSON whitespace,
 key order, and numerical spelling are not preserved byte-for-byte.
 
 `GET /scans/{id}/scene` processes with the default options. A fresh scene is derived
@@ -140,14 +144,14 @@ source can restore the backend's in-memory capture after a restart.
 `color_asset` and other asset references are opaque strings. The native raw snapshot now retains
 bounded adaptive JPEG keyframes paired with calibrated depth-frame IDs; sidecar files use
 `<frame-id>.color.jpg` and are listed in `metadata.assets.color_keyframes`. The local LiDAR
-review can render these as colorized points. This JSON API does not yet fetch, decode, upload,
-or durably store image/world-map/USDZ binaries. The current 32 MiB request limit is suitable for small prototype bundles.
+review can render these as colorized points. The JSON endpoint intentionally does not send
+binary sidecars. `POST /scan-packages` receives the TAR sidecars with their portable capture;
+the current prototype retains them only in memory and does not yet decode native Apple assets.
 
-The iOS capture store can now produce `<scan-id>.inviewscan.tar`: a sequential TAR containing
-that scan's `capture.json`, RoomPlan original, raw depth/mesh snapshot, derived scene when
-available, and `worldmap.archive`. The existing JSON endpoint does not consume this archive yet;
-the next backend endpoint must validate/extract it, retain the immutable original assets, and
-then pass `capture.json` through the current normalization path.
+The iOS capture store produces `<scan-id>.inviewscan.tar`: a sequential TAR containing that
+scan's `capture.json`, RoomPlan original, raw depth/mesh snapshot, JPEG color keyframes, derived
+scene when available, and `worldmap.archive`. The app prefers the archive endpoint and falls
+back to the JSON endpoint only when connecting to an older backend that lacks it.
 
 Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/videos/play/wwdc2023/10192/),
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).

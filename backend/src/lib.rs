@@ -6,10 +6,15 @@ pub mod graph;
 pub mod model_meshes;
 pub mod routing;
 pub mod scan_api;
+pub mod scan_package;
 pub mod scene;
 pub mod store;
 
-use axum::{Router, extract::DefaultBodyLimit, routing::get};
+use axum::{
+    Router,
+    extract::DefaultBodyLimit,
+    routing::{get, post},
+};
 use tower_http::trace::TraceLayer;
 
 use store::{GraphStore, ScanStore};
@@ -34,6 +39,10 @@ pub fn app(state: AppState) -> Router {
             get(scan_api::list)
                 .post(scan_api::upload)
                 .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .route(
+            "/scan-packages",
+            post(scan_api::upload_package).layer(DefaultBodyLimit::max(128 * 1024 * 1024)),
         )
         .route("/scans/{scan_id}", get(scan_api::original))
         .route("/scans/{scan_id}/scene", get(scan_api::default_scene))
