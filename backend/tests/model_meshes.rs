@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use inview_backend::{
     capture::ScanBundle,
     geometry::Vec3,
-    model_meshes::{ModelMesh, furniture_meshes},
+    model_meshes::{ModelMesh, furniture_meshes, photo_model_key},
     scene::{ProcessingOptions, process},
 };
 
@@ -329,9 +329,9 @@ fn supplied_categories_select_templates_without_inserting_objects_or_changing_so
         serde_json::from_str(include_str!("../examples/scan.json")).unwrap();
     bundle.objects.truncate(1);
     for (category, key) in [
-        ("chair", "chair_v2"),
-        ("sofa", "sofa_v2"),
-        ("table", "table_v2"),
+        ("chair", "lounge_chair_v1"),
+        ("sofa", "modular_sofa_v1"),
+        ("table", "folding_table_v1"),
         ("storage", "storage_v2"),
         ("cabinet", "storage_v2"),
         ("bed", "bed_v2"),
@@ -450,4 +450,247 @@ fn all_display_models_use_a_quiet_neutral_palette_without_incidental_trim() {
             .iter()
             .any(|mesh| mesh.name.starts_with("cabinet pull"))
     );
+}
+
+const PHOTO_KEYS: [&str; 13] = [
+    "lounge_chair_v1",
+    "modular_sofa_v1",
+    "drum_table_v1",
+    "charging_stand_v1",
+    "lectern_v1",
+    "folding_table_v1",
+    "sign_stand_v1",
+    "waste_bin_v1",
+    "open_bin_v1",
+    "bench_v1",
+    "square_planter_v1",
+    "railing_v1",
+    "floor_sign_v1",
+];
+
+#[test]
+fn photo_furniture_is_closed_outward_bounded_and_quiet_at_every_measured_size() {
+    for key in PHOTO_KEYS {
+        for size in [
+            [1.0; 3],
+            [0.6, 0.9, 0.55],
+            [2.8, 0.48, 0.52],
+            [0.1, 3.0, 0.3],
+        ] {
+            let meshes = furniture_meshes(key, size);
+            assert!(!meshes.is_empty(), "{key} must contain display geometry");
+            for mesh in &meshes {
+                check_mesh(mesh, size);
+                let rgb: Vec<_> = [1, 3, 5]
+                    .into_iter()
+                    .map(|offset| u8::from_str_radix(&mesh.color[offset..offset + 2], 16).unwrap())
+                    .collect();
+                assert!(
+                    rgb[0] >= 175 && rgb[0] <= rgb[1] && rgb[1] <= rgb[2] && rgb[2] - rgb[0] <= 22,
+                    "{key}/{} must share the quiet neutral style",
+                    mesh.name
+                );
+            }
+        }
+        for size in [[f64::MIN_POSITIVE / 2.0, 1.0, 10.0], [1e100, 1e-100, 1.0]] {
+            for mesh in furniture_meshes(key, size) {
+                assert!(
+                    mesh.vertices
+                        .iter()
+                        .flatten()
+                        .all(|coordinate| coordinate.is_finite())
+                );
+                assert!(
+                    mesh.normals
+                        .iter()
+                        .all(|normal| normal.iter().all(|v| v.is_finite())
+                            && (dot(*normal, *normal) - 1.0).abs() < 1e-10)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn photo_silhouettes_keep_the_reference_furniture_structure() {
+    let chair = furniture_meshes("lounge_chair_v1", [1.0; 3]);
+    assert_eq!(
+        chair
+            .iter()
+            .filter(|m| m.name.starts_with("lounge square foot"))
+            .count(),
+        4
+    );
+    assert_eq!(
+        chair
+            .iter()
+            .filter(|m| m.name.starts_with("lounge box arm"))
+            .count(),
+        2
+    );
+    let back = chair
+        .iter()
+        .find(|m| m.name == "lounge padded reclined back")
+        .unwrap();
+    let lower = back
+        .vertices
+        .iter()
+        .min_by(|a, b| a[1].total_cmp(&b[1]))
+        .unwrap();
+    let upper = back
+        .vertices
+        .iter()
+        .max_by(|a, b| a[1].total_cmp(&b[1]))
+        .unwrap();
+    assert!(
+        upper[2] > lower[2],
+        "the lounge back must recline toward +z"
+    );
+
+    let sofa = furniture_meshes("modular_sofa_v1", [1.0; 3]);
+    assert_eq!(
+        sofa.iter()
+            .filter(|m| m.name.starts_with("separate D seat cushion"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        sofa.iter()
+            .filter(|m| m.name.starts_with("modular thin back cushion"))
+            .count(),
+        2
+    );
+    assert!(!sofa.iter().any(|m| m.name.contains("arm")));
+    for index in 0..2 {
+        let name = format!("rounded outer module base {index}");
+        let base = sofa.iter().find(|m| m.name == name).unwrap();
+        let sign = if index == 0 { -1.0 } else { 1.0 };
+        assert!(
+            base.vertices
+                .iter()
+                .any(|p| p[0] * sign > 0.48 && p[2].abs() < 0.01)
+        );
+        assert!(
+            base.vertices
+                .iter()
+                .all(|p| p[0] * sign < 0.48 || p[2].abs() < 0.14),
+            "outer ends should form a D, rather than square corners"
+        );
+    }
+    let charging = furniture_meshes("charging_stand_v1", [1.0; 3]);
+    assert_eq!(
+        charging
+            .iter()
+            .filter(|m| m.name.starts_with("charging rounded triangular plate"))
+            .count(),
+        3
+    );
+    assert_eq!(
+        charging
+            .iter()
+            .filter(|m| m.name.starts_with("charging tapered silver column"))
+            .count(),
+        6
+    );
+    let bench = furniture_meshes("bench_v1", [1.0; 3]);
+    assert_eq!(
+        bench
+            .iter()
+            .filter(|m| m.name.starts_with("bench separate upholstered pad"))
+            .count(),
+        3
+    );
+    assert_eq!(
+        bench
+            .iter()
+            .filter(|m| m.name.starts_with("bench square leg"))
+            .count(),
+        6
+    );
+    let bin = furniture_meshes("waste_bin_v1", [1.0; 3]);
+    let hood = bin
+        .iter()
+        .find(|m| m.name == "waste domed hood with inset aperture")
+        .unwrap();
+    assert!(
+        !hood
+            .vertices
+            .iter()
+            .any(|p| p[2] < -0.43 && p[1] > 0.171 && p[1] < 0.354),
+        "the hood aperture must not be filled by a solid cylinder"
+    );
+    let open_bin = furniture_meshes("open_bin_v1", [1.0; 3]);
+    assert!(
+        open_bin[0]
+            .vertices
+            .iter()
+            .any(|p| p[0].abs() < 1e-10 && p[2].abs() < 1e-10 && (p[1] + 0.42).abs() < 1e-10)
+    );
+    assert!(
+        !open_bin[0]
+            .vertices
+            .iter()
+            .any(|p| p[0].abs() < 0.25 && p[2].abs() < 0.25 && p[1] > 0.49),
+        "open wastebasket must have a hollow top"
+    );
+    let rail = furniture_meshes("railing_v1", [1.0; 3]);
+    assert_eq!(
+        rail.iter()
+            .filter(|m| m.name.starts_with("balcony thin horizontal rail"))
+            .count(),
+        7
+    );
+    assert_eq!(
+        rail.iter()
+            .filter(|m| m.name.starts_with("balcony slender vertical post"))
+            .count(),
+        4
+    );
+}
+
+#[test]
+fn photo_category_selection_uses_shape_and_preserves_explicit_labels() {
+    assert_eq!(
+        photo_model_key(" Chair ", [0.9, 0.8, 0.9]),
+        Some("lounge_chair_v1")
+    );
+    assert_eq!(photo_model_key("sofa", [3.0, 0.48, 0.5]), Some("bench_v1"));
+    assert_eq!(
+        photo_model_key("sofa", [2.3, 0.85, 0.9]),
+        Some("modular_sofa_v1")
+    );
+    assert_eq!(
+        photo_model_key("table", [1.25, 0.42, 1.25]),
+        Some("drum_table_v1")
+    );
+    assert_eq!(
+        photo_model_key("table", [0.54, 0.5, 0.56]),
+        Some("drum_table_v1")
+    );
+    assert_eq!(
+        photo_model_key("table", [1.6, 0.74, 0.7]),
+        Some("folding_table_v1")
+    );
+    for (category, key) in [
+        ("armchair", "lounge_chair_v1"),
+        ("lounge_chair", "lounge_chair_v1"),
+        ("modular_sofa", "modular_sofa_v1"),
+        ("loveseat", "modular_sofa_v1"),
+        ("round_table", "drum_table_v1"),
+        ("ottoman", "drum_table_v1"),
+        ("charging_stand", "charging_stand_v1"),
+        ("podium", "lectern_v1"),
+        ("folding_table", "folding_table_v1"),
+        ("sign_stand", "sign_stand_v1"),
+        ("trash_bin", "waste_bin_v1"),
+        ("open_bin", "open_bin_v1"),
+        ("bench", "bench_v1"),
+        ("square_planter", "square_planter_v1"),
+        ("railing", "railing_v1"),
+        ("caution_sign", "floor_sign_v1"),
+    ] {
+        assert_eq!(photo_model_key(category, [1.0; 3]), Some(key));
+    }
+    assert_eq!(photo_model_key("plant", [1.0; 3]), None);
+    assert_eq!(photo_model_key("unrecognized_fixture", [1.0; 3]), None);
 }

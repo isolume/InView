@@ -22,23 +22,36 @@ enum MapBuilder {
     ///     result, usually because the volunteer walked on to another room in the same section. Added where
     ///     they don't overlap what the processed rooms have.
     ///   - spottedStairs: Stairs found by the vision model, added where RoomPlan missed them.
-    static func build(rooms: [CapturedRoom], recovered: [RoomParts] = [], points: [AccessPoint], spottedStairs: [Footprint] = []) -> VenueMap {
-        let merged = mergedParts(rooms: rooms, recovered: recovered)
-        let footprints = flatten(merged.parts, floorY: merged.floorY)
-        var map = VenueMap(floorY: merged.floorY, footprints: footprints, points: [])
+    static func build(rooms: [CapturedRoom], recovered: [RoomParts] = [], points: [AccessPoint], spottedStairs: [Footprint] = [], observed: [Footprint] = []) -> VenueMap {
+        let merged = mergedParts(rooms: rooms, recovered: recovered, observed: observed)
+        var footprints = flatten(merged.parts, floorY: merged.floorY)
+        footprints.append(contentsOf: observedAdditions(observed, to: merged.parts, floorY: merged.floorY))
+        var map = VenueMap(floorY: merged.floorY, footprints: footprints, points: [], requiresMeasuredFloorCoverage: true)
         for stairs in spottedStairs { add(spottedStairs: stairs, to: &map) }
         for point in points { add(point, to: &map) }
         return map
     }
 
+    /// Routing and scene export must select the same supplemental measurements.
+    static func observedAdditions(_ observed: [Footprint], to parts: RoomParts, floorY: Float) -> [Footprint] {
+        var kept = flatten(parts, floorY: floorY)
+        var additions: [Footprint] = []
+        for footprint in observed where MeasuredFootprintRecovery.shouldKeep(footprint, alongside: kept) {
+            additions.append(footprint)
+            kept.append(footprint)
+        }
+        return additions
+    }
+
     /// The same measured components for routing and scene export, with processed rooms taking precedence.
     /// Overhead objects stay available for display even though they don't obstruct the routing map.
-    static func mergedParts(rooms: [CapturedRoom], recovered: [RoomParts] = []) -> (parts: RoomParts, floorY: Float) {
+    static func mergedParts(rooms: [CapturedRoom], recovered: [RoomParts] = [], observed: [Footprint] = []) -> (parts: RoomParts, floorY: Float) {
         var parts = latest(rooms.map(RoomParts.init))
         let recoveredParts = latest(recovered, excluding: parts)
         let walls = parts.walls + recoveredParts.walls
-        let floorY = median(walls.map { $0.transform.translation.y - $0.dimensions.y / 2 })
-            ?? median((parts.floors + recoveredParts.floors).map(\.transform.translation.y))
+        let floorY = median((parts.floors + recoveredParts.floors).map(\.transform.translation.y))
+            ?? median(observed.filter { $0.kind == .floor }.compactMap(\.bottom))
+            ?? median(walls.map { $0.transform.translation.y - $0.dimensions.y / 2 })
             ?? -assumedPhoneHeight
 
         var footprints = flatten(parts, floorY: floorY)
@@ -46,7 +59,11 @@ enum MapBuilder {
             values.filter { value in
                 // Non-blocking overhead measurements are kept for the scene without changing routing.
                 guard let candidate = footprint(value) else { return true }
-                guard !footprints.contains(where: { $0.kind == candidate.kind && overlaps($0, candidate, slack: recoveredSlack) }) else { return false }
+                if candidate.kind == .obstacle || candidate.kind == .stairs {
+                    guard !footprints.contains(where: { $0.kind == candidate.kind && overlaps($0, candidate, slack: recoveredSlack) }) else { return false }
+                } else {
+                    guard MeasuredFootprintRecovery.shouldKeep(candidate, alongside: footprints) else { return false }
+                }
                 footprints.append(candidate)
                 return true
             }

@@ -11,6 +11,8 @@ struct RawScanSnapshot: Codable, Sendable {
     var meshBuffers: [RawMeshBuffers]
     var depthBuffers: [RawDepthBuffers]
     var metadata: JSONValue
+    /// Compact, confirmed geometry survives depth-keyframe eviction and section changes.
+    var observedFootprints: [Footprint]? = nil
 }
 
 /// Kept for decoding earlier raw archives; live navigation scans no longer copy mesh buffers.
@@ -47,7 +49,7 @@ struct RawDepthBuffers: Codable, Sendable {
 }
 
 /// Polls the shared RoomPlan session; it never replaces its ARSessionDelegate.
-/// RoomPlan supplies navigation geometry. Optional depth is copied into bounded, immutable
+/// RoomPlan supplies the room geometry. Depth is copied into bounded, immutable
 /// snapshots before decoding on one background worker; ARFrames and live buffers never escape.
 @MainActor
 final class RawScanCapture {
@@ -67,6 +69,12 @@ final class RawScanCapture {
     private var skippedOversizeSamples = 0
     private var depthEnabled = false
     private let budget = DepthKeyframeBudget()
+    private let observedSurfaces = ObservedSurfaceCapture()
+    private var smallObstacles = DepthObstacleAccumulator()
+    private var lastObstacleTimestamp: TimeInterval?
+    private let obstacleInterval: TimeInterval = 1.5
+    var floorY: Float?
+    var hasObservedFloor: Bool { observedSurfaces.snapshot().contains { $0.kind == .floor } }
     private let pollingInterval: TimeInterval = 0.75
     private let depthInterval: TimeInterval = 2
 
@@ -83,6 +91,7 @@ final class RawScanCapture {
         // Requesting a second raw mesh reconstruction alongside RoomPlan makes work grow with
         // the mapped area. Its structured walls, floors and objects already drive our maps.
         // Preserve any reconstruction setting owned by the supplied session, but add none.
+        configuration.planeDetection.formUnion([.horizontal, .vertical])
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             configuration.frameSemantics.insert(.sceneDepth)
         }
@@ -138,7 +147,7 @@ final class RawScanCapture {
         RawScanSnapshot(
             meshes: [], frames: frames, meshBuffers: [], depthBuffers: depthBuffers,
             metadata: .object([
-                "status": .string("bounded_depth_keyframes_roomplan_geometry"),
+                "status": .string("bounded_depth_keyframes_and_observed_geometry"),
                 "mesh_requested": .bool(false),
                 "mesh_omission_reason": .string("roomplan_structured_geometry_is_navigation_source"),
                 "scene_depth_requested": .bool(depthEnabled),
@@ -154,23 +163,37 @@ final class RawScanCapture {
                 "skipped_oversize_depth_samples": .number(Double(skippedOversizeSamples)),
                 "mesh_read_failures": .number(0),
                 "depth_read_failures": .number(Double(depthReadFailures)),
+                "small_obstacle_interval_seconds": .number(obstacleInterval),
+                "small_obstacle_retained_cells": .number(Double(smallObstacles.retainedCellCount)),
+                "maximum_small_obstacle_cells": .number(Double(smallObstacles.maximumCells)),
+                "maximum_small_obstacle_clusters": .number(Double(smallObstacles.maximumClusters)),
+                "small_obstacle_evidence": .string("measured_floor; high_confidence_supported_sides; repeated_frames; floor_ramp_and_near_camera_rejection"),
                 "sensor_stream_complete": .bool(false),
                 "color_frames_collected": .bool(false),
                 "native_buffer_archive": .string("local_only_includes_row_stride_and_original_float_bits"),
-            ])
+            ]), observedFootprints: observedSurfaces.snapshot() + smallObstacles.snapshot()
         )
     }
 
     private func sample() {
-        guard let frame = session?.currentFrame, case .normal = frame.camera.trackingState,
-              shouldKeepDepth(frame), let depth = frame.sceneDepth else { return }
+        guard let frame = session?.currentFrame, case .normal = frame.camera.trackingState else { return }
+        observedSurfaces.update(frame: frame, floorY: floorY)
+        let camera = frame.camera.transform.columns.3
+        let measuredFloor = observedSurfaces.floorElevation(near: SIMD3(camera.x, camera.y, camera.z)) ?? floorY
+        let keepArchive = shouldKeepDepth(frame)
+        let measureObstacles = measuredFloor != nil
+            && (lastObstacleTimestamp.map { frame.timestamp - $0 >= obstacleInterval } ?? true)
+        guard keepArchive || measureObstacles, let depth = frame.sceneDepth else { return }
         guard worker == nil else {
             skippedBusySamples += 1
             return
         }
         let copied: CopiedDepth
         do {
-            copied = try copyDepth(depth, frame: frame)
+            var sample = try copyDepth(depth, frame: frame)
+            sample.floorY = measuredFloor
+            sample.keepsArchive = keepArchive
+            copied = sample
         } catch ReadError.exceedsBudget {
             skippedOversizeSamples += 1
             return
@@ -182,7 +205,11 @@ final class RawScanCapture {
         worker = Task.detached(priority: .utility) { [weak self] in
             let result: DecodeResult
             do {
-                result = .success(try Self.decodeDepth(copied))
+                var decoded = try Self.decodeDepth(copied)
+                if let floorY = copied.floorY {
+                    decoded.obstacles = try DepthObstacleEvidence.samples(from: decoded.frame, floorY: floorY)
+                }
+                result = .success(decoded)
             } catch is CancellationError {
                 result = .cancelled
             } catch {
@@ -197,6 +224,11 @@ final class RawScanCapture {
         guard sampleGeneration == generation else { return }
         switch result {
         case .success(let decoded):
+            if sample.floorY != nil {
+                smallObstacles.observe(decoded.obstacles, timestamp: sample.timestamp)
+                lastObstacleTimestamp = sample.timestamp
+            }
+            guard sample.keepsArchive else { return }
             frames.append(decoded.frame)
             depthBuffers.append(decoded.buffer)
             frameCosts.append(sample.cost)
@@ -333,11 +365,14 @@ final class RawScanCapture {
         var position: SIMD3<Float>
         var direction: SIMD3<Float>
         var cost: Int
+        var floorY: Float? = nil
+        var keepsArchive = true
     }
 
     private struct DecodedDepth: Sendable {
         var frame: CaptureDepthFrame
         var buffer: RawDepthBuffers
+        var obstacles: [DepthObstacleEvidence.Sample] = []
     }
 
     private enum DecodeResult: Sendable {

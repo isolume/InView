@@ -91,12 +91,12 @@ matrix that transforms in the reverse direction.
   the measured box. Generic furniture faces local `-z`; exporters must align their
   source orientation accordingly. Additional source attributes remain in the raw
   capture and are not yet used to choose model variants.
-- **Surfaces:** `id`, `kind`, `map_from_surface`, and centered `dimensions_m`.
-  This initial shell representation is rectangular; one axis may be zero for a
-  plane. A 2.5 cm display thickness is added only to zero-thickness axes. Source
-  dimensions remain unchanged. The preview shortens walls unless “Full walls” is
-  selected. The native renderer cuts aligned rectangular openings into walls;
-  arbitrary wall/floor polygons are not implemented.
+- **Surfaces:** `id`, `kind`, `map_from_surface`, centered `dimensions_m`, and
+  optional `polygon_corners` containing 3–128 surface-local XYZ vertices.
+  Concave floor outlines survive local and server processing. One dimension may
+  be zero for a plane; a 2.5 cm display thickness is added only to zero axes.
+  The native renderer merges measured floors without filling their gaps and
+  shortens walls unless “Full walls” is selected. Wall openings remain rectangular.
 - **Frames:** `id`, nonnegative `timestamp_seconds`, `pixel_orientation:
   "sensor_native"`, `map_from_camera`, `camera`, `depth`, and optional `color_asset`.
   `camera` has `image_width`, `image_height`, `fx`, `fy`, `cx`, `cy`. Intrinsics refer
@@ -124,10 +124,17 @@ The optional field remains supported when importing other providers' bundles.
 `RawScanCapture.swift` polls the same session without replacing its delegate,
 selecting up to six calibrated depth keyframes within an 8 MiB retained-payload
 budget. It does not request or repeatedly copy a second raw mesh reconstruction;
-RoomPlan's measured surfaces and objects supply navigation geometry. Native depth
-bytes are copied before one background worker decodes them; busy samples are skipped.
+RoomPlan's measured surfaces and objects supply navigation geometry, supplemented
+by bounded confirmed ARKit floor and low-barrier planes. High-confidence depth
+side measurements can also produce generic small-obstacle objects, using repeated
+observations near a measured floor. Their saved, rendered and routing bounds agree;
+no furniture identity is inferred. Native depth bytes are copied before one
+background worker decodes them; busy samples are skipped.
 These records preserve the shared ARKit frame; no export origin reset is applied.
 Overlapping sections use the latest component with the same RoomPlan identifier.
+Recovered floor and wall extensions are retained when not wholly covered, and
+the routing map and portable scene share the same supplement selection. Long
+sections save and continue automatically without resetting the AR session.
 
 The app archives native RoomPlan JSON and selected depth bytes locally before upload.
 Local processing has no upload-size limit and does not project a display point cloud

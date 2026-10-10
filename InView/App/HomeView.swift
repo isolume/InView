@@ -14,6 +14,9 @@ struct HomeView: View {
     @State private var report = MapStore.loadReport()
     @State private var mode: Mode?
     @State private var showsSettings = false
+    @State private var buildings = MapStore.savedBuildings()
+    @State private var selectedFloor = MapStore.currentFloor
+    @State private var floorSelectionError: String?
 
     var body: some View {
         NavigationStack {
@@ -42,7 +45,25 @@ struct HomeView: View {
                     if let savedMap {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text("This floor").sectionHeading()
+                                if let selectedFloor {
+                                    Menu {
+                                        ForEach(buildings) { building in
+                                            Section(building.name) {
+                                                ForEach(building.floors) { floor in
+                                                    Button(floor.name, systemImage: floor.id == selectedFloor.id ? "checkmark" : "building.2") {
+                                                        selectFloor(floor)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        Label(selectedFloor.name, systemImage: "chevron.up.chevron.down")
+                                            .font(.headline)
+                                    }
+                                    .accessibilityLabel("Choose saved floor. \(selectedFloor.name)")
+                                } else {
+                                    Text("This floor").sectionHeading()
+                                }
                                 Spacer()
                                 ShareLink(item: MapStore.mapURL) {
                                     Label("Export", systemImage: "square.and.arrow.up").font(.footnote.weight(.semibold))
@@ -51,6 +72,7 @@ struct HomeView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 // The scan and navigate covers each run their own AR view; the 3D model must not stay alive under them.
                                 MapPanel(map: savedMap, height: 260, isModelAllowed: mode == nil)
+                                    .id(selectedFloor?.storageID.uuidString ?? "legacy")
                                 Text(summary(of: savedMap)).font(.footnote).foregroundStyle(.secondary)
                             }
                             .card()
@@ -88,11 +110,26 @@ struct HomeView: View {
             }
         }
         .sheet(isPresented: $showsSettings) { BackendSettingsView() }
+        .onReceive(NotificationCenter.default.publisher(for: MapStore.selectionDidChange)) { _ in
+            if mode == nil { reload() }
+        }
+        .alert("Couldn't open this floor", isPresented: Binding(
+            get: { floorSelectionError != nil }, set: { if !$0 { floorSelectionError = nil } }
+        )) { Button("OK", role: .cancel) {} } message: { Text(floorSelectionError ?? "") }
     }
 
     private func reload() {
         savedMap = MapStore.load()
         report = MapStore.loadReport()
+        buildings = MapStore.savedBuildings()
+        selectedFloor = MapStore.currentFloor
+    }
+
+    private func selectFloor(_ floor: SavedFloor) {
+        do {
+            try MapStore.selectFloor(buildingID: floor.identity.buildingID, floorID: floor.id)
+            reload()
+        } catch { floorSelectionError = error.localizedDescription }
     }
 
     private func summary(of map: VenueMap) -> String {

@@ -230,6 +230,72 @@ struct BackendIntegrationTests {
         #expect(BackendMockProtocol.failure == nil)
     }
 
+    @Test func olderBackendMissingOutlineRestoresTheImmutableCapturedFloorPolygon() async throws {
+        var capture = try exampleCapture()
+        let outline: [[Float]] = [
+            [-3, 0, -2.5], [3, 0, -2.5], [3, 0, 0], [0, 0, 0], [0, 0, 2.5], [-3, 0, 2.5],
+        ]
+        capture.surfaces[0].polygonCorners = outline
+        for reuseSavedCapture in [false, true] {
+            let steps = reuseSavedCapture ? [
+                ExpectedRequest("GET", "/scans/demo-room/scene", 200, rustSceneFixture),
+                ExpectedRequest("GET", "/scans/demo-room", 200, try JSONEncoder().encode(capture)),
+            ] : [
+                ExpectedRequest("POST", "/scans", 201, try summaryData(capture)),
+                ExpectedRequest("GET", "/scans/demo-room/scene", 200, rustSceneFixture),
+            ]
+            let (client, session) = mockClient(steps)
+            defer { session.invalidateAndCancel() }
+            let scene: ProcessedScene
+            if reuseSavedCapture { scene = try await client.process(capture) }
+            else { scene = try await client.uploadAndProcess(capture) }
+            #expect(scene.surfaces[0].polygonCorners == outline)
+            #expect(scene.surfaces[0].mapFromSurface == capture.surfaces[0].mapFromSurface)
+            #expect(scene.surfaces[0].measuredDimensionsM == capture.surfaces[0].dimensionsM)
+            #expect(capture.surfaces[0].polygonCorners == outline)
+            try scene.validate(source: capture)
+            #expect(BackendMockProtocol.steps.isEmpty)
+            #expect(BackendMockProtocol.failure == nil)
+        }
+    }
+
+    @Test func backendSuppliedDifferentOutlineStillFailsSourceVerification() async throws {
+        var capture = try exampleCapture()
+        capture.surfaces[0].polygonCorners = [[-3, 0, -2.5], [3, 0, -2.5], [3, 0, 2.5], [-3, 0, 2.5]]
+        var changed = try exampleScene()
+        changed.surfaces[0].polygonCorners = [[-2, 0, -2.5], [2, 0, -2.5], [2, 0, 2.5], [-2, 0, 2.5]]
+        let (client, session) = mockClient([
+            ExpectedRequest("POST", "/scans", 201, try summaryData(capture)),
+            ExpectedRequest("GET", "/scans/demo-room/scene", 200, try JSONEncoder().encode(changed)),
+        ])
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: BackendClientError.invalidResponse("The scene changed a captured surface's measurements.")) {
+            try await client.uploadAndProcess(capture)
+        }
+        #expect(BackendMockProtocol.steps.isEmpty)
+        #expect(BackendMockProtocol.failure == nil)
+    }
+
+    @Test func missingOutlineCompatibilityCannotHideChangedSurfacePoseOrDimensions() async throws {
+        var capture = try exampleCapture()
+        capture.surfaces[0].polygonCorners = [[-3, 0, -2.5], [3, 0, -2.5], [3, 0, 2.5], [-3, 0, 2.5]]
+        for changedPose in [false, true] {
+            var changed = try exampleScene()
+            if changedPose { changed.surfaces[0].mapFromSurface[12] += 1 }
+            else { changed.surfaces[0].measuredDimensionsM[0] += 1 }
+            let (client, session) = mockClient([
+                ExpectedRequest("POST", "/scans", 201, try summaryData(capture)),
+                ExpectedRequest("GET", "/scans/demo-room/scene", 200, try JSONEncoder().encode(changed)),
+            ])
+            defer { session.invalidateAndCancel() }
+            await #expect(throws: BackendClientError.invalidResponse("The scene changed a captured surface's measurements.")) {
+                try await client.uploadAndProcess(capture)
+            }
+            #expect(BackendMockProtocol.steps.isEmpty)
+            #expect(BackendMockProtocol.failure == nil)
+        }
+    }
+
     @Test func acceptsDuplicateOnlyAfterVerifyingOriginalCapture() async throws {
         let capture = try exampleCapture()
         let (client, session) = mockClient([

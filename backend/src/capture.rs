@@ -66,8 +66,11 @@ pub struct CapturedSurface {
     pub id: String,
     pub kind: String,
     pub map_from_surface: Transform,
-    /// First draft represents shell surfaces as rectangular bounds; one axis may be zero.
+    /// Local centered bounds; one axis may be zero for a measured planar surface.
     pub dimensions_m: Vec3,
+    /// Optional measured outline in surface-local coordinates, without a repeated closing vertex.
+    #[serde(default)]
+    pub polygon_corners: Option<Vec<Vec3>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -194,12 +197,39 @@ impl ScanBundle {
                     surface.id
                 ));
             }
+            if let Some(polygon) = &surface.polygon_corners
+                && (!valid_surface_polygon(polygon)
+                    || polygon
+                        .iter()
+                        .any(|point| !finite(surface.map_from_surface.point(*point))))
+            {
+                return Err(format!("Surface {} has an invalid outline.", surface.id));
+            }
         }
         for frame in &self.frames {
             frame.validate()?;
         }
         Ok(())
     }
+}
+
+fn valid_surface_polygon(corners: &[Vec3]) -> bool {
+    if !(3..=128).contains(&corners.len()) || corners.iter().any(|point| !finite(*point)) {
+        return false;
+    }
+    // Newell area in the original local plane, translated to avoid numerical cancellation.
+    let origin = corners[0];
+    let mut twice_area = [0.0_f64; 3];
+    for index in 0..corners.len() {
+        let a: Vec3 = std::array::from_fn(|axis| corners[index][axis] - origin[axis]);
+        let b: Vec3 =
+            std::array::from_fn(|axis| corners[(index + 1) % corners.len()][axis] - origin[axis]);
+        twice_area[0] += a[1] * b[2] - a[2] * b[1];
+        twice_area[1] += a[2] * b[0] - a[0] * b[2];
+        twice_area[2] += a[0] * b[1] - a[1] * b[0];
+    }
+    twice_area.iter().all(|value| value.is_finite())
+        && twice_area.iter().map(|value| value * value).sum::<f64>() > 4e-12
 }
 
 impl DepthFrame {
@@ -296,5 +326,81 @@ fn nonempty(value: &str) -> Result<(), String> {
         Err("Capture identifiers and categories must not be empty.".into())
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod surface_polygon_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn surface_bundle() -> ScanBundle {
+        serde_json::from_value(json!({
+            "schema_version": 1, "id": "scan", "map_id": "building", "floor_id": "ground",
+            "coordinates": {"units": "meters", "up_axis": "y", "handedness": "right"},
+            "surfaces": [{
+                "id": "floor", "kind": "floor", "dimensions_m": [6, 4, 0],
+                "map_from_surface": [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 8, -1.2, 3, 1]
+            }]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn legacy_surface_has_no_polygon() {
+        let bundle = surface_bundle();
+        assert!(bundle.surfaces[0].polygon_corners.is_none());
+        bundle.validate().unwrap();
+    }
+
+    #[test]
+    fn concave_surface_polygons_accept_native_xy_and_xz_planes() {
+        let xy = vec![
+            [-3.0, -2.0, 0.0],
+            [3.0, -2.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [-3.0, 2.0, 0.0],
+        ];
+        let mut bundle = surface_bundle();
+        bundle.surfaces[0].polygon_corners = Some(xy.clone());
+        bundle.validate().unwrap();
+        bundle.surfaces[0].polygon_corners = Some(xy.iter().map(|p| [p[0], 0.0, p[1]]).collect());
+        bundle.validate().unwrap();
+    }
+
+    #[test]
+    fn surface_polygons_reject_invalid_geometry_and_vertex_limits() {
+        let mut bundle = surface_bundle();
+        for outline in [
+            vec![],
+            vec![[0.0; 3]; 2],
+            vec![[0.0; 3], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+            vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, f64::NAN, 0.0]],
+            vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, f64::INFINITY, 0.0]],
+            vec![[0.0; 3]; 129],
+        ] {
+            bundle.surfaces[0].polygon_corners = Some(outline);
+            assert!(bundle.validate().is_err());
+        }
+        let circle = (0..128)
+            .map(|index| {
+                let angle = index as f64 * std::f64::consts::TAU / 128.0;
+                [angle.cos(), angle.sin(), 0.0]
+            })
+            .collect();
+        bundle.surfaces[0].polygon_corners = Some(circle);
+        bundle.validate().unwrap();
+    }
+
+    #[test]
+    fn surface_polygon_decode_rejects_non_xyz_vertex_arrays() {
+        let value = json!({
+            "id": "floor", "kind": "floor", "dimensions_m": [6, 4, 0],
+            "map_from_surface": [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 8, -1.2, 3, 1],
+            "polygon_corners": [[0, 0], [1, 0], [0, 1]]
+        });
+        assert!(serde_json::from_value::<CapturedSurface>(value).is_err());
     }
 }

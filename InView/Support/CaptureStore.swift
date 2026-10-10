@@ -46,8 +46,15 @@ enum CaptureStore {
     }
 
     static func loadSavedBundle() -> CaptureBundle? {
-        guard let idData = try? Data(contentsOf: activeURL),
-              let id = try? JSONDecoder().decode(String.self, from: idData),
+        let id: String?
+        if MapStore.currentFloor != nil {
+            id = MapStore.activeCaptureID
+        } else if let idData = try? Data(contentsOf: activeURL) {
+            id = try? JSONDecoder().decode(String.self, from: idData)
+        } else {
+            id = nil
+        }
+        guard let id,
               let directory = try? directory(for: id),
               let data = try? Data(contentsOf: directory.appending(path: "capture.json")),
               let bundle = try? JSONDecoder().decode(CaptureBundle.self, from: data),

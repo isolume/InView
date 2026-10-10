@@ -10,6 +10,7 @@ public enum LocalSceneBuilder {
         let objects = try capture.objects.map { object in
             try Task.checkCancellation()
             let key = modelKey(for: object)
+            let displayMeshes = try FurnitureModelCatalog.meshes(for: key, dimensions: object.dimensionsM)
             let corners = try (0..<8).map { corner in
                 try mapPoint((0..<3).map { axis in
                     object.dimensionsM[axis] * (corner & (1 << axis) == 0 ? -0.5 : 0.5)
@@ -27,7 +28,9 @@ public enum LocalSceneBuilder {
                     min: (0..<3).map { axis in corners.map { $0[axis] }.min()! },
                     max: (0..<3).map { axis in corners.map { $0[axis] }.max()! }
                 ),
-                parts: parts(for: key, dimensions: object.dimensionsM)
+                parts: displayMeshes.isEmpty ? parts(for: key, dimensions: object.dimensionsM)
+                    : FurnitureModelCatalog.fallbackParts(for: displayMeshes),
+                modelMeshes: displayMeshes
             )
         }
         if objects.contains(where: { $0.modelKey == "bounds_v1" }) {
@@ -40,7 +43,8 @@ public enum LocalSceneBuilder {
                 mapFromSurface: surface.mapFromSurface,
                 measuredDimensionsM: surface.dimensionsM,
                 renderDimensionsM: surface.dimensionsM.map { $0 == 0 ? 0.025 : $0 },
-                color: surface.kind == "floor" ? "#EEEDE9" : "#E0DFDA"
+                color: surface.kind == "floor" ? "#EEEDE9" : "#E0DFDA",
+                polygonCorners: surface.polygonCorners
             )
         }
         let meshes = try capture.meshes.map { mesh in
@@ -93,6 +97,7 @@ public enum LocalSceneBuilder {
 
     private static func modelKey(for object: CaptureObject) -> String {
         guard object.confidence == .medium || object.confidence == .high else { return "bounds_v1" }
+        if let key = FurnitureModelCatalog.modelKey(category: object.category, dimensions: object.dimensionsM) { return key }
         switch object.category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "chair": return "chair_v2"
         case "sofa": return "sofa_v2"

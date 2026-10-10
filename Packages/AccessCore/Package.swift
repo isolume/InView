@@ -13,7 +13,8 @@ let package = Package(
     targets: [
         .target(
             name: "AccessCore",
-            dependencies: [.product(name: "HeapModule", package: "swift-collections")]
+            dependencies: [.product(name: "HeapModule", package: "swift-collections")],
+            resources: [.process("Resources")]
         ),
         .testTarget(name: "AccessCoreTests", dependencies: ["AccessCore"]),
     ],

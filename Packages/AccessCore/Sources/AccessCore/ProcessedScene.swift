@@ -130,14 +130,18 @@ public struct SceneSurface: Codable, Equatable, Sendable {
     public var measuredDimensionsM: [Float]
     public var renderDimensionsM: [Float]
     public var color: String
+    /// Original measured outline in surface-local coordinates, retained separately from display thickness.
+    public var polygonCorners: [[Float]]?
     public init(sourceID: String, kind: String, mapFromSurface: [Float], measuredDimensionsM: [Float],
-                renderDimensionsM: [Float], color: String) {
+                renderDimensionsM: [Float], color: String, polygonCorners: [[Float]]? = nil) {
         self.sourceID = sourceID; self.kind = kind; self.mapFromSurface = mapFromSurface
         self.measuredDimensionsM = measuredDimensionsM; self.renderDimensionsM = renderDimensionsM; self.color = color
+        self.polygonCorners = polygonCorners
     }
     enum CodingKeys: String, CodingKey {
         case sourceID = "source_id", kind, mapFromSurface = "map_from_surface"
         case measuredDimensionsM = "measured_dimensions_m", renderDimensionsM = "render_dimensions_m", color
+        case polygonCorners = "polygon_corners"
     }
 }
 
@@ -213,6 +217,7 @@ extension ProcessedScene {
                         && surface.measuredDimensionsM.filter { $0 > 0 }.count >= 2
                         && validVector(surface.renderDimensionsM) && surface.renderDimensionsM.allSatisfy { $0 > 0 }
                         && color(surface.color))
+            if let polygon = surface.polygonCorners { try require(validSurfacePolygon(polygon)) }
         }
         for mesh in meshes {
             try require(!mesh.vertices.isEmpty && mesh.vertices.allSatisfy(validVector)
@@ -241,7 +246,9 @@ extension ProcessedScene {
             for surface in surfaces {
                 let original = inputSurfaces[surface.sourceID]!
                 try require(surface.kind == original.kind && surface.mapFromSurface == original.mapFromSurface
-                            && surface.measuredDimensionsM == original.dimensionsM, "The scene changed a captured surface's measurements.")
+                            && surface.measuredDimensionsM == original.dimensionsM
+                            && surface.polygonCorners == original.polygonCorners,
+                            "The scene changed a captured surface's measurements.")
             }
         }
     }
