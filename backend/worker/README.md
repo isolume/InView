@@ -60,3 +60,31 @@ unless `INVIEW_MODEL_DOWNLOAD=1`. Without the models the stage falls back to MSE
 Tesseract (if installed), and otherwise reports text regions without readings, with a notice.
 Per-scan overrides go in `ctx.config["ocr"]` (`recognizers`, `min_confidence`, `long_sides`,
 `model_dir`, `download`, ...; see `OcrConfig`).
+
+## Synthetic buildings and evaluation
+
+`inview_worker/synthetic/building.py` generates seeded multi-room buildings as real iPhone-format
+`.inviewscan.tar` packages plus a separate ground-truth JSON: a corridor with rooms on both sides,
+doors of varied widths (some below the 0.815 m clear width, hinged leaves open 90°), a doorless
+opening, a connecting door, furniture (RoomPlan objects, including a restroom's toilets and sink), a
+sunken lobby reached by a two-riser stair and a ramp (1:10–1:14), and wall signs drawn with OpenCV
+(room plates such as "214", "RESTROOM"/"TOILETTES" with pictograms, "EXIT"/"SALIDA", "ELEVATOR"/
+"ASCENSOR", a ramp sign, directional arrows). Depth (with LiDAR-like noise and confidence) and
+upright portrait JPEG keyframes are ray-cast against the same geometry; observations carry
+GPS/heading samples around a known georeference, RoomPlan surfaces carry centimetre measurement
+error, and native mesh anchors are included. Ground truth covers spaces and labels, door widths,
+sign/text positions and strings, hazards, places, room adjacency, per-profile shortest paths
+(wheelchair avoids stairs, doors under 0.815 m and ramps steeper than 1:12) and the georeference.
+
+```sh
+.venv/bin/python -m inview_worker.synthetic.building out.inviewscan.tar --seed 3   # + out.inviewscan.tar.truth.json
+.venv/bin/python -m inview_worker evaluate --scenarios 3 [--seed N] [--out report.json] [--keep DIR]
+```
+
+`evaluate` runs every registered stage offline on each building and prints a metric table (footprint
+IoU, door width MAE and pass/fail accuracy, sign/text localization error and OCR character error rate,
+region/place/hazard recall and precision, nav-graph adjacency and reachability agreement, route length
+ratio, georeference error). Products that the pipeline does not produce yet are listed as missing,
+not scored as zero. Generated packages pass the backend's `POST /scan-packages` validation. The
+generator assumes each environment sample's `heading_degrees` is the compass bearing of the camera's
+viewing direction.
