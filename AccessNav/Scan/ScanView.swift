@@ -138,7 +138,9 @@ struct MapReviewView: View {
     @ObservedObject var controller: ScanController
     let onClose: () -> Void
     @State private var pendingPoint: SIMD2<Float>?
+    @State private var isSaving = false
     @State private var saveError: String?
+    @State private var syncWarning: String?
 
     var body: some View {
         NavigationStack {
@@ -151,23 +153,25 @@ struct MapReviewView: View {
                     } footer: {
                         Text("Tap the map to add an elevator or ramp the camera missed. Green doors are wide enough for a wheelchair; orange ones are not.")
                     }
-                    Section("Accessible points") {
+                    Section {
                         if draft.points.isEmpty {
                             Text("None yet").foregroundStyle(.secondary)
                         }
                         ForEach(draft.points) { point in
-                            Label {
-                                VStack(alignment: .leading) {
-                                    Text(point.kind.title)
-                                    Text(point.source == .manual ? "Added by hand" : "Detected, \(Int(point.confidence * 100))% sure")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            } icon: {
-                                Image(systemName: point.kind.symbolName).foregroundStyle(point.kind.tint)
-                            }
+                            PointRow(point: point, name: name(for: point))
                         }
                         .onDelete(perform: controller.removePoints)
+                    } header: {
+                        Text("Accessible points")
+                    } footer: {
+                        Text("The crew uses these names when they text in a problem, so make them easy to say.")
+                    }
+                    Section("Accessibility report") {
+                        if let report = controller.report {
+                            ReportView(report: report)
+                        } else {
+                            ProgressView()
+                        }
                     }
                 }
             }
@@ -178,13 +182,10 @@ struct MapReviewView: View {
                     Button("Discard", role: .destructive, action: onClose)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        do {
-                            try controller.save()
-                            onClose()
-                        } catch {
-                            saveError = error.localizedDescription
-                        }
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Save", action: save)
                     }
                 }
             }
@@ -200,7 +201,32 @@ struct MapReviewView: View {
             } message: {
                 Text(saveError ?? "")
             }
+            .alert("Saved on this phone only", isPresented: isShowingSyncWarning) {
+                Button("OK", action: onClose)
+            } message: {
+                Text("The server didn't get the map (\(syncWarning ?? "")), so crew reports can't match its points yet. Retry with Sync on the home screen.")
+            }
         }
+    }
+
+    private func save() {
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                if let warning = try await controller.save() {
+                    syncWarning = warning
+                } else {
+                    onClose()
+                }
+            } catch {
+                saveError = error.localizedDescription
+            }
+        }
+    }
+
+    private func name(for point: AccessPoint) -> Binding<String> {
+        Binding(get: { point.name }, set: { controller.rename(point.id, to: $0) })
     }
 
     private var isAddingPoint: Binding<Bool> {
@@ -209,6 +235,36 @@ struct MapReviewView: View {
 
     private var isShowingSaveError: Binding<Bool> {
         Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })
+    }
+
+    private var isShowingSyncWarning: Binding<Bool> {
+        Binding(get: { syncWarning != nil }, set: { if !$0 { syncWarning = nil } })
+    }
+}
+
+private struct PointRow: View {
+    let point: AccessPoint
+    @Binding var name: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                TextField(point.kind.title, text: $name)
+                    .font(.body.weight(.medium))
+                    .submitLabel(.done)
+                Text(details).font(.caption).foregroundStyle(point.isTooSteep ? .orange : .secondary)
+            }
+        } icon: {
+            Image(systemName: point.kind.symbolName).foregroundStyle(point.kind.tint)
+        }
+    }
+
+    private var details: String {
+        var parts = [point.source == .manual ? "Added by hand" : "Detected, \(Int(point.confidence * 100))% sure"]
+        if let slope = point.slopeDegrees {
+            parts.append(String(format: point.isTooSteep ? "%.1f° · too steep" : "%.1f° slope", slope))
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

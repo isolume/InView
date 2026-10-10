@@ -19,7 +19,10 @@ final class ScanController: ObservableObject {
     @Published private(set) var phase: Phase
     @Published private(set) var sectionCount = 0
     @Published private(set) var errorMessage: String?
-    @Published private(set) var draft: VenueMap?
+    @Published private(set) var draft: VenueMap? {
+        didSet { scheduleReport() }
+    }
+    @Published private(set) var report: AccessibilityReport?
 
     let session = ARSession()
     let detector = AccessibilityDetector()
@@ -41,6 +44,7 @@ final class ScanController: ObservableObject {
     private var startViewTimer: Timer?
     private var hasStarted = false
     private var finishAfterProcessing = false
+    private var reportTask: Task<Void, Never>?
 
     init() {
         phase = RoomCaptureSession.isSupported ? .scanning : .unsupported
@@ -88,9 +92,18 @@ final class ScanController: ObservableObject {
         draft?.points.remove(atOffsets: offsets)
     }
 
-    func save() throws {
-        guard let draft, let worldMap else { return }
-        try MapStore.save(draft, rooms: rooms, worldMap: worldMap, startView: startView)
+    func rename(_ id: UUID, to name: String) {
+        guard let index = draft?.points.firstIndex(where: { $0.id == id }) else { return }
+        draft?.points[index].name = name
+    }
+
+    /// Saves on the phone, then sends the map to the server so crew reports can name its points.
+    /// - Returns: Why the server sync failed, if it did. The map is saved locally either way.
+    func save() async throws -> String? {
+        guard let draft, let worldMap else { return nil }
+        let report = report ?? AccessibilityReport(map: draft)
+        try MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
+        return await MapStore.sync(draft, report: report)
     }
 
     private func endSection(thenFinish finish: Bool) {
@@ -126,6 +139,22 @@ final class ScanController: ObservableObject {
         draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints())
         phase = .review
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    /// Recomputes the report a moment after the draft stops changing; it runs route searches, so keep it off the main thread.
+    private func scheduleReport() {
+        reportTask?.cancel()
+        guard let draft else {
+            report = nil
+            return
+        }
+        reportTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            let report = await Task.detached(priority: .userInitiated) { AccessibilityReport(map: draft) }.value
+            guard !Task.isCancelled else { return }
+            self?.report = report
+        }
     }
 
     private func captureStartView() {
