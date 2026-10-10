@@ -37,6 +37,15 @@ enum Theme {
         }
     }
 
+    /// `color(for:)` for RealityKit and SceneKit.
+    static func uiColor(for severity: AccessibilityReport.Finding.Severity) -> UIColor {
+        switch severity {
+        case .barrier: light(.systemRed)
+        case .warning: light(.systemOrange)
+        case .good: light(.systemGreen)
+        }
+    }
+
     static func symbol(for severity: AccessibilityReport.Finding.Severity) -> String {
         switch severity {
         case .barrier: "xmark.octagon.fill"

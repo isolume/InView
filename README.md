@@ -8,7 +8,7 @@ Scans are processed and saved on the phone by default. An optional Rust server c
 
 ## Setup
 
-Requires Xcode 26+, an iPhone with LiDAR (Pro / Pro Max), and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requires Xcode 26+, iOS 26 (the UI uses Liquid Glass), an iPhone with LiDAR (Pro / Pro Max), and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 brew install xcodegen

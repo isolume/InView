@@ -280,7 +280,12 @@ private struct LocatingPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Finding where you are").font(.panelTitle)
+            Label {
+                Text("Finding where you are")
+            } icon: {
+                Image(systemName: "location.viewfinder").foregroundStyle(Theme.accent).symbolEffect(.pulse)
+            }
+            .font(.panelTitle)
             Text("Go to where the scan started and slowly look around.").foregroundStyle(.secondary)
             ProgressView()
             if let startView {

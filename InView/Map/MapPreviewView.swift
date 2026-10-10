@@ -14,7 +14,17 @@ struct MapPreviewView: View {
     var body: some View {
         GeometryReader { geometry in
             let projection = MapProjection(map: map, size: geometry.size)
-            Canvas { context, _ in draw(in: &context, projection: projection) }
+            Canvas { context, _ in
+                draw(in: &context, projection: projection)
+            } symbols: {
+                // The same badge the lists and the 3D map use.
+                ForEach(map.points) { point in
+                    KindBadge(symbol: point.kind.symbolName,
+                              tint: point.isTooSteep ? Theme.color(for: .warning) : point.kind.tint,
+                              size: KindBadge.mapDiameter, isOnMap: true)
+                        .tag(point.id)
+                }
+            }
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { location in
                     onTap?(projection.venuePoint(location))
@@ -50,7 +60,7 @@ struct MapPreviewView: View {
         if let route, route.waypoints.count > 1 {
             let path = Path { $0.addLines(route.waypoints.map(projection.screenPoint)) }
             context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
-            context.stroke(path, with: .color(.blue), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            context.stroke(path, with: .color(Theme.route), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
         }
         if let userPosition {
             let center = projection.screenPoint(userPosition)
@@ -62,21 +72,17 @@ struct MapPreviewView: View {
                 }
                 path.closeSubpath()
             }
-            context.fill(cone, with: .color(.blue.opacity(0.15)))
+            context.fill(cone, with: .color(Theme.route.opacity(0.15)))
             context.fill(Path(ellipseIn: CGRect(x: center.x - 9, y: center.y - 9, width: 18, height: 18)), with: .color(.white))
-            context.fill(Path(ellipseIn: CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12)), with: .color(.blue))
+            context.fill(Path(ellipseIn: CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12)), with: .color(Theme.route))
         }
 
         for point in map.points {
             let center = projection.screenPoint(point.floorPoint)
-            let disc = CGRect(x: center.x - 13, y: center.y - 13, width: 26, height: 26)
-            // A white ring keeps the marker readable over walls and furniture.
-            context.fill(Path(ellipseIn: disc.insetBy(dx: -2, dy: -2)), with: .color(Color(.systemBackground)))
-            context.fill(Path(ellipseIn: disc), with: .color(point.isTooSteep ? .orange : point.kind.tint))
-            var symbol = context.resolve(Image(systemName: point.kind.symbolName))
-            symbol.shading = .color(.white)
-            context.draw(symbol, in: disc.insetBy(dx: 6, dy: 6))
-            context.draw(Text(point.title).font(.caption2.weight(.semibold)), at: CGPoint(x: center.x, y: disc.maxY + 3), anchor: .top)
+            guard let badge = context.resolveSymbol(id: point.id) else { continue }
+            context.draw(badge, at: center)
+            let radius = KindBadge.mapDiameter / 2 + KindBadge.ringWidth
+            context.draw(Text(point.title).font(.caption.weight(.semibold)), at: CGPoint(x: center.x, y: center.y + radius + 2), anchor: .top)
         }
     }
 }
@@ -90,8 +96,8 @@ private struct FloorPlanSymbol {
     private var half: SIMD2<Float> { footprint.size / 2 }
 
     func drawFurniture(in context: inout GraphicsContext) {
-        let fill = GraphicsContext.Shading.color(.gray.opacity(0.28))
-        let ink = GraphicsContext.Shading.color(.gray.opacity(0.8))
+        let fill = GraphicsContext.Shading.color(Theme.furniture.opacity(0.28))
+        let ink = GraphicsContext.Shading.color(Theme.furniture.opacity(0.8))
         let outline = rectangle(inset: 0)
         switch footprint.furniture {
         case .table:
@@ -153,7 +159,7 @@ private struct FloorPlanSymbol {
     /// The opening in green (wide enough) or orange (too narrow), plus a swing arc for doors.
     func drawDoor(in context: inout GraphicsContext) {
         let wideEnough = footprint.size.x >= OccupancyGrid.minimumDoorWidth
-        let color: Color = wideEnough ? .green : .orange
+        let color = Theme.color(for: wideEnough ? .good : .warning)
         context.fill(rectangle(inset: 0), with: .color(color))
         guard footprint.kind == .door else { return }
         var swing = Path()

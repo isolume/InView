@@ -57,7 +57,7 @@ enum VenueModelBuilder {
             return box(w, min(footprint.height ?? 2.4, cutawayWallHeight), 0.1, wallMaterial)
         case .door, .opening:
             let wide = w >= OccupancyGrid.minimumDoorWidth
-            let color: UIColor = wide ? .systemGreen : .systemOrange
+            let color = Theme.uiColor(for: wide ? .good : .warning)
             return box(w, cutawayWallHeight + 0.02, 0.14, SimpleMaterial(color: color.withAlphaComponent(0.9), roughness: 0.5, isMetallic: false))
         case .stairs:
             return stairs(width: w, depth: d, height: min(max(footprint.height ?? 0.9, 0.4), 1.5))
@@ -130,7 +130,7 @@ enum VenueModelBuilder {
     private static func marker(for point: AccessPoint, floorY: Float) -> Entity {
         let entity = Entity()
         entity.position = SIMD3(point.position.x, floorY, point.position.z)
-        let color: UIColor = point.isTooSteep ? .systemOrange : point.kind.uiTint
+        let color = point.isTooSteep ? Theme.uiColor(for: .warning) : point.kind.uiTint
         let material = SimpleMaterial(color: color, roughness: 0.4, isMetallic: false)
         switch point.kind {
         case .elevator:

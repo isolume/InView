@@ -106,7 +106,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         navigation.addChildNode(route)
         navigation.addChildNode(heading)
         navigation.addChildNode(goal)
-        locationDot.backgroundColor = .systemBlue
+        locationDot.backgroundColor = Theme.routeUIColor
         locationDot.layer.cornerRadius = 8
         locationDot.layer.borderWidth = 2.5
         locationDot.layer.borderColor = UIColor.white.cgColor
@@ -546,7 +546,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             route.childNodes.forEach { $0.removeFromParentNode() }
             if path.count > 1 {
                 route.addChildNode(routeRibbon(path, width: 0.20, altitude: floorY + 0.020, color: .white))
-                route.addChildNode(routeRibbon(path, width: 0.13, altitude: floorY + 0.026, color: .systemBlue))
+                route.addChildNode(routeRibbon(path, width: 0.13, altitude: floorY + 0.026, color: Theme.routeUIColor))
             }
         }
         if self.userHeading != bearing || heading.childNodes.isEmpty {
@@ -561,7 +561,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 }
                 let geometry = SCNGeometry(sources: [SCNGeometrySource(vertices: positions)],
                                            elements: [SCNGeometryElement(indices: indices, primitiveType: .triangles)])
-                geometry.materials = [mapInk(.systemBlue, opacity: 0.17)]
+                geometry.materials = [mapInk(Theme.routeUIColor, opacity: 0.17)]
                 let cone = SCNNode(geometry: geometry)
                 cone.categoryBitMask = 32
                 cone.castsShadow = false
@@ -588,7 +588,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 pin.close()
                 let shape = SCNShape(path: pin, extrusionDepth: 0.014)
                 shape.chamferRadius = 0.004
-                shape.materials = [mapInk(.systemBlue)]
+                shape.materials = [mapInk(Theme.routeUIColor)]
                 let pinNode = SCNNode(geometry: shape)
                 pinNode.categoryBitMask = 32
                 pinNode.castsShadow = false
@@ -604,7 +604,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 goal.addChildNode(center)
                 goal.constraints = [SCNBillboardConstraint()]
                 if let title, !title.isEmpty {
-                    let label = RoomObjectLabel(title: title, symbol: "flag.fill", tint: .systemBlue)
+                    let label = RoomObjectLabel(title: title, symbol: AccessPoint.Kind.destination.symbolName, tint: Theme.accent)
                     label.isUserInteractionEnabled = false
                     label.accessibilityTraits = .staticText
                     addSubview(label)
@@ -739,7 +739,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             guard let minimum = vector(object.obstacleBounds.min), let maximum = vector(object.obstacleBounds.max) else { continue }
             let label = RoomObjectLabel(title: RoomItemStyle.title(object.sourceCategory),
                                         symbol: RoomItemStyle.symbol(object.sourceCategory),
-                                        tint: UIColor(RoomItemStyle.tint(object.sourceCategory)))
+                                        tint: RoomItemStyle.tint(object.sourceCategory))
             label.onTap = { [weak self] in self?.onSelection?(object.sourceID) }
             addSubview(label)
             labels.append((object.sourceID, SIMD3((minimum.x + maximum.x) / 2, maximum.y + 0.03, (minimum.z + maximum.z) / 2), label))
@@ -873,23 +873,22 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
 }
 
 @MainActor
+/// A map label: the shared `KindBadge` marker with its name beside it, haloed to stay readable over the model.
 private final class RoomObjectLabel: UIControl {
     var onTap: (() -> Void)?
     private let icon = UIImageView()
     private let title = UILabel()
-    private let itemTint: UIColor
+    private static let iconSize = KindBadge.mapDiameter + 2 * KindBadge.ringWidth
 
-    init(title text: String, symbol: String, tint: UIColor) {
-        itemTint = tint
+    init(title text: String, symbol: String, tint: Color) {
         super.init(frame: .zero)
-        icon.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
-        icon.tintColor = .white
-        icon.contentMode = .center
-        icon.backgroundColor = itemTint
-        icon.layer.cornerRadius = 9
+        icon.image = KindBadge.image(symbol: symbol, tint: tint)
+        icon.contentMode = .scaleAspectFit
+        icon.layer.cornerRadius = Self.iconSize / 2
         addSubview(icon)
+        let font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .semibold)
         title.attributedText = NSAttributedString(string: text, attributes: [
-            .font: UIFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: itemTint,
+            .font: font, .foregroundColor: UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)),
             .strokeColor: UIColor(roomHex: "#fafbf8"), .strokeWidth: -4
         ])
         title.layer.shadowColor = UIColor.white.cgColor
@@ -906,19 +905,20 @@ private final class RoomObjectLabel: UIControl {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("Use init(title:symbol:)") }
 
-    override var intrinsicContentSize: CGSize { CGSize(width: title.intrinsicContentSize.width + 25, height: 28) }
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: Self.iconSize + 5 + title.intrinsicContentSize.width, height: Self.iconSize)
+    }
     override var isSelected: Bool {
         didSet {
-            icon.backgroundColor = itemTint
-            icon.layer.borderWidth = isSelected ? 1.5 : 0
-            icon.layer.borderColor = UIColor.white.cgColor
+            icon.layer.borderWidth = isSelected ? 2 : 0
+            icon.layer.borderColor = Theme.accentUIColor.cgColor
             accessibilityTraits = isSelected ? [.button, .selected] : .button
         }
     }
     override func layoutSubviews() {
         super.layoutSubviews()
-        icon.frame = CGRect(x: 0, y: 5, width: 18, height: 18)
-        title.frame = CGRect(x: 23, y: 0, width: max(0, bounds.width - 23), height: 28)
+        icon.frame = CGRect(x: 0, y: 0, width: Self.iconSize, height: Self.iconSize)
+        title.frame = CGRect(x: Self.iconSize + 5, y: 0, width: max(0, bounds.width - Self.iconSize - 5), height: Self.iconSize)
     }
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool { bounds.insetBy(dx: -5, dy: -8).contains(point) }
     @objc private func tapped() { onTap?() }

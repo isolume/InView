@@ -44,10 +44,10 @@ struct StatusPill: View {
 /// lists, cards, legends and on every map.
 struct KindBadge: View {
     /// The size on maps, where the badge also gets a white ring to stay readable over walls and furniture.
-    static let mapDiameter: CGFloat = 26
-    static let ringWidth: CGFloat = 2
+    nonisolated static let mapDiameter: CGFloat = 26
+    nonisolated static let ringWidth: CGFloat = 2
     /// Glyph size as a share of the diameter.
-    static let glyphScale: CGFloat = 0.5
+    nonisolated static let glyphScale: CGFloat = 0.5
 
     let symbol: String
     let tint: Color
@@ -67,6 +67,22 @@ struct KindBadge: View {
 }
 
 extension KindBadge {
+    /// The map badge as an image, for renderers that draw with UIKit (the 3D map's labels), so every map
+    /// shows exactly the same marker.
+    @MainActor
+    static func image(symbol: String, tint: Color, size: CGFloat = mapDiameter) -> UIImage {
+        let key = "\(symbol) \(tint) \(size)"
+        if let cached = imageCache[key] { return cached }
+        let renderer = ImageRenderer(content: KindBadge(symbol: symbol, tint: tint, size: size, isOnMap: true)
+            .environment(\.colorScheme, .light))
+        renderer.scale = 3
+        let image = renderer.uiImage ?? UIImage()
+        imageCache[key] = image
+        return image
+    }
+
+    @MainActor private static var imageCache: [String: UIImage] = [:]
+
     init(kind: AccessPoint.Kind, size: CGFloat = 32, isOnMap: Bool = false) {
         self.init(symbol: kind.symbolName, tint: kind.tint, size: size, isOnMap: isOnMap)
     }
