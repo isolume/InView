@@ -34,13 +34,44 @@ use tower_http::trace::TraceLayer;
 use sqlx::PgPool;
 use store::{GraphStore, ScanStore};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AppState {
     pub graphs: GraphStore,
     pub scans: ScanStore,
     pub streams: streaming::StreamStore,
     pub maps: Option<PgPool>,
     pub api_token: Option<Arc<str>>,
+    pub processing_requests: Arc<tokio::sync::Semaphore>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            graphs: GraphStore::default(),
+            scans: ScanStore::default(),
+            streams: streaming::StreamStore::default(),
+            maps: None,
+            api_token: None,
+            processing_requests: Arc::new(tokio::sync::Semaphore::new(4)),
+        }
+    }
+}
+
+impl AppState {
+    pub(crate) fn processing_permit(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, error::ApiError> {
+        self.processing_requests
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                error::ApiError::new(
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "processing_busy",
+                    "Scans are already processing. Retry shortly.",
+                )
+            })
+    }
 }
 
 pub fn app(state: AppState) -> Router {

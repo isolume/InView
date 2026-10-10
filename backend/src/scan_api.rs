@@ -91,18 +91,22 @@ async fn build_scene(
 ) -> Result<Json<Scene>, ApiError> {
     options.validate().map_err(ApiError::invalid)?;
     let scan = state.scans.get(&id).await.ok_or_else(missing)?;
-    tokio::task::spawn_blocking(move || scene::process(&scan.bundle, options))
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Scan processing failed");
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "processing_failed",
-                "The scene could not be processed.",
-            )
-        })?
-        .map(Json)
-        .map_err(ApiError::invalid)
+    let permit = state.processing_permit()?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        scene::process(&scan.bundle, options)
+    })
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "Scan processing failed");
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "processing_failed",
+            "The scene could not be processed.",
+        )
+    })?
+    .map(Json)
+    .map_err(ApiError::invalid)
 }
 
 pub async fn preview(

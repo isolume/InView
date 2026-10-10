@@ -625,9 +625,13 @@ pub async fn native_mesh(
     Path(id): Path<String>,
 ) -> Result<Json<impl Serialize>, ApiError> {
     let scan = scan(&state, &id).await?;
-    let result = tokio::task::spawn_blocking(move || reconstruct_mesh(native_sources(&scan)?))
-        .await
-        .map_err(|e| task_failed(e, "mesh"))?;
+    let permit = state.processing_permit()?;
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        reconstruct_mesh(native_sources(&scan)?)
+    })
+    .await
+    .map_err(|e| task_failed(e, "mesh"))?;
     result.map(Json).map_err(|message| {
         error(
             "native_mesh_unavailable",
@@ -653,7 +657,9 @@ pub async fn preview(
     let scan = scan(&state, &id).await?;
     let mode = mode.to_owned();
     let budget = query.max_points.unwrap_or(80_000);
+    let permit = state.processing_permit()?;
     let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         let assets = scan
             .package_assets
             .as_ref()

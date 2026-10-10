@@ -209,18 +209,7 @@ async fn reconstruct(
 ) -> Result<(HeaderMap, Vec<u8>), ApiError> {
     // Two builders plus two callers sharing those builds are enough for a local phone.
     // Acquire before spawn_blocking so slow jobs cannot accumulate unlimited waiters.
-    let permit = state
-        .streams
-        .response_requests
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| {
-            ApiError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "processing_busy",
-                "Scans are already processing. Retry shortly.",
-            )
-        })?;
+    let permit = state.processing_permit()?;
     blocking(move || {
         let _permit = permit;
         let bytes = state.streams.reconstruct_encoded(&id, scene_only)?;
@@ -416,8 +405,7 @@ mod tests {
         let permits: Vec<_> = (0..4)
             .map(|_| {
                 state
-                    .streams
-                    .response_requests
+                    .processing_requests
                     .clone()
                     .try_acquire_owned()
                     .unwrap()
