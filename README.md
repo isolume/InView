@@ -28,6 +28,12 @@ open InView.xcodeproj
 
 Re-run `xcodegen` after adding or removing files. The scheme turns off Metal API Validation, because RealityKit's own shaders trip it in debug runs.
 
+Building the photoreal splat layer needs Apple's Metal Toolchain (MetalSplatter compiles `.metal` shaders):
+
+```sh
+xcodebuild -downloadComponent MetalToolchain
+```
+
 Build without a device, and run the core tests:
 
 ```sh
@@ -162,12 +168,13 @@ maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
 
 Relocalization works best when the lighting matches the scan and the area has texture: posters, furniture, signage. Rescan close to demo time if the room has changed a lot.
 
-## Photoreal splat (next step)
+## Photoreal splat
 
 Every scan also saves posed camera photos for training a Gaussian splat, the
 photoreal look of Apple Maps. The splat is only a visual layer: routes are still
 planned on the measured map. Its camera poses are ARKit's, so a trained splat lands
-in the map's own coordinates and the route lines up with it.
+in the map's own coordinates and the route lines up with it. Don't pass `--center`
+to OpenSplat: the default keeps ARKit coordinates.
 
 While scanning, `SplatCapture` saves a photo whenever the phone has moved 12 cm or
 turned 9° (up to 300, at three-quarter resolution). When the scan is saved, it writes
@@ -180,8 +187,16 @@ Files app and in Finder (iPhone → Files → InView). To train on a Mac with
 opensplat path/to/splat -n 2000 -o venue.ply
 ```
 
-Rendering the trained splat in the map (for example with MetalSplatter) is the next
-piece of work.
+Put the trained file on the map in either of two ways:
+
+- **Add photoreal splat** in the map sheet, which copies it to `Documents/venue-splat.{ply,splat,spz}`.
+- Copy it into that scan's `splat` folder via Files or Finder. The newest splat there
+  (other than `sparse_pc.ply`) is what the map loads.
+
+`SplatLayer` draws it under the route and pins with [MetalSplatter](https://github.com/scier/MetalSplatter).
+The 3D map switches to a matching perspective camera; ceilings above the cutaway
+height are left out so the floor stays visible from above. The ••• menu's
+**Photoreal** toggle shows the model again. AR pauses the splat.
 
 ## How it works
 
@@ -218,6 +233,7 @@ piece of work.
 | 3D floor straight from a saved map (rooms set on the map's floor) | `Packages/AccessCore/.../VenueScene.swift` |
 | 3D room map: SceneKit cutaway, Maps-style gestures, place pins with label collision | `InView/Map/RoomMapCanvas.swift` |
 | Posed photos for Gaussian splat training | `InView/Scan/SplatCapture.swift` |
+| Photoreal splat on the 3D map | `InView/Map/SplatLayer.swift`, `InView/Support/SplatStore.swift` |
 | ARWorldMap save and relocalization | `InView/Scan/ScanController.swift`, `InView/Navigate/NavigationController.swift` |
 | Wheelchair routing: clearance grid, ADA door widths, A*, obstacles, steep-ramp fallback | `Packages/AccessCore/.../OccupancyGrid.swift`, `RoutePlanner.swift` |
 | Floor polygons: area, ear-clipping triangulation | `Packages/AccessCore/.../Polygon.swift` |

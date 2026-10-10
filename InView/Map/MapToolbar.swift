@@ -8,6 +8,8 @@ struct MapToolbarItems: ToolbarContent {
     @Binding var topDown: Bool
     /// False when the building can't be placed here, which also rules out the surroundings view.
     var canPlaceBuilding = true
+    /// Shows the photoreal splat instead of the model; offered only when there is one.
+    var photoreal: Binding<Bool>? = nil
     let onRecenter: () -> Void
     let onPlaceBuilding: () -> Void
 
@@ -18,6 +20,9 @@ struct MapToolbarItems: ToolbarContent {
                     ForEach(MapPresentation.allCases) { option in
                         Text(option.title).tag(option).disabled(option != .indoor && !canPlaceBuilding)
                     }
+                }
+                if let photoreal {
+                    Toggle("Photoreal", systemImage: Theme.Symbol.photoreal, isOn: photoreal)
                 }
                 Divider()
                 Button("Recenter", systemImage: Theme.Symbol.recenter, action: onRecenter)

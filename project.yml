@@ -9,6 +9,9 @@ packages:
   MapboxMaps:
     url: https://github.com/mapbox/mapbox-maps-ios.git
     exactVersion: 11.32.0
+  MetalSplatter:
+    url: https://github.com/scier/MetalSplatter.git
+    exactVersion: 1.0.1
 targets:
   InView:
     type: application
@@ -18,6 +21,10 @@ targets:
     dependencies:
       - package: AccessCore
       - package: MapboxMaps
+      - package: MetalSplatter
+        product: MetalSplatter
+      - package: MetalSplatter
+        product: SplatIO
     configFiles:
       Debug: Config/App.xcconfig
       Release: Config/App.xcconfig

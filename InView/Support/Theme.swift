@@ -78,6 +78,7 @@ enum Theme {
         static let demo = "play.fill"
         static let recenter = "scope"
         static let placeBuilding = "mappin.and.ellipse"
+        static let photoreal = "sparkles"
         static let settings = "gearshape"
         static let door = "door.left.hand.open"
         static let furniture = "chair.lounge.fill"

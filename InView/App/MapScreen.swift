@@ -1,5 +1,6 @@
 import AccessCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The app is one map, like Apple Maps: the scanned floor in 3D the moment it opens, its elevators and ramps
 /// pinned on it, and a sheet for directions. AR is another view of the same session, not a separate screen;
@@ -26,6 +27,12 @@ struct MapScreen: View {
     @State private var cover: Cover?
     /// A scan may have saved a new map, which replaces this one when the scan closes.
     @State private var reloadsAfterCover = false
+    /// The photoreal Gaussian splat of the floor, when one has been trained and added.
+    @State private var splatURL: URL?
+    @State private var showsSplat = true
+    @State private var splatState: SplatLayer.State?
+    @State private var importsSplat = false
+    @State private var splatMessage: String?
     @State private var selectedFloorID: String?
     /// Floors saved by earlier scans, each its own map; the sheet's header switches between them.
     @State private var savedBuildings: [SavedBuilding] = []
@@ -44,6 +51,7 @@ struct MapScreen: View {
         _report = State(initialValue: isDemo ? nil : MapStore.loadReport())
         _presentation = State(initialValue: controller.map?.geographicReference == nil ? .indoor : .mapbox)
         _scene = State(initialValue: isDemo ? NavigationDemo.comparisonScene : map.flatMap(VenueScene.make))
+        _splatURL = State(initialValue: isDemo ? nil : SplatStore.find())
         _savedBuildings = State(initialValue: isDemo ? [] : MapStore.savedBuildings())
         _savedFloor = State(initialValue: isDemo ? nil : MapStore.currentFloor)
     }
@@ -59,6 +67,15 @@ struct MapScreen: View {
                     FloorPicker(floors: floors, floorID: floorSelection).padding(.horizontal, 16).padding(.top, 8)
                 }
             }
+            .overlay(alignment: .top) {
+                if mode == .map, let status = splatStatus {
+                    StatusPill(text: status, systemImage: Theme.Symbol.photoreal, isWorking: splatState == .loading, isCompact: true)
+                        .padding(.top, 8)
+                        .transition(.blurReplace)
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.smooth, value: splatStatus)
             .onReceive(NotificationCenter.default.publisher(for: MapStore.selectionDidChange)) { _ in
                 if cover == nil { reload() }
             }
@@ -121,6 +138,7 @@ struct MapScreen: View {
             if mode == .map {
                 MapToolbarItems(presentation: $presentation, topDown: $topDown,
                                 canPlaceBuilding: controller.map != nil,
+                                photoreal: splatURL == nil ? nil : $showsSplat,
                                 onRecenter: { resetID += 1 }, onPlaceBuilding: { showsPlacement = true })
             }
         }
@@ -206,7 +224,10 @@ struct MapScreen: View {
                              destination: floorContent.isRouteFloor ? destination?.floorPoint : nil,
                              destinationTitle: floorContent.isRouteFloor ? destination?.title : nil,
                              places: floorContent.isRouteFloor ? MapPlace.places(in: controller.map) : [],
-                             onSelectPlace: select) { showsPlacement = true }
+                             onSelectPlace: select,
+                             splatURL: showsSplat && floorContent.isRouteFloor ? splatURL : nil,
+                             pausesSplat: mode != .map,
+                             onSplatState: { splatState = $0 }) { showsPlacement = true }
             .id(savedFloor?.storageID.uuidString ?? "legacy")
     }
 
@@ -257,6 +278,25 @@ struct MapScreen: View {
             }
         }
         .sheet(isPresented: $showsSettings) { BackendSettingsView() }
+        .fileImporter(isPresented: $importsSplat, allowedContentTypes: SplatStore.contentTypes) { result in
+            switch result {
+            case .success(let url):
+                do {
+                    splatURL = try SplatStore.importSplat(from: url)
+                    showsSplat = true
+                    detent = .height(Self.collapsedHeight)
+                } catch {
+                    splatMessage = "Couldn't add that splat"
+                }
+            case .failure:
+                break
+            }
+        }
+        .task(id: splatMessage) {
+            guard splatMessage != nil else { return }
+            try? await Task.sleep(for: .seconds(4))
+            splatMessage = nil
+        }
     }
 
     /// The top of the sheet: where to go and how it's going.
@@ -416,9 +456,22 @@ struct MapScreen: View {
             }
             .buttonStyle(.plain)
             Divider().padding(.leading, 56)
+            SheetRow(title: splatURL == nil ? "Add photoreal splat" : "Replace photoreal splat",
+                     symbol: Theme.Symbol.photoreal) { importsSplat = true }
+            Divider().padding(.leading, 56)
             SheetRow(title: "Scan processing", symbol: Theme.Symbol.settings) { showsSettings = true }
         }
         .card(padding: 6)
+    }
+
+    /// What the photoreal layer is doing, when there's something to say.
+    private var splatStatus: String? {
+        if let splatMessage { return splatMessage }
+        switch splatState {
+        case .loading: return "Loading photoreal view…"
+        case .failed: return "Couldn't open the photoreal view"
+        case .ready, nil: return nil
+        }
     }
 
     private var floorSummary: String {
@@ -472,6 +525,7 @@ struct MapScreen: View {
         let map = MapStore.load()
         report = MapStore.loadReport()
         scene = map.flatMap(VenueScene.make)
+        splatURL = SplatStore.find()
         savedBuildings = MapStore.savedBuildings()
         savedFloor = MapStore.currentFloor
         selectedFloorID = nil

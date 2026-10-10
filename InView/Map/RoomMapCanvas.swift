@@ -27,6 +27,13 @@ struct RoomMapCanvas: UIViewRepresentable {
     /// Elevators, ramps and named destinations, pinned on the map like points of interest.
     var places: [MapPlace] = []
     var onSelectPlace: ((MapPlace) -> Void)? = nil
+    /// A trained Gaussian splat of the space, drawn in place of the model once it loads.
+    var splatURL: URL? = nil
+    /// Splats above this map height are left out, so ceilings don't hide the floor.
+    var splatCeiling: Float = 0
+    /// Stops drawing the splat while the map is hidden, without unloading it.
+    var pausesSplat = false
+    var onSplatState: ((SplatLayer.State?) -> Void)? = nil
 
     func makeUIView(context: Context) -> RoomMapRenderView {
         let view = RoomMapRenderView()
@@ -40,7 +47,9 @@ struct RoomMapCanvas: UIViewRepresentable {
         let selection = $selectedObjectID
         view.onSelection = { selection.wrappedValue = $0 }
         view.onSelectPlace = onSelectPlace
+        view.onSplatState = onSplatState
         view.updatePlaces(places, floorY: floorY)
+        view.updateSplat(splatURL, ceiling: splatCeiling, paused: pausesSplat)
         view.update(scene, selectedObjectID: selectedObjectID, showsLabels: showsLabels,
                     floorFootprints: floorFootprints,
                     topDown: topDown, resetID: resetID, showsDetails: showsDetails,
@@ -55,6 +64,13 @@ struct RoomMapCanvas: UIViewRepresentable {
 final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     var onSelection: ((String?) -> Void)?
     var onSelectPlace: ((MapPlace) -> Void)?
+    var onSplatState: ((SplatLayer.State?) -> Void)?
+    private var splat: SplatLayer?
+    /// True while a loaded splat is drawn in place of the model, through a perspective camera.
+    private var showsSplat = false
+    private var splatPaused = false
+    private var splatCamera: SplatLayer.Camera?
+    private static let splatFieldOfView: Float = 38 * .pi / 180
     private var places: [MapPlace] = []
     private var placeLabels: [(place: MapPlace, position: SIMD3<Float>, view: RoomObjectLabel)] = []
     /// Where the view is looking, moved by one-finger drags: an offset on the floor from the map's center.
@@ -187,6 +203,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         canvas.frame = bounds
+        splat?.view.frame = bounds
         updateCamera()
         needsViewportRefresh = true
     }
@@ -258,7 +275,71 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         updateShellIfNeeded()
         if changed || selection != selectedObjectID { selection = selectedObjectID; buildSelection() }
         if resetID != lastResetID { lastResetID = resetID; resetOrbit(); updateShellIfNeeded() }
+        applyModelVisibility()
         updateCamera()
+    }
+
+    /// Loads, swaps or removes the splat. The model stays until the splat is ready, and comes back if it fails.
+    func updateSplat(_ url: URL?, ceiling: Float, paused: Bool) {
+        splatPaused = paused
+        guard let url else {
+            guard let layer = splat else { return }
+            layer.unload()
+            layer.view.removeFromSuperview()
+            splat = nil
+            setSplatShown(false)
+            report(nil)
+            return
+        }
+        if splat == nil, let layer = SplatLayer(background: backgroundColor ?? .white) {
+            layer.camera = { [weak self] in self?.splatCamera }
+            layer.onStateChange = { [weak self] state in
+                self?.setSplatShown(state == .ready)
+                self?.report(state)
+            }
+            layer.view.frame = bounds
+            layer.view.isHidden = true
+            layer.view.isPaused = true
+            insertSubview(layer.view, belowSubview: canvas)
+            splat = layer
+        }
+        splat?.load(url, below: ceiling)
+        splat?.view.isPaused = !showsSplat || paused
+    }
+
+    /// State changes can start inside a SwiftUI update, so they're reported after it.
+    private func report(_ state: SplatLayer.State?) {
+        DispatchQueue.main.async { [weak self] in self?.onSplatState?(state) }
+    }
+
+    private func setSplatShown(_ shown: Bool) {
+        guard shown != showsSplat else { return }
+        showsSplat = shown
+        let background = shown ? UIColor.clear : backgroundColor
+        canvas.backgroundColor = background
+        canvas.isOpaque = !shown
+        world.background.contents = background
+        if let projection = camera.camera {
+            // Splats are drawn in perspective; the model keeps its flat architectural look.
+            projection.usesOrthographicProjection = !shown
+            projection.fieldOfView = CGFloat(Self.splatFieldOfView * 180 / .pi)
+            projection.wantsHDR = !shown
+            projection.screenSpaceAmbientOcclusionIntensity = shown ? 0 : 0.65
+        }
+        splat?.view.isHidden = !shown
+        splat?.view.isPaused = !shown || splatPaused
+        applyModelVisibility()
+        updateCamera()
+    }
+
+    /// With the splat showing, only the route, your position, the destination and pins are drawn over it.
+    private func applyModelVisibility() {
+        shell.isHidden = showsSplat
+        for child in room.childNodes where child.name?.hasPrefix("object:") == true { child.isHidden = showsSplat }
+        if showsSplat {
+            details.isHidden = true
+            highlight.isHidden = true
+        }
     }
 
     private func installLighting() {
@@ -846,10 +927,27 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         let fraction = Float(available / viewport.height)
         let aspect = Float(viewport.width / viewport.height)
         let scale = max(height / (fraction * 0.88), width / (aspect * 0.96)) / (2 * zoom)
-        projection.orthographicScale = Double(scale)
         let target = center - up * scale * Float((viewport.height - available) / viewport.height)
-        camera.simdPosition = target + towardsCamera * max(8, simd_length(upper - lower) * 2)
+        let distance: Float
+        if showsSplat {
+            // The same framing in perspective: `scale` is half the visible height at the target.
+            distance = scale / tan(Self.splatFieldOfView / 2)
+            projection.zNear = Double(max(0.05, distance * 0.02))
+            projection.zFar = Double(distance + simd_length(upper - lower) * 2 + 10)
+        } else {
+            projection.orthographicScale = Double(scale)
+            projection.zNear = 0.01
+            projection.zFar = 1_000
+            distance = max(8, simd_length(upper - lower) * 2)
+        }
+        camera.simdPosition = target + towardsCamera * distance
         camera.look(at: scn(target), up: SCNVector3(0, 1, 0), localFront: SCNVector3(0, 0, -1))
+        if showsSplat {
+            splatCamera = SplatLayer.Camera(
+                view: camera.simdWorldTransform.inverse,
+                projection: SplatLayer.perspective(fovy: Self.splatFieldOfView, aspect: aspect,
+                                                   near: Float(projection.zNear), far: Float(projection.zFar)))
+        }
         metersPerPoint = 2 * scale / Float(viewport.height)
         goal.simdScale = SIMD3(repeating: min(3, max(0.5, metersPerPoint * 26 / 0.44)))
         positionLabels()
