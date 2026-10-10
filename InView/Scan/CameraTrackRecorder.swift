@@ -151,15 +151,21 @@ struct CameraTrack: Codable, Sendable {
 final class CameraTrackRecorder {
     /// 18,000 poses ≈ 30 min at 10 Hz, ≈ 4 MB of JSON (≈ 230 bytes per pose).
     let capacity: Int
-    private(set) var interval: TimeInterval
+    private var sampling: CameraTrackSampling
+    /// Current spacing between kept poses (doubles after each decimation).
+    var interval: TimeInterval { sampling.interval }
     private weak var session: ARSession?
     private var timer: Timer?
     private var samples: [CameraTrack.Sample] = []
     private var unixOffset: Double?
     private(set) var decimations = 0
 
+    /// `rateHz` must be in (0, 60]; an invalid rate is a programming error.
     init(rateHz: Double = 10, capacity: Int = 18_000) {
-        interval = 1 / rateHz
+        guard let sampling = CameraTrackSampling(rateHz: rateHz) else {
+            preconditionFailure("CameraTrackRecorder rate must be finite and in (0, \(CameraTrackSampling.maximumRateHz)] Hz")
+        }
+        self.sampling = sampling
         self.capacity = max(2, capacity)
         samples.reserveCapacity(self.capacity)
     }
@@ -173,10 +179,10 @@ final class CameraTrackRecorder {
             unixOffset = Date().timeIntervalSince1970 - ProcessInfo.processInfo.systemUptime
         }
         guard timer == nil else { return }
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: sampling.timerInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.sample() }
         }
-        timer.tolerance = 0.02
+        timer.tolerance = sampling.timerInterval * 0.2
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         sample()
@@ -217,8 +223,7 @@ final class CameraTrackRecorder {
     private func sample() {
         guard let frame = session?.currentFrame else { return }
         let timestamp = frame.timestamp
-        // The timer can fire faster than ARKit publishes, and decimation widens the spacing.
-        if let last = samples.last?.timestamp, timestamp - last < interval * 0.75 { return }
+        guard sampling.accepts(timestamp: timestamp, after: samples.last?.timestamp) else { return }
         if samples.count >= capacity { decimate() }
         samples.append(CameraTrack.Sample(
             timestamp: timestamp, mapFromCamera: frame.camera.transform,
@@ -233,7 +238,7 @@ final class CameraTrackRecorder {
             kept += 1
         }
         samples.removeLast(samples.count - kept)
-        interval *= 2
+        sampling.decimate()
         decimations += 1
     }
 }
