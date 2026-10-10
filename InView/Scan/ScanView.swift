@@ -43,6 +43,9 @@ struct ScanView: View {
                     DetectionStatus(detector: controller.detector, section: controller.sectionCount + 1)
                 }
                 Spacer()
+                if controller.suggestsNewSection, controller.phase == .scanning {
+                    sectionSuggestion
+                }
                 switch controller.phase {
                 case .processing:
                     HStack(spacing: 10) {
@@ -62,6 +65,30 @@ struct ScanView: View {
             }
             .padding()
         }
+    }
+
+    /// The volunteer walked through a doorway. RoomPlan keeps one room per section, so this is the moment to split.
+    private var sectionSuggestion: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "door.left.hand.open").font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("New room?").font(.subheadline.weight(.semibold))
+                Text("Add a section so the last one is kept as scanned.").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Button("Add section", action: controller.addSection)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            Button(action: controller.dismissSectionSuggestion) {
+                Image(systemName: "xmark").font(.caption.weight(.bold)).frame(width: 28, height: 28)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     /// RoomPlan ended the section by itself; what it scanned is kept, and the volunteer decides what's next.
@@ -145,6 +172,9 @@ struct ScanView: View {
                 .buttonStyle(.borderedProminent)
             }
             .controlSize(.large)
+            Text("One room per section: add a section each time you go through a door.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             if let error = controller.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
