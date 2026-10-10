@@ -28,7 +28,7 @@ When `INVIEW_SCAN_DIR` is configured, source scans persist there as immutable lo
 | POST | `/api/buildings/{id}/alignments` | Provisionally align an already-uploaded scan |
 | GET | `/api/buildings/{id}/observations` | Time-indexed, version-pinned camera positions |
 | GET | `/api/buildings/{id}/overview` | Top-down preview of aligned camera paths and mesh samples |
-| GET | `/scans/{id}/camera-track` | Full camera path (package manifest first, then portable frames) |
+| GET | `/scans/{id}/camera-track` | Full camera path (dense `camera-track.json` first, then package manifest, then portable frames; `source` says which) |
 | GET/PUT | `/scans/{id}/analysis` | Derived OpenCV worker output (`places`, `doors`, `hazards`, `signs`, `nav_graph`, `routes`, ...); GET returns 404 `analysis_not_found` until the worker has run. See [worker/PIPELINE.md](worker/PIPELINE.md) |
 | GET | `/graphs` | List graph summaries |
 | PUT | `/graphs/{graph_id}` | Validate and replace a complete graph (persisted when `INVIEW_SCAN_DIR` is set; 503 `graph_storage_error` if the write fails) |

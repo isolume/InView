@@ -40,6 +40,7 @@ targets:
         InViewBackendURL: $(INVIEW_BACKEND_URL)
         MBXAccessToken: $(MAPBOX_ACCESS_TOKEN)
         NSLocationWhenInUseUsageDescription: InView uses your location to place a scanned building on the map.
+        NSMotionUsageDescription: InView uses the barometer to tell which floor of a building you scanned.
         NSLocalNetworkUsageDescription: InView connects to your optional processing server to build the 3D view of your scan.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

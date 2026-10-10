@@ -244,34 +244,56 @@ async fn append_poses(
         DateTime::<Utc>::from_timestamp_millis((unix * 1000.) as i64)
     });
     let observed_origin = device_origin.unwrap_or(observed_origin);
+    // The dense iPhone track runs at ~10 Hz; keep at most one pose per POSE_SPACING_SECONDS and
+    // insert them in one statement instead of one round trip per pose.
+    const POSE_SPACING_SECONDS: f64 = 0.5;
+    let (mut at, mut indices, mut xs, mut ys, mut zs, mut states) =
+        (vec![], vec![], vec![], vec![], vec![], vec![]);
+    let mut last_kept = f64::NEG_INFINITY;
     for (index, frame) in track.iter().enumerate() {
         let seconds = (frame.timestamp_seconds - first).max(0.);
-        if !seconds.is_finite() || seconds > 7. * 86400. {
+        if !seconds.is_finite()
+            || seconds > 7. * 86400.
+            || seconds - last_kept < POSE_SPACING_SECONDS
+        {
             continue;
         }
         let Some(offset) = Duration::try_milliseconds((seconds * 1000.) as i64) else {
             continue;
         };
+        last_kept = seconds;
         let pos = fit
             .transform
             .point(frame.map_from_camera.point([0., 0., 0.]));
-        sqlx::query(
-            "INSERT INTO pose_observations
-            (observed_at,building_id,capture_id,map_version,frame_index,x_m,y_m,z_m,tracking_state)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING",
-        )
-        .bind(observed_origin + offset)
-        .bind(id)
-        .bind(scan_id)
-        .bind(version)
-        .bind(index as i32)
-        .bind(pos[0])
-        .bind(pos[1])
-        .bind(pos[2])
-        .bind(Option::<String>::None)
-        .execute(&mut **tx)
-        .await?;
+        at.push(observed_origin + offset);
+        indices.push(index as i32);
+        xs.push(pos[0]);
+        ys.push(pos[1]);
+        zs.push(pos[2]);
+        states.push(frame.tracking.clone());
     }
+    if at.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO pose_observations
+        (observed_at,building_id,capture_id,map_version,frame_index,x_m,y_m,z_m,tracking_state)
+        SELECT t.observed_at, $2, $3, $4, t.frame_index, t.x_m, t.y_m, t.z_m, t.tracking_state
+        FROM UNNEST($1::timestamptz[], $5::int4[], $6::float8[], $7::float8[], $8::float8[], $9::text[])
+            AS t(observed_at, frame_index, x_m, y_m, z_m, tracking_state)
+        ON CONFLICT DO NOTHING",
+    )
+    .bind(at)
+    .bind(id)
+    .bind(scan_id)
+    .bind(version)
+    .bind(indices)
+    .bind(xs)
+    .bind(ys)
+    .bind(zs)
+    .bind(states)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 

@@ -80,8 +80,17 @@ enum FrameEncoder {
     }
 
     /// One upright JPEG of the frame. Tens of milliseconds; run it off the main thread.
-    static func portraitJPEG(from snapshot: Snapshot, maxDimension: CGFloat) -> Data? {
-        encodeJPEG(portrait(snapshot), maxDimension: maxDimension)
+    static func portraitJPEG(from snapshot: Snapshot, maxDimension: CGFloat, quality: CGFloat = 0.7) -> Data? {
+        encodeJPEG(portrait(snapshot), maxDimension: maxDimension, quality: quality)
+    }
+
+    /// Reads a JPEG's pixel size from its header without decoding the image.
+    static func pixelSize(ofJPEG data: Data) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        return (width, height)
     }
 
     /// Maps a normalized point in the portrait JPEG back to the captured (landscape) image.
@@ -94,7 +103,7 @@ enum FrameEncoder {
         CIImage(cvPixelBuffer: snapshot.pixelBuffer).oriented(.right)
     }
 
-    private static func encodeJPEG(_ source: CIImage, maxDimension: CGFloat) -> Data? {
+    private static func encodeJPEG(_ source: CIImage, maxDimension: CGFloat, quality: CGFloat = 0.7) -> Data? {
         var image = source
         let scale = maxDimension / max(image.extent.width, image.extent.height)
         if scale < 1 {
@@ -103,7 +112,7 @@ enum FrameEncoder {
         return context.jpegRepresentation(
             of: image,
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.7]
+            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: quality]
         )
     }
 

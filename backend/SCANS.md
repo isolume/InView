@@ -126,7 +126,8 @@ This envelope is **not** Apple's native `CapturedRoom` JSON. The app adapter in
 `AccessNav/Scan/ScanExporter.swift` exports RoomPlan dimensions/transforms/categories
 into these records and retains the native export in `roomplan_original`.
 `RawScanCapture.swift` polls the same session without replacing its delegate,
-copies the latest classified mesh snapshot, and selects up to six calibrated depth keyframes.
+copies the latest classified mesh snapshot, and keeps up to 48 calibrated depth keyframes spread
+over the whole walk (see [Capture format changes](#capture-format-changes)).
 For each selected keyframe it retains original raw `sceneDepth`, confidence bytes, and,
 when ARKit provides it, original `smoothedSceneDepth` bytes as separate local native buffers.
 These records preserve the shared ARKit frame; no export origin reset is applied.
@@ -201,3 +202,82 @@ their open/closed state from the latest section and record which rooms they `con
 openings, windows with sill height, walls, objects with their attributes and room, and stories. Labels
 and states are RoomPlan's own estimates, not verified accessibility data. The iPhone needs no format
 change. `roomplan.json` already carries everything above.
+
+## Capture format changes
+
+All changes below are **additive and optional**: older packages (no track, no stills, 32 FIFO
+keyframes) still decode, and older backends ignore the new files and fields.
+
+### Coverage-preserving depth keyframes (iOS)
+
+What changed: `RawScanCapture` keeps up to **48** depth keyframes (was 32) and, when over budget,
+evicts the keyframe whose removal least reduces pose-space coverage — the one with the closest
+neighbour, measured as camera travel in metres plus 1.03 m per radian of view-direction change —
+instead of the oldest. Frames carrying an OCR still are evicted only if every frame carries one;
+colour keyframes get a 0.3 m retention bonus. `.smoothedSceneDepth` is now requested explicitly, so
+`smoothed_asset` sidecars are actually present. Metadata (`capture.json` →
+`metadata.raw_capture`) adds `depth_retention_policy: "pose_space_coverage_v1"`,
+`smoothed_scene_depth_requested`, `ocr_still_*` counts/budget, and `camera_track_*` counts.
+
+Why: FIFO eviction silently dropped the first rooms of long walks, leaving the floor-map, door
+and sign workers with depth/colour evidence for only the last ~40–60 s of the scan.
+
+Budget: 48 × (≈432 KiB native depth + ≈60 KiB colour) ≈ 24 MiB of sidecars; `capture.json`
+remains ≤ 32 MiB because `ScanExporter` drops whole optional layers past that limit.
+
+### `camera-track.json` (asset role `camera_track`)
+
+A dense ARKit pose track sampled at ≈10 Hz from the same session (bounded to 18 000 poses; on
+overflow every other pose is dropped and `sample_interval_seconds` doubles):
+
+```json
+{"schema_version": 1, "clock": "arkit_uptime_seconds",
+ "unix_offset_seconds": 1791000000.25, "sample_interval_seconds": 0.1,
+ "poses": [{"t": 100.3, "m": [16 column-major map_from_camera entries],
+            "tracking": "normal | limited:<initializing|excessive_motion|insufficient_features|relocalizing|other> | not_available",
+            "mapping": "not_available | limited | extending | mapped"}]}
+```
+
+`t` uses the same clock as observation `timestamp_seconds`; `t + unix_offset_seconds` is the
+iPhone wall clock (fixing the mismatch between ARKit times and the wall-clock
+`environment.recorded_at_unix_seconds`). `StoredScan::camera_track()` and
+`GET /scans/{id}/camera-track` now prefer this sidecar: poses with `not_available`,
+`limited:initializing` (near-origin) or `limited:relocalizing` (jumping) tracking, non-rigid
+matrices, or non-increasing `t` are dropped (other limited poses are kept and labelled), `unix_seconds` is derived from the offset,
+and each pose carries `tracking`/`mapping`. The response's `source` is `camera_track_sidecar`,
+`package_manifest`, or `portable_frames`; a malformed sidecar falls back to the manifest. Building
+pose observations now record `tracking_state` from the dense track, thinned to one pose per
+0.5 s and inserted in a single batched statement.
+
+Why: the sparse keyframe poses (one per ≥0.45 m) are too coarse for walked-path evidence,
+doorway traversal and dwell detection, and they carry no tracking quality.
+
+### OCR stills `<frame-id>.ocr.jpg` (asset role `ocr_still`)
+
+Upright portrait JPEGs at ≈1920 px long side, quality 0.85, captured when the camera is steady
+(< 0.3 rad/s and < 0.6 m/s over 0.3 s of the dense track) and has moved ≥ 1.5 m or turned ≥ 30°
+since the last still; at most 32 stills / 60 MB, with pose-space coverage replacement at the caps.
+Each still shares a depth keyframe (a due, steady still may add one), so its manifest observation
+adds:
+
+```json
+"ocr_asset": "<frame-id>.ocr.jpg",
+"ocr_image": {"width": 1440, "height": 1920, "orientation": "rotated_90_cw_from_sensor"}
+```
+
+The still is the sensor image rotated 90° clockwise and uniformly scaled; a still pixel `(x, y)`
+maps to the calibrated sensor image (`image` intrinsics) as
+`u = y / ocr_image.height · image.width`, `v = (1 − x / ocr_image.width) · image.height`. The
+backend rejects an `ocr_asset` that is not in the package and an out-of-range `ocr_image` size.
+Stills are served by `GET /scans/{id}/assets/{file}`.
+
+Why: 640 px colour keyframes are too small to read most signs, room numbers and door labels; OCR
+needs sharp, high-resolution pixels tied to a pose and depth so text can be placed in the map frame.
+
+Package budget (worst case): capture.json 32 + depth 24 + OCR 60 + mesh ≈ 60 + world map ≈ 30 +
+RoomPlan ≈ 5 ≈ 211 MiB, inside the 256 MiB package limit (4096 entries, 64 MiB per file).
+
+### Info.plist
+
+`NSMotionUsageDescription` is declared in `project.yml` (the capture context already uses
+`CMAltimeter`).
