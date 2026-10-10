@@ -66,6 +66,22 @@ reads one saved chunk at a time, selects up to 24 views across the whole walk,
 and displays at most 90,000 points. Opening it never changes the saved map,
 capture, or upload progress.
 
+Use the share button in **Scan data** to export all saved observations for offline
+reconstruction. Export is optional and runs only when requested; it adds no work
+to Finish. The TAR contains the original sensor-oriented JPEGs, packed
+little-endian float32 depth and confidence files, and a versioned observation
+index with calibration, original camera poses, timestamps, and observed labels.
+It reads and releases one validated chunk at a time. Missing depth is encoded as
+the canonical float32 NaN `0x7fc00000`. These are portable representations of the
+saved measurements, rather than byte-exact native ARKit buffers with row padding.
+The export preserves the source archive and its upload checkpoint. Closing the
+view cancels preparation; temporary share files are removed after dismissal.
+
+This adapts the calibrated inventory and binary sidecar ideas from PR #1 without
+adding its separate RoomPlan package upload or location collection. Normal
+tracking observations remain accepted even when world mapping is limited;
+requiring a fully mapped environment would create gaps while exploring a building.
+
 ## Reconstruction and drift correction
 
 The backend keeps a bounded set of reconstruction keyframes, proposes nonadjacent

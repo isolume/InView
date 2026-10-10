@@ -11,6 +11,11 @@ struct RawLidarReviewView: View {
     @State private var colorized = true
     @State private var cloud: LidarPreview?
     @State private var failure: String?
+    @State private var exporting = false
+    @State private var exportTask: Task<Void, Never>?
+    @State private var exportDirectory: URL?
+    @State private var exportShare: ScanEvidenceShare?
+    @State private var exportFailure: String?
 
     var body: some View {
         NavigationStack {
@@ -48,6 +53,17 @@ struct RawLidarReviewView: View {
                     .frame(width: 150)
                     .disabled(cloud == nil)
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        if exporting { exportTask?.cancel() }
+                        else { exportEvidence() }
+                    } label: {
+                        if exporting { ProgressView() }
+                        else { Image(systemName: "square.and.arrow.up") }
+                    }
+                    .accessibilityLabel(exporting ? "Cancel export" : "Export scan data")
+                    .disabled(cloud == nil || cloud?.totalFrames == 0)
+                }
             }
             .task {
                 do {
@@ -57,8 +73,80 @@ struct RawLidarReviewView: View {
                     // Closing the view cancels its disk reads and decoding.
                 } catch { failure = error.localizedDescription }
             }
+            .onDisappear {
+                exportTask?.cancel()
+                if !exporting, exportShare == nil { discardExport() }
+            }
+            .sheet(item: $exportShare, onDismiss: discardExport) { share in
+                ScanEvidenceShareSheet(url: share.url)
+            }
+            .alert("Could not export scan data", isPresented: Binding(
+                get: { exportFailure != nil }, set: { if !$0 { exportFailure = nil } }
+            )) {
+                Button("OK", role: .cancel) { exportFailure = nil }
+            } message: { Text(exportFailure ?? "Please try again.") }
         }
     }
+
+    private func exportEvidence() {
+        guard !exporting else { return }
+        discardExport()
+        let id = scanID
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "inview-evidence-\(UUID().uuidString)", directoryHint: .isDirectory)
+        exportDirectory = directory
+        exporting = true
+        exportTask = Task {
+            do {
+                let url = try await ScanWork.run(priority: .utility) {
+                    do {
+                        try Task.checkCancellation()
+                        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                        let archive = try StreamEvidenceArchive(root: CaptureStore.streamRoot(for: id), expectedScanID: id)
+                        let url = directory.appending(path: "scan-\(id).tar")
+                        try StreamEvidenceExport.write(archive: archive, to: url)
+                        try Task.checkCancellation()
+                        return url
+                    } catch {
+                        // The detached worker owns cleanup too: caller cancellation can arrive
+                        // before ScanWork has begun waiting for that worker to finish.
+                        try? FileManager.default.removeItem(at: directory)
+                        throw error
+                    }
+                }
+                try Task.checkCancellation()
+                exportShare = ScanEvidenceShare(url: url)
+            } catch is CancellationError {
+                discardExport()
+            } catch {
+                discardExport()
+                exportFailure = error.localizedDescription
+            }
+            exporting = false
+            exportTask = nil
+        }
+    }
+
+    private func discardExport() {
+        guard let directory = exportDirectory else { return }
+        try? FileManager.default.removeItem(at: directory)
+        exportDirectory = nil
+    }
+}
+
+private struct ScanEvidenceShare: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct ScanEvidenceShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 private struct LidarPreview: Sendable {

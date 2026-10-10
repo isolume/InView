@@ -10,6 +10,9 @@ public struct StreamEvidenceArchive: Sendable {
     private static let maximumPreviewFrames = 24
     private static let maximumPreviewPoints = 3_750
 
+    /// Read-only source location, used to keep derived exports outside the saved archive.
+    public var rootURL: URL { root }
+
     public init(root: URL, expectedScanID: String) throws {
         try Task.checkCancellation()
         guard root.isFileURL else { throw StreamingCaptureError.storageFailure }
