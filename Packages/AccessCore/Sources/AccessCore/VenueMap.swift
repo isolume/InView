@@ -167,3 +167,19 @@ public struct VenueMap: Codable, Sendable {
         self.requiresMeasuredFloorCoverage = requiresMeasuredFloorCoverage
     }
 }
+
+extension VenueMap {
+    /// Adds a place, or replaces the one with the same id where it is in the list. A new elevator,
+    /// or a place changed into one, moves in front of the nearest measured door, as scanned ones do.
+    public mutating func place(_ point: AccessPoint) {
+        guard let index = points.firstIndex(where: { $0.id == point.id }) else {
+            points.append(DoorSnap.snap(point, to: footprints, floorY: floorY))
+            return
+        }
+        points[index] = points[index].kind == .elevator ? point : DoorSnap.snap(point, to: footprints, floorY: floorY)
+    }
+
+    public mutating func removePoint(id: UUID) {
+        points.removeAll { $0.id == id }
+    }
+}
