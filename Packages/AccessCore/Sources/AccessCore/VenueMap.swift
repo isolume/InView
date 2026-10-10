@@ -9,8 +9,12 @@ public struct Footprint: Codable, Hashable, Sendable {
         case stairs
         case door
         case opening
+        /// A window in a wall. Drawn on plans; the wall around it is what blocks.
+        case window
+        /// The walkable floor of one scanned room, for drawing. Never blocks.
+        case floor
 
-        var blocksWheelchairs: Bool { self == .wall || self == .obstacle || self == .stairs }
+        var blocksWheelchairs: Bool { self == .wall || self == .obstacle || self == .stairs || self == .window }
         var isPassage: Bool { self == .door || self == .opening }
     }
 
@@ -44,6 +48,9 @@ public struct Footprint: Codable, Hashable, Sendable {
     /// Height of the underside above the map origin, and the object's own height, when known.
     public var bottom: Float?
     public var height: Float?
+    /// The exact outline on the floor, as (x, z), for floors whose shape isn't a rectangle. `center`,
+    /// `size` and `yaw` still describe the bounding rectangle.
+    public var polygon: [SIMD2<Float>]?
 
     public init(
         kind: Kind,
@@ -53,7 +60,8 @@ public struct Footprint: Codable, Hashable, Sendable {
         furniture: Furniture? = nil,
         bottom: Float? = nil,
         height: Float? = nil,
-        id: UUID? = nil
+        id: UUID? = nil,
+        polygon: [SIMD2<Float>]? = nil
     ) {
         self.kind = kind
         self.id = id
@@ -63,6 +71,17 @@ public struct Footprint: Codable, Hashable, Sendable {
         self.furniture = furniture
         self.bottom = bottom
         self.height = height
+        self.polygon = polygon
+    }
+
+    /// A floor from its outline. The bounding rectangle is axis-aligned.
+    public init(floor outline: [SIMD2<Float>], bottom: Float) {
+        var lower = outline.first ?? .zero, upper = lower
+        for point in outline {
+            lower = simd_min(lower, point)
+            upper = simd_max(upper, point)
+        }
+        self.init(kind: .floor, center: (lower + upper) / 2, size: upper - lower, yaw: 0, bottom: bottom, height: 0, polygon: outline)
     }
 
     /// Projects a 3D box (RoomPlan surface or object) onto the floor.
@@ -107,7 +126,9 @@ public struct Footprint: Codable, Hashable, Sendable {
         return SIMD2(offset.x * c + offset.y * s, -offset.x * s + offset.y * c)
     }
 
+    /// The outline on the floor: the polygon when there is one, else the rectangle's corners.
     public var corners: [SIMD2<Float>] {
+        if let polygon, polygon.count >= 3 { return polygon }
         let c = cos(yaw), s = sin(yaw)
         let along = SIMD2(c, s) * size.x / 2
         let across = SIMD2(-s, c) * size.y / 2

@@ -38,6 +38,8 @@ final class NavigationController: ObservableObject {
     private static let obstacleCheckInterval: TimeInterval = 1
     private static let arrivalDistance: Float = 1.2
     private static let slowRelocalization: TimeInterval = 15
+    /// A routine reroute only runs once the rider has moved this far; standing still, the route is still right.
+    private static let rerouteDistance: Float = 0.4
 
     private var worldMap: ARWorldMap?
     private var planner: RoutePlanner?
@@ -50,6 +52,7 @@ final class NavigationController: ObservableObject {
     private var isRouting = false
     private var pendingReason: Narrator.Reason?
     private var lastRouted = Date.distantPast
+    private var lastRoutedFrom: SIMD2<Float>?
     private var lastObstacleCheck = Date.distantPast
     private var isActive = false
     private var isLoading = false
@@ -247,9 +250,13 @@ final class NavigationController: ObservableObject {
                 return
             }
         }
-        if Date.now.timeIntervalSince(lastRouted) >= Self.rerouteInterval {
-            requestRoute(.update)
+        guard Date.now.timeIntervalSince(lastRouted) >= Self.rerouteInterval, let position = userPosition() else { return }
+        if let from = lastRoutedFrom, simd_distance(from, position) < Self.rerouteDistance {
+            // Not worth an A* search; just notice if they've rolled up to the destination.
+            if hasArrived(on: route) { requestRoute(.update) }
+            return
         }
+        requestRoute(.update)
     }
 
     private func didLocate() {
@@ -274,6 +281,7 @@ final class NavigationController: ObservableObject {
         }
         guard let planner, let position = userPosition() else { return }
         isRouting = true
+        lastRoutedFrom = position
         let generation = routingGeneration
         let current = route
         let destination = selectedDestination

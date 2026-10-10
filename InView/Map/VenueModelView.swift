@@ -10,6 +10,7 @@ struct VenueModelView: UIViewRepresentable {
     func makeUIView(context: Context) -> ARView {
         let view = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         view.environment.background = .color(.secondarySystemBackground)
+        view.renderOptions.insert(.disableMotionBlur)
         context.coordinator.attach(to: view, map: map)
         return view
     }
@@ -35,11 +36,18 @@ struct VenueModelView: UIViewRepresentable {
             anchor.addChild(model)
 
             let sun = DirectionalLight()
-            sun.light.intensity = 3000
+            sun.light.intensity = 2500
             sun.orientation = simd_quatf(angle: -.pi / 3, axis: [1, 0, 0]) * simd_quatf(angle: .pi / 6, axis: [0, 1, 0])
             anchor.addChild(sun)
             anchor.addChild(camera)
             view.scene.addAnchor(anchor)
+            Task { [weak view] in
+                // A soft studio sky, so materials get real image-based lighting instead of the flat default
+                // (which also logged "EnvironmentResource with no skybox texture").
+                guard let resource = await StudioLighting.resource() else { return }
+                view?.environment.lighting.resource = resource
+                view?.environment.lighting.intensityExponent = 0.6
+            }
 
             let bounds = model.visualBounds(relativeTo: nil)
             target = bounds.center
@@ -86,6 +94,33 @@ struct VenueModelView: UIViewRepresentable {
             transform.rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: -pitch, axis: [1, 0, 0])
             return transform
         }
+    }
+}
+
+/// A generated equirectangular sky: bright above, warm grey below, like a photo studio's softbox.
+enum StudioLighting {
+    private static var cached: EnvironmentResource?
+
+    @MainActor
+    static func resource() async -> EnvironmentResource? {
+        if let cached { return cached }
+        guard let image = skyImage(width: 256, height: 128) else { return nil }
+        let resource = try? await EnvironmentResource(equirectangular: image, withName: "studio")
+        cached = resource
+        return resource
+    }
+
+    private static func skyImage(width: Int, height: Int) -> CGImage? {
+        let space = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let colors = [
+            UIColor(red: 0.82, green: 0.88, blue: 0.96, alpha: 1).cgColor,  // zenith
+            UIColor(red: 0.97, green: 0.96, blue: 0.94, alpha: 1).cgColor,  // horizon
+            UIColor(red: 0.55, green: 0.52, blue: 0.48, alpha: 1).cgColor,  // ground
+        ] as CFArray
+        guard let gradient = CGGradient(colorsSpace: space, colors: colors, locations: [0, 0.5, 1]) else { return nil }
+        context.drawLinearGradient(gradient, start: CGPoint(x: 0, y: CGFloat(height)), end: .zero, options: [])
+        return context.makeImage()
     }
 }
 
@@ -153,7 +188,8 @@ private struct MapLegend: View {
             ("Stairs", AnyView(RoundedRectangle(cornerRadius: 3).fill(Theme.stairs.opacity(0.18)).overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.stairs, lineWidth: 1.5)).frame(width: 16, height: 14))),
             ("Door", AnyView(Capsule().fill(Theme.color(for: .good)).frame(width: 16, height: 5))),
             ("Narrow door", AnyView(Capsule().fill(Theme.color(for: .warning)).frame(width: 16, height: 5))),
-            ("Furniture", AnyView(RoundedRectangle(cornerRadius: 3).fill(Theme.furniture.opacity(0.28)).overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.furniture.opacity(0.8))).frame(width: 16, height: 14))),
+            ("Window", AnyView(Capsule().fill(PlanInk.window).frame(width: 16, height: 5))),
+            ("Furniture", AnyView(RoundedRectangle(cornerRadius: 3).fill(PlanInk.wood).overlay(RoundedRectangle(cornerRadius: 3).stroke(PlanInk.ink, lineWidth: 0.5)).frame(width: 16, height: 14))),
         ]
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), alignment: .leading)], alignment: .leading, spacing: 8) {
             ForEach(items, id: \.0) { item in
@@ -164,6 +200,6 @@ private struct MapLegend: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Legend: elevators blue, ramps teal, stairs red, wide doors green, narrow doors orange, furniture gray")
+        .accessibilityLabel("Legend: elevators blue, ramps teal, stairs red, wide doors green, narrow doors orange, windows light blue, furniture tan")
     }
 }

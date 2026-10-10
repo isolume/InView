@@ -47,6 +47,9 @@ struct ScanView: View {
                         DetectionStatus(detector: controller.detector, section: controller.sectionCount + 1)
                     }
                     Spacer()
+                    if controller.suggestsNewSection, controller.phase == .scanning {
+                        sectionSuggestion
+                    }
                     switch controller.phase {
                     case .processing:
                         StatusPill(text: "Processing section…", isWorking: true)
@@ -67,6 +70,29 @@ struct ScanView: View {
             .animation(.smooth, value: controller.phase)
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: marks)
+    }
+
+    /// The volunteer walked through a doorway. RoomPlan keeps one room per section, so this is the moment to split.
+    private var sectionSuggestion: some View {
+        HStack(spacing: 10) {
+            Image(systemName: Theme.Symbol.door).font(.title3).foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("New room?").font(.subheadline.weight(.semibold))
+                Text("Add a section so the last one is kept as scanned.").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Button("Add section", action: controller.addSection)
+                .buttonStyle(.glassProminent)
+                .controlSize(.small)
+            Button("Dismiss", systemImage: "xmark", action: controller.dismissSectionSuggestion)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .controlSize(.small)
+        }
+        .glassPanel(padding: 12)
+        .glassEffectID("suggestion", in: glass)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     /// RoomPlan ended the section by itself; what it scanned is kept, and the volunteer decides what's next.
@@ -150,6 +176,9 @@ struct ScanView: View {
                 .buttonStyle(.glassProminent)
             }
             .controlSize(.large)
+            Text("One room per section: add a section each time you go through a door.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             if let error = controller.errorMessage {
                 StatusPill(text: error, systemImage: Theme.symbol(for: .barrier), isCompact: true)
                     .foregroundStyle(Theme.color(for: .barrier))

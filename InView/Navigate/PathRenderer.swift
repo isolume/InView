@@ -18,6 +18,8 @@ final class PathRenderer {
     private let obstacleRoot = Entity()
     private var stairsMarkers: [StairsMarker] = []
     private let chevron: ModelEntity
+    /// Chevron entities are kept and re-posed on every route; making new ones each second churned RealityKit.
+    private var chevrons: [ModelEntity] = []
     private let obstacleMarker: ModelEntity
     private var markers: [UUID: PointMarker] = [:]
     private var destination: UUID?
@@ -44,30 +46,43 @@ final class PathRenderer {
     }
 
     func show(_ route: Route) {
-        routeRoot.children.removeAll()
-        for (position, direction) in Self.samples(along: route.waypoints).prefix(Self.maxChevrons) {
+        let samples = Array(Self.samples(along: route.waypoints).prefix(Self.maxChevrons))
+        while chevrons.count < samples.count {
             let entity = chevron.clone(recursive: false)
+            routeRoot.addChild(entity)
+            chevrons.append(entity)
+        }
+        for (index, entity) in chevrons.enumerated() {
+            guard index < samples.count else {
+                entity.isEnabled = false
+                continue
+            }
+            let (position, direction) = samples[index]
+            entity.isEnabled = true
             entity.position = SIMD3(position.x, floorY + 0.03, position.y)
             // The chevron points along local +x; turn it to face the route direction (x, z).
             entity.orientation = simd_quatf(angle: atan2(-direction.y, direction.x), axis: [0, 1, 0])
-            routeRoot.addChild(entity)
         }
         destination = route.destination.id
         refreshMarkers(distance: route.length)
     }
 
     func showArrival(at point: AccessPoint) {
-        routeRoot.children.removeAll()
+        hideChevrons()
         destination = nil
         refreshMarkers()
         markers[point.id]?.show(.arrived)
     }
 
     func clearRoute() {
-        routeRoot.children.removeAll()
+        hideChevrons()
         obstacleRoot.children.removeAll()
         destination = nil
         refreshMarkers()
+    }
+
+    private func hideChevrons() {
+        for entity in chevrons { entity.isEnabled = false }
     }
 
     func showObstacles(_ positions: [SIMD2<Float>]) {
