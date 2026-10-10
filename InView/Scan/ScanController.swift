@@ -38,6 +38,7 @@ final class ScanController: ObservableObject {
     let session = ARSession()
     let detector = AccessibilityDetector()
     private let rawCapture = RawScanCapture()
+    private lazy var splatCapture = SplatCapture(scanID: scanID)
     private let scanID = UUID()
     private var captureBundle: CaptureBundle?
     private var localScene: ProcessedScene?
@@ -92,6 +93,7 @@ final class ScanController: ObservableObject {
         hasStarted = true
         beginSection()
         rawCapture.start(session: session)
+        splatCapture.start(session: session)
         detector.start(session: session)
         startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.captureStartView() }
@@ -137,6 +139,7 @@ final class ScanController: ObservableObject {
         doorMonitor = nil
         detector.pause()
         rawCapture.stop()
+        splatCapture.stop()
         sceneTask?.cancel()
         reportTask?.cancel()
         if phase == .scanning { captureView.captureSession.stop() }
@@ -225,6 +228,7 @@ final class ScanController: ObservableObject {
         doorMonitor = nil
         suggestsNewSection = false
         rawCapture.pause()
+        splatCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
         captureView.captureSession.stop(pauseARSession: false)
     }
@@ -332,6 +336,7 @@ final class ScanController: ObservableObject {
         beginSection()
         detector.resume()
         rawCapture.resume()
+        splatCapture.resume()
     }
 
     private func worldMapCaptured(_ worldMap: ARWorldMap?, error: Error?) {
@@ -342,10 +347,12 @@ final class ScanController: ObservableObject {
         }
         self.worldMap = worldMap
         rawCapture.stop()
+        let raw = rawCapture.snapshot()
+        splatCapture.finish(meshes: raw.meshes)
         session.pause()
         draft = MapBuilder.build(rooms: rooms, recovered: recovered, points: detector.accessPoints(), spottedStairs: detector.stairsFootprints())
         unconfirmed = detector.unconfirmedSightings()
-        prepareScene(raw: rawCapture.snapshot())
+        prepareScene(raw: raw)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
