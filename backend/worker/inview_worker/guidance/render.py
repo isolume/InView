@@ -48,7 +48,10 @@ def landmark_phrase(landmark: dict[str, Any] | None, locale: Locale) -> str | No
     name = _localized_name(landmark.get("names"), landmark.get("name"), locale.language)
     if name:
         return locale.isolate(name)
-    return locale.table("place_phrases", landmark.get("category", "other"))
+    phrases = locale.tables.get("place_phrases", {})
+    category = landmark.get("category")
+    # Never fall back to the "other" phrase ("your destination") in the middle of a route.
+    return phrases[category] if category in phrases and category != "other" else phrases.get("landmark")
 
 
 def distance(locale: Locale, meters: float, key: str = "distance") -> str:

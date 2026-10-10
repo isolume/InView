@@ -81,7 +81,7 @@ def classify(angle: float, right: bool) -> str | None:
     return f"slight_{side}" if angle < SHARP_TURN_DEG else side
 
 
-def _on_floor(feature: Feature, floor_id: str, y: float, params: Params) -> bool:
+def on_floor(feature: Feature, floor_id: str, y: float, params: Params = Params()) -> bool:
     if feature.floor_id is not None:
         return feature.floor_id == floor_id
     return feature.y is None or params.floor_band_m[0] <= feature.y - y <= params.floor_band_m[1]
@@ -161,7 +161,7 @@ def _landmark(corner: dict[str, Any], leg: _Leg, features: Features, exclude: se
     point = corner["point"]
     best = None
     for feature in features.landmarks:
-        if feature.id in exclude or not _on_floor(feature, leg.floor_id, float(point[1]), params):
+        if feature.id in exclude or not on_floor(feature, leg.floor_id, float(point[1]), params):
             continue
         offset = np.asarray(feature.xz) - point[[0, 2]]
         distance = float(np.linalg.norm(offset))
@@ -187,7 +187,7 @@ def _leg_events(leg: _Leg, features: Features, exclude: set[str], params: Params
     length = leg.cum[-1]
     y_mid = float(leg.dense[:, 1].mean())
     for door in features.doors:
-        if not _on_floor(door, leg.floor_id, y_mid, params):
+        if not on_floor(door, leg.floor_id, y_mid, params):
             continue
         hit = geo.project(leg.dense, leg.cum, door.xz)
         if hit is None or hit.distance_m > params.door_reach_m or not (0.3 < hit.along_m < length - 0.3):
@@ -195,10 +195,11 @@ def _leg_events(leg: _Leg, features: Features, exclude: set[str], params: Params
         events.append({"along": hit.along_m, "maneuver": "pass_door", "point": hit.foot,
                        "door": {"id": door.id, **door.extra}, "landmark": None})
     for hazard in features.hazards:
-        if not _on_floor(hazard, leg.floor_id, y_mid, params):
+        if not on_floor(hazard, leg.floor_id, y_mid, params):
             continue
         hit = geo.project(leg.dense, leg.cum, hazard.xz)
-        if hit is None or hit.distance_m > params.hazard_reach_m:
+        # Projection clamps to the ends: skip hazards behind the start or beyond the destination.
+        if hit is None or hit.distance_m > params.hazard_reach_m or not (0.3 < hit.along_m < length - 0.05):
             continue
         warn_at = max(0.0, hit.along_m - params.hazard_lead_m)
         events.append({"along": warn_at, "maneuver": "caution", "point": geo.point_at(leg.dense, leg.cum, warn_at),

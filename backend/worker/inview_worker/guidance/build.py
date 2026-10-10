@@ -29,18 +29,26 @@ def _sign_text(sign: dict, texts: dict[str, str]) -> str | None:
     return text if 0 < len(text) <= MAX_SIGN_TEXT else None
 
 
+def _nearest_floor(graph: NavGraph, xz: tuple[float, float]) -> str | None:
+    best = min(((math.hypot(n.position[0] - xz[0], n.position[2] - xz[1]), n.floor_id) for n in graph.nodes),
+               default=None)
+    return None if best is None else best[1]
+
+
 def collect_features(graph: NavGraph, places: list, signs: list, doors: list, hazards: list,
                      text: list) -> maneuvers.Features:
     texts = {str(t.get("id")): str(t.get("text", "")).strip() for t in text or [] if t.get("id")}
     out = maneuvers.Features()
-    for sign in sorted(signs or [], key=lambda s: str(s.get("id"))):
+    # The legacy sign-candidate shape has no ids; fall back to the stable list position.
+    keyed = [(str(sign.get("id") or f"sign-{index}"), sign) for index, sign in enumerate(signs or [])]
+    for sign_id, sign in sorted(keyed, key=lambda item: item[0]):
         position = sign.get("position_m")
         if not position or len(position) < 3:
             continue
         category = sign.get("category") or LEGACY_SIGN_KINDS.get(sign.get("kind"), "unknown")
         if sign.get("kind") == "text_region" and not _sign_text(sign, texts):
             continue  # Unread text regions make poor landmarks.
-        out.landmarks.append(maneuvers.Feature(str(sign.get("id")), "sign", (float(position[0]), float(position[2])),
+        out.landmarks.append(maneuvers.Feature(sign_id, "sign", (float(position[0]), float(position[2])),
                                                float(position[1]), None, str(category), text=_sign_text(sign, texts)))
     for place in sorted(places or [], key=lambda p: str(p.get("id"))):
         position = place.get("position_m")
@@ -50,12 +58,16 @@ def collect_features(graph: NavGraph, places: list, signs: list, doors: list, ha
                                                float(position[1]), place.get("floor_id"),
                                                str(place.get("category") or "unknown"), place.get("name"),
                                                dict(place.get("names") or {})))
+    floors = {node.floor_id for node in graph.nodes}
     door_keys = ("kind", "measured_clear_width_m", "nominal_width_m", "meets_clear_width")
     for door in sorted(doors or [], key=lambda d: str(d.get("id"))):
         center = door.get("center_xz_m")
         if not center:
             continue
-        feature = maneuvers.Feature(str(door.get("id")), "door", (float(center[0]), float(center[1])),
+        xz = (float(center[0]), float(center[1]))
+        # Door records carry no height; attribute each to the floor of the nearest graph node.
+        floor = _nearest_floor(graph, xz) if len(floors) > 1 else None
+        feature = maneuvers.Feature(str(door.get("id")), "door", xz, None, floor,
                                     extra={k: door[k] for k in door_keys if door.get(k) is not None})
         out.doors.append(feature)
         out.landmarks.append(feature)
@@ -63,7 +75,7 @@ def collect_features(graph: NavGraph, places: list, signs: list, doors: list, ha
         if graph.node_kind(node.id) != "door":
             continue
         xz = (node.position[0], node.position[2])
-        if any(math.dist(xz, d.xz) < 1.0 for d in out.doors):
+        if any(math.dist(xz, d.xz) < 1.0 and d.floor_id in (None, node.floor_id) for d in out.doors):
             continue
         feature = maneuvers.Feature(f"node:{node.id}", "door", xz, node.position[1], node.floor_id)
         out.doors.append(feature)
@@ -81,8 +93,6 @@ def collect_features(graph: NavGraph, places: list, signs: list, doors: list, ha
 def edge_contexts(graph: NavGraph, features: maneuvers.Features, landmark_reach: float,
                   hazard_reach: float) -> dict[int, EdgeContext]:
     """Landmark count and worst nearby hazard per surface edge (drives the low-vision soft costs)."""
-    landmarks = np.array([f.xz for f in features.landmarks]).reshape(-1, 2)
-    hazards = np.array([f.xz for f in features.hazards]).reshape(-1, 2)
     contexts = {}
     for edge in graph.edges:
         if edge.kind != "surface":
@@ -90,20 +100,21 @@ def edge_contexts(graph: NavGraph, features: maneuvers.Features, landmark_reach:
         points = geo.as_array(edge.points)
         cum = geo.cumulative(points)
         low, high = points[:, [0, 2]].min(axis=0), points[:, [0, 2]].max(axis=0)
+        floor, y = graph.nodes[edge.source].floor_id, float(points[:, 1].mean())
 
-        def near(candidates: np.ndarray, reach: float) -> list[int]:
-            if not len(candidates):
-                return []
-            inside = np.all((candidates >= low - reach) & (candidates <= high + reach), axis=1)
+        def near(candidates: list[maneuvers.Feature], reach: float) -> list[maneuvers.Feature]:
             hits = []
-            for i in np.flatnonzero(inside):
-                hit = geo.project(points, cum, candidates[i])
+            for feature in candidates:
+                xz = np.asarray(feature.xz)
+                if np.any(xz < low - reach) or np.any(xz > high + reach) or not maneuvers.on_floor(feature, floor, y):
+                    continue
+                hit = geo.project(points, cum, xz)
                 if hit is not None and hit.distance_m <= reach:
-                    hits.append(int(i))
+                    hits.append(feature)
             return hits
 
-        count = len(near(landmarks, landmark_reach))
-        severities = {features.hazards[i].extra.get("severity") for i in near(hazards, hazard_reach)}
+        count = len(near(features.landmarks, landmark_reach))
+        severities = {feature.extra.get("severity") for feature in near(features.hazards, hazard_reach)}
         worst = "barrier" if "barrier" in severities else ("warning" if severities else None)
         if count or worst:
             contexts[edge.index] = EdgeContext(count, worst)
@@ -112,7 +123,7 @@ def edge_contexts(graph: NavGraph, features: maneuvers.Features, landmark_reach:
 
 def _endpoints(graph: NavGraph, places: list, regions: list, config: dict) -> tuple[list[Endpoint], str, list[dict]]:
     endpoints, unmapped = place_endpoints(graph, places or [], config["max_snap_m"])
-    if endpoints:
+    if len(endpoints) >= 2:
         return endpoints, "places", unmapped
     endpoints = region_endpoints(graph, regions or [], config["max_snap_m"])
     if len(endpoints) >= 2:

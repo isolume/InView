@@ -284,3 +284,32 @@ def test_stage_runs_in_pipeline_and_skips_without_graph():
     assert analysis["summary"]["routes"]["pairs"] == 2 and analysis["summary"]["routes"]["pairs_truncated"] == 1
     assert set(analysis["routes"]["routes"][0]["instructions"]) == {"en"}
     json.dumps(analysis)  # publishable
+
+
+def test_legacy_sign_candidates_without_ids_get_stable_ids():
+    legacy = [{"kind": "exit_sign_candidate", "color": "red", "text": None, "position_m": [9.4, 2.1, -0.6]}]
+    routes, _, _ = routes_for(signs=legacy, text=[])
+    landmark = routes["ambulatory:place-entrance->place-restroom"]["steps"][1]["landmark"]
+    assert landmark["id"] == "sign-0" and landmark["category"] == "exit"
+
+
+def test_a_single_place_falls_back_to_graph_extremities():
+    _, product, summary = routes_for(places=[PLACES[0]])
+    assert summary["endpoint_source"] == "graph_extremities" and product["routes"]
+
+
+def test_unnamed_unknown_place_is_never_called_the_destination():
+    odd = [*PLACES, {"id": "place-x", "category": "unknown", "position_m": [9.0, 0.0, -1.0], "floor_id": "ground"}]
+    routes, _, _ = routes_for(places=odd, signs=[])
+    turn = routes["ambulatory:place-entrance->place-restroom"]["instructions"]["en"][1]
+    assert turn["text"].startswith("Turn right after the landmark")
+
+
+def test_features_on_other_floors_and_behind_the_walker_are_ignored():
+    # The door sits under the upper corridor; its nearest nodes are the stacked stair landings and the
+    # ground one wins the tie, so it must not appear on the upper-floor leg.
+    ground_door = [{**products()["doors"][0], "id": "door-ground", "center_xz_m": [1.0, -4.0]}]
+    behind = [{"id": "hz-behind", "kind": "step", "position_m": [0.0, 0.0, 1.0], "severity": "warning"}]
+    routes, _, _ = routes_for(doors=ground_door, hazards=behind)
+    office = routes["ambulatory:place-entrance->place-office"]["steps"]
+    assert [s["maneuver"] for s in office] == ["depart", "stairs", "arrive"]
