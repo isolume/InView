@@ -12,6 +12,7 @@ enum MapStore {
     static var worldMapURL: URL { directory.appending(path: "venue.arworldmap") }
     /// The camera view where the scan started, shown to riders while relocalizing.
     static var startViewURL: URL { directory.appending(path: "start-view.jpg") }
+    static var reportURL: URL { directory.appending(path: "venue-report.json") }
     /// Raw RoomPlan output, kept so the floor plan can be rebuilt later with better logic.
     static var roomsURL: URL { directory.appending(path: "captured-rooms.json") }
 
@@ -31,15 +32,33 @@ enum MapStore {
         UIImage(contentsOfFile: startViewURL.path())
     }
 
-    static func save(_ map: VenueMap, rooms: [CapturedRoom], worldMap: ARWorldMap, startView: Data?) throws {
+    static func loadReport() -> AccessibilityReport? {
+        guard let data = try? Data(contentsOf: reportURL) else { return nil }
+        return try? decoder.decode(AccessibilityReport.self, from: data)
+    }
+
+    static func save(_ map: VenueMap, report: AccessibilityReport, rooms: [CapturedRoom], worldMap: ARWorldMap, startView: Data?) throws {
         let archivedWorldMap = try NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: true)
         try archivedWorldMap.write(to: worldMapURL, options: .atomic)
         try encoder.encode(map).write(to: mapURL, options: .atomic)
+        try encoder.encode(report).write(to: reportURL, options: .atomic)
         try encoder.encode(rooms).write(to: roomsURL, options: .atomic)
         if let startView {
             try startView.write(to: startViewURL, options: .atomic)
         } else {
             try? FileManager.default.removeItem(at: startViewURL)
+        }
+    }
+
+    /// Sends the map and report to the server so the crew's iMessage agent knows the points by name.
+    /// - Returns: Why it failed, or nil on success or when no server is configured.
+    static func sync(_ map: VenueMap, report: AccessibilityReport) async -> String? {
+        guard let client = ServerClient() else { return nil }
+        do {
+            try await client.uploadVenue(map, report: report)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 
