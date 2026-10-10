@@ -4,8 +4,15 @@
 PRODUCT_BUNDLE_IDENTIFIER = com.vedanta.accessnav
 DEVELOPMENT_TEAM =
 
-OPENAI_API_KEY =
-OPENAI_MODEL = gpt-6.1-sol
-OPENAI_REASONING_EFFORT = low
+GEMINI_API_KEY =
+GEMINI_MODEL = gemini-3.8-flash
+
+ELEVENLABS_API_KEY =
+ELEVENLABS_VOICE_ID = EXAVITQu4vr4xnSDxMaL
+ELEVENLABS_MODEL = eleven_flash_v2_5
+
+// The live-status server. Host only (xcconfig treats "//" as a comment), e.g. api.example.com or 192.168.1.20:8787.
+SERVER_HOST =
+SERVER_SCHEME = https
 
 #include? "Secrets.xcconfig"
