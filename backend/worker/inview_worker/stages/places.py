@@ -1,4 +1,4 @@
-"""Stage: fuse objects, rooms, regions, doors, signs, OCR text and hazards into navigable places."""
+"""Stage: fuse objects, rooms, regions, doors, signs, OCR text and hazards into places for review."""
 from __future__ import annotations
 
 import json

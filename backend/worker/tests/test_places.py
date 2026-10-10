@@ -471,3 +471,72 @@ def test_phone_confirmed_access_points_become_places(synthetic_ctx):
     assert found["Main Reception"]["sources"] == ["phone:p1"] and found["Main Reception"]["confidence"] >= 0.9
     assert found["Lift A"]["category"] == "elevator" and found["Lift A"]["access_point_kind"] == "elevator"
     assert result.summary["candidates"]["phone"] == 2
+
+
+def test_sign_confidence_uses_semantics_and_all_places_require_review():
+    scene = places.Scene(signs=[{"id": "sign", "category": "elevator", "position_m": [0, 1.5, 0],
+                                "category_confidence": 0.35, "score": 1.0}])
+    (place,) = places.build(scene)[0]
+    assert place["confidence"] == 0.35 and place["review_status"] == "candidate"
+    assert place["source"] == "detected"
+
+
+@pytest.mark.parametrize("shape", ["legacy", "categorized", "split_lines"])
+def test_negated_sign_does_not_create_an_exit_place(shape):
+    sign = {"id": "s", "kind": "exit_sign_candidate", "position_m": [0, 1.5, 0], "text": "NOT AN EXIT", "score": 1.0}
+    texts = []
+    if shape != "legacy":
+        sign.update(category="exit", category_confidence=0.7)
+    if shape == "split_lines":
+        sign.update(category="informational", text=None, text_ids=["t1", "t2"])
+        texts = [text("t1", "NOT AN", 0, 1.6, 0), text("t2", "EXIT", 0, 1.5, 0)]
+    assert places.build(places.Scene(signs=[sign], texts=texts))[0] == []
+
+
+def test_confirmed_phone_points_keep_identity_location_name_and_metadata():
+    points = [
+        {"id": "a", "kind": "elevator", "name": "Lift A", "position": [0, 0, 0], "source": "manual",
+         "confidence": 1.0, "requires_assistance": True, "timestamp_seconds": 12.5},
+        {"id": "b", "kind": "elevator", "name": "Lift B", "position": [2, 0, 0], "source": "manual",
+         "confidence": 0.9, "requires_assistance": False},
+    ]
+    plain = places.build(places.Scene(access_points=points))[0]
+    with_ocr = places.build(places.Scene(access_points=list(reversed(points)),
+                                       texts=[text("elevator-sign", "Elevator", 0.2, 1.5, 0)]))[0]
+    assert len(plain) == len(with_ocr) == 2
+    before = {p["source_access_point_id"]: p for p in plain}
+    after = {p["source_access_point_id"]: p for p in with_ocr}
+    for point in points:
+        found = after[point["id"]]
+        assert found["id"] == before[point["id"]]["id"]
+        assert found["name"] == found["names"]["en"] == point["name"]
+        assert found["position_m"] == point["position"] and found["source"] == "manual"
+        assert found["confidence"] == point["confidence"] and found["review_status"] == "candidate"
+        assert found["requires_assistance"] == point["requires_assistance"]
+    assert after["a"]["provenance"] == {
+        "asset": "semantics.json", "access_point_id": "a", "source": "manual", "confidence": 1.0,
+        "timestamp_seconds": 12.5,
+    }
+    assert "text:elevator-sign" in after["a"]["sources"]
+
+
+def test_ramp_measurements_survive_phone_and_hazard_evidence_fusion():
+    scene = places.Scene(access_points=[
+        {"id": "r", "kind": "ramp", "name": "Entry ramp", "position": [0, 0, 0], "source": "detected",
+         "confidence": 0.8, "slope_degrees": 6.4, "requires_assistance": True}],
+        hazards=[{"id": "h", "kind": "ramp", "position_m": [0.5, 0.1, 0], "measure": {"running_slope": 0.08}}])
+    (ramp,) = places.build(scene)[0]
+    assert ramp["slope_degrees"] == 6.4 and ramp["requires_assistance"] is True
+    assert ramp["source_access_point_id"] == "r" and ramp["source"] == "detected" and ramp["confidence"] == 0.8
+    (measured,) = places.build(places.Scene(hazards=scene.hazards))[0]
+    assert measured["slope_degrees"] == pytest.approx(np.degrees(np.arctan(0.08)), abs=1e-4)
+    assert "requires_assistance" not in measured
+
+
+def test_original_untransformed_phone_attachment_is_not_used():
+    from inview_worker.core import MemorySource, ScanContext
+    from inview_worker.inputs import ScanInputs
+    raw = json.dumps({"access_points": [{"id": "p", "kind": "elevator", "position": [1, 0, 0],
+                                       "source": "manual"}]}).encode()
+    ctx = ScanContext("s", ScanInputs("s"), MemorySource(None, {"source-semantics.json": raw}))
+    assert PlacesStage().run(ctx).products[ProductName.PLACES].json == []

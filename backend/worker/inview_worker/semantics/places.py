@@ -69,9 +69,9 @@ SEATS, TABLES = {"sofa", "chair"}, {"table"}
 FIXTURES = {"sink", "bathtub"}
 LANDMARK_OBJECTS = {"fireplace": "Fireplace", "television": "Television"}
 # Position authority: structural anchors (doors, rooms) > objects/hazards > signs/text.
-RANK_ANCHOR, RANK_OBJECT, RANK_SIGN = 3, 2, 1
+RANK_PHONE, RANK_ANCHOR, RANK_OBJECT, RANK_SIGN = 4, 3, 2, 1
 # Name authority: room number > room/region label > nothing explicit (lexicon names).
-NAME_NUMBER, NAME_LABEL = 3, 2
+NAME_PHONE, NAME_NUMBER, NAME_LABEL = 4, 3, 2
 
 
 @dataclass
@@ -102,10 +102,15 @@ class Candidate:
     names: dict[str, str] = field(default_factory=dict)   # observed per-language names
     name: str | None = None              # explicit name (room number, label)
     name_rank: int = 0
-    key: str | None = None               # merge key ("door:<id>", "room:<id>", "region:<id>")
+    key: str | None = None               # merge key (door, room, region, or original phone point)
     room_number: str | None = None
     door_id: str | None = None
     region_id: str | None = None
+    source_access_point_id: str | None = None
+    source: str = "detected"
+    slope_degrees: float | None = None
+    requires_assistance: bool | None = None
+    provenance: dict[str, Any] | None = None
 
 
 @dataclass
@@ -524,7 +529,7 @@ def sign_candidates(scene: Scene, doors: list[_Door], areas: list[_Area]) -> tup
             upgrade = "restroom" if sign["kind"] == "accessibility_sign_candidate" else None
             found = _text_candidates(text, None, position, min(0.85, 0.5 + 0.35 * score), source, doors, areas,
                                      scene.floor_y, upgrade) if text else []
-            if not found and sign["kind"] == "exit_sign_candidate":
+            if not found and sign["kind"] == "exit_sign_candidate" and "exit" not in load().vetoes(text):
                 found = [_snap(Candidate("exit", position.copy(), min(0.6, 0.3 + 0.3 * score), source), doors,
                                scene.floor_y)]
             out.extend(found)
@@ -535,8 +540,15 @@ def sign_candidates(scene: Scene, doors: list[_Door], areas: list[_Area]) -> tup
             continue
         if position is None:
             continue
-        confidence = _number(sign.get("confidence"), _number(sign.get("score"), 0.7))
+        # The plate detector's score describes a rectangle/legend, not the meaning of the sign.
+        confidence = _number(sign.get("category_confidence"), _number(sign.get("confidence"), 0.5))
         category = _pictogram_category(sign.get("category"), sign.get("pictograms") or [])
+        bodies = [str(sign.get("text") or ""), *(str(t.get("text") or "") for t in linked)]
+        excluded = load().vetoes(" ".join(bodies))
+        if isinstance(sign.get("excluded_categories"), list):
+            excluded.update(c for c in sign["excluded_categories"] if isinstance(c, str))
+        if category in excluded:
+            continue
         names: dict[str, str] = {}
         for text in sorted(linked, key=lambda t: _number(t.get("confidence"), 0.0)):
             body = " ".join(str(text.get("text", "")).split())
@@ -549,9 +561,10 @@ def sign_candidates(scene: Scene, doors: list[_Door], areas: list[_Area]) -> tup
         if category == "room" or category in (None, "", "unknown", "informational"):
             # Room plates and generic signs: let their text decide (room number, lexicon).
             for text in linked:
-                out.extend(_text_candidates(str(text.get("text", "")), text.get("language"), position,
-                                            confidence * _number(text.get("confidence"), 1.0),
-                                            source + (f"text:{text.get('id')}",), doors, areas, scene.floor_y))
+                found = _text_candidates(str(text.get("text", "")), text.get("language"), position,
+                                         confidence * _number(text.get("confidence"), 1.0),
+                                         source + (f"text:{text.get('id')}",), doors, areas, scene.floor_y)
+                out.extend(c for c in found if c.category not in excluded)
             continue
         if category not in valid:
             continue
@@ -591,7 +604,11 @@ def hazard_candidates(scene: Scene) -> list[Candidate]:
             if centroid is None:
                 continue
             position = np.array([centroid[0], scene.floor_y, centroid[1]])
-        out.append(Candidate(kind, position, 0.7, (f"hazard:{hazard.get('id', index)}",), RANK_OBJECT))
+        measure = hazard.get("measure") if isinstance(hazard.get("measure"), dict) else {}
+        slope = _number(measure.get("running_slope", measure.get("slope")), float("nan"))
+        degrees = float(np.degrees(np.arctan(slope))) if kind == "ramp" and np.isfinite(slope) and slope >= 0 else None
+        out.append(Candidate(kind, position, 0.7, (f"hazard:{hazard.get('id', index)}",), RANK_OBJECT,
+                             slope_degrees=degrees))
     return out
 
 
@@ -602,17 +619,33 @@ def phone_candidates(scene: Scene) -> list[Candidate]:
     """Places the volunteer confirmed on the phone. A named destination keeps its name; its category
     comes from the name (e.g. "Restroom", "Reception") or falls back to a landmark."""
     out = []
-    for index, point in enumerate(scene.access_points):
+    for point in scene.access_points:
         position = _xyz(point.get("position"))
         if position is None:
             continue
+        ident = point.get("id")
+        if not isinstance(ident, str) or not ident.strip():
+            continue  # A confirmed point needs its original identity; never invent a positional ID.
         kind = point.get("kind")
+        if kind not in {"elevator", "ramp", "destination"} or point.get("source") not in {"manual", "detected"}:
+            continue
         name = point.get("name") if isinstance(point.get("name"), str) and point.get("name").strip() else None
         category = PHONE_KINDS.get(kind) or _label_category(name, PlaceCategory.LANDMARK.value)[0]
         manual = point.get("source") == "manual"
-        confidence = 0.9 if manual else min(max(_number(point.get("confidence"), 0.75), 0.0), 1.0)
-        out.append(Candidate(category, position, confidence, (f"phone:{point.get('id', index)}",), RANK_ANCHOR,
-                             {}, name.strip() if name else None, NAME_LABEL if name else 0))
+        confidence = min(max(_number(point.get("confidence"), 1.0 if manual else 0.75), 0.0), 1.0)
+        slope = _number(point.get("slope_degrees"), float("nan"))
+        slope = slope if kind == "ramp" and np.isfinite(slope) and 0 <= slope <= 90 else None
+        assistance = point.get("requires_assistance")
+        provenance = {"asset": "semantics.json", "access_point_id": ident, "source": point["source"],
+                      "confidence": confidence}
+        timestamp = _number(point.get("timestamp_seconds"), float("nan"))
+        if np.isfinite(timestamp):
+            provenance["timestamp_seconds"] = timestamp
+        out.append(Candidate(category, position, confidence, (f"phone:{ident}",), RANK_PHONE,
+                             {}, name.strip() if name else None, NAME_PHONE if name else 0, key=f"phone:{ident}",
+                             source_access_point_id=ident, source=point["source"], slope_degrees=slope,
+                             requires_assistance=assistance if isinstance(assistance, bool) else None,
+                             provenance=provenance))
     return out
 
 
@@ -630,6 +663,8 @@ class _Cluster:
         """Confidence-weighted mean of the most authoritative evidence that shares the best member's
         anchor: repeated sightings of one sign average, but a door and a room centroid never blend."""
         best = max(self.members, key=lambda m: (m.rank, m.confidence))
+        if best.source_access_point_id is not None:
+            return best.position.copy()  # A confirmed location never drifts toward nearby detections.
         chosen = [m for m in self.members if m.rank == best.rank and m.key == best.key]
         weights = np.array([max(m.confidence, 1e-3) for m in chosen])
         return (np.array([m.position for m in chosen]) * weights[:, None]).sum(axis=0) / weights.sum()
@@ -695,18 +730,34 @@ def _place(cluster: _Cluster, floor_id: str) -> dict:
         names.update({k: v for k, v in member.names.items() if k and v})
     name = labelled[0].name if labelled else names.get("en") or next(iter(sorted(names.values())), category)
     position = cluster.position()
-    digest = hashlib.sha1("|".join(sources).encode()).hexdigest()[:10]
+    phone = next((m for m in members if m.source_access_point_id is not None), None)
+    if phone and phone.name:
+        name, names = phone.name, {"en": phone.name}
+    # Extra OCR/object evidence must not turn an already-confirmed phone point into a new identity.
+    identity = f"phone:{phone.source_access_point_id}" if phone else "|".join(sources)
+    digest = hashlib.sha1(identity.encode()).hexdigest()[:10]
     place = {
-        "id": f"place-{category}-{digest}",
+        "id": f"place-{'phone' if phone else category}-{digest}",
         "category": category,
         "name": name,
         "names": dict(sorted(names.items())),
         "position_m": [round(float(v), 3) for v in position],
         "floor_id": floor_id,
-        "confidence": round(min(confidence, 0.99), 3),
+        "confidence": round(phone.confidence if phone else min(confidence, 0.99), 3),
         "sources": sources,
+        "source": phone.source if phone else "detected",
+        "review_status": "candidate",
         "access_point_kind": access_point_kind(category),
     }
+    if phone:
+        place["source_access_point_id"] = phone.source_access_point_id
+        place["provenance"] = phone.provenance
+        if phone.requires_assistance is not None:
+            place["requires_assistance"] = phone.requires_assistance
+    measured_slopes = [m.slope_degrees for m in members if m.slope_degrees is not None]
+    slope = phone.slope_degrees if phone and phone.slope_degrees is not None else max(measured_slopes, default=None)
+    if slope is not None:
+        place["slope_degrees"] = round(slope, 4)
     door_id = next((m.door_id for m in members if m.door_id), None)
     region_id = next((m.region_id for m in members if m.region_id), None)
     if door_id:

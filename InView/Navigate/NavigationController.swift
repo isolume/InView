@@ -27,7 +27,9 @@ final class NavigationController: ObservableObject {
     @Published private(set) var route: Route?
     @Published private(set) var selectedDestination: AccessPoint?
     @Published private(set) var caption: String?
-    @Published private(set) var map: VenueMap?
+    @Published private(set) var map: VenueMap? {
+        didSet { mapRevision &+= 1 }
+    }
     @Published private(set) var position: SIMD2<Float>?
     /// Radians clockwise from -Z toward +X.
     @Published private(set) var heading: Float = 0
@@ -35,6 +37,9 @@ final class NavigationController: ObservableObject {
     /// Directions need the scan's AR map to find the rider; a map without one can still be explored.
     @Published private(set) var canGuide = false
     @Published private(set) var unavailableReason: String?
+    @Published private(set) var usesBundledMap = false
+    @Published private(set) var isPositionReliable = false
+    @Published private(set) var routePreference = RoutePreference.stepFree
 
     let isDemo: Bool
     lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -62,16 +67,22 @@ final class NavigationController: ObservableObject {
     private var lastObstacleCheck = Date.distantPast
     private var isActive = false
     private var isLoading = false
+    private var loadingGeneration = 0
     private var routingGeneration = 0
     private var demoPath: [SIMD2<Float>] = []
     private var demoDistance: Float = 0
     private var lastDemoTick = Date.now
     /// Start the route as soon as the rider is found, when they asked for directions before that.
     private var routesWhenLocated = false
+    private var sessionIsRunning = false
+    private var placeEditSource: MapStore.PlaceEditSource?
+    private var placeEditRequest: UUID?
+    private var mapRevision = 0
 
     /// - Parameter map: The saved map, when the caller already has it, so it shows before loading finishes.
-    init(isDemo: Bool = false, map: VenueMap? = nil) {
+    init(isDemo: Bool = false, map: VenueMap? = nil, usesBundledMap: Bool = false) {
         self.isDemo = isDemo
+        self.usesBundledMap = usesBundledMap
         guard isDemo else {
             self.map = map
             return
@@ -90,6 +101,7 @@ final class NavigationController: ObservableObject {
         let worldMap: ARWorldMap?
         let planner: RoutePlanner?
         let startView: UIImage?
+        let placeEditSource: MapStore.PlaceEditSource?
     }
 
     /// Loads what directions need. The demo starts moving; a real map waits for `beginGuidance`.
@@ -102,31 +114,38 @@ final class NavigationController: ObservableObject {
         }
         guard !isLoading else { return }
         isLoading = true
+        loadingGeneration += 1
+        let generation = loadingGeneration
+        let bundled = usesBundledMap
         Task { [weak self] in
             let started = Date.now
             let loaded = await Task.detached(priority: .userInitiated) {
-                let map = MapStore.load()
-                return Loaded(map: map, worldMap: MapStore.loadWorldMap(),
-                              planner: map.map(RoutePlanner.init), startView: MapStore.loadStartView())
+                let saved = bundled ? nil : MapStore.loadEditableMap()
+                let map = bundled ? StudentCenterCatalog.map() : saved?.map
+                return Loaded(map: map, worldMap: bundled ? nil : MapStore.loadWorldMap(),
+                              planner: map.map(RoutePlanner.init), startView: bundled ? nil : MapStore.loadStartView(),
+                              placeEditSource: saved?.source)
             }.value
-            guard let self else { return }
+            guard let self, generation == loadingGeneration else { return }
             Log.navigation.info("map loaded in \(String(format: "%.2f", Date.now.timeIntervalSince(started)), privacy: .public) s · \(loaded.map?.footprints.count ?? 0) footprints, \(loaded.map?.points.count ?? 0) points, world map \(loaded.worldMap == nil ? "missing" : "present", privacy: .public)")
             isLoading = false
             map = loaded.map
+            placeEditSource = loaded.placeEditSource
             worldMap = loaded.worldMap
             planner = loaded.planner
             startView = loaded.startView
             canGuide = map != nil && worldMap != nil && map?.requiresOptimizedLocalization != true
             unavailableReason = map?.requiresOptimizedLocalization == true
-                ? "This map needs positioning setup before navigation. You can still view the saved model."
-                : worldMap == nil ? "Directions need the AR map saved with a scan on an iPhone with LiDAR." : nil
+                ? "Live positioning is not ready for this map yet. You can still explore the floor."
+                : worldMap == nil ? "AR guidance is not available for this floor yet. You can still explore the map and preview a route." : nil
             phase = map == nil ? .noMap : .browsing
         }
     }
 
     /// Turns the camera on and finds the rider in the scanned space; then routes, when `thenRoute`.
     func beginGuidance(thenRoute: Bool) {
-        guard !isDemo, isActive, canGuide, map?.requiresOptimizedLocalization != true, let worldMap, phase == .browsing else { return }
+        guard !isDemo, !isSavingPlaces, isActive, canGuide, map?.requiresOptimizedLocalization != true,
+              let worldMap, phase == .browsing else { return }
         routesWhenLocated = thenRoute
         isRelocalizationSlow = false
         phase = .locating
@@ -136,10 +155,17 @@ final class NavigationController: ObservableObject {
     }
 
     /// Switches to a newly saved map: the session starts over with it.
-    func reload(map newMap: VenueMap?) {
+    func reload(map newMap: VenueMap?, usesBundledMap: Bool = false) {
         guard !isDemo else { return }
         stop()
+        // A floor switch invalidates any disk load still preparing the previous floor.
+        loadingGeneration += 1
+        isLoading = false
+        placeEditRequest = nil
+        placeEditSource = nil
+        isSavingPlaces = false
         map = newMap
+        self.usesBundledMap = usesBundledMap
         worldMap = nil
         planner = nil
         startView = nil
@@ -149,8 +175,39 @@ final class NavigationController: ObservableObject {
         route = nil
         selectedDestination = nil
         caption = nil
+        position = nil
+        heading = 0
+        isPositionReliable = false
+        isRelocalizationSlow = false
         phase = .loading
         start()
+    }
+
+    /// Public releases contain map geometry; live positioning requires separate, matching evidence.
+    func showSharedMap(_ newMap: VenueMap?) {
+        stop()
+        loadingGeneration += 1
+        isLoading = false
+        placeEditRequest = nil
+        placeEditSource = nil
+        isSavingPlaces = false
+        map = newMap
+        worldMap = nil
+        planner = nil
+        startView = nil
+        renderer = nil
+        route = nil
+        selectedDestination = nil
+        caption = nil
+        position = nil
+        heading = 0
+        canGuide = false
+        usesBundledMap = true
+        isPositionReliable = false
+        isRelocalizationSlow = false
+        unavailableReason = "AR guidance is not available for this floor yet. You can still explore the map and preview a route."
+        phase = newMap == nil ? .noMap : .browsing
+        isActive = true
     }
 
     /// Turns the camera off and returns to exploring the map.
@@ -161,6 +218,8 @@ final class NavigationController: ObservableObject {
         caption = nil
         renderer?.clearRoute()
         routesWhenLocated = false
+        position = nil
+        isPositionReliable = false
         phase = .browsing
     }
 
@@ -184,7 +243,8 @@ final class NavigationController: ObservableObject {
         isRouting = false
         pendingReason = nil
         voice.deactivate()
-        if !isDemo { arView.session.pause() }
+        if !isDemo, sessionIsRunning { arView.session.pause(); sessionIsRunning = false }
+        isPositionReliable = false
     }
 
     private func begin() {
@@ -196,13 +256,13 @@ final class NavigationController: ObservableObject {
         voice.activate()
     }
 
-    /// Places are edited while the camera is off, so AR labels and routes never show a stale list.
-    var canEditPlaces: Bool { !isDemo && map != nil && phase == .browsing && !isSavingPlaces }
+    /// Only a locally saved floor can be edited, while its camera and directions are off.
+    var canEditPlaces: Bool {
+        !isDemo && !usesBundledMap && map != nil && placeEditSource != nil
+            && phase == .browsing && !isSavingPlaces
+    }
     @Published private(set) var isSavingPlaces = false
 
-    /// Adds a place dropped on the map, or saves edits to one. The pin shows at once; the map,
-    /// its report and the route planner are written and rebuilt in the background.
-    /// - Returns: The report checked against the new list of places.
     func savePlace(_ point: AccessPoint) async throws -> AccessibilityReport {
         guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
         edited.place(point)
@@ -216,25 +276,46 @@ final class NavigationController: ObservableObject {
     }
 
     private func publishPlaces(_ edited: VenueMap) async throws -> AccessibilityReport {
-        guard canEditPlaces, let previous = map else {
-            throw CaptureValidationError.invalid("Places can be changed while the map is open without directions.")
+        guard canEditPlaces, let previous = map, let source = placeEditSource else {
+            throw CaptureValidationError.invalid("Places can be changed on a saved map while directions are off.")
         }
+        let request = UUID()
+        let generation = loadingGeneration
+        placeEditRequest = request
         isSavingPlaces = true
-        defer { isSavingPlaces = false }
+        defer {
+            if placeEditRequest == request { placeEditRequest = nil; isSavingPlaces = false }
+        }
         map = edited
+        let revision = mapRevision
         if let selected = selectedDestination { selectedDestination = edited.points.first { $0.id == selected.id } }
+        let writer = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let planner = RoutePlanner(map: edited)
+            let report = try AccessibilityReport.make(map: edited, planner: planner)
+            let savedSource = try MapStore.updatePoints(edited.points, report: report, expected: source)
+            return (planner, report, savedSource)
+        }
         do {
-            let saved = try await Task.detached(priority: .userInitiated) {
-                let planner = RoutePlanner(map: edited)
-                let report = AccessibilityReport(map: edited, planner: planner)
-                try MapStore.updatePoints(edited.points, report: report)
-                return (planner, report)
-            }.value
+            let saved = try await withTaskCancellationHandler {
+                try await writer.value
+            } onCancel: {
+                writer.cancel()
+            }
+            guard placeEditRequest == request, loadingGeneration == generation, mapRevision == revision,
+                  !usesBundledMap, placeEditSource == source else {
+                throw CaptureValidationError.invalid("The open map changed before the edit finished.")
+            }
             planner = saved.0
+            placeEditSource = saved.2
             return saved.1
         } catch {
-            map = previous
-            if let selected = selectedDestination { selectedDestination = previous.points.first { $0.id == selected.id } }
+            // A late failure must not restore this floor over a newly selected map or a newer edit.
+            if placeEditRequest == request, loadingGeneration == generation, mapRevision == revision,
+               !usesBundledMap, placeEditSource == source {
+                map = previous
+                if let selected = selectedDestination { selectedDestination = previous.points.first { $0.id == selected.id } }
+            }
             throw error
         }
     }
@@ -244,6 +325,7 @@ final class NavigationController: ObservableObject {
         guard map != nil else { return }
         if !isDemo { try MapStore.updateGeographicReference(reference) }
         map?.geographicReference = reference
+        if !isDemo, !usesBundledMap, let map { placeEditSource = MapStore.placeEditSource(matching: map) }
     }
 
     /// GPS may adjust the map origin only when camera tracking is current and reliable.
@@ -278,6 +360,29 @@ final class NavigationController: ObservableObject {
         obstacles.reset()
         phase = .routing
         requestRoute(.started)
+    }
+
+    /// Discard the previous choice immediately, including in-flight searches and spoken
+    /// instructions. A preference change starts a fresh search to the selected destination.
+    func setRoutePreference(_ preference: RoutePreference) {
+        guard preference != routePreference else { return }
+        let wasGuiding = phase == .navigating || phase == .routing || phase == .noRoute
+        routePreference = preference
+        routingGeneration += 1
+        isRouting = false
+        pendingReason = nil
+        route = nil
+        caption = nil
+        voice.stop()
+        narrator.reset()
+        renderer?.clearRoute()
+        if wasGuiding {
+            phase = .routing
+            requestRoute(.started)
+        } else if phase == .ready || phase == .arrived {
+            phase = .ready
+            selectDestination(selectedDestination)
+        }
     }
 
     func selectDestination(_ destination: AccessPoint?) {
@@ -317,8 +422,11 @@ final class NavigationController: ObservableObject {
         if isDemo {
             position = NavigationDemo.startPosition
             heading = NavigationDemo.heading
-            route = NavigationDemo.route
-            selectedDestination = route?.destination
+            let destination = selectedDestination ?? NavigationDemo.route?.destination
+            route = destination.flatMap { destination in
+                planner?.route(from: NavigationDemo.startPosition, to: destination, conditions: conditions)
+            }
+            selectedDestination = destination
             demoPath = []
             demoDistance = 0
         } else {
@@ -336,6 +444,7 @@ final class NavigationController: ObservableObject {
             configuration.frameSemantics.insert(.sceneDepth)
         }
         arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        sessionIsRunning = true
     }
 
     private func tick() {
@@ -349,10 +458,23 @@ final class NavigationController: ObservableObject {
             }
             return
         }
+        guard case .normal = frame.camera.trackingState else {
+            if isPositionReliable {
+                say(Narrator.Line(text: "Position lost. Stop and look around to reconnect.", isUrgent: true))
+            }
+            isPositionReliable = false
+            position = nil
+            renderer?.clearRoute()
+            return
+        }
+        if !isPositionReliable, let route { renderer?.show(route) }
+        isPositionReliable = true
         let transform = frame.camera.transform
         position = SIMD2(transform.columns.3.x, transform.columns.3.z)
         heading = atan2(-transform.columns.2.x, transform.columns.2.z)
         updateFloorHeight(from: frame)
+        // A preference change may have happened while tracking was unavailable.
+        if phase == .routing, !isRouting { requestRoute(.started); return }
         guard phase == .navigating, let route, let renderer else { return }
         if Date.now.timeIntervalSince(lastObstacleCheck) >= Self.obstacleCheckInterval {
             lastObstacleCheck = .now
@@ -376,6 +498,7 @@ final class NavigationController: ObservableObject {
         guard let map else { return }
         let translation = arView.session.currentFrame?.camera.transform.translation
         position = translation.map { SIMD2($0.x, $0.z) }
+        isPositionReliable = true
         renderer = PathRenderer(scene: arView.scene, map: map)
         phase = .ready
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -386,7 +509,7 @@ final class NavigationController: ObservableObject {
     }
 
     private var conditions: RouteConditions {
-        RouteConditions(obstacles: obstacles.obstacles)
+        routePreference.conditions(obstacles: obstacles.obstacles)
     }
 
     /// Requests during computation run afterward; stopped or replaced sessions reject stale results.
@@ -438,7 +561,10 @@ final class NavigationController: ObservableObject {
             route = nil
             renderer?.clearRoute()
             phase = .noRoute
-            say(Narrator.Line(text: "There's no step-free route from here right now.", isUrgent: true))
+            let message = routePreference == .stepFree
+                ? "There's no step-free route from here right now."
+                : "There's no route through the mapped floor from here right now."
+            say(Narrator.Line(text: message, isUrgent: true))
             return
         }
         route = newRoute
@@ -503,6 +629,7 @@ final class NavigationController: ObservableObject {
     private func userPosition() -> SIMD2<Float>? {
         if isDemo { return position }
         guard let frame = arView.session.currentFrame else { return nil }
+        guard case .normal = frame.camera.trackingState else { return nil }
         let translation = frame.camera.transform.translation
         return SIMD2(translation.x, translation.z)
     }

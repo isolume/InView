@@ -138,6 +138,9 @@ class TextObservation(TypedDict, total=False):
 class Sign(TypedDict, total=False):
     id: str
     category: str                # PlaceCategory value or "directional" / "informational"
+    category_confidence: float   # semantic confidence, distinct from rectangle detector score
+    excluded_categories: list[str]
+    review_status: str           # candidate; a sign reading is not a verified destination
     pictograms: list[str]
     text_ids: list[str]
     arrows: list[dict[str, Any]]  # {direction_xz: [dx, dz]} unit vector in the map frame
@@ -160,6 +163,12 @@ class Place(TypedDict, total=False):
     confidence: float
     sources: list[str]           # e.g. "roomplan:object:<id>", "text:<id>", "sign:<id>"
     access_point_kind: str       # elevator | ramp | destination (iOS AccessPoint.Kind)
+    review_status: str           # candidate, including fused evidence from an existing phone point
+    source: str                  # manual | detected (original phone source when present)
+    source_access_point_id: str  # original phone UUID; do not create a duplicate map point
+    slope_degrees: float         # measured incline; missing means unknown, not zero
+    requires_assistance: bool    # supplied by the phone; absent when unknown
+    provenance: dict[str, Any]   # original phone evidence and optional observation timestamp
 
 
 class RouteStep(TypedDict, total=False):

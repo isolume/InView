@@ -27,6 +27,19 @@ private func floorScene(_ surfaces: [SceneSurface], objects: [SceneObject] = [])
     ProcessedScene(sourceScanID: "scan", mapID: "building", floorID: "capture-floor", objects: objects, surfaces: surfaces)
 }
 
+private func measuredStreamMesh(floorY: Float, height: Float = 2.6) -> SceneMesh {
+    let top = floorY + height
+    // A depth-only scan can measure a large room while its semantic floor anchor stays tiny.
+    return SceneMesh(sourceID: "stream-depth-fusion", vertices: [
+        [-6, floorY, -4], [6, floorY, -4], [6, floorY, 4], [-6, floorY, 4],
+        [-6, top, -4], [6, top, -4], [6, top, 4], [-6, top, 4],
+    ], triangles: [[0, 2, 1], [0, 3, 2], [0, 1, 5], [0, 5, 4], [4, 5, 6], [4, 6, 7]])
+}
+
+private func measuredFaces(_ mesh: SceneMesh) -> [[[Float]]] {
+    mesh.triangles.map { $0.map { mesh.vertices[$0] } }
+}
+
 @Test func measuredRoomFloorsShareOneDisplayLevelDespiteSmallHeightDifferences() {
     let scene = floorScene([
         floorSurface("room-a", elevation: -1.3),
@@ -111,6 +124,108 @@ private func floorScene(_ surfaces: [SceneSurface], objects: [SceneObject] = [])
     #expect(source.pointCloud.count == 1)
 }
 
+@Test func continuousScanCutawayKeepsMeasuredWallsAndTheFloorBeyondSparseAnchors() throws {
+    var source = floorScene([floorSurface("tiny-anchor", elevation: -1.2, size: [0.8, 0, 0.7])])
+    let measured = measuredStreamMesh(floorY: -1.5)
+    source.meshes = [measured]
+    let saved = source
+    let selected = try #require(IndoorSceneFloors.floors(in: source).first)
+    let result = IndoorSceneFloors.scene(source, on: selected)
+    let displayed = try #require(result.meshes.first)
+    #expect(displayed.sourceID == "stream-depth-fusion")
+    #expect(measuredFaces(displayed) == Array(measuredFaces(measured).prefix(4)))
+    #expect(displayed.vertices.contains([-6, -1.5, -4]))
+    #expect(displayed.vertices.contains([6, -1.5, 4]))
+    #expect(displayed.vertices.contains(measured.vertices[4]))
+    #expect(result.surfaces == source.surfaces)
+    #expect(source == saved)
+    try result.validate()
+}
+
+@Test func streamCutawaysKeepLowHorizontalSurfacesAndRemoveClassifiedCeilings() throws {
+    var source = floorScene([floorSurface("floor", elevation: 0)])
+    var measured = measuredStreamMesh(floorY: 0, height: 1.8)
+    // Explicit ceiling labels must be honored even below the unclassified overhead threshold.
+    measured.classifications = ["floor", "floor", "wall", "wall", "ceiling", "ceiling"]
+    source.meshes = [measured]
+    let selected = try #require(IndoorSceneFloors.floors(in: source).first)
+    let result = IndoorSceneFloors.scene(source, on: selected)
+    #expect(result.meshes.first?.classifications == ["floor", "floor", "wall", "wall"])
+    #expect(result.meshes.first.map(measuredFaces) == Array(measuredFaces(measured).prefix(4)))
+
+    measured.classifications = nil
+    source.meshes = [measured]
+    // A horizontal furniture top at 1.8m must not be treated as an unclassified ceiling.
+    let lowerHorizontal = IndoorSceneFloors.scene(source, on: selected)
+    #expect(lowerHorizontal.meshes.first.map(measuredFaces) == measuredFaces(measured))
+}
+
+@Test func streamMeshFloorSwitchingKeepsSelectedMeasuredGeometryAndClipsCrossingFaces() throws {
+    var source = floorScene([floorSurface("ground", elevation: 0), floorSurface("upper", elevation: 3)])
+    let lower = measuredStreamMesh(floorY: 0)
+    let upper = measuredStreamMesh(floorY: 3)
+    let measured = SceneMesh(sourceID: lower.sourceID, vertices: lower.vertices + upper.vertices,
+                             triangles: lower.triangles + upper.triangles.map { $0.map { $0 + lower.vertices.count } })
+    source.meshes = [measured]
+    let levels = IndoorSceneFloors.floors(in: source)
+    let lowerResult = IndoorSceneFloors.scene(source, on: levels[0])
+    let upperResult = IndoorSceneFloors.scene(source, on: levels[1])
+    #expect(lowerResult.meshes.first.map(measuredFaces) == Array(measuredFaces(lower).prefix(4)))
+    #expect(upperResult.meshes.first.map(measuredFaces) == Array(measuredFaces(upper).prefix(4)))
+    let cutaway = IndoorSceneFloors.scene(source, on: levels[1], includeLowerFloors: true)
+    #expect(cutaway.meshes.first?.triangles.count == 8)
+
+    // A triangle crossing the next story must be cut along the boundary, rather than vanish.
+    source.meshes = [SceneMesh(sourceID: "stream-depth-fusion", vertices: [[0, 0, 0], [1, 0, 0], [0, 4, 0]],
+                               triangles: [[0, 1, 2]], classifications: ["wall"])]
+    let clipped = try #require(IndoorSceneFloors.scene(source, on: levels[0]).meshes.first)
+    #expect(clipped.triangles.count == 2)
+    #expect(clipped.classifications == ["wall", "wall"])
+    #expect(clipped.vertices.map { $0[1] }.max() == 2.975)
+    #expect(clipped.vertices.contains([0, 0, 0]))
+    #expect(clipped.vertices.contains([1, 0, 0]))
+    let area = measuredFaces(clipped).reduce(Float(0)) { area, face in
+        area + abs((face[1][0] - face[0][0]) * (face[2][1] - face[0][1])
+                   - (face[1][1] - face[0][1]) * (face[2][0] - face[0][0])) / 2
+    }
+    #expect(abs(area - (2 - (4 - 2.975) * (4 - 2.975) / 8)) < 0.00001)
+    try IndoorSceneFloors.scene(source, on: levels[0]).validate()
+}
+
+@Test func streamMeshFilteringRejectsMalformedFacesAndUnknownDisplayFloors() throws {
+    var source = floorScene([floorSurface("floor", elevation: 0)])
+    let measured = measuredStreamMesh(floorY: 0)
+    source.meshes = [SceneMesh(sourceID: measured.sourceID,
+                               vertices: measured.vertices + [[0, .nan, 0]],
+                               triangles: measured.triangles + [[0, 1], [-1, 0, 1], [0, 1, 8], [0, 0, 0]])]
+    let selected = try #require(IndoorSceneFloors.floors(in: source).first)
+    let result = IndoorSceneFloors.scene(source, on: selected)
+    #expect(result.meshes.first.map(measuredFaces) == Array(measuredFaces(measured).prefix(4)))
+    try result.validate()
+    let unknown = IndoorSceneFloors.scene(source, on: IndoorSceneFloor(id: "unknown", title: "Floor 9", elevation: 9))
+    #expect(unknown.meshes.isEmpty)
+    #expect(unknown.pointCloud.isEmpty)
+}
+
+@Test func measuredMeshDisplayCutawayCapsWallsWithoutDroppingCrossingTriangles() throws {
+    let measured = measuredStreamMesh(floorY: 0)
+    let saved = measured
+    let cutaway = try #require(IndoorSceneFloors.cutawayMesh(measured, floorY: 0, wallHeight: 1.05))
+    #expect(cutaway.vertices.map { $0[1] }.max() == 1.05)
+    #expect(Array(measuredFaces(cutaway).prefix(2)) == Array(measuredFaces(measured).prefix(2)))
+    #expect(cutaway.triangles.count == 5)
+    let wallArea = measuredFaces(cutaway).dropFirst(2).reduce(Float(0)) { area, face in
+        area + abs((face[1][0] - face[0][0]) * (face[2][1] - face[0][1])
+                   - (face[1][1] - face[0][1]) * (face[2][0] - face[0][0])) / 2
+    }
+    #expect(abs(wallArea - 12 * 1.05) < 0.00001)
+    let flat = try #require(IndoorSceneFloors.cutawayMesh(measured, floorY: 0, wallHeight: 0.12))
+    #expect(flat.vertices.map { $0[1] }.max() == 0.12)
+    #expect(measured == saved)
+    #expect(IndoorSceneFloors.cutawayMesh(measured, floorY: .nan, wallHeight: 1) == nil)
+    #expect(IndoorSceneFloors.cutawayMesh(measured, floorY: 0, wallHeight: 0) == nil)
+}
+
 @Test func missingOrMalformedFloorMeasurementsProduceNoInventedLevels() {
     var nonfinite = floorSurface("nonfinite", elevation: .nan)
     nonfinite.mapFromSurface[0] = .infinity
@@ -182,4 +297,44 @@ private func labeledMesh(_ faces: [(label: String, base: Float, top: Float)]) ->
     let upper = try #require(IndoorSceneFloors.scene(source, on: floors[1]).meshes.first)
     #expect(upper.colors == [0x30, 0x40, 0x50])
     #expect(upper.vertices == Array(mesh.vertices[3...5]))
+}
+
+@Test func cutawayCacheTracksChangedGeometryColorsAndLabelsWithTheSameFaceCount() throws {
+    var source = floorScene([floorSurface("ground", elevation: 0), floorSurface("upper", elevation: 3)])
+    var mesh = labeledMesh([("floor", 0, 0), ("floor", 3, 3)])
+    mesh.colors = Array(repeating: 0xFF0000, count: mesh.vertices.count)
+    source.meshes = [mesh]
+    let upper = IndoorSceneFloors.floors(in: source)[1]
+    let first = try #require(IndoorSceneFloors.scene(source, on: upper).meshes.first)
+    mesh.vertices = mesh.vertices.map { [$0[0] + 10, $0[1], $0[2]] }
+    mesh.colors = Array(repeating: 0x0000FF, count: mesh.vertices.count)
+    source.meshes = [mesh]
+    let revised = try #require(IndoorSceneFloors.scene(source, on: upper).meshes.first)
+    #expect(revised.vertices == first.vertices.map { [$0[0] + 10, $0[1], $0[2]] })
+    #expect(revised.colors == [0x0000FF, 0x0000FF, 0x0000FF])
+    mesh.classifications = ["floor", "ceiling"]
+    source.meshes = [mesh]
+    #expect(IndoorSceneFloors.scene(source, on: upper).meshes.isEmpty)
+}
+
+@Test func floorSelectionKeepsBothStreamAndClassifiedDetailMeshes() throws {
+    var source = floorScene([floorSurface("floor", elevation: 0)])
+    source.meshes = [measuredStreamMesh(floorY: 0), labeledMesh([("floor", 0, 0)])]
+    let selected = try #require(IndoorSceneFloors.floors(in: source).first)
+    let result = IndoorSceneFloors.scene(source, on: selected)
+    #expect(Set(result.meshes.map(\.sourceID)) == ["stream-depth-fusion", ReconstructedMesh.sourceID])
+    #expect(result.surfaces == source.surfaces)
+}
+
+@Test func coloredDetailCutawaysInterpolateNewBoundaryVertices() throws {
+    let mesh = SceneMesh(sourceID: ReconstructedMesh.sourceID,
+                         vertices: [[0, 0, 0], [2, 0, 0], [0, 2, 0]], triangles: [[0, 1, 2]],
+                         classifications: ["wall"], colors: [0xFF0000, 0xFF0000, 0x0000FF])
+    let cut = try #require(IndoorSceneFloors.cutawayMesh(mesh, floorY: 0, wallHeight: 1))
+    let colors = try #require(cut.colors)
+    #expect(colors.count == cut.vertices.count)
+    #expect(cut.triangles.count == 2)
+    for (point, color) in zip(cut.vertices, colors) {
+        #expect(color == (point[1] == 0 ? 0xFF0000 : 0x800080))
+    }
 }

@@ -8,21 +8,21 @@ from .elevation import HeightMap
 
 
 def segment_profile(hm: HeightMap, a_xz, b_xz, level_change_tol_m: float = 0.02,
-                    slope_window_m: float = 0.5, min_known_fraction: float = 0.8) -> dict:
+                    slope_window_m: float = 0.5) -> dict:
     """Rise, largest level change, running/cross slope and step-free screening between two points.
 
     `level_change_tol_m` absorbs sensor noise (ADA 303.2 allows 6.4 mm vertical, 12.7 mm beveled).
     Level changes are only measured between adjacent samples (half a cell apart), never across
     unknown gaps; running slope uses `slope_window_m` windows whose samples are all known and contain
-    no level change. When less than `min_known_fraction` of the segment was measured, `step_free` and
-    `meets_ramp_slope` are None (unknown), not True.
+    no level change. If any part of the segment lacks measured evidence, `step_free` and
+    `meets_ramp_slope` cannot be True.
     """
     a, b = np.asarray(a_xz, float), np.asarray(b_xz, float)
     length = float(np.linalg.norm(b - a))
     count = max(2, int(np.ceil(length / (hm.grid.resolution / 2))) + 1)
     spacing = length / (count - 1)
     points = a + np.linspace(0, 1, count)[:, None] * (b - a)
-    heights = hm.sample(hm.elevation, points).astype(np.float64)
+    heights = hm.sample(hm.measured_elevation(), points).astype(np.float64)
     known = np.isfinite(heights)
     fraction = float(known.mean())
     result = {"length_m": round(length, 3), "known_fraction": round(fraction, 3), "rise_m": None,
@@ -48,7 +48,7 @@ def segment_profile(hm: HeightMap, a_xz, b_xz, level_change_tol_m: float = 0.02,
         across = across[np.isfinite(across)]
         cross = float(np.percentile(across, 90)) if across.size else None
     ends = heights[known]
-    enough = fraction >= min_known_fraction
+    enough = bool(known.all())
     result.update(rise_m=round(float(ends[-1] - ends[0]), 3), max_level_change_m=round(max_jump, 3),
                   max_running_slope=None if running is None else round(running, 4),
                   max_cross_slope=None if cross is None else round(cross, 4))

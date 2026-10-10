@@ -6,7 +6,9 @@ struct ProcessedSceneView: View {
     @State private var selectedObjectID: String?
 
     var body: some View {
-        RoomMapCanvas(scene: scene, selectedObjectID: $selectedObjectID, showsLabels: false)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        FinalMapSurface(scene: scene) { finalScene, _, _ in
+            RoomMapCanvas(scene: finalScene, selectedObjectID: $selectedObjectID, showsLabels: false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
     }
 }

@@ -14,7 +14,7 @@ use crate::{capture::ScanBundle, geometry::Transform};
 /// smoothed depth, colour keyframe, OCR still) plus 4 files per ARKit mesh anchor, so the entry
 /// limit must cover hundreds of anchors.
 const MAX_FILES: usize = 4096;
-const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 /// Upper bound for one uncompressed `.inviewscan.tar` upload or persisted package.
 pub const MAX_PACKAGE_BYTES: usize = 256 * 1024 * 1024;
 
@@ -147,6 +147,9 @@ pub(crate) fn parse_manifest(value: &Value) -> Result<PackageManifest, String> {
 }
 
 pub fn decode(bytes: &[u8]) -> Result<ScanPackage, String> {
+    if bytes.len() > MAX_PACKAGE_BYTES {
+        return Err("The scan archive exceeds the package size limit.".into());
+    }
     let mut archive = Archive::new(Cursor::new(bytes));
     let mut root: Option<String> = None;
     let mut assets = BTreeMap::new();

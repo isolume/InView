@@ -5,23 +5,30 @@ import SwiftUI
 /// Numbers the report screen shows alongside the findings, read straight off the map.
 struct ReportFacts {
     let doorWidths: [Float]
+    let doorwayCount: Int
+    let checks: ScanReviewChecks
     let ramps: [AccessPoint]
     let elevators: [AccessPoint]
     let stairsCount: Int
     let furnitureCount: Int
-    /// Rough floor area covered by the scan, from the walls' extent.
+    /// The bounding area of the measured walls, not measured floor coverage.
     let mappedArea: Float?
 
     init(map: VenueMap) {
-        doorWidths = map.footprints.filter { $0.kind == .door }.map(\.size.x).sorted()
+        let doorways = map.footprints.filter { $0.kind == .door || $0.kind == .opening }
+        doorWidths = doorways.map(\.size.x).filter(ScanReviewChecks.isMeasuredWidth).sorted()
+        doorwayCount = doorways.count
+        checks = ScanReviewChecks(map: map)
         ramps = map.points.filter { $0.kind == .ramp }
         elevators = map.points.filter { $0.kind == .elevator }
         stairsCount = map.footprints.filter { $0.kind == .stairs }.count
         furnitureCount = map.footprints.filter { $0.kind == .obstacle }.count
         let corners = map.footprints.filter { $0.kind == .wall }.flatMap(\.corners)
+            .filter { $0.x.isFinite && $0.y.isFinite }
         if let first = corners.first {
             let (low, high) = corners.reduce((first, first)) { (simd_min($0.0, $1), simd_max($0.1, $1)) }
-            mappedArea = (high.x - low.x) * (high.y - low.y)
+            let area = (high.x - low.x) * (high.y - low.y)
+            mappedArea = area.isFinite ? area : nil
         } else {
             mappedArea = nil
         }
@@ -35,64 +42,49 @@ extension AccessibilityReport {
     var warnings: [Finding] { findings.filter { $0.severity == .warning } }
     var passes: [Finding] { findings.filter { $0.severity == .good } }
 
-    var verdict: String {
-        switch score {
-        case 90...: "Accessible"
-        case 75..<90: "Mostly accessible"
-        case 50..<75: "Partly accessible"
-        default: "Hard to get around"
-        }
-    }
+    var verdict: String { summary }
 
     var tally: String {
         let parts = [
             barriers.isEmpty ? nil : "\(barriers.count) barrier\(barriers.count == 1 ? "" : "s")",
             warnings.isEmpty ? nil : "\(warnings.count) to check",
-            passes.isEmpty ? nil : "\(passes.count) passed",
+            passes.isEmpty ? nil : "\(passes.count) measured check\(passes.count == 1 ? "" : "s")",
         ].compactMap { $0 }
         return parts.isEmpty ? "Nothing to report yet" : parts.joined(separator: " · ")
     }
 }
 
-/// Circular score gauge with the letter grade in the middle.
+/// Finding-based status badge. The stored score is retained for older reports,
+/// but a scan grade would suggest more certainty than these measurements provide.
 struct ScoreRing: View {
     let report: AccessibilityReport
     var size: CGFloat = 64
-    @State private var progress: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
         ZStack {
-            Circle().stroke(Color(.tertiarySystemFill), lineWidth: size * 0.11)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(color, style: StrokeStyle(lineWidth: size * 0.11, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text(report.grade).font(.system(size: size * 0.36, weight: .bold, design: .rounded))
-                Text("\(report.score)").font(.system(size: size * 0.17, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
-            }
+            Circle().fill(color.opacity(0.12))
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.36, weight: .semibold))
+                .foregroundStyle(color)
         }
         .frame(width: size, height: size)
-        .onAppear {
-            // The ring fills to the score once, when it first shows.
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.9)) { progress = CGFloat(report.score) / 100 }
-        }
-        .onChange(of: report.score) { _, score in progress = CGFloat(score) / 100 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Grade \(report.grade), \(report.score) out of 100")
+        .accessibilityLabel(report.summary)
     }
 
     private var color: Color {
-        switch report.score {
-        case 75...: Theme.color(for: .good)
-        case 50..<75: Theme.color(for: .warning)
-        default: Theme.color(for: .barrier)
-        }
+        if !report.barriers.isEmpty { return Theme.color(for: .barrier) }
+        if !report.warnings.isEmpty { return Theme.color(for: .warning) }
+        return report.passes.isEmpty ? .secondary : Theme.color(for: .good)
+    }
+
+    private var symbol: String {
+        if !report.barriers.isEmpty { return "exclamationmark.triangle" }
+        if !report.warnings.isEmpty { return "magnifyingglass" }
+        return report.passes.isEmpty ? "questionmark" : "checkmark"
     }
 }
 
-/// Score, verdict and the most important findings, linking to the full report.
+/// Review status and the most important findings, linking to the full report.
 struct ReportSummaryCard: View {
     let map: VenueMap
     let report: AccessibilityReport
@@ -123,7 +115,7 @@ struct ReportSummaryCard: View {
     }
 }
 
-/// The whole audit: score, measurements against the ADA limits, and every finding by severity.
+/// Captured measurements, missing evidence, and potential barriers.
 struct FullReportView: View {
     let map: VenueMap
     let report: AccessibilityReport
@@ -137,18 +129,18 @@ struct FullReportView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("At a glance").sectionHeading()
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                        StatTile(title: "Doors", value: "\(facts.doorWidths.count)", detail: facts.narrowDoors == 0 ? "All wide enough" : "\(facts.narrowDoors) too narrow", severity: facts.narrowDoors == 0 ? .good : .barrier, symbol: Theme.Symbol.door)
-                        StatTile(title: "Ramps", value: "\(facts.ramps.count)", detail: rampDetail(facts), severity: facts.ramps.contains(where: \.isTooSteep) ? .barrier : facts.ramps.isEmpty ? nil : .good, symbol: AccessPoint.Kind.ramp.symbolName)
+                        StatTile(title: "Doorways", value: "\(facts.doorwayCount)", detail: doorwayDetail(facts), severity: doorwaySeverity(facts), symbol: Theme.Symbol.door)
+                        StatTile(title: "Ramps", value: "\(facts.ramps.count)", detail: rampDetail(facts), severity: rampSeverity(facts), symbol: AccessPoint.Kind.ramp.symbolName)
                         StatTile(title: "Elevators", value: "\(facts.elevators.count)", detail: elevatorDetail(facts), severity: facts.elevators.isEmpty ? .warning : facts.elevators.contains(where: \.requiresAssistance) ? .warning : .good, symbol: AccessPoint.Kind.elevator.symbolName)
-                        StatTile(title: "Stairs", value: "\(facts.stairsCount)", detail: facts.stairsCount == 0 ? "None found" : "Routed around", severity: nil, symbol: VisionDetection.Kind.stairs.symbolName)
+                        StatTile(title: "Stairs", value: "\(facts.stairsCount)", detail: facts.stairsCount == 0 ? "None captured" : "Avoided in routing", severity: nil, symbol: VisionDetection.Kind.stairs.symbolName)
                         StatTile(title: "Furniture", value: "\(facts.furnitureCount)", detail: "Mapped as obstacles", severity: nil, symbol: Theme.Symbol.furniture)
-                        StatTile(title: "Area", value: facts.mappedArea.map { "≈\(Int($0.rounded())) m²" } ?? "–", detail: "Floor mapped", severity: nil, symbol: Theme.Symbol.area)
+                        StatTile(title: "Wall extent", value: facts.mappedArea.map { String(format: "≈%.0f m²", $0) } ?? "–", detail: "Bounds of captured walls", severity: nil, symbol: Theme.Symbol.area)
                     }
                 }
 
                 if !facts.doorWidths.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Door widths").sectionHeading()
+                        Text("Estimated doorway widths").sectionHeading()
                         DoorWidthChart(widths: facts.doorWidths).card()
                     }
                 }
@@ -163,11 +155,11 @@ struct FullReportView: View {
                     }
                 }
 
-                FindingGroup(title: "Barriers", findings: report.barriers)
-                FindingGroup(title: "Worth checking", findings: report.warnings)
-                FindingGroup(title: "Works well", findings: report.passes)
+                FindingGroup(title: "Potential barriers", findings: report.barriers)
+                FindingGroup(title: "Needs review", findings: report.warnings)
+                FindingGroup(title: "Measured checks", findings: report.passes)
 
-                Text("Checked against the 2010 ADA Standards: 81 cm (32 in) door clear width, 91 cm (36 in) passage width and a 1:12 maximum ramp slope (§§ 403–405). Measurements come from LiDAR and can be a few centimeters off, so confirm anything critical with a tape measure.")
+                Text("These checks use scan estimates and may miss barriers. Door swing, usable clearance, surface condition and access to other floors need an on-site check. Confirm critical measurements before relying on a route.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
@@ -194,15 +186,35 @@ struct FullReportView: View {
     }
 
     private func rampDetail(_ facts: ReportFacts) -> String {
-        if facts.ramps.isEmpty { return "None found" }
-        let steep = facts.ramps.filter(\.isTooSteep).count
-        return steep == 0 ? "Within ADA slope" : "\(steep) too steep"
+        if facts.ramps.isEmpty { return "None captured" }
+        let steep = facts.ramps.filter { ScanReviewChecks.isMeasuredSlope($0.slopeDegrees) && $0.isTooSteep }.count
+        if steep > 0 { return "\(steep) appear steep" }
+        if facts.checks.unmeasuredRampCount > 0 { return "\(facts.checks.unmeasuredRampCount) not measured" }
+        return "Slopes recorded"
+    }
+
+    private func rampSeverity(_ facts: ReportFacts) -> AccessibilityReport.Finding.Severity? {
+        if facts.ramps.contains(where: { ScanReviewChecks.isMeasuredSlope($0.slopeDegrees) && $0.isTooSteep }) { return .barrier }
+        if facts.checks.unmeasuredRampCount > 0 { return .warning }
+        return facts.ramps.isEmpty ? nil : .good
+    }
+
+    private func doorwayDetail(_ facts: ReportFacts) -> String {
+        if facts.doorWidths.isEmpty { return "Not measured" }
+        if facts.narrowDoors > 0 { return "\(facts.narrowDoors) appear narrow" }
+        if facts.checks.unmeasuredDoorwayCount > 0 { return "\(facts.checks.unmeasuredDoorwayCount) not measured" }
+        return "Widths recorded"
+    }
+
+    private func doorwaySeverity(_ facts: ReportFacts) -> AccessibilityReport.Finding.Severity {
+        if facts.narrowDoors > 0 { return .barrier }
+        return facts.doorWidths.isEmpty || facts.checks.unmeasuredDoorwayCount > 0 ? .warning : .good
     }
 
     private func elevatorDetail(_ facts: ReportFacts) -> String {
-        if facts.elevators.isEmpty { return "None found" }
+        if facts.elevators.isEmpty { return "None captured" }
         let staffed = facts.elevators.filter(\.requiresAssistance).count
-        return staffed == 0 ? "Usable on your own" : "\(staffed) need staff"
+        return staffed == 0 ? "No staff need marked" : "\(staffed) need staff"
     }
 }
 
@@ -232,7 +244,7 @@ private struct StatTile: View {
     }
 }
 
-/// One bar per door against the 81 cm minimum.
+/// One bar per measured door or opening against the 81 cm routing guide.
 private struct DoorWidthChart: View {
     let widths: [Float]
     /// Bars run from 0 to this width.
@@ -243,7 +255,7 @@ private struct DoorWidthChart: View {
             ForEach(Array(widths.enumerated()), id: \.offset) { index, width in
                 let passes = width >= OccupancyGrid.minimumDoorWidth
                 HStack(spacing: 10) {
-                    Text("Door \(index + 1)").font(.caption).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
+                    Text("\(index + 1)").font(.caption).foregroundStyle(.secondary).frame(width: 24, alignment: .leading)
                     GeometryReader { geometry in
                         let threshold = geometry.size.width * CGFloat(OccupancyGrid.minimumDoorWidth / scaleMaximum)
                         ZStack(alignment: .leading) {
@@ -259,20 +271,20 @@ private struct DoorWidthChart: View {
                     HStack(spacing: 3) {
                         Image(systemName: Theme.symbol(for: passes ? .good : .barrier))
                             .foregroundStyle(Theme.color(for: passes ? .good : .barrier))
-                        Text("\(Int((width * 100).rounded())) cm").monospacedDigit()
+                        Text(String(format: "%.0f cm", width * 100)).monospacedDigit()
                     }
                     .font(.caption.weight(.semibold))
                     .frame(width: 72, alignment: .trailing)
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Door \(index + 1), \(Int((width * 100).rounded())) centimeters, \(passes ? "wide enough" : "too narrow")")
+                .accessibilityLabel("Doorway \(index + 1), estimated \(String(format: "%.0f", width * 100)) centimeters, \(passes ? "meets width guide" : "below width guide")")
             }
-            Text("Line marks the 81 cm minimum").font(.caption2).foregroundStyle(.secondary)
+            Text("Line marks the 81 cm width guide").font(.caption2).foregroundStyle(.secondary)
         }
     }
 }
 
-/// A ramp's measured slope on a 0–10° track with the ADA 1:12 limit marked.
+/// A ramp's estimated slope on a 0–10° track with the 1:12 routing guide marked.
 private struct SlopeGauge: View {
     let ramp: AccessPoint
     private let scaleMaximum: Float = 10
@@ -288,7 +300,7 @@ private struct SlopeGauge: View {
                 let limit = geometry.size.width * CGFloat(AccessPoint.maximumRampSlope / scaleMaximum)
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color(.tertiarySystemFill)).frame(height: 8)
-                    if let slope = ramp.slopeDegrees {
+                    if ScanReviewChecks.isMeasuredSlope(ramp.slopeDegrees), let slope = ramp.slopeDegrees {
                         Capsule()
                             .fill(Theme.color(for: ramp.isTooSteep ? .barrier : .good))
                             .frame(width: max(8, geometry.size.width * CGFloat(min(slope, scaleMaximum) / scaleMaximum)), height: 8)
@@ -301,7 +313,7 @@ private struct SlopeGauge: View {
             HStack {
                 Text("0°")
                 Spacer()
-                Text(String(format: "ADA limit %.1f° (1:12)", AccessPoint.maximumRampSlope))
+                Text(String(format: "Guide %.1f° (1:12)", AccessPoint.maximumRampSlope))
                 Spacer()
                 Text("10°")
             }
@@ -313,12 +325,12 @@ private struct SlopeGauge: View {
 
     @ViewBuilder
     private var status: some View {
-        if let slope = ramp.slopeDegrees {
+        if ScanReviewChecks.isMeasuredSlope(ramp.slopeDegrees), let slope = ramp.slopeDegrees {
             let run = 1 / tan(slope * .pi / 180)
             HStack(spacing: 4) {
                 Image(systemName: Theme.symbol(for: ramp.isTooSteep ? .barrier : .good))
                     .foregroundStyle(Theme.color(for: ramp.isTooSteep ? .barrier : .good))
-                Text(String(format: "%.1f° · 1:%.0f", slope, run)).monospacedDigit()
+                Text(slope == 0 ? "0° · level" : String(format: "%.1f° · 1:%.0f", slope, run)).monospacedDigit()
             }
             .font(.caption.weight(.semibold))
         } else {

@@ -141,3 +141,48 @@ private func contentMap(footprints: [Footprint]) -> VenueMap {
     #expect(upperContent.map?.footprints.filter { $0.kind == .floor } == [upstairs])
     #expect(map.footprints == [ground, upstairs])
 }
+
+@Test func sparseDepthFloorAnchorsDoNotEraseTheMeasuredRoomFromDisplayContent() throws {
+    let capture = CaptureBundle(id: "depth-scan", mapID: "building", surfaces: [
+        CaptureSurface(id: "floor-anchor", kind: "floor", mapFromSurface: contentPose(y: -1.2), dimensionsM: [0.8, 0, 0.7]),
+    ])
+    var source = try LocalSceneBuilder.make(from: capture)
+    source.meshes = [SceneMesh(sourceID: "stream-depth-fusion", vertices: [
+        [-6, -1.5, -4], [6, -1.5, -4], [6, -1.5, 4], [-6, -1.5, 4],
+        [-6, 1.1, -4], [6, 1.1, -4], [6, 1.1, 4], [-6, 1.1, 4],
+    ], triangles: [[0, 2, 1], [0, 3, 2], [0, 1, 5], [0, 5, 4], [4, 5, 6], [4, 6, 7]])]
+    let originalScene = source
+    let measuredOutline = Footprint(floor: [[-0.4, -0.35], [0.4, -0.35], [0.4, 0.35], [-0.4, 0.35]], bottom: -1.2)
+    let map = VenueMap(floorY: -1.2, footprints: [measuredOutline], points: [])
+    let content = IndoorFloorContent(scene: source, map: map, selectedFloorID: nil)
+    let scene = try #require(content.scene)
+    let measured = try #require(scene.meshes.first)
+    #expect(content.isRouteFloor)
+    #expect(scene.surfaces.map(\.sourceID) == ["floor-anchor"])
+    #expect(measured.sourceID == "stream-depth-fusion")
+    #expect(measured.triangles.count == 4)
+    #expect(measured.vertices.contains([-6, -1.5, -4]))
+    #expect(measured.vertices.contains([6, -1.5, 4]))
+    #expect(measured.vertices.contains([6, 1.1, -4]))
+    #expect(content.map?.footprints.filter { $0.kind == .floor } == [measuredOutline])
+    #expect(source == originalScene)
+    #expect(map.footprints == [measuredOutline])
+    try scene.validate()
+}
+
+@Test func savedScanPreviewSelectsMeasuredFloorsWithoutARoutingMap() throws {
+    var source = try contentScene()
+    source.meshes = [SceneMesh(sourceID: "stream-depth-fusion", vertices: [
+        [0, -1.3, 0], [1, -1.3, 0], [0, -1.3, 1],
+        [0, 1.7, 0], [1, 1.7, 0], [0, 1.7, 1],
+    ], triangles: [[0, 1, 2], [3, 4, 5]])]
+    let upper = try #require(IndoorSceneFloors.floors(in: source).last)
+    let content = IndoorFloorContent(scene: source, map: nil, selectedFloorID: upper.id)
+    #expect(content.map == nil)
+    #expect(content.floor == upper)
+    #expect(content.scene?.surfaces.map(\.sourceID) == ["upper", "upper-wall"])
+    let mesh = try #require(content.scene?.meshes.first)
+    #expect(mesh.triangles.count == 1)
+    #expect(mesh.vertices.allSatisfy { $0[1] == 1.7 })
+    #expect(source.meshes.first?.triangles.count == 2)
+}

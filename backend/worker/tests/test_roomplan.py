@@ -211,6 +211,41 @@ def test_storyless_duplicate_of_a_storied_room_collapses():
     assert [r["id"] for r in rooms] == ["LEGACY"] and rooms[0]["story"] == 0
 
 
+@pytest.mark.parametrize("stories", [(None, None), (0, None), (0, 0)])
+def test_stacked_floor_footprints_do_not_deduplicate(stories):
+    footprint = [(-2, -2), (2, -2), (2, 2), (-2, 2)]
+    capture = [{"identifier": "lower", "floors": [floor("lower-floor", footprint, 0, stories[0])]},
+               {"identifier": "upper", "floors": [floor("upper-floor", footprint, 3, stories[1])]}]
+    product = roomplan.build(roomplan.load(capture))
+    assert {r["id"]: r["floor_y_m"] for r in product["rooms"]} == {"LOWER-FLOOR": 0, "UPPER-FLOOR": 3}
+    if stories[1] is None:
+        assert {s["story"]: s["floor_y_m"] for s in product["stories"]} == {0: 0, 1: 3}
+
+
+def test_repeat_floor_measurements_with_small_height_noise_still_merge():
+    footprint = [(-2, -2), (2, -2), (2, 2), (-2, 2)]
+    capture = [{"identifier": "first", "floors": [floor("first-floor", footprint, 0, None)]},
+               {"identifier": "second", "floors": [floor("second-floor", footprint, 0.04, None)]}]
+    (room,) = roomplan.build(roomplan.load(capture))["rooms"]
+    assert room["id"] == "SECOND-FLOOR" and room["floor_y_m"] == pytest.approx(0.04)
+
+
+def test_missing_story_components_stay_on_their_measured_level():
+    footprint = [(-2, -2), (2, -2), (2, 2), (-2, 2)]
+    capture = []
+    for index, (height, label) in enumerate([(0, "kitchen"), (3, "bedroom")]):
+        capture.append({"identifier": f"level-{index}",
+                        "floors": [floor(f"floor-{index}", footprint, height, None)],
+                        "sections": [{"label": label, "center": [0, height, 0]}],
+                        "objects": [obj(f"chair-{index}", "chair", 0, height + 0.5, 0, [1, 1, 1], story=None)],
+                        "doors": [surface(f"door-{index}", "door", 0, height + 1, -2, 0, 0.9, 2, story=None)]})
+    product = roomplan.build(roomplan.load(capture))
+    assert {r["id"]: r["label"] for r in product["rooms"]} == {"FLOOR-0": "kitchen", "FLOOR-1": "bedroom"}
+    assert {o["id"]: o["room_id"] for o in product["objects"]} == {"CHAIR-0": "FLOOR-0", "CHAIR-1": "FLOOR-1"}
+    assert {d["id"]: d["story"] for d in product["doors"]} == {"DOOR-0": 0, "DOOR-1": 1}
+    assert [s["room_id"] for s in product["sections"]] == ["FLOOR-0", "FLOOR-1"]
+
+
 def test_malformed_components_are_skipped_not_fatal():
     room = walk()[0]
     room["walls"].append({"identifier": "broken", "transform": [1, 2, 3]})

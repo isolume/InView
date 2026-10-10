@@ -111,33 +111,39 @@ def touches(mask: np.ndarray, path: np.ndarray) -> bool:
 
 
 def profile(elevation: np.ndarray, path: np.ndarray, resolution: float) -> tuple[np.ndarray, np.ndarray]:
-    """(distance along path in m, elevation) at finite height-map samples of the path."""
+    """(distance along path in m, elevation), preserving unknown samples as NaN."""
     samples = dense(path, 1.0)
     rows, cols, inside = cells(samples, elevation.shape)
     s = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(samples, axis=0), axis=1)))) * resolution
     h = np.where(inside, elevation[rows, cols], np.nan)
-    keep = np.isfinite(h)
-    return s[keep], h[keep]
+    return s, h
 
 
 def slope_and_step(elevation: np.ndarray, path: np.ndarray, resolution: float,
-                   baseline_m: float) -> tuple[float | None, float | None]:
+                   baseline_m: float) -> tuple[float | None, float | None, bool]:
     """Maximum |rise/run| over runs of at least `baseline_m`, and the largest rise between
-    neighbouring samples (a step indicator). (None, None) without enough finite samples."""
+    neighbouring samples (a step indicator), plus whether the whole edge was measured.
+
+    Missing cells never establish a safe maximum slope or absence of steps. A measured rise may
+    still rule an edge out even when the rest of the edge is unknown.
+    """
     s, h = profile(elevation, path, resolution)
-    if len(s) < 2:
-        return None, None
+    if len(s) < 2 or np.isfinite(h).sum() < 2:
+        return None, None, False
     rises = np.abs(np.diff(h))
     gaps = np.diff(s)
-    max_rise = float(rises[gaps <= 1.5 * resolution + 1e-9].max()) if (gaps <= 1.5 * resolution + 1e-9).any() else 0.0
+    adjacent = np.isfinite(rises) & (gaps <= 1.5 * resolution + 1e-9)
+    max_rise = float(rises[adjacent].max()) if adjacent.any() else None
+    if not np.isfinite(h).all():
+        return None, max_rise, False
     total = float(s[-1] - s[0])
     if total <= 1e-9:
-        return 0.0, max_rise
+        return 0.0, max_rise, True
     baseline = min(baseline_m, total)
     j = np.searchsorted(s, s + baseline - 1e-9)
     valid = j < len(s)
     if not valid.any():
-        return float(abs(h[-1] - h[0]) / total), max_rise
+        return float(abs(h[-1] - h[0]) / total), max_rise, True
     i = np.nonzero(valid)[0]
     slopes = np.abs(h[j[valid]] - h[i]) / np.maximum(s[j[valid]] - s[i], 1e-9)
-    return float(slopes.max()), max_rise
+    return float(slopes.max()), max_rise, True

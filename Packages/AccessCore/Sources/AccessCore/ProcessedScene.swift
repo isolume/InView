@@ -150,7 +150,7 @@ public struct SceneSurface: Codable, Equatable, Sendable {
     }
 }
 
-public struct SceneMesh: Codable, Equatable, Sendable {
+public struct SceneMesh: Codable, Equatable, Hashable, Sendable {
     public var sourceID: String
     public var vertices: [[Float]]
     public var triangles: [[Int]]

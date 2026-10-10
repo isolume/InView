@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::Serialize;
 
+#[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
     code: &'static str,

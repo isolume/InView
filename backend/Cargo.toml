@@ -5,25 +5,28 @@ edition = "2024"
 publish = false
 
 [dependencies]
+argon2 = "0.5"
 axum = "0.8"
 base64 = { version = "0.22", default-features = false, features = ["std"] }
+chrono = { version = "0.4", features = ["serde"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+fs2 = "0.4"
 jpeg-decoder = { version = "0.3", default-features = false }
+jpeg-encoder = "0.6"
 meshopt = "0.6.2"
 nalgebra = "0.34"
+rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-native-tls", "postgres", "json", "chrono", "uuid"] }
-uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-native-tls", "postgres", "json", "chrono", "uuid"] }
 subtle = "2"
-chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync"] }
 tar = "0.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync"] }
 tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-jpeg-encoder = "0.6"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

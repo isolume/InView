@@ -1,10 +1,16 @@
 # InView
 
-Volunteers scan a floor once with a LiDAR iPhone. A vision model (OpenAI by default, Gemini optional) spots and names the elevators, ramps and stairs, and LiDAR checks each find and measures ramp slopes. The app then produces a floor plan, an orbitable 3D model and an accessibility report.
+InView opens directly to the Floor 2 map of Student Center East at Georgia State University, with search, place details and directions in one native bottom sheet. Expanded walkthrough models are the primary visuals for Floors 2 and 3. Floor 1 explicitly shows that no map is available.
 
-A wheelchair user then opens InView, which recognizes the room from the saved AR map. They follow AR arrows and spoken, captioned directions along a step-free route to the nearest usable elevator or ramp. The route goes around stairs, obstacles LiDAR sees on the way, and ramps steeper than the ADA allows.
+The two floor models share an approximate fit to the supplied Floor 2 scan's elevator landmarks, at about 1.24672 scale. They include estimated areas beyond the partial LiDAR coverage; **Building details** explains those limits. Generated landmarks can be searched and opened, with directions still unavailable. **Floor scan** appears only when that floor has a matching measured map, and route start selection and previews automatically show it. Generated landmarks never enter the routing map. **Map appearance → Adjust placement** provides shared local controls for the models.
 
-Scans are processed and saved on the phone by default. An optional Rust server can process scan geometry into the same 3D scene used by navigation. Photon messaging and ElevenLabs voice remain separate team work; navigation currently uses the system voice. Team plans: [larp.md](larp.md) and [photon.md](photon.md).
+Signed-in users can submit floor maps for authorized spaces through the account menu. Admins review original submissions, edit destination labels, types, staff assistance and pin positions, request changes and publish immutable map versions in the web workspace. The app loads published maps from the configured service. See [the product app guide](docs/product-app.md) for setup, current coverage and verification limits. Native visual checks passed for both floor models, place details, scan route previews and clearing routes when changing floors.
+
+Volunteers scan a floor with a LiDAR iPhone. A vision model (OpenAI by default, Gemini optional) spots and names the elevators, ramps and stairs, and LiDAR checks each find and measures ramp slopes. The app produces a floor plan, an orbitable 3D model and an accessibility report.
+
+When a floor has compatible localization data, **View in AR** recognizes the saved space and offers AR arrows and spoken, captioned directions. Shared JSON maps, including the supplied Floor 2 scan, support browsing and manually chosen route previews but have no live positioning. Routes exclude stairs, insufficient clearance and ramps whose required slope measurements are missing or too steep.
+
+RoomPlan builds and saves maps on the phone. One scan can cover connected rooms, with confirmed doorway crossings handled automatically and Apple's native structure builder assembling the result. Photon messaging and ElevenLabs voice remain separate team work; navigation currently uses the system voice. Team plans: [larp.md](larp.md) and [photon.md](photon.md).
 
 ## Setup
 
@@ -22,7 +28,6 @@ open InView.xcodeproj
 - `OPENAI_API_KEY`: elevator, ramp and stairs detection while scanning. Without it, mark things by hand.
 - `DEVELOPMENT_TEAM`: your Apple team ID, needed to run on the phone. You can also pick the team in Xcode under Signing & Capabilities.
 - `MAPBOX_ACCESS_TOKEN` (optional): a public token beginning with `pk.`, for surrounding maps and building placement. Indoor-only navigation works without it.
-- `INVIEW_BACKEND_URL` (optional): a scan processing server. Leave blank for on-device processing; you can also set or clear it in the app’s scan processing settings. Write URLs as `http:/$()/host:3000` in xcconfig.
 - `VISION_PROVIDER = gemini` plus `GEMINI_API_KEY` switches detection to Gemini. Nothing else changes.
 - Optional: `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `low`; one request is in flight at a time, so latency directly limits how many frames get checked), `GEMINI_MODEL` (default `gemini-3.8-flash`).
 
@@ -43,57 +48,49 @@ cd Packages/AccessCore && swift test
 
 The repo uses jj with small conventional commits.
 
-## Optional scan processing server
+## Maps and scanning
 
-With no address configured, finishing a scan creates the 3D map on the phone,
-without uploading it to a processing server. Review points and unconfirmed finds,
-then save the map for navigation. Server errors also offer **Use local map**.
+Choose a floor, scan the space, then tap **Finish** to review and save the map.
+New scans use RoomPlan and finish on the phone. During review, **Find places**
+can send selected scan evidence to an optional processing server; every suggestion
+requires an individual Keep or Drop. **Scanning → Saved scans**
+opens saved models and exports original captures. Earlier stream captures remain
+available for local evidence viewing and export; they are not deleted or uploaded.
 
-To use the Rust processing service, start it on the Mac:
+The Rust backend now also provides accounts, floor-map submissions, admin review
+and published maps. Capture still runs on the phone; contribution uploads the
+derived floor map, not raw camera or LiDAR archives. Processing uses a separate
+credential from account sessions. Generated graphs remain drafts until an
+administrator reviews and publishes a snapshot for public directions.
+**Scanning → Detailed scan** optionally records bounded surface detail and photo
+colors; **Map appearance → Scan detail** displays it alongside the structural map.
+It is off by default pending long-scan device checks. Streaming and reconstruction
+protocols are described in [backend/SCANS.md](backend/SCANS.md).
 
-```sh
-cargo run --manifest-path backend/Cargo.toml
-```
-
-Open **Scan processing** at the bottom of the map's sheet and enter the server address. For Simulator, use
-`http://127.0.0.1:3000`. For an iPhone, use an address reachable from that device
-and bind the service to that interface. For the same Wi-Fi network:
-
-```sh
-INVIEW_BIND="$(ipconfig getifaddr en0):3000" cargo run --manifest-path backend/Cargo.toml
-```
-
-Allow local network access when iOS asks. Clearing the address returns to local
-processing. The backend is a development service without authentication or durable
-storage. A processing failure preserves the original capture on the phone for a
-retry. Saved navigation geometry can be opened without the processing server.
-
-The app is one map, like Apple Maps. It opens straight onto the saved floor in 3D,
-built from the map itself when the scan's processed room isn't on the phone, so any
-map shows the moment it opens. Elevators, ramps and destinations are pinned on it,
-and a sheet at the bottom picks a destination, lists the places on the floor, shows
-the accessibility report, and holds **Map a space**, the demo, export and settings.
-The camera only turns on for **Go** or **AR**: the rider is found in the scanned
-space, then the route shows in AR with the plan as a mini-map. Drag to move the map,
+The app opens onto Student Center East's Floor 2 model in 3D; Floor 3 has its own
+model, while Floor 1 has no bundled map. Generated landmarks support browsing;
+measured elevators, ramps and destinations support route previews on their actual
+floor scan. A sheet at the bottom supports search and place details.
+**Contribute a scan**, account access, submissions, saved local
+maps and settings live in the profile menu. The camera turns on when a user starts
+a scan or enters supported AR guidance. Drag to move the map,
 pinch to zoom, twist to rotate and drag two fingers to tilt. A map shared from another
-phone (for example `venue-map.json` copied into the app's Documents) can be explored
-but not navigated, because directions need the AR map saved with the scan.
+phone can be explored and used for a manually chosen route preview. Live guidance
+needs the matching AR map saved with the scan.
 
-**Try the navigation demo** works without a scan or processing server, including in
+**Try the navigation demo** works without a scan, including in
 Simulator. It previews a route from reception through a hallway to a meeting room,
 then moves the position marker along that route when **Start demo** is pressed.
 It uses the real route planner and never changes the saved map. AR navigation
 needs a saved scan and camera tracking on an iPhone.
 
-### Indoor and outdoor map
+### Indoor and outdoor renderer
 
-Mapbox supplies the surrounding map and the building placement editor. The native
-**Map options** menu offers **Indoor only** and **Surroundings** within the same
-navigation view. A placed building opens with its surroundings by default.
-**Place building** lets you move and turn the scan outline into position, using
-an address or **Current location** as a starting point. Indoor GPS still needs
-manual alignment. Placement is saved on the phone without changing the scan,
-AR tracking, or route coordinates.
+Mapbox supplies the existing surrounding-map renderer and building placement
+editor. The Student Center experience currently uses the indoor renderer, because
+the supplied scan has no geographic placement. The geographic components remain
+available for later integration with a verified building outline. Geographic
+placement is separate from the generated model's visual alignment to the scan.
 
 Address search uses Mapbox permanent geocoding because the chosen position is
 saved with the scan. Mapbox requires an account eligible for permanent geocoding;
@@ -124,22 +121,32 @@ pause capture during travel and suggest a floor once the phone reaches a stable
 landing. Confirm or correct the floor in **New floor detected**, or use the floor
 button to change it manually. Switching saves the previous floor and starts a
 fresh scan on the next one. Each floor keeps its own map, reference photo,
-localization data and matching capture; the saved-floor menu on Home chooses
+localization data and matching capture; the saved-floor menu in the map sheet chooses
 which floor to view and navigate.
 
-The `streaming` branch defaults to continuous scanning without RoomPlan sections.
-It saves synchronized camera/depth samples and uploads them in the background.
-Set a scan-processing server to build the full model; **Saved scans** resumes
-retained uploads after an app restart. Backend loop closure and pose optimization
-correct the model and review measurements. Materially corrected maps need new
-positioning support before live AR navigation. See
-[continuous scanning](docs/continuous-scanning.md) for setup, limits, and validation.
+Scanning keeps one shared AR coordinate system while RoomPlan captures connected
+rooms. A stable door or opening, reliable tracking, and sustained movement through
+the measured passage trigger an automatic room handoff. Room size, distance
+walked, and elapsed time never trigger a handoff, so a large room is not split
+by the former 7 m or two-minute limits. RoomPlan, heat, storage, or tracking limits
+can still pause capture explicitly. See [continuous scanning](docs/continuous-scanning.md)
+for the flow, retained originals, and device checks.
 
-With **Continuous scanning** turned off in settings, use **Next section** to capture connected rooms and hallways in the
-same session, then **Finish** to process the combined scan. **Review points** lets
-a volunteer name destinations anywhere on the map. Navigation offers those
-places alongside elevators and ramps. Overlapping sections use each component's
-latest pose in both routing geometry and the 3D view.
+Review and navigation show a separate finished map: measured floor outlines,
+clean wall cutaways, catalog furniture, and named places. Framing follows the
+actual floor polygons and visible geometry; near walls retain a 50 cm cutaway in
+3D. Gaps and unmapped areas stay open. Preparation runs off the UI thread and
+resets when the floor changes. This presentation keeps the capture's coordinates
+and leaves routing coverage, obstacles, and saved scan evidence unchanged.
+Earlier raw depth meshes receive a supported floor/wall display without becoming
+assumed navigation coverage.
+
+At **Finish**, completed rooms are assembled by Apple's `StructureBuilder` before
+map and scene construction. Discarded live measurements stay in the original
+archive rather than being reinserted into the finished room geometry. A failed
+assembly preserves the originals and leaves the previously saved map selected.
+**Review points** lets a volunteer name destinations anywhere on the map;
+navigation offers those places alongside elevators and ramps.
 
 Scanning supports separate floors within a building. Navigation still routes
 within the selected floor. Joining independently captured areas, connecting
@@ -148,21 +155,23 @@ require additional work and device verification. Automatic floor suggestions
 and scan recovery after stairs or elevator travel still need a physical-device
 check; sensor estimates do not determine a building's actual floor numbering.
 
-Continuous captures retain camera/depth chunks under Documents/Captures; the
-RoomPlan path archives native RoomPlan JSON,
-its portable upload, and the local or server-derived scene. When configured,
-vision detection sends selected camera frames to the chosen provider; outdoor
-maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
+Each RoomPlan room's original capture is archived before `RoomBuilder` processes
+it. Completed rooms, the assembled structure, a bounded raw depth snapshot, and
+the derived capture/scene remain under `Documents/Captures/<scan UUID>/` for
+export from **Scanning → Saved scans**. A bounded set of posed camera photos is
+saved locally for splat training. Existing stream archives retain their original camera/depth observations.
+When configured, accessibility detection still sends selected camera frames to
+the chosen vision provider; outdoor maps use Mapbox.
 
 ## Demo checklist
 
 1. **Start the scan at the demo table.** Choose the building and current floor, then hold still for a second, facing the way the rider will start. That spot is the map's origin, and the app saves a photo of it.
-2. **Map a space.** Slowly pan around the table area first, then walk to the elevator and the ramp. Pause on each one for a couple of seconds; frames are only analyzed while the camera is steady. Scan one room per section: when you go through a doorway the app offers **Add section**; take it, so RoomPlan keeps the room you just left exactly as scanned.
+2. **Map a space.** Slowly pan around the table area first, then walk to the elevator and the ramp. Pause on each one for a couple of seconds; frames are only analyzed while the camera is steady. Scan the whole room before moving through a doorway. A confirmed door or opening crossing automatically saves that room and continues with the same coordinates.
    - Finds appear as small colored tags as they're spotted: dashed with a "?" until confirmed.
    - **Elevator / Ramp / Stairs** mark whatever is under the crosshair. For a ramp, aim at its middle so its slope gets measured. For stairs, aim at the bottom step.
-   - **Next section** splits a big area, including a large open room. Long scans also save and continue automatically after a 7 m span or two minutes, keeping the same coordinates.
+   - A large room keeps scanning regardless of its span or the time spent inside it. Walking past a doorway, looking through it, or briefly stepping across and back should not trigger a room handoff.
 3. **Finish**. If saving the AR map fails, move around a little and tap **Try again**.
-   - If scanning stops, completed sections are kept. Follow the message: use a smaller section for a size limit, improve tracking, or let the phone cool down. **Continue scanning** resumes the same map; **Finish** saves completed sections.
+   - If RoomPlan or the device stops capture, completed rooms are kept and the app shows a pause. Improve tracking or let the phone cool down, then use **Continue scanning**; **Finish** processes completed rooms. This does not promise unlimited room size.
 4. Review:
    - Decide on anything under **Unconfirmed – keep?**: tap the photo, then **Keep** or **Drop**.
    - Check each find's photo.
@@ -196,22 +205,22 @@ Files app and in Finder (iPhone → Files → InView). To train on a Mac with
 opensplat path/to/splat -n 2000 -o venue.ply
 ```
 
-Put the trained file on the map in either of two ways:
+The existing splat renderer can load files in either of these locations; its
+import controls are not exposed in the new Student Center map experience yet:
 
-- **Add photoreal splat** in the map sheet, which copies it to `Documents/venue-splat.{ply,splat,spz}`.
+- `Documents/venue-splat.{ply,splat,spz}`.
 - Copy it into that scan's `splat` folder via Files or Finder. The newest splat there
   (other than `sparse_pc.ply`) is what the map loads.
 
 `SplatLayer` draws it under the route and pins with [MetalSplatter](https://github.com/scier/MetalSplatter).
-The 3D map switches to a matching perspective camera; ceilings above the cutaway
-height are left out so the floor stays visible from above. The ••• menu's
-**Photoreal** toggle shows the model again. AR pauses the splat.
+The renderer uses a matching perspective camera; ceilings above the cutaway
+height are left out so the floor stays visible from above.
 
 ## How it works
 
 ### Scanning pipeline
 
-1. RoomPlan scans floors, walls, doors, windows, furniture and stairs. It shares one `ARSession` across sections, so everything is in one coordinate space. RoomPlan models one room per section, and when a section runs on into another room its processed result re-fits to the new room and drops the first; so `ScanController` also records RoomPlan's live updates (`RoomMemory`). The routing map and portable 3D capture share `MapBuilder`'s recovery rules, keeping measured floor and wall extensions even when they overlap earlier geometry. A doorway-crossing check suggests starting a new section, and long sections roll over automatically. The session delegate supplies each completed section to one background `RoomBuilder` task, with the built-in preview processing disabled. Compact, repeatedly observed ARKit floor and low-barrier planes supplement open corridors without requesting another raw mesh.
+1. RoomPlan scans floors, walls, doors, openings, windows, furniture and stairs in a shared `ARSession`. `RoomTransitionDetector` requires stable portal measurements, normal tracking, a crossing inside the passage, and sustained clearance on the other side before a room handoff; there is no size, distance, or time rollover. The session delegate archives each `CapturedRoomData` before a background `RoomBuilder` task, with built-in preview processing disabled. At Finish, `StructureBuilder` assembles multiple completed rooms; one room uses its native result directly. Finite geometry and the shared coordinate envelope are checked before publishing. `RoomMemory` and bounded depth remain original evidence, not recovered walls or furniture in the canonical structure. Confirmed ARKit floor measurements can supply exact uncovered floor regions.
 2. `AccessibilityDetector` watches camera motion. It sends a frame to the vision model only when the camera has been steady (≤ 25°/s and ≤ 0.35 m/s for 0.3 s), at most every 1.2 s, and only one request at a time; steady frames that come due while one is in flight are dropped. The frame's pixels are copied out of ARKit's buffer synchronously (`FrameEncoder.snapshot`), then scaled and encoded off the main thread on a CPU Core Image context: a 1024 px JPEG for the model (OpenAI high detail) and a 600 px one kept as the evidence photo. No `ARFrame` or camera buffer is held across the request.
 3. Each find is placed in 3D by raycasting the model's point onto LiDAR surfaces. If that misses, a raycast against ARKit's extended floor planes is tried (accepted only ≥ 1 m below the phone and < 6 m out); if that misses too, the detection is dropped rather than guessed, because a guessed spot never merges with the next sighting. Placed finds are checked against geometry:
    - **Stairs** need confidence ≥ 0.8, and `StairsCheck` must see a 18–58° climb over a 2 × 9 raycast strip.
@@ -227,13 +236,14 @@ height are left out so the floor stays visible from above. The ••• menu's
    - Each room's floor becomes a `.floor` footprint with its measured polygon outline; windows become `.window` footprints. Floor unions preserve concave gaps in the plan, 3D scene, and routing grid. New scans require measured floor coverage; a distant pin does not create walkable space.
    - It adds camera-spotted stairs that don't overlap RoomPlan's.
    - It snaps elevator pins to the floor in front of the nearest RoomPlan door or opening within 1.5 m (`DoorSnap`).
-   - It records each piece of furniture's type and height, for the plan symbols and the 3D model.
+   - It records each piece of furniture's type and measured placement. `LocalSceneBuilder` uses the existing bundled furniture catalog for the 3D view, with neutral measured shapes for unsupported categories.
 
 ### Where things live
 
 | Piece | Where |
 | --- | --- |
-| RoomPlan scan → footprints (floors, walls, doors, windows, furniture by type, stairs), live-room recovery | `InView/Scan/MapBuilder.swift` |
+| RoomPlan rooms → native structure → footprints and local scene | `InView/Scan/ScanController.swift`, `ScanExporter.swift`, `MapBuilder.swift` |
+| Confirmed door/opening crossings without time or distance rollover | `Packages/AccessCore/.../RoomTransitionDetector.swift` |
 | Vision detection (OpenAI or Gemini behind `VisionDetector`), placement, LiDAR checks, confirmation, evidence photos | `InView/Detection/` |
 | Find tags over the scanning camera (10 Hz) | `InView/Scan/DetectionOverlay.swift` |
 | Stairs and ramp geometry checks, door snapping | `Packages/AccessCore/.../StairsCheck.swift`, `SurfaceFit.swift`, `DoorSnap.swift` |
@@ -241,8 +251,6 @@ height are left out so the floor stays visible from above. The ••• menu's
 | The app's one screen: map, sheet, AR, places | `InView/App/MapScreen.swift`, `InView/Map/MapPlace.swift` |
 | 3D floor straight from a saved map (rooms set on the map's floor) | `Packages/AccessCore/.../VenueScene.swift` |
 | 3D room map: SceneKit cutaway, Maps-style gestures, place pins with label collision | `InView/Map/RoomMapCanvas.swift` |
-| Continuous scans: ARKit's classified mesh copied at Finish, welded into the 3D model; ceiling height and the "tilt up" hint | `InView/Scan/RawScanCapture.swift`, `Packages/AccessCore/.../ReconstructedMesh.swift` |
-| Coloring that mesh from the scan's saved photos and depth | `InView/Scan/MeshColorizer.swift`, `Packages/AccessCore/.../MeshColoring.swift` |
 | Posed photos for Gaussian splat training | `InView/Scan/SplatCapture.swift` |
 | Photoreal splat on the 3D map | `InView/Map/SplatLayer.swift`, `InView/Support/SplatStore.swift` |
 | ARWorldMap save and relocalization | `InView/Scan/ScanController.swift`, `InView/Navigate/NavigationController.swift` |
@@ -267,7 +275,7 @@ height are left out so the floor stays visible from above. The ••• menu's
 
 ## Status and known issues (October 10, 2026)
 
-The core logic is unit-tested, including local scene processing, optional-server clients, floor polygons, continuous cutaway boundaries, open-corridor coverage, small depth obstacles and scan resource limits. Scan performance and section completion were checked on an iPhone 15 Pro Max; the new automatic section rollover, ARKit plane supplement and depth obstacle capture still need a real balcony scan. See [open corridor scanning](docs/open-corridor-scanning.md).
+The core logic is unit-tested, including room-transition confirmation, local scene processing, retained optional-server clients, floor polygons, cutaway boundaries and scan resource limits. The new RoomPlan handoff and native structure assembly need physical LiDAR validation, especially a large room followed by adjoining rooms. Earlier scan performance and manual section completion checks on an iPhone 15 Pro Max do not establish the new flow's quality. See [continuous scanning](docs/continuous-scanning.md) for current checks.
 
 1. **Outline boxes replaced by tags.** Scanning shows one small capsule tag per find (`DetectionOverlay`, 10 Hz), and navigation marks stairs with a red "Stairs" billboard over a floor dot (`StairsMarker`). Point markers and chevrons use the kind's color.
 2. **Finds that never confirmed.** Fixed by placing finds only where a raycast hits (no more 3 m guesses), letting one high-confidence sighting count once it's on a surface (and LiDAR-checked for ramps and stairs), and sending the rest to review as **Unconfirmed – keep?**. The detector logs every frame, placement, LiDAR verdict and merge, plus a summary when each section ends; on the device run
@@ -278,8 +286,8 @@ The core logic is unit-tested, including local scene processing, optional-server
 
    or filter Console.app on the `detection` category. The summary line reports ticks vs steady ticks, frames sent/analyzed/failed/dropped while busy, mean latency, raycast hits/misses, unplaced detections, stairs verdicts and slope measurements, which is enough to see which of the three suspected causes dominates. If latency is still the bottleneck, `OPENAI_REASONING_EFFORT = none` is the next step.
 3. **Resource pressure.** The home screen's 3D model `ARView` is taken down while the scan or navigate cover is up, so one RealityKit/AR view exists at a time. Camera frames are copied out of ARKit before any async work and encoded on the CPU at 1024 px, one request in flight. Raycasts per detection went from 88 to 34. Navigation no longer runs scene reconstruction or occlusion (scene depth stays, for obstacles) and checks obstacles once a second. The world map is unarchived, and the routing grids built, off the main thread behind a "Loading map…" state; saving archives it off the main thread too.
-4. **RoomPlan ending a section on its own** processes the partial result and shows **Scanning stopped** with **Continue scanning** / **Finish**. If section processing itself fails, previous completed sections remain available. Tracking stays in the same coordinates; a critically hot phone pauses until it cools.
-5. **A room scanned first was missing after walking on to the rest of the floor.** RoomPlan re-fits a section to the room the volunteer ends up in. Live updates are remembered and dropped components recovered, and long sections are saved automatically. Surface recovery checks containment instead of discarding an entire extension for partial overlap. Compact ARKit floor and low-barrier measurements also support open corridors; thin railings still depend on sensor detection.
+4. **RoomPlan ending a room on its own** processes the partial result and shows an explicit pause with **Continue scanning** / **Finish**. If room processing fails, its original input and previous completed rooms remain available. A critically hot phone pauses until it cools. The app never silently starts another room because of size or time.
+5. **Keeping adjoining rooms intact.** Confirmed door/opening crossings finalize rooms, and Apple's `StructureBuilder` supplies the canonical multi-room geometry. The former 7 m/two-minute rollover and reinsertion of discarded live room components are removed. Native assembly failures preserve original captures instead of publishing a concatenated fallback. This still needs a physical multi-room scan.
 6. **The plan and 3D model looked empty.** Both were redrawn: see `MapPreviewView` and `VenueModelBuilder`. Floors and windows only appear in maps scanned after this change; older saved maps draw without them.
 7. **Growing scans.** Capture no longer copies every raw mesh anchor repeatedly. RoomPlan supplies map geometry, while optional depth keyframes use a bounded background worker. Live tags query nearby finds and project at most 16; the header shows counts rather than an ever-growing list. RoomPlan's miniature model is disabled, and its camera view is released before map construction. Native archives are saved once, separate from the compact navigation capture; local processing has no upload-size limit. Accessibility reports reuse entrance searches across destinations. See [scan performance measurements](docs/scan-performance.md).
 8. **Harmless system noise you can ignore:**
@@ -290,4 +298,4 @@ The core logic is unit-tested, including local scene processing, optional-server
    - `Attempting to enable an already-enabled session` (RoomPlan restarting the shared session between sections)
    - `ForceClearSceneUnderstandingMeshShadowSingleChannel`
    - `EnvironmentResource with no skybox texture` (the 3D view's default lighting)
-9. **Still to verify on a device:** memory and heat with ARKit's scene reconstruction on during long continuous scans, the dollhouse orientation of its mesh, the "tilt up" ceiling hint, and how long coloring takes and how the colored mesh looks; the incoming live-room recovery and cutaway styling, RoomPlan's `polygonCorners` frame (assumed local to the floor surface, as `dimensions` are), the generated `EnvironmentResource` lighting, plus relocalization reliability, the OpenAI request shape, pin placement accuracy, obstacle rerouting, door snapping, and whether `CIContext`'s software renderer is honored on iOS (if not, encoding silently uses the GPU again). Also, chair backs and headboards in the plan and 3D model sit on an assumed side, because RoomPlan doesn't report which way furniture faces. Scan performance and the Next section → Finish → 3D review transition were checked on an iPhone 15 Pro Max before this integration.
+9. **Still to verify on a device:** large-room capture without arbitrary splits, doorway handoffs and revisits, native structure alignment, floor changes, interruptions/resume, and finished-map framing. RoomPlan's `polygonCorners` frame (assumed local to the floor surface, as `dimensions` are), relocalization reliability, the OpenAI request shape, pin placement, obstacle rerouting, door snapping, lighting, and CPU image encoding also need device checks. Furniture facing remains an estimate where RoomPlan does not report a front side. Earlier manual section → Finish checks do not validate this integration.

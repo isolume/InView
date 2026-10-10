@@ -15,9 +15,9 @@ from .validate import validate_graph
 
 NOTICE = ("Navigation graph derived automatically from the walkable raster (OpenCV medial axis). Clear "
           "widths, slopes and step-free flags are screening measurements, not verified accessible routes.")
-STEP_FREE_RULE = ("false if a step/stairs hazard (or a barrier level_change/drop_off) crosses the edge; else "
-                  "from the height map (no rise above step_rise_m between neighbouring samples); else true "
-                  "only on a single-level floor (RoomPlan floors within 12.7 mm); otherwise null (unknown).")
+STEP_FREE_RULE = ("false if a step/stairs hazard, barrier level_change/drop_off, or measured step crosses "
+                  "the edge; true only with contiguous measured elevation over the entire edge; "
+                  "floor-plane estimates, inpainted cells and missing samples remain unknown.")
 
 
 @dataclass
@@ -52,6 +52,7 @@ def build(floor_map, *, scan_id: str, map_id: str, floor_id: str, doors: list[di
     place_nodes = anchors.attach_places(actx, places or [])
 
     elevation = attributes.elevation_raster(height_map, walkable.shape) if height_map is not None else None
+    geometry_elevation = attributes.elevation_raster(height_map, walkable.shape, require_measured=False)
     attrs = attributes.compute(graph, dt=dt, walkable=walkable, walked=getattr(floor_map, "walked", None), grid=grid,
                                elevation=elevation, hazards=hazards, level=level,
                                slope_baseline_m=cfg.slope_baseline_m, step_rise_m=cfg.step_rise_m,
@@ -62,17 +63,22 @@ def build(floor_map, *, scan_id: str, map_id: str, floor_id: str, doors: list[di
                       "method": "distance-transform clearance, ximgproc thinning, filter2D node detection",
                       "params": cfg.describe()},
         "scan_id": scan_id,
+        "map_id": map_id,
+        "floor_id": floor_id,
+        "review_status": "draft",
         "frame": FRAME,
         "notice": NOTICE,
         "floor_height_m": round(float(floor_map.floor_height), 3),
         "step_free_rule": STEP_FREE_RULE,
         "inputs": {"doors": len(doors or []), "regions": len(regions or []), "places": len(places or []),
                    "height_map": elevation is not None, "hazards": len(hazards or []), "single_level": level},
+        "geometry_height": "surface estimate where known, floor estimate elsewhere",
         "skeleton": {**raw, **stats},
     }
     graph_json, nav, ids = build_graph_json(
         graph, attrs, graph_id=f"{scan_id}-nav", map_id=map_id, floor_id=floor_id, grid=grid,
-        floor_y=floor_map.floor_height, walkable=walkable, epsilon_px=cfg.simplify_epsilon_m / res,
+        floor_y=floor_map.floor_height, walkable=walkable, elevation=geometry_elevation,
+        epsilon_px=cfg.simplify_epsilon_m / res,
         metadata=metadata)
     graph_json["metadata"].update({
         "door_nodes": {k: ids[v["node"]] for k, v in sorted(door_details.items())},
@@ -103,6 +109,8 @@ def build(floor_map, *, scan_id: str, map_id: str, floor_id: str, doors: list[di
         "edges_below_route_width": sum(e["minimum_clear_width_m"] < Thresholds.ROUTE_MIN_CLEAR_M for e in graph_json["edges"]),
     }
     notices = []
+    if elevation is None:
+        notices.append("No measured surface elevations; step-free status and slope remain unknown.")
     if not node_count:
         notices.append("Navigation graph is empty: no walkable space wider than the body clearance.")
     elif len(components) > 1:

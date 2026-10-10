@@ -8,7 +8,10 @@
 //! dense movement track (`camera-track.json`), the reconstructed capture (`capture.json`, RoomPlan
 //! surfaces/objects and the fused depth mesh), and any whole-capture attachments the phone sent
 //! (`roomplan.json`, `semantics.json`, `text-observations.json`).
-use std::{collections::BTreeMap, io::Cursor};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Cursor,
+};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::Deserialize;
@@ -17,6 +20,7 @@ use serde_json::{Value, json};
 use crate::{
     alignment::AlignmentResult,
     geometry::Transform,
+    stream_evidence::{Corrector, FeatureCorrection},
     streaming::{StreamChunk, StreamError, StreamPose, StreamStore},
 };
 
@@ -34,6 +38,9 @@ struct CachedResult {
 
 /// Evenly spaced sequence numbers, always including the first and last observation.
 pub fn select(count: usize, limit: usize) -> Vec<usize> {
+    if limit == 0 {
+        return vec![];
+    }
     if count <= limit {
         return (0..count).collect();
     }
@@ -42,6 +49,28 @@ pub fn select(count: usize, limit: usize) -> Vec<usize> {
         .collect();
     picked.dedup();
     picked
+}
+
+fn selected_with_required(
+    count: usize,
+    required: &BTreeSet<usize>,
+) -> Result<BTreeSet<usize>, StreamError> {
+    let mut picked = required.clone();
+    if count > 0 {
+        picked.extend([0, count - 1]);
+    }
+    if picked.len() > MAX_OBSERVATIONS {
+        return Err(StreamError::Limit(
+            "The text observations reference more keyframes than one package can retain.".into(),
+        ));
+    }
+    for sequence in select(count, MAX_OBSERVATIONS) {
+        if picked.len() == MAX_OBSERVATIONS {
+            break;
+        }
+        picked.insert(sequence);
+    }
+    Ok(picked)
 }
 
 fn compose(left: Transform, right: Transform) -> Transform {
@@ -113,8 +142,39 @@ pub fn build_package(
     let mut unix_offset: Option<f64> = None;
     let mut picked = Vec::new();
     let count = store.summary(id)?.frame_count;
-    let selected = select(count, MAX_OBSERVATIONS);
+    let text_document = attachments
+        .get("text-observations.json")
+        .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok());
+    let text_frames: BTreeSet<String> = text_document
+        .as_ref()
+        .and_then(|d| d.get("observations"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.get("frame_id").and_then(Value::as_str).map(str::to_owned))
+        .collect();
+    let mut required = BTreeSet::new();
+    let mut feature_corrections = BTreeMap::new();
+    // Reserve the precise frames the phone OCR'd before filling the remaining sample budget.
+    store.for_each_chunk(id, |sequence, chunk| {
+        if text_frames.contains(&chunk.frame.id) {
+            required.insert(sequence);
+        }
+        let evidence = FeatureCorrection {
+            correction: alignment.correction_for(chunk.frame.timestamp_seconds),
+            timestamp: chunk.frame.timestamp_seconds,
+        };
+        for surface in &chunk.surfaces {
+            feature_corrections.insert(surface.id.to_ascii_lowercase(), evidence);
+        }
+        for object in &chunk.objects {
+            feature_corrections.insert(object.id.to_ascii_lowercase(), evidence);
+        }
+        Ok(())
+    })?;
+    let selected = selected_with_required(count, &required)?;
     let mut next = selected.iter().peekable();
+    let mut frame_assets = BTreeMap::new();
 
     let (manifest, _) = store.for_each_chunk(id, |sequence, chunk: StreamChunk| {
         let correction = alignment.correction_for(chunk.frame.timestamp_seconds);
@@ -171,6 +231,7 @@ pub fn build_package(
             }
         };
         let camera = &frame.camera;
+        if let Some((name, _, _)) = &rgb_asset { frame_assets.insert(frame.id.clone(), name.clone()); }
         let mut raw_depth = json!({
             "raw_asset": format!("{stem}.depth-f32le"), "confidence_asset": confidence_asset,
             "smoothed_asset": null, "width": width, "height": height, "bytes_per_row": width * 4,
@@ -201,7 +262,13 @@ pub fn build_package(
     }
     track.sort_by(|a, b| a.t.total_cmp(&b.t));
     track.dedup_by(|a, b| (a.t - b.t).abs() < 1e-6);
-    let camera_track = attachments.get("camera-track.json").cloned().unwrap_or_else(|| {
+    let mut corrector = Corrector::new(&alignment, &feature_corrections);
+    let corrected_track = attachments
+        .get("camera-track.json")
+        .and_then(|bytes| serde_json::from_slice(bytes).ok())
+        .and_then(|value| corrector.track(value))
+        .and_then(|value| serde_json::to_vec(&value).ok());
+    let camera_track = corrected_track.unwrap_or_else(|| {
         serde_json::to_vec(&json!({
             "schema_version": 1, "clock": "arkit_uptime_seconds",
             "unix_offset_seconds": unix_offset, "source": "stream_chunks_loop_corrected",
@@ -214,10 +281,51 @@ pub fn build_package(
     });
     files.insert("camera-track.json".into(), camera_track);
     for (name, bytes) in attachments {
-        if name != "camera-track.json" {
-            files.insert(name, bytes);
+        files.insert(format!("source-{name}"), bytes.clone());
+        if name == "camera-track.json" {
+            continue;
         }
+        let original: Value =
+            serde_json::from_slice(&bytes).map_err(|e| StreamError::Malformed(e.to_string()))?;
+        let derived = match name.as_str() {
+            "semantics.json" => corrector.semantics(original),
+            "roomplan.json" => corrector.roomplan(original),
+            "text-observations.json" => {
+                let mut value = original;
+                if let Some(observations) =
+                    value.get_mut("observations").and_then(Value::as_array_mut)
+                {
+                    observations.retain_mut(|observation| {
+                        let name = observation
+                            .get("frame_id")
+                            .and_then(Value::as_str)
+                            .and_then(|id| frame_assets.get(id));
+                        if let Some(name) = name {
+                            observation["image_asset"] = json!(name);
+                            true
+                        } else {
+                            corrector.omitted += 1;
+                            false
+                        }
+                    });
+                }
+                value
+            }
+            _ => original,
+        };
+        files.insert(
+            name,
+            serde_json::to_vec(&derived).map_err(|e| StreamError::Malformed(e.to_string()))?,
+        );
     }
+    files.insert(
+        "alignment.json".into(),
+        serde_json::to_vec(&alignment).map_err(|e| StreamError::Malformed(e.to_string()))?,
+    );
+    files.insert("derivation.json".into(), serde_json::to_vec(&json!({
+        "schema_version":1,"method":"recorded_stream_alignment", "omitted_spatial_records":corrector.omitted,
+        "notice":"Original attachments are retained under source- names. Spatial records lacking correction evidence are omitted from derived sidecars."
+    })).expect("derivation JSON"));
 
     let mut capture = cached.capture;
     capture["id"] = json!(manifest.id);
@@ -233,6 +341,7 @@ pub fn build_package(
 
     let role = |name: &str| match name {
         "capture.json" => "portable_capture",
+        "roomplan.json" if alignment.optimized => "roomplan_aligned",
         "roomplan.json" => "roomplan_original",
         "camera-track.json" => "camera_track",
         "semantics.json" => "capture_semantics",
@@ -240,6 +349,7 @@ pub fn build_package(
         n if n.ends_with(".color.jpg") => "rgb_keyframe",
         n if n.ends_with(".depth-f32le") => "raw_depth_float32",
         n if n.ends_with(".confidence-u8") => "depth_confidence",
+        n if n.starts_with("source-") => "original_capture_attachment",
         _ => "opaque_sidecar",
     };
     let media = |name: &str| {
@@ -271,7 +381,18 @@ pub fn build_package(
     );
 
     let mut tar = tar::Builder::new(Vec::new());
+    let mut archive_bytes = 1024usize;
     for (name, bytes) in &files {
+        archive_bytes = archive_bytes
+            .checked_add(512 + bytes.len().div_ceil(512) * 512)
+            .ok_or_else(|| StreamError::Limit("The scan package is too large.".into()))?;
+        if bytes.len() as u64 > crate::scan_package::MAX_FILE_BYTES
+            || archive_bytes > crate::scan_package::MAX_PACKAGE_BYTES
+        {
+            return Err(StreamError::Limit(
+                "The scan package exceeds its storage limits.".into(),
+            ));
+        }
         let mut header = tar::Header::new_ustar();
         header.set_size(bytes.len() as u64);
         header.set_mode(0o644);
@@ -297,6 +418,17 @@ mod tests {
         assert_eq!(picked.len(), 240);
         assert_eq!((picked[0], *picked.last().unwrap()), (0, 999));
         assert!(picked.windows(2).all(|w| w[0] < w[1]));
+        assert!(select(5, 0).is_empty());
+    }
+
+    #[test]
+    fn selection_reserves_ocr_frames_and_rejects_unrepresentable_evidence() {
+        let required = BTreeSet::from([17, 37, 501, 888]);
+        let picked = selected_with_required(1000, &required).unwrap();
+        assert_eq!(picked.len(), MAX_OBSERVATIONS);
+        assert!(required.is_subset(&picked));
+        assert!(picked.contains(&0) && picked.contains(&999));
+        assert!(selected_with_required(1000, &(0..241).collect()).is_err());
     }
 
     #[test]

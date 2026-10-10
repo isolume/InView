@@ -59,6 +59,14 @@ def test_negations_veto_their_category():
         assert "exit" not in categories(text), text
     assert "entrance" not in categories("No entry")
     assert "entrance" not in categories("立入禁止")
+    for text in ("NOT AN EMERGENCY EXIT", "NOT A FIRE EXIT", "非常口ではありません"):
+        assert not {"exit", "emergency_exit"} & set(categories(text))
+
+
+def test_term_readings_keep_bilingual_evidence_for_one_category():
+    matches = place_lexicon.load().match_terms("Toilets / Aseos")
+    assert {(m.category, m.language) for m in matches} == {("restroom", "en"), ("restroom", "es")}
+    assert categories("Toilets / Aseos") == ["restroom"]
 
 
 def test_latin_terms_need_word_boundaries_but_cjk_and_korean_do_not():

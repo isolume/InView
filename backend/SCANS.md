@@ -18,12 +18,12 @@ Optional local furniture recognition derives labels and measured object bounds
 from the uploaded RGB/depth observations, as described below.
 
 The executable saves streams to `data/streams` relative to its working directory.
-Set `INVIEW_STREAM_DIR` to choose a different local directory. Only this stream
-store survives restart; `/scans` and `/graphs` retain their existing behavior.
+Set `INVIEW_STREAM_DIR` to choose a different local directory. Source scans, analysis,
+candidate graphs and reviewed releases also persist under `INVIEW_SCAN_DIR` (default `data/scans`).
 `AppState::default()` uses a private temporary stream store for tests and embedders;
 the executable explicitly opens the durable directory. Run only one backend
-process against a given directory. The prototype has no authentication; use the
-same trusted development-network boundary as the existing endpoints.
+process against a given directory. Configure `INVIEW_API_TOKEN` for processing access;
+it is required on non-loopback binds, with HTTPS at the reverse proxy.
 
 | Method | Endpoint | Payload / response |
 |--------|----------|--------------------|
@@ -414,7 +414,7 @@ binary sidecars. `POST /scan-packages` receives the TAR sidecars with their port
 `GET /scans/{id}/raw-preview`, `/native-mesh`, and `/color/{file}` decode them: they read the
 manifest-indexed binary sidecars (`packageFormat: "binary_sidecars"`) and fall back to the base64
 buffers in `raw-snapshot.json` for packages made before sidecars existed
-(`"legacy_raw_snapshot"`). Up to 64 depth observations and 2048 mesh anchors are previewed.
+(`"legacy_raw_snapshot"`). Up to 240 depth observations and 2048 mesh anchors are previewed.
 
 The iOS capture store produces `<scan-id>.inviewscan.tar`: a sequential TAR containing that
 scan's `capture.json`, `package-manifest.json`, RoomPlan original, binary depth/confidence/mesh
@@ -439,6 +439,36 @@ Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/vi
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).
 The adapter builds against the iOS SDK; physical capture and relocalization still
 need verification on the actual LiDAR device before expanding recognition or storage.
+
+## Continuous-stream packages and sidecar coordinates
+
+A finished stream becomes an immutable ordinary scan package after reconstruction.
+It retains up to 240 calibrated depth/RGB observations, including the first/last frame
+and every available frame referenced by on-device OCR. Required OCR frames are reserved
+before filling the sampling budget; too many required frames fail packaging explicitly.
+Derived text observations point to the actual packaged image filename. Observations
+whose frame/image is missing are omitted with a count in `derivation.json`; their received
+document remains intact in `source-text-observations.json`.
+
+The standard `roomplan.json`, `semantics.json`, and `camera-track.json` sidecars share
+the reconstructed capture's corrected frame. Every received attachment is also retained
+byte-for-byte as `source-<name>`, and `alignment.json` records the correction evidence.
+For a loop-corrected stream, a spatial feature needs its recorded `timestamp_seconds`,
+a matching timestamped streamed surface/object ID, or a correction shared by the whole
+capture. Features with unknown capture-time provenance are omitted from the derived
+spatial sidecar; they are never moved using a guessed export time. Native RoomPlan
+`polygonCorners` stay surface-local while their transform changes; semantic polygons
+already in map space are transformed with their recorded surface. A section center is
+retained only with its own timestamp or one consistent correction for all its features.
+Untimestamped floor planes, geographic headings and stair rectangles cannot represent
+a time-varying correction and are omitted from the derived semantics. Per-observation
+geographic samples remain available for the worker's georeferencing stage.
+
+An attached movement track is corrected per pose time and preserves its clock offset;
+an invalid track falls back to the recorded stream poses. Streams with no optimization
+retain the original spatial sidecars. Finished streams accept identical asset retries,
+but reject changed or new attachments. Package construction and decoding enforce the
+same 64 MiB per-file and 256 MiB total limits.
 
 ## RoomPlan semantics read by the worker
 

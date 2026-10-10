@@ -245,3 +245,136 @@ async fn stream_context_is_validated() {
         StatusCode::OK
     );
 }
+
+#[tokio::test]
+async fn full_stream_package_keeps_ocr_evidence_corrects_sidecars_and_previews_240_frames() {
+    use inview_backend::{
+        alignment::{AlignedFrame, AlignmentResult},
+        geometry::Transform,
+        scan_package,
+        store::StoredScan,
+        stream_scan,
+        streaming::StreamStore,
+    };
+    let streams = StreamStore::default();
+    streams
+        .create(
+            json!({"schema_version":1,"id":ID,"map_id":"demo-room-map","floor_id":"ground",
+        "coordinates":{"units":"meters","up_axis":"y","handedness":"right"}}),
+        )
+        .unwrap();
+    for sequence in 0..240 {
+        streams.append(ID, sequence, chunk(sequence)).unwrap();
+    }
+    let semantics = json!({"schema_version":1,"coordinate_frame":"shared_arkit_session","access_points":[
+        {"id":"recorded","kind":"elevator","name":"Lift A","timestamp_seconds":240.,"position":[1.,0.,-2.],"requires_assistance":true},
+        {"id":"manual","kind":"destination","position":[2.,0.,-2.]}]});
+    let native = json!([{"doors":[{"identifier":"door","timestamp_seconds":240.,"transform":pose(1.),
+        "polygonCorners":[[0.,0.,0.],[1.,0.,0.]],"category":{"door":{"isOpen":true}}}]}]);
+    let track = json!({"schema_version":1,"clock":"arkit_uptime_seconds","unix_offset_seconds":1791000000.,
+        "poses":[{"t":1.,"m":pose(0.)},{"t":240.,"m":pose(1.)}]});
+    let text = json!({"schema_version":1,"observations":[
+        {"frame_id":"frame-17","image_asset":"old-keyframe.jpg","text":"Lift A"},
+        {"frame_id":"missing-frame","image_asset":"missing.jpg","text":"Untraceable"}]});
+    for (name, value) in [
+        ("semantics.json", &semantics),
+        ("roomplan.json", &native),
+        ("camera-track.json", &track),
+        ("text-observations.json", &text),
+    ] {
+        streams
+            .put_asset(ID, name, &serde_json::to_vec(value).unwrap())
+            .unwrap();
+    }
+    streams.finish(ID, 240).unwrap();
+    // The sealed evidence accepts identical retries, but cannot change after packaging begins.
+    streams
+        .put_asset(
+            ID,
+            "semantics.json",
+            &serde_json::to_vec(&semantics).unwrap(),
+        )
+        .unwrap();
+    assert!(streams.put_asset(ID, "semantics.json", b"{}").is_err());
+    let alignment = AlignmentResult {
+        reference_frame: "original_arkit_session".into(),
+        optimized: true,
+        frames: vec![
+            AlignedFrame {
+                frame_id: "frame-0".into(),
+                timestamp_seconds: 1.,
+                original_map_from_camera: Transform(pose(0.)),
+                optimized_map_from_camera: Transform(pose(0.)),
+            },
+            AlignedFrame {
+                frame_id: "frame-239".into(),
+                timestamp_seconds: 240.,
+                original_map_from_camera: Transform(pose(0.)),
+                optimized_map_from_camera: Transform(pose(0.5)),
+            },
+        ],
+        constraints: vec![],
+        initial_cost: 1.,
+        final_cost: 0.,
+    };
+    let capture: Value = serde_json::from_str(include_str!("../examples/scan.json")).unwrap();
+    let result = serde_json::to_vec(&json!({"capture":capture,"alignment":alignment})).unwrap();
+    let archive = stream_scan::build_package(&streams, ID, &result).unwrap();
+    let package = scan_package::decode(&archive).unwrap();
+    let read = |name: &str| -> Value { serde_json::from_slice(&package.assets[name]).unwrap() };
+    assert_eq!(read("source-semantics.json"), semantics);
+    assert_eq!(read("source-roomplan.json"), native);
+    assert_eq!(read("source-camera-track.json"), track);
+    assert_eq!(read("source-text-observations.json"), text);
+    let corrected = read("semantics.json");
+    assert_eq!(corrected["access_points"].as_array().unwrap().len(), 1);
+    assert_eq!(corrected["access_points"][0]["position"][0], 1.5);
+    assert_eq!(corrected["access_points"][0]["requires_assistance"], true);
+    assert_eq!(read("roomplan.json")[0]["doors"][0]["transform"][12], 1.5);
+    assert_eq!(
+        read("roomplan.json")[0]["doors"][0]["polygonCorners"],
+        native[0]["doors"][0]["polygonCorners"]
+    );
+    assert_eq!(read("camera-track.json")["poses"][0]["m"][12], 0.);
+    assert_eq!(read("camera-track.json")["poses"][1]["m"][12], 1.5);
+    let ocr = read("text-observations.json");
+    assert_eq!(ocr["observations"].as_array().unwrap().len(), 1);
+    assert_eq!(ocr["observations"][0]["image_asset"], "s00017.color.jpg");
+    assert!(
+        package
+            .assets
+            .contains_key(ocr["observations"][0]["image_asset"].as_str().unwrap())
+    );
+    assert_eq!(read("derivation.json")["omitted_spatial_records"], 2);
+    assert_eq!(
+        package.manifest.as_ref().unwrap()["observations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        240
+    );
+    let state = AppState::default();
+    state
+        .scans
+        .insert(
+            StoredScan {
+                original: package.original,
+                bundle: package.bundle,
+                package_assets: Some(package.assets),
+                package_manifest: package.manifest,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let router = app(state);
+    let (status, preview) = send(
+        &router,
+        "GET",
+        &format!("/scans/{ID}/raw-preview?mode=raw&max_points=1000"),
+        vec![],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["frames"].as_array().unwrap().len(), 240);
+}

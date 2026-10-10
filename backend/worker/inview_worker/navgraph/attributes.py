@@ -3,13 +3,12 @@
 `step_free` rule (unknown is `None`, never assumed):
 1. `False` when a barrier hazard crosses the edge: any `step` or `stairs` hazard, or a `level_change`
    / `drop_off` hazard with severity `barrier`.
-2. Otherwise, with a height map covering the edge: `False` when neighbouring samples rise more than
-   `step_rise_m`, else `True`.
-3. Otherwise (no height map or no finite samples): `True` only when the floor is single-level (all
-   RoomPlan floors within `Thresholds.LEVEL_CHANGE_MAX_M` of each other), else `None`.
+2. A measured rise above `step_rise_m` is `False`, even with gaps elsewhere.
+3. `True` requires contiguous measured height samples covering the entire edge; otherwise `None`.
+   RoomPlan floor planes and inpainted cells are geometry estimates, not measured step evidence.
 
-`maximum_slope` comes from the height map (rise over at least `slope_baseline_m`) and from any ramp
-hazard crossing the edge (its `measure.slope` / `running_slope`); `None` when neither is known.
+`maximum_slope` requires the same complete measured coverage; a ramp hazard may increase that
+maximum but cannot establish the slope of unmeasured portions of an edge.
 """
 from __future__ import annotations
 
@@ -53,17 +52,26 @@ def single_level(roomplan: dict | None, floor_heights: list[float]) -> bool | No
     return len(stories) <= 1 and (max(heights) - min(heights)) <= Thresholds.LEVEL_CHANGE_MAX_M
 
 
-def elevation_raster(height_map, shape: tuple[int, int]) -> np.ndarray | None:
-    """Accept an ndarray or an object/dict exposing `elevation` aligned with the floor grid."""
+def elevation_raster(height_map, shape: tuple[int, int], *, require_measured: bool = True) -> np.ndarray | None:
+    """Read an aligned raster; eligibility additionally requires explicit measurement provenance."""
+    measured = height_map.get("measured") if isinstance(height_map, dict) else getattr(height_map, "measured", None)
+    if require_measured and measured is not True:
+        return None
     raster = height_map if isinstance(height_map, np.ndarray) else None
     for name in ("elevation", "elevation_m", "height", "heights", "raster"):
         if raster is not None or height_map is None:
             break
         candidate = height_map.get(name) if isinstance(height_map, dict) else getattr(height_map, name, None)
         raster = candidate if isinstance(candidate, np.ndarray) else None
-    if not isinstance(raster, np.ndarray) or raster.shape[:2] != tuple(shape):
+    if not isinstance(raster, np.ndarray) or raster.shape != tuple(shape):
         return None
-    return raster.astype(np.float64)
+    raster = raster.astype(np.float64)
+    mask = height_map.get("measured_mask") if isinstance(height_map, dict) else getattr(height_map, "measured_mask", None)
+    if require_measured and mask is not None:
+        if not isinstance(mask, np.ndarray) or mask.shape != tuple(shape):
+            return None
+        raster = np.where(mask, raster, np.nan)
+    return raster
 
 
 def _ramp_slope(hazard: dict) -> float | None:
@@ -106,18 +114,18 @@ def _edge(graph: PixelGraph, edge: GEdge, dt, walkable, walked, res, elevation, 
     hazard_ids = sorted(str(h.get("id")) for h, _ in crossed)
     blocked = any(h.get("kind") in STEP_KINDS or (h.get("kind") in BARRIER_KINDS and h.get("severity") == "barrier")
                   for h, _ in crossed)
-    slope, rise = (measure.slope_and_step(elevation, edge.path, res, slope_baseline_m)
-                   if elevation is not None else (None, None))
+    slope, rise, complete = (measure.slope_and_step(elevation, edge.path, res, slope_baseline_m)
+                            if elevation is not None else (None, None, False))
     ramp = [s for s in (_ramp_slope(h) for h, _ in crossed if h.get("kind") == "ramp") if s is not None]
-    if ramp:
-        slope = max([*ramp, *([slope] if slope is not None else [])])
+    if ramp and slope is not None:
+        slope = max([*ramp, slope])
 
     if blocked:
         step_free, basis = False, "hazard"
-    elif rise is not None:
-        step_free, basis = (rise <= step_rise_m), "height_map"
-    elif level is True:
-        step_free, basis = True, "single_level_floor"
+    elif rise is not None and rise > step_rise_m:
+        step_free, basis = False, "height_map"
+    elif complete:
+        step_free, basis = True, "height_map"
     else:
         step_free, basis = None, "unknown"
 

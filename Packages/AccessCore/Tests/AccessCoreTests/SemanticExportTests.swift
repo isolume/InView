@@ -89,7 +89,8 @@ private func json(_ data: Data) throws -> [String: Any] {
     )
     let capture = CaptureSemantics.CaptureInfo(appVersion: "0.1.0", appBuild: "1", deviceModel: "iPhone16,1",
                                                systemName: "iOS", systemVersion: "18.2", floorID: "ground")
-    let semantics = CaptureSemantics(map: map, rooms: [room], capture: capture)
+    let semantics = CaptureSemantics(map: map, rooms: [room], capture: capture,
+                                     measurementTimestamps: [map.points[0].id: 42.5])
 
     #expect(semantics.accessPoints.map(\.kind) == ["elevator", "ramp"])
     #expect(semantics.stairsFootprints.map(\.source) == ["roomplan", "detected"])
@@ -107,6 +108,9 @@ private func json(_ data: Data) throws -> [String: Any] {
     #expect(ramp["source"] as? String == "detected")
     #expect(ramp["slope_degrees"] as? Double == 6)
     #expect(ramp["requires_assistance"] as? Bool == false)
+    #expect(ramp["timestamp_seconds"] as? Double == 42.5)
+    let elevator = try #require((root["access_points"] as? [[String: Any]])?.first)
+    #expect(elevator["timestamp_seconds"] == nil)
     let roomJSON = try #require(((root["roomplan"] as? [String: Any])?["rooms"] as? [[String: Any]])?.first)
     #expect((roomJSON["sections"] as? [[String: Any]])?.first?["label"] as? String == "kitchen")
     let surface = try #require((roomJSON["surfaces"] as? [[String: Any]])?.first)

@@ -545,11 +545,7 @@ async fn immutable_scan_ids_conflict_and_invalid_uploads_leave_state_unchanged()
 #[tokio::test]
 async fn processing_options_and_missing_scans_return_structured_errors() {
     let app = app(AppState::default());
-    for uri in [
-        "/scans/missing",
-        "/scans/missing/scene",
-        "/scans/missing/preview",
-    ] {
+    for uri in ["/scans/missing", "/scans/missing/scene"] {
         let (status, error) = call(&app, "GET", uri, None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(error["error"]["code"], "scan_not_found");
@@ -582,13 +578,17 @@ async fn processing_options_and_missing_scans_return_structured_errors() {
 }
 
 #[tokio::test]
-async fn preview_is_html_for_an_existing_scan() {
+async fn preview_is_a_static_shell_that_does_not_reveal_scan_existence() {
     let app = app(AppState::default());
     call(&app, "POST", "/scans", Some(fixture())).await;
     let (status, content_type, bytes) =
         call_raw(&app, "GET", "/scans/demo-room/preview", None).await;
     assert_eq!(status, StatusCode::OK);
     assert!(content_type.starts_with("text/html"));
+    let (missing_status, _, missing_bytes) =
+        call_raw(&app, "GET", "/scans/missing/preview", None).await;
+    assert_eq!(missing_status, StatusCode::OK);
+    assert_eq!(missing_bytes, bytes);
     assert!(
         String::from_utf8(bytes)
             .unwrap()
