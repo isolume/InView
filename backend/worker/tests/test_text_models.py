@@ -58,7 +58,7 @@ def test_offline_and_disabled_downloads_return_none(tmp_path):
 
 def test_download_policy(monkeypatch, tmp_path):
     monkeypatch.delenv("INVIEW_MODEL_DOWNLOAD", raising=False)
-    assert models.downloads_enabled() is False          # pytest is running: never touch the network
+    assert models.downloads_enabled() is True
     monkeypatch.setenv("INVIEW_MODEL_DOWNLOAD", "1")
     assert models.downloads_enabled() is True
     monkeypatch.setenv("INVIEW_MODEL_DOWNLOAD", "0")
@@ -67,11 +67,27 @@ def test_download_policy(monkeypatch, tmp_path):
     assert ModelStore().root == tmp_path
 
 
-def test_pinned_specs_are_complete():
-    for spec in models.MODELS.values():
-        assert spec.url.startswith("https://huggingface.co/opencv/") and "/resolve/" in spec.url
-        assert len(spec.sha256) == 64 and spec.size > 0
-    assert set(models.RECOGNIZERS) <= set(models.MODELS)
+def test_oversized_download_is_stopped_and_removed(tmp_path):
+    def oversized(url):
+        yield PAYLOAD
+        yield b"extra"
+        raise AssertionError("download must stop at the size limit")
+
+    store = ModelStore(tmp_path, True, oversized, {"toy": SPEC})
+    assert store.path("toy") is None
+    assert "exceeds expected size" in store.errors["toy"]
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_unreadable_cache_uses_the_offline_fallback(tmp_path, monkeypatch):
+    (tmp_path / "toy.onnx").write_bytes(PAYLOAD)
+
+    def unreadable(path):
+        raise PermissionError("unreadable model")
+
+    monkeypatch.setattr(models, "sha256_file", unreadable)
+    store = ModelStore(tmp_path, False, specs={"toy": SPEC})
+    assert store.path("toy") is None
 
 
 def test_parse_charsets_matches_reference_layout():

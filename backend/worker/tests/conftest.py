@@ -4,6 +4,11 @@ import pytest
 from inview_worker.synthetic import offline, package
 
 
+@pytest.fixture(autouse=True)
+def disable_model_downloads(monkeypatch):
+    monkeypatch.setenv("INVIEW_MODEL_DOWNLOAD", "0")
+
+
 @pytest.fixture(scope="session")
 def synthetic_archive() -> bytes:
     """Deterministic iPhone-format package: room, door, native mesh, depth, EXIT-sign keyframe."""
