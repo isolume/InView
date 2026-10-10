@@ -77,6 +77,11 @@ enum CaptureStore {
         return directory.appending(path: "capture.json")
     }
 
+    /// Posed photos for training a Gaussian splat of the scan, written while scanning.
+    static func splatDirectory(for id: String) throws -> URL {
+        try directory(for: id).appending(path: "splat", directoryHint: .isDirectory)
+    }
+
     static func streamRoot(for id: String) throws -> URL {
         try directory(for: id).appending(path: "stream", directoryHint: .isDirectory)
     }

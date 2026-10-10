@@ -179,7 +179,11 @@ private func observations(_ files: [String: Data]) throws -> [ExportObservationR
         let depth = try #require(files[record.depth.asset.path])
         #expect(record.depth.asset.bytes == 16)
         let words: [UInt32] = stride(from: 0, to: depth.count, by: 4).map { index in
-            UInt32(depth[index]) | UInt32(depth[index + 1]) << 8 | UInt32(depth[index + 2]) << 16 | UInt32(depth[index + 3]) << 24
+            let byte0 = UInt32(depth[index])
+            let byte1 = UInt32(depth[index + 1]) << 8
+            let byte2 = UInt32(depth[index + 2]) << 16
+            let byte3 = UInt32(depth[index + 3]) << 24
+            return byte0 | byte1 | byte2 | byte3
         }
         #expect(words == [Float(1.25).bitPattern, 0x7fc00000, Float(0).bitPattern, Float(8).bitPattern])
         #expect(Float(bitPattern: words[1]).isNaN)

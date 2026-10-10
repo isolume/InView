@@ -112,7 +112,7 @@ enum VenueModelBuilder {
             return wall
         case .door, .opening:
             let wide = w >= OccupancyGrid.minimumDoorWidth
-            let color: UIColor = wide ? .systemGreen : .systemOrange
+            let color = Theme.uiColor(for: wide ? .good : .warning)
             return doorway(width: w, material: SimpleMaterial(color: color, roughness: 0.5, isMetallic: false), isDoor: footprint.kind == .door)
         case .window:
             // Glazing from the sill up, but never above the cut edge of the wall.
@@ -212,7 +212,7 @@ enum VenueModelBuilder {
     private static func marker(for point: AccessPoint, floorY: Float) -> Entity {
         let entity = Entity()
         entity.position = SIMD3(point.position.x, floorY, point.position.z)
-        let color: UIColor = point.isTooSteep ? .systemOrange : point.kind.uiTint
+        let color = point.isTooSteep ? Theme.uiColor(for: .warning) : point.kind.uiTint
         let material = SimpleMaterial(color: color, roughness: 0.4, isMetallic: false)
         switch point.kind {
         case .elevator:

@@ -103,7 +103,7 @@ struct MapboxPlacementCanvas: UIViewRepresentable {
             mapView.mapboxMap.setMapStyleContent {
                 GeoJSONSource(id: "inview-placement-outline").data(.featureCollection(.init(features: features)))
                 FillLayer(id: "inview-placement-walls", source: "inview-placement-outline")
-                    .fillColor(UIColor.systemBlue)
+                    .fillColor(Theme.accentUIColor)
                     .fillOpacity(0.65)
                     .slot(.top)
             }

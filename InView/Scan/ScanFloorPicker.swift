@@ -54,7 +54,7 @@ struct ScanFloorPicker: View {
                         .textInputAutocapitalization(.words)
                 }
                 Section {
-                    Button(currentFloor == nil ? "Start scanning" : "Switch floor", action: select)
+                    Button(currentFloor == nil ? "Start scanning" : "Switch floor", role: .confirm, action: select)
                         .frame(maxWidth: .infinity)
                         .disabled(trimmedName.isEmpty || (currentFloor != nil && level == currentFloor?.level))
                 }

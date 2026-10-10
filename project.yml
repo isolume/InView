@@ -1,7 +1,7 @@
 name: InView
 options:
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.0"
   createIntermediateGroups: true
 packages:
   AccessCore:
@@ -9,6 +9,9 @@ packages:
   MapboxMaps:
     url: https://github.com/mapbox/mapbox-maps-ios.git
     exactVersion: 11.32.0
+  MetalSplatter:
+    url: https://github.com/scier/MetalSplatter.git
+    exactVersion: 1.0.1
 targets:
   InView:
     type: application
@@ -18,6 +21,10 @@ targets:
     dependencies:
       - package: AccessCore
       - package: MapboxMaps
+      - package: MetalSplatter
+        product: MetalSplatter
+      - package: MetalSplatter
+        product: SplatIO
     configFiles:
       Debug: Config/App.xcconfig
       Release: Config/App.xcconfig
@@ -44,9 +51,14 @@ targets:
         NSLocalNetworkUsageDescription: InView connects to your optional processing server to build the 3D view of your scan.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Scans (and their splat photos) show in the Files app and in Finder, to copy to a Mac for training.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
         MARKETING_VERSION: "0.1.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"

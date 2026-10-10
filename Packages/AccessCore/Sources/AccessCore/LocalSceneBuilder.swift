@@ -11,10 +11,12 @@ public enum LocalSceneBuilder {
             try Task.checkCancellation()
             let key = modelKey(for: object)
             let displayMeshes = try FurnitureModelCatalog.meshes(for: key, dimensions: object.dimensionsM)
-            let corners = try (0..<8).map { corner in
-                try mapPoint((0..<3).map { axis in
-                    object.dimensionsM[axis] * (corner & (1 << axis) == 0 ? -0.5 : 0.5)
-                }, using: object.mapFromObject)
+            let corners: [[Float]] = try (0..<8).map { (corner: Int) -> [Float] in
+                let local: [Float] = (0..<3).map { (axis: Int) -> Float in
+                    let sign: Float = corner & (1 << axis) == 0 ? -0.5 : 0.5
+                    return object.dimensionsM[axis] * sign
+                }
+                return try mapPoint(local, using: object.mapFromObject)
             }
             return SceneObject(
                 sourceID: object.id,

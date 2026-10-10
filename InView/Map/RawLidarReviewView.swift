@@ -27,7 +27,7 @@ struct RawLidarReviewView: View {
                             Text("Original scan · \(cloud.sampledFrames) of \(cloud.totalFrames) views")
                                 .font(.caption)
                                 .padding(12)
-                                .background(.thinMaterial, in: Capsule())
+                                .glassEffect(.regular, in: .capsule)
                                 .padding()
                         }
                 } else if let failure {
@@ -43,7 +43,9 @@ struct RawLidarReviewView: View {
             .navigationTitle("Scan data")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", systemImage: "xmark", role: .close) { dismiss() }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Appearance", selection: $colorized) {
                         Text("Depth").tag(false)
@@ -86,6 +88,7 @@ struct RawLidarReviewView: View {
                 Button("OK", role: .cancel) { exportFailure = nil }
             } message: { Text(exportFailure ?? "Please try again.") }
         }
+        .preferredColorScheme(.light)
     }
 
     private func exportEvidence() {

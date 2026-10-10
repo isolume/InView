@@ -24,6 +24,16 @@ struct RoomMapCanvas: UIViewRepresentable {
     var destination: SIMD2<Float>? = nil
     var destinationTitle: String? = nil
     var isNavigating = false
+    /// Elevators, ramps and named destinations, pinned on the map like points of interest.
+    var places: [MapPlace] = []
+    var onSelectPlace: ((MapPlace) -> Void)? = nil
+    /// A trained Gaussian splat of the space, drawn in place of the model once it loads.
+    var splatURL: URL? = nil
+    /// Splats above this map height are left out, so ceilings don't hide the floor.
+    var splatCeiling: Float = 0
+    /// Stops drawing the splat while the map is hidden, without unloading it.
+    var pausesSplat = false
+    var onSplatState: ((SplatLayer.State?) -> Void)? = nil
 
     func makeUIView(context: Context) -> RoomMapRenderView {
         let view = RoomMapRenderView()
@@ -36,6 +46,10 @@ struct RoomMapCanvas: UIViewRepresentable {
     private func configure(_ view: RoomMapRenderView) {
         let selection = $selectedObjectID
         view.onSelection = { selection.wrappedValue = $0 }
+        view.onSelectPlace = onSelectPlace
+        view.onSplatState = onSplatState
+        view.updatePlaces(places, floorY: floorY)
+        view.updateSplat(splatURL, ceiling: splatCeiling, paused: pausesSplat)
         view.update(scene, selectedObjectID: selectedObjectID, showsLabels: showsLabels,
                     floorFootprints: floorFootprints,
                     topDown: topDown, resetID: resetID, showsDetails: showsDetails,
@@ -49,6 +63,19 @@ struct RoomMapCanvas: UIViewRepresentable {
 @MainActor
 final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     var onSelection: ((String?) -> Void)?
+    var onSelectPlace: ((MapPlace) -> Void)?
+    var onSplatState: ((SplatLayer.State?) -> Void)?
+    private var splat: SplatLayer?
+    /// True while a loaded splat is drawn in place of the model, through a perspective camera.
+    private var showsSplat = false
+    private var splatPaused = false
+    private var splatCamera: SplatLayer.Camera?
+    private static let splatFieldOfView: Float = 38 * .pi / 180
+    private var places: [MapPlace] = []
+    private var placeLabels: [(place: MapPlace, position: SIMD3<Float>, view: RoomObjectLabel)] = []
+    /// Where the view is looking, moved by one-finger drags: an offset on the floor from the map's center.
+    private var offset = SIMD3<Float>.zero
+    private var metersPerPoint: Float = 0.02
     private let canvas = SCNView()
     private let world = SCNScene()
     private let room = SCNNode()
@@ -113,7 +140,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         navigation.addChildNode(route)
         navigation.addChildNode(heading)
         navigation.addChildNode(goal)
-        locationDot.backgroundColor = .systemBlue
+        locationDot.backgroundColor = Theme.routeUIColor
         locationDot.layer.cornerRadius = 8
         locationDot.layer.borderWidth = 2.5
         locationDot.layer.borderColor = UIColor.white.cgColor
@@ -143,17 +170,26 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         world.rootNode.addChildNode(camera)
         canvas.pointOfView = camera
         installLighting()
-        let drag = UIPanGestureRecognizer(target: self, action: #selector(orbit(_:)))
+        // Apple Maps gestures: drag to move, pinch to zoom, twist to rotate, two-finger drag to tilt.
+        let drag = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
         drag.maximumNumberOfTouches = 1
         drag.delegate = self
         canvas.addGestureRecognizer(drag)
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(magnify(_:)))
         pinch.delegate = self
         canvas.addGestureRecognizer(pinch)
+        let twist = UIRotationGestureRecognizer(target: self, action: #selector(twist(_:)))
+        twist.delegate = self
+        canvas.addGestureRecognizer(twist)
+        let tilt = UIPanGestureRecognizer(target: self, action: #selector(tilt(_:)))
+        tilt.minimumNumberOfTouches = 2
+        tilt.maximumNumberOfTouches = 2
+        tilt.delegate = self
+        canvas.addGestureRecognizer(tilt)
         canvas.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(selectObject(_:))))
         canvas.isAccessibilityElement = true
         canvas.accessibilityLabel = "Room model"
-        canvas.accessibilityHint = "Drag to rotate, pinch to zoom, or tap an item"
+        canvas.accessibilityHint = "Drag to move, pinch to zoom, twist to rotate, or tap an item"
         canvas.accessibilityCustomActions = [
             UIAccessibilityCustomAction(name: "Rotate left", target: self, selector: #selector(rotateLeft)),
             UIAccessibilityCustomAction(name: "Rotate right", target: self, selector: #selector(rotateRight)),
@@ -169,6 +205,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         canvas.frame = bounds
+        splat?.view.frame = bounds
         updateCamera()
         needsViewportRefresh = true
     }
@@ -231,7 +268,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         labelsVisible = showsLabels && !isNavigating
         highlight.isHidden = isNavigating
         canvas.accessibilityLabel = isNavigating ? "Navigation map" : "Room model"
-        canvas.accessibilityHint = isNavigating ? "Drag to rotate or pinch to zoom" : "Drag to rotate, pinch to zoom, or tap an item"
+        canvas.accessibilityHint = isNavigating ? "Drag to move, pinch to zoom or twist to rotate" : "Drag to move, pinch to zoom, twist to rotate, or tap an item"
         updateNavigation(routePoints: routePoints, userPosition: userPosition, userHeading: userHeading,
                          floorY: floorY, destination: destination, destinationTitle: destinationTitle)
         // Reconstructed stream geometry is the model, including when compact floor measurements exist.
@@ -242,7 +279,71 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         updateShellIfNeeded()
         if changed || selection != selectedObjectID { selection = selectedObjectID; buildSelection() }
         if resetID != lastResetID { lastResetID = resetID; resetOrbit(); updateShellIfNeeded() }
+        applyModelVisibility()
         updateCamera()
+    }
+
+    /// Loads, swaps or removes the splat. The model stays until the splat is ready, and comes back if it fails.
+    func updateSplat(_ url: URL?, ceiling: Float, paused: Bool) {
+        splatPaused = paused
+        guard let url else {
+            guard let layer = splat else { return }
+            layer.unload()
+            layer.view.removeFromSuperview()
+            splat = nil
+            setSplatShown(false)
+            report(nil)
+            return
+        }
+        if splat == nil, let layer = SplatLayer(background: backgroundColor ?? .white) {
+            layer.camera = { [weak self] in self?.splatCamera }
+            layer.onStateChange = { [weak self] state in
+                self?.setSplatShown(state == .ready)
+                self?.report(state)
+            }
+            layer.view.frame = bounds
+            layer.view.isHidden = true
+            layer.view.isPaused = true
+            insertSubview(layer.view, belowSubview: canvas)
+            splat = layer
+        }
+        splat?.load(url, below: ceiling)
+        splat?.view.isPaused = !showsSplat || paused
+    }
+
+    /// State changes can start inside a SwiftUI update, so they're reported after it.
+    private func report(_ state: SplatLayer.State?) {
+        DispatchQueue.main.async { [weak self] in self?.onSplatState?(state) }
+    }
+
+    private func setSplatShown(_ shown: Bool) {
+        guard shown != showsSplat else { return }
+        showsSplat = shown
+        let background = shown ? UIColor.clear : backgroundColor
+        canvas.backgroundColor = background
+        canvas.isOpaque = !shown
+        world.background.contents = background
+        if let projection = camera.camera {
+            // Splats are drawn in perspective; the model keeps its flat architectural look.
+            projection.usesOrthographicProjection = !shown
+            projection.fieldOfView = CGFloat(Self.splatFieldOfView * 180 / .pi)
+            projection.wantsHDR = !shown
+            projection.screenSpaceAmbientOcclusionIntensity = shown ? 0 : 0.65
+        }
+        splat?.view.isHidden = !shown
+        splat?.view.isPaused = !shown || splatPaused
+        applyModelVisibility()
+        updateCamera()
+    }
+
+    /// With the splat showing, only the route, your position, the destination and pins are drawn over it.
+    private func applyModelVisibility() {
+        shell.isHidden = showsSplat
+        for child in room.childNodes where child.name?.hasPrefix("object:") == true { child.isHidden = showsSplat }
+        if showsSplat {
+            details.isHidden = true
+            highlight.isHidden = true
+        }
     }
 
     private func installLighting() {
@@ -405,7 +506,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         }
         if floorRegions.isEmpty, !source.surfaces.contains(where: { $0.kind == "floor" }) {
             let size = upper - lower
-            let floor = box(SIMD3(max(1, size.x + 0.3), 0.16, max(1, size.z + 0.3)), color: "#eef0eb", radius: 0.025)
+            let floor = box(SIMD3(max(1, size.x + 0.3), 0.16, max(1, size.z + 0.3)), color: "#f7f5ef", radius: 0.025)
             floor.simdPosition = SIMD3((lower.x + upper.x) / 2, lower.y - 0.09, (lower.z + upper.z) / 2)
             floor.categoryBitMask = 4
             shell.addChildNode(floor)
@@ -473,6 +574,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func buildFloor(_ surface: SceneSurface) {
+        if let outline = surface.outline, outline.count >= 3, let pose = matrix(surface.mapFromSurface) {
+            buildFloor(outline: outline, height: pose.columns.3.y)
+            return
+        }
         guard let pose = matrix(surface.mapFromSurface), let measured = vector(surface.measuredDimensionsM) else { return }
         let parent = SCNNode()
         parent.simdTransform = pose
@@ -481,11 +586,30 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         let sign: Float = pose[normalAxis].y >= 0 ? 1 : -1
         var slabSize = measured
         slabSize[normalAxis] = 0.18
-        let slab = box(slabSize, color: "#eef0eb", radius: 0.018)
+        let slab = box(slabSize, color: "#f7f5ef", radius: 0.018)
         slab.simdPosition[normalAxis] = -sign * 0.09
         slab.categoryBitMask = 4
         parent.addChildNode(slab)
         shell.addChildNode(parent)
+    }
+
+    /// A room's floor in its measured shape: the outline extruded into a slab whose top is the floor.
+    private func buildFloor(outline: [[Float]], height: Float) {
+        let path = UIBezierPath()
+        for (index, point) in outline.enumerated() where point.count >= 2 {
+            // The shape is drawn in its local XY plane and laid flat below: local y becomes map -z.
+            let local = CGPoint(x: CGFloat(point[0]), y: CGFloat(-point[1]))
+            if index == 0 { path.move(to: local) } else { path.addLine(to: local) }
+        }
+        path.close()
+        let shape = SCNShape(path: path, extrusionDepth: 0.18)
+        shape.chamferRadius = 0.018
+        shape.materials = [matte("#f7f5ef")]
+        let slab = SCNNode(geometry: shape)
+        slab.eulerAngles.x = -.pi / 2
+        slab.simdPosition = SIMD3(0, height - 0.09, 0)
+        slab.categoryBitMask = 4
+        shell.addChildNode(slab)
     }
 
     private struct WallRectangle {
@@ -667,7 +791,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             route.childNodes.forEach { $0.removeFromParentNode() }
             if path.count > 1 {
                 route.addChildNode(routeRibbon(path, width: 0.20, altitude: floorY + 0.020, color: .white))
-                route.addChildNode(routeRibbon(path, width: 0.13, altitude: floorY + 0.026, color: .systemBlue))
+                route.addChildNode(routeRibbon(path, width: 0.13, altitude: floorY + 0.026, color: Theme.routeUIColor))
             }
         }
         if self.userHeading != bearing || heading.childNodes.isEmpty {
@@ -682,7 +806,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 }
                 let geometry = SCNGeometry(sources: [SCNGeometrySource(vertices: positions)],
                                            elements: [SCNGeometryElement(indices: indices, primitiveType: .triangles)])
-                geometry.materials = [mapInk(.systemBlue, opacity: 0.17)]
+                geometry.materials = [mapInk(Theme.routeUIColor, opacity: 0.17)]
                 let cone = SCNNode(geometry: geometry)
                 cone.categoryBitMask = 32
                 cone.castsShadow = false
@@ -709,7 +833,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 pin.close()
                 let shape = SCNShape(path: pin, extrusionDepth: 0.014)
                 shape.chamferRadius = 0.004
-                shape.materials = [mapInk(.systemBlue)]
+                shape.materials = [mapInk(Theme.routeUIColor)]
                 let pinNode = SCNNode(geometry: shape)
                 pinNode.categoryBitMask = 32
                 pinNode.castsShadow = false
@@ -725,7 +849,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 goal.addChildNode(center)
                 goal.constraints = [SCNBillboardConstraint()]
                 if let title, !title.isEmpty {
-                    let label = RoomObjectLabel(title: title, symbol: "flag.fill", tint: .systemBlue)
+                    let label = RoomObjectLabel(title: title, symbol: AccessPoint.Kind.destination.symbolName, tint: Theme.accent)
                     label.isUserInteractionEnabled = false
                     label.accessibilityTraits = .staticText
                     addSubview(label)
@@ -788,6 +912,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             if userPosition != nil { elements.append(locationDot) }
             if let destinationLabel { elements.append(destinationLabel) }
         } else { elements.append(contentsOf: labels.map(\.view)) }
+        elements.append(contentsOf: placeLabels.map(\.view))
         accessibilityElements = elements
     }
 
@@ -798,6 +923,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         }
         for surface in source.surfaces where ["floor", "wall"].contains(surface.kind) {
             guard let pose = matrix(surface.mapFromSurface), var size = vector(surface.renderDimensionsM) else { continue }
+            if let outline = surface.outline {
+                points.append(contentsOf: outline.filter { $0.count >= 2 }.map { SIMD3($0[0], pose.columns.3.y, $0[1]) })
+                continue
+            }
             var center = SIMD3<Float>.zero
             if surface.kind == "wall" && !fullWalls {
                 let height = size.y
@@ -832,13 +961,13 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         SCNTransaction.begin()
         SCNTransaction.disableActions = true
         defer { SCNTransaction.commit() }
-        let center = (lower + upper) / 2
+        let center = (lower + upper) / 2 + offset
         let right = SIMD3<Float>(cos(yaw), 0, -sin(yaw))
         let up = simd_normalize(simd_cross(towardsCamera, right))
         var width: Float = 0.5
         var height: Float = 0.5
-        for point in corners(upper - lower, center: center) {
-            let delta = point - center
+        for point in corners(upper - lower, center: center - offset) {
+            let delta = point - (center - offset)
             width = max(width, 2 * abs(simd_dot(delta, right)))
             height = max(height, 2 * abs(simd_dot(delta, up)))
         }
@@ -846,12 +975,44 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         let fraction = Float(available / viewport.height)
         let aspect = Float(viewport.width / viewport.height)
         let scale = max(height / (fraction * 0.88), width / (aspect * 0.96)) / (2 * zoom)
-        projection.orthographicScale = Double(scale)
         let target = center - up * scale * Float((viewport.height - available) / viewport.height)
-        camera.simdPosition = target + towardsCamera * max(8, simd_length(upper - lower) * 2)
+        let distance: Float
+        if showsSplat {
+            // The same framing in perspective: `scale` is half the visible height at the target.
+            distance = scale / tan(Self.splatFieldOfView / 2)
+            projection.zNear = Double(max(0.05, distance * 0.02))
+            projection.zFar = Double(distance + simd_length(upper - lower) * 2 + 10)
+        } else {
+            projection.orthographicScale = Double(scale)
+            projection.zNear = 0.01
+            projection.zFar = 1_000
+            distance = max(8, simd_length(upper - lower) * 2)
+        }
+        camera.simdPosition = target + towardsCamera * distance
         camera.look(at: scn(target), up: SCNVector3(0, 1, 0), localFront: SCNVector3(0, 0, -1))
-        let metersPerPoint = 2 * scale / Float(viewport.height)
+        if showsSplat {
+            splatCamera = SplatLayer.Camera(
+                view: camera.simdWorldTransform.inverse,
+                projection: SplatLayer.perspective(fovy: Self.splatFieldOfView, aspect: aspect,
+                                                   near: Float(projection.zNear), far: Float(projection.zFar)))
+        }
+        metersPerPoint = 2 * scale / Float(viewport.height)
         goal.simdScale = SIMD3(repeating: min(3, max(0.5, metersPerPoint * 26 / 0.44)))
+        positionLabels()
+    }
+
+    /// Rebuilds the place pins when the places change. Pins sit on the floor and win any overlap with item labels.
+    func updatePlaces(_ newPlaces: [MapPlace], floorY: Float) {
+        guard newPlaces != places || placeLabels.first.map({ $0.position.y != floorY + 0.05 }) == true else { return }
+        places = newPlaces
+        placeLabels.forEach { $0.view.removeFromSuperview() }
+        placeLabels = newPlaces.map { place in
+            let label = RoomObjectLabel(title: place.title, symbol: place.symbol, tint: place.tint)
+            label.onTap = { [weak self] in self?.onSelectPlace?(place) }
+            addSubview(label)
+            return (place, SIMD3(place.position.x, floorY + 0.05, place.position.y), label)
+        }
+        refreshAccessibility()
         positionLabels()
     }
 
@@ -863,7 +1024,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             guard let minimum = vector(object.obstacleBounds.min), let maximum = vector(object.obstacleBounds.max) else { continue }
             let label = RoomObjectLabel(title: RoomItemStyle.title(object.sourceCategory),
                                         symbol: RoomItemStyle.symbol(object.sourceCategory),
-                                        tint: UIColor(RoomItemStyle.tint(object.sourceCategory)))
+                                        tint: RoomItemStyle.tint(object.sourceCategory))
             label.onTap = { [weak self] in self?.onSelection?(object.sourceID) }
             addSubview(label)
             labels.append((object.sourceID, SIMD3((minimum.x + maximum.x) / 2, maximum.y + 0.03, (minimum.z + maximum.z) / 2), label))
@@ -874,13 +1035,37 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     @objc private func positionLabels() {
         guard bounds.width > 0 else { return }
         var occupied: [CGRect] = []
+        let allowed = CGRect(x: 5, y: 28, width: bounds.width - 10, height: max(1, bounds.height - bottomInset - 40))
+        // Every place keeps its badge, which sits on the place; a name runs to its right only where it
+        // covers no other badge or name.
+        var visiblePlaces: [(view: RoomObjectLabel, badge: CGRect, full: CGRect)] = []
+        for label in placeLabels {
+            // The destination has its own pin while navigating.
+            let isDestination = isNavigating && destination.map { simd_distance($0, label.place.position) < 0.05 } == true
+            let point = canvas.projectPoint(scn(label.position))
+            let size = label.view.intrinsicContentSize
+            let badge = CGRect(x: CGFloat(point.x) - size.height / 2, y: CGFloat(point.y) - size.height / 2, width: size.height, height: size.height)
+            label.view.isHidden = isDestination || point.z < 0 || point.z > 1 || !allowed.contains(badge)
+            guard !label.view.isHidden else { continue }
+            visiblePlaces.append((label.view, badge, CGRect(origin: badge.origin, size: size)))
+        }
+        occupied = visiblePlaces.map(\.badge)
+        for (index, place) in visiblePlaces.enumerated() {
+            let title = CGRect(x: place.badge.maxX, y: place.full.minY, width: place.full.maxX - place.badge.maxX, height: place.full.height)
+            let fits = allowed.contains(place.full) && !occupied.enumerated().contains { other, frame in
+                other != index && frame.intersects(title.insetBy(dx: -2, dy: -2))
+            }
+            place.view.showsTitle = fits
+            place.view.frame = fits ? place.full : place.badge
+            if fits { occupied.append(title) }
+            bringSubviewToFront(place.view)
+        }
         let sorted = labels.sorted { ($0.id == selection ? 0 : 1) < ($1.id == selection ? 0 : 1) }
         for label in sorted {
             label.view.isSelected = label.id == selection
             let point = canvas.projectPoint(scn(label.position))
             let size = label.view.intrinsicContentSize
             let frame = CGRect(x: CGFloat(point.x) - size.width / 2, y: CGFloat(point.y) - size.height - 5, width: size.width, height: size.height)
-            let allowed = CGRect(x: 5, y: 28, width: bounds.width - 10, height: max(1, bounds.height - bottomInset - 40))
             let hidden = !labelsVisible || point.z < 0 || point.z > 1 || !allowed.contains(frame) || occupied.contains { $0.intersects(frame.insetBy(dx: -3, dy: -3)) }
             label.view.isHidden = hidden
             label.view.frame = frame
@@ -941,30 +1126,58 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         onSelection?(nil)
     }
 
-    private func resetOrbit() { yaw = .pi * 3 / 4; pitch = 0.68; zoom = 1 }
+    private func resetOrbit() { yaw = .pi * 3 / 4; pitch = 0.68; zoom = 1; offset = .zero }
 
-    @objc private func orbit(_ gesture: UIPanGestureRecognizer) {
+    /// Moves the map with the finger: the floor point under it stays under it.
+    @objc private func pan(_ gesture: UIPanGestureRecognizer) {
         let delta = gesture.translation(in: canvas)
-        yaw -= Float(delta.x) * 0.007
-        if !flat { pitch = min(1.3, max(0.28, pitch + Float(delta.y) * 0.005)) }
         gesture.setTranslation(.zero, in: canvas)
+        let right = SIMD3<Float>(cos(yaw), 0, -sin(yaw))
+        let away = SIMD3<Float>(-sin(yaw), 0, -cos(yaw))
+        let elevation: Float = flat ? .pi / 2 : pitch
+        offset -= right * Float(delta.x) * metersPerPoint
+        offset += away * Float(delta.y) * metersPerPoint / max(0.3, sin(elevation))
+        let half = (upper - lower) / 2
+        offset = SIMD3(min(half.x, max(-half.x, offset.x)), 0, min(half.z, max(-half.z, offset.z)))
         updateShellIfNeeded()
         updateCamera()
     }
 
     @objc private func magnify(_ gesture: UIPinchGestureRecognizer) {
-        zoom = min(3.2, max(0.65, zoom * Float(gesture.scale)))
+        zoom = min(6, max(0.65, zoom * Float(gesture.scale)))
         gesture.scale = 1
         updateCamera()
     }
 
+    @objc private func twist(_ gesture: UIRotationGestureRecognizer) {
+        yaw -= Float(gesture.rotation)
+        gesture.rotation = 0
+        updateShellIfNeeded()
+        updateCamera()
+    }
+
+    /// Two fingers dragged up or down tilt the view, between nearly flat and looking straight down.
+    @objc private func tilt(_ gesture: UIPanGestureRecognizer) {
+        let delta = gesture.translation(in: canvas)
+        gesture.setTranslation(.zero, in: canvas)
+        guard !flat, abs(delta.y) > abs(delta.x) else { return }
+        pitch = min(1.45, max(0.28, pitch - Float(delta.y) * 0.005))
+        updateShellIfNeeded()
+        updateCamera()
+    }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        gestureRecognizer is UIPinchGestureRecognizer || otherGestureRecognizer is UIPinchGestureRecognizer
+        // Pinch, twist and tilt all use two fingers and can happen together; a one-finger drag stands alone.
+        let twoFinger: (UIGestureRecognizer) -> Bool = {
+            $0 is UIPinchGestureRecognizer || $0 is UIRotationGestureRecognizer
+                || (($0 as? UIPanGestureRecognizer)?.minimumNumberOfTouches ?? 1) >= 2
+        }
+        return twoFinger(gestureRecognizer) && twoFinger(otherGestureRecognizer)
     }
 
     @objc private func rotateLeft() -> Bool { yaw += .pi / 8; updateShellIfNeeded(); updateCamera(); return true }
     @objc private func rotateRight() -> Bool { yaw -= .pi / 8; updateShellIfNeeded(); updateCamera(); return true }
-    @objc private func zoomIn() -> Bool { zoom = min(3.2, zoom * 1.2); updateCamera(); return true }
+    @objc private func zoomIn() -> Bool { zoom = min(6, zoom * 1.2); updateCamera(); return true }
     @objc private func zoomOut() -> Bool { zoom = max(0.65, zoom / 1.2); updateCamera(); return true }
     @objc private func resetView() -> Bool { resetOrbit(); updateShellIfNeeded(); updateCamera(); return true }
 
@@ -997,23 +1210,22 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
 }
 
 @MainActor
+/// A map label: the shared `KindBadge` marker with its name beside it, haloed to stay readable over the model.
 private final class RoomObjectLabel: UIControl {
     var onTap: (() -> Void)?
     private let icon = UIImageView()
     private let title = UILabel()
-    private let itemTint: UIColor
+    private static let iconSize = KindBadge.mapDiameter + 2 * KindBadge.ringWidth
 
-    init(title text: String, symbol: String, tint: UIColor) {
-        itemTint = tint
+    init(title text: String, symbol: String, tint: Color) {
         super.init(frame: .zero)
-        icon.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
-        icon.tintColor = .white
-        icon.contentMode = .center
-        icon.backgroundColor = itemTint
-        icon.layer.cornerRadius = 9
+        icon.image = KindBadge.image(symbol: symbol, tint: tint)
+        icon.contentMode = .scaleAspectFit
+        icon.layer.cornerRadius = Self.iconSize / 2
         addSubview(icon)
+        let font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .semibold)
         title.attributedText = NSAttributedString(string: text, attributes: [
-            .font: UIFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: itemTint,
+            .font: font, .foregroundColor: UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)),
             .strokeColor: UIColor(roomHex: "#fafbf8"), .strokeWidth: -4
         ])
         title.layer.shadowColor = UIColor.white.cgColor
@@ -1030,19 +1242,25 @@ private final class RoomObjectLabel: UIControl {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("Use init(title:symbol:)") }
 
-    override var intrinsicContentSize: CGSize { CGSize(width: title.intrinsicContentSize.width + 25, height: 28) }
+    /// Crowded labels collapse to just their badge.
+    var showsTitle = true {
+        didSet { title.isHidden = !showsTitle }
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: Self.iconSize + 5 + title.intrinsicContentSize.width, height: Self.iconSize)
+    }
     override var isSelected: Bool {
         didSet {
-            icon.backgroundColor = itemTint
-            icon.layer.borderWidth = isSelected ? 1.5 : 0
-            icon.layer.borderColor = UIColor.white.cgColor
+            icon.layer.borderWidth = isSelected ? 2 : 0
+            icon.layer.borderColor = Theme.accentUIColor.cgColor
             accessibilityTraits = isSelected ? [.button, .selected] : .button
         }
     }
     override func layoutSubviews() {
         super.layoutSubviews()
-        icon.frame = CGRect(x: 0, y: 5, width: 18, height: 18)
-        title.frame = CGRect(x: 23, y: 0, width: max(0, bounds.width - 23), height: 28)
+        icon.frame = CGRect(x: 0, y: 0, width: Self.iconSize, height: Self.iconSize)
+        title.frame = CGRect(x: Self.iconSize + 5, y: 0, width: max(0, bounds.width - Self.iconSize - 5), height: Self.iconSize)
     }
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool { bounds.insetBy(dx: -5, dy: -8).contains(point) }
     @objc private func tapped() { onTap?() }

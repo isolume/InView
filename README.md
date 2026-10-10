@@ -8,7 +8,7 @@ Scans are processed and saved on the phone by default. An optional Rust server c
 
 ## Setup
 
-Requires Xcode 26+, an iPhone with LiDAR (Pro / Pro Max), and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requires Xcode 26+, iOS 26 (the UI uses Liquid Glass), an iPhone with LiDAR (Pro / Pro Max), and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 brew install xcodegen
@@ -27,6 +27,12 @@ open InView.xcodeproj
 - Optional: `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `low`; one request is in flight at a time, so latency directly limits how many frames get checked), `GEMINI_MODEL` (default `gemini-3.8-flash`).
 
 Re-run `xcodegen` after adding or removing files. The scheme turns off Metal API Validation, because RealityKit's own shaders trip it in debug runs.
+
+Building the photoreal splat layer needs Apple's Metal Toolchain (MetalSplatter compiles `.metal` shaders):
+
+```sh
+xcodebuild -downloadComponent MetalToolchain
+```
 
 Build without a device, and run the core tests:
 
@@ -49,7 +55,7 @@ To use the Rust processing service, start it on the Mac:
 cargo run --manifest-path backend/Cargo.toml
 ```
 
-Open the gear button in the app and enter the server address. For Simulator, use
+Open **Scan processing** at the bottom of the map's sheet and enter the server address. For Simulator, use
 `http://127.0.0.1:3000`. For an iPhone, use an address reachable from that device
 and bind the service to that interface. For the same Wi-Fi network:
 
@@ -62,7 +68,18 @@ processing. The backend is a development service without authentication or durab
 storage. A processing failure preserves the original capture on the phone for a
 retry. Saved navigation geometry can be opened without the processing server.
 
-**Try navigation demo** works without a scan or processing server, including in
+The app is one map, like Apple Maps. It opens straight onto the saved floor in 3D,
+built from the map itself when the scan's processed room isn't on the phone, so any
+map shows the moment it opens. Elevators, ramps and destinations are pinned on it,
+and a sheet at the bottom picks a destination, lists the places on the floor, shows
+the accessibility report, and holds **Map a space**, the demo, export and settings.
+The camera only turns on for **Go** or **AR**: the rider is found in the scanned
+space, then the route shows in AR with the plan as a mini-map. Drag to move the map,
+pinch to zoom, twist to rotate and drag two fingers to tilt. A map shared from another
+phone (for example `venue-map.json` copied into the app's Documents) can be explored
+but not navigated, because directions need the AR map saved with the scan.
+
+**Try the navigation demo** works without a scan or processing server, including in
 Simulator. It previews a route from reception through a hallway to a meeting room,
 then moves the position marker along that route when **Start demo** is pressed.
 It uses the real route planner and never changes the saved map. AR navigation
@@ -160,6 +177,36 @@ maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
 
 Relocalization works best when the lighting matches the scan and the area has texture: posters, furniture, signage. Rescan close to demo time if the room has changed a lot.
 
+## Photoreal splat
+
+Every scan also saves posed camera photos for training a Gaussian splat, the
+photoreal look of Apple Maps. The splat is only a visual layer: routes are still
+planned on the measured map. Its camera poses are ARKit's, so a trained splat lands
+in the map's own coordinates and the route lines up with it. Don't pass `--center`
+to OpenSplat: the default keeps ARKit coordinates.
+
+While scanning, `SplatCapture` saves a photo whenever the phone has moved 12 cm or
+turned 9° (up to 300, at three-quarter resolution). When the scan is saved, it writes
+nerfstudio's `transforms.json` and a LiDAR point cloud (`sparse_pc.ply`) to start
+training from. They are in `Documents/Captures/<scan id>/splat/`, which shows in the
+Files app and in Finder (iPhone → Files → InView). To train on a Mac with
+[OpenSplat](https://github.com/pierotofy/OpenSplat):
+
+```sh
+opensplat path/to/splat -n 2000 -o venue.ply
+```
+
+Put the trained file on the map in either of two ways:
+
+- **Add photoreal splat** in the map sheet, which copies it to `Documents/venue-splat.{ply,splat,spz}`.
+- Copy it into that scan's `splat` folder via Files or Finder. The newest splat there
+  (other than `sparse_pc.ply`) is what the map loads.
+
+`SplatLayer` draws it under the route and pins with [MetalSplatter](https://github.com/scier/MetalSplatter).
+The 3D map switches to a matching perspective camera; ceilings above the cutaway
+height are left out so the floor stays visible from above. The ••• menu's
+**Photoreal** toggle shows the model again. AR pauses the splat.
+
 ## How it works
 
 ### Scanning pipeline
@@ -191,6 +238,11 @@ Relocalization works best when the lighting matches the scan and the area has te
 | Find tags over the scanning camera (10 Hz) | `InView/Scan/DetectionOverlay.swift` |
 | Stairs and ramp geometry checks, door snapping | `Packages/AccessCore/.../StairsCheck.swift`, `SurfaceFit.swift`, `DoorSnap.swift` |
 | Floor plan drawing (`MapPreviewView`, `PlanInk` palette), 3D cutaway model (`VenueModelBuilder`, non-AR `ARView` with orbit camera and generated studio lighting) | `InView/Map/` |
+| The app's one screen: map, sheet, AR, places | `InView/App/MapScreen.swift`, `InView/Map/MapPlace.swift` |
+| 3D floor straight from a saved map (rooms set on the map's floor) | `Packages/AccessCore/.../VenueScene.swift` |
+| 3D room map: SceneKit cutaway, Maps-style gestures, place pins with label collision | `InView/Map/RoomMapCanvas.swift` |
+| Posed photos for Gaussian splat training | `InView/Scan/SplatCapture.swift` |
+| Photoreal splat on the 3D map | `InView/Map/SplatLayer.swift`, `InView/Support/SplatStore.swift` |
 | ARWorldMap save and relocalization | `InView/Scan/ScanController.swift`, `InView/Navigate/NavigationController.swift` |
 | Wheelchair routing: clearance grid, ADA door widths, A*, obstacles, steep-ramp fallback | `Packages/AccessCore/.../OccupancyGrid.swift`, `RoutePlanner.swift` |
 | Floor polygons: area, ear-clipping triangulation | `Packages/AccessCore/.../Polygon.swift` |

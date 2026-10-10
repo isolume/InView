@@ -130,17 +130,22 @@ public struct SceneSurface: Codable, Equatable, Sendable {
     public var measuredDimensionsM: [Float]
     public var renderDimensionsM: [Float]
     public var color: String
+    /// A floor's exact outline as map (x, z) points, for rooms that aren't rectangles. The pose and dimensions
+    /// still describe its bounding rectangle.
+    public var outline: [[Float]]?
     /// Original measured outline in surface-local coordinates, retained separately from display thickness.
     public var polygonCorners: [[Float]]?
     public init(sourceID: String, kind: String, mapFromSurface: [Float], measuredDimensionsM: [Float],
-                renderDimensionsM: [Float], color: String, polygonCorners: [[Float]]? = nil) {
+                renderDimensionsM: [Float], color: String, outline: [[Float]]? = nil,
+                polygonCorners: [[Float]]? = nil) {
         self.sourceID = sourceID; self.kind = kind; self.mapFromSurface = mapFromSurface
         self.measuredDimensionsM = measuredDimensionsM; self.renderDimensionsM = renderDimensionsM; self.color = color
+        self.outline = outline
         self.polygonCorners = polygonCorners
     }
     enum CodingKeys: String, CodingKey {
         case sourceID = "source_id", kind, mapFromSurface = "map_from_surface"
-        case measuredDimensionsM = "measured_dimensions_m", renderDimensionsM = "render_dimensions_m", color
+        case measuredDimensionsM = "measured_dimensions_m", renderDimensionsM = "render_dimensions_m", color, outline
         case polygonCorners = "polygon_corners"
     }
 }

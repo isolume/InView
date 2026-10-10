@@ -132,7 +132,7 @@ final class ScanCoverageCameraView: MTKView, MTKViewDelegate {
     nonisolated func draw(in view: MTKView) {
         MainActor.assumeIsolated {
             renderer?.draw(view: self, frame: session?.currentFrame,
-                           orientation: window?.windowScene?.interfaceOrientation ?? .portrait)
+                           orientation: window?.windowScene?.effectiveGeometry.interfaceOrientation ?? .portrait)
         }
     }
 }

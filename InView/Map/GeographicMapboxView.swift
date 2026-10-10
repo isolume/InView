@@ -42,17 +42,11 @@ struct GeographicMapboxView: View {
                 .id(publicToken == nil ? "interior-preview" : "outdoor-map")
                 .overlay(alignment: .top) {
                     if publicToken == nil {
-                        Text("Local preview · Example exterior")
-                            .font(.caption)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(.regularMaterial, in: Capsule())
+                        StatusPill(text: "Local preview · Example exterior", isCompact: true)
                             .padding(.top, 122)
                             .allowsHitTesting(false)
                     } else if cutawayUnavailable {
-                        Label("Interior cutaway unavailable", systemImage: "exclamationmark.circle")
-                            .font(.caption)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(.regularMaterial, in: Capsule())
+                        StatusPill(text: "Interior cutaway unavailable", systemImage: "exclamationmark.circle", isCompact: true)
                             .padding(.top, 122)
                             .allowsHitTesting(false)
                     }
@@ -64,6 +58,7 @@ struct GeographicMapboxView: View {
                 Text("You can still preview the indoor map.")
             } actions: {
                 Button("Preview interior") { showsLocalPreview = true }
+                    .buttonStyle(.glassProminent)
             }
             .padding(.bottom, bottomInset)
         }
@@ -84,6 +79,8 @@ private struct GeographicMapboxCanvas: UIViewRepresentable {
     let bottomInset: CGFloat
     let groundFloorY: Float?
     @Binding var cutawayUnavailable: Bool
+    /// Rendered here, on the main actor, for the coordinator's style content.
+    let destinationBadge = KindBadge.image(symbol: AccessPoint.Kind.destination.symbolName, tint: Theme.accent)
 
     func makeUIView(context: Context) -> GeographicMapboxContainer {
         if let accessToken { MapboxOptions.accessToken = accessToken }
@@ -291,15 +288,18 @@ private struct GeographicMapboxCanvas: UIViewRepresentable {
                 LineLayer(id: "inview-route-casing", source: "inview-route")
                     .lineColor(UIColor.white).lineWidth(7).lineCap(.round).lineJoin(.round)
                 LineLayer(id: "inview-route-line", source: "inview-route")
-                    .lineColor(UIColor.systemBlue).lineWidth(4).lineCap(.round).lineJoin(.round)
+                    .lineColor(Theme.routeUIColor).lineWidth(4).lineCap(.round).lineJoin(.round)
+                // The destination uses the same badge as the indoor maps and lists.
+                StyleImage(id: "inview-destination-badge", image: value.destinationBadge)
+                GeoJSONSource(id: "inview-destination").data(.featureCollection(target))
+                SymbolLayer(id: "inview-destination-badge", source: "inview-destination")
+                    .iconImage("inview-destination-badge")
+                    .iconAllowOverlap(true)
+                    .iconIgnorePlacement(true)
                 GeoJSONSource(id: "inview-position").data(.featureCollection(user))
                 CircleLayer(id: "inview-position-dot", source: "inview-position")
-                    .circleColor(UIColor.systemBlue).circleRadius(7)
+                    .circleColor(Theme.routeUIColor).circleRadius(7)
                     .circleStrokeColor(UIColor.white).circleStrokeWidth(3)
-                GeoJSONSource(id: "inview-destination").data(.featureCollection(target))
-                CircleLayer(id: "inview-destination-dot", source: "inview-destination")
-                    .circleColor(UIColor.systemBlue).circleRadius(6)
-                    .circleStrokeColor(UIColor.white).circleStrokeWidth(2)
             }
             if lastResetID != value.resetID { fitPending = true }
             if let lastTopDown, lastTopDown != value.topDown, !fitPending {

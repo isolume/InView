@@ -10,10 +10,10 @@ struct InViewApp: App {
             } else if ProcessInfo.processInfo.arguments.contains("--floor-switch-preview") {
                 ScanFloorPickerPreview(isSwitch: true)
             } else {
-                HomeView()
+                MapScreen()
             }
             #else
-            HomeView()
+            MapScreen()
             #endif
         }
     }

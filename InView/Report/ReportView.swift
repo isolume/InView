@@ -58,12 +58,14 @@ extension AccessibilityReport {
 struct ScoreRing: View {
     let report: AccessibilityReport
     var size: CGFloat = 64
+    @State private var progress: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Circle().stroke(Color(.tertiarySystemFill), lineWidth: size * 0.11)
             Circle()
-                .trim(from: 0, to: CGFloat(report.score) / 100)
+                .trim(from: 0, to: progress)
                 .stroke(color, style: StrokeStyle(lineWidth: size * 0.11, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 0) {
@@ -72,15 +74,20 @@ struct ScoreRing: View {
             }
         }
         .frame(width: size, height: size)
+        .onAppear {
+            // The ring fills to the score once, when it first shows.
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.9)) { progress = CGFloat(report.score) / 100 }
+        }
+        .onChange(of: report.score) { _, score in progress = CGFloat(score) / 100 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Grade \(report.grade), \(report.score) out of 100")
     }
 
     private var color: Color {
         switch report.score {
-        case 75...: .green
-        case 50..<75: .orange
-        default: .red
+        case 75...: Theme.color(for: .good)
+        case 50..<75: Theme.color(for: .warning)
+        default: Theme.color(for: .barrier)
         }
     }
 }
@@ -130,12 +137,12 @@ struct FullReportView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("At a glance").sectionHeading()
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                        StatTile(title: "Doors", value: "\(facts.doorWidths.count)", detail: facts.narrowDoors == 0 ? "All wide enough" : "\(facts.narrowDoors) too narrow", severity: facts.narrowDoors == 0 ? .good : .barrier, symbol: "door.left.hand.open")
-                        StatTile(title: "Ramps", value: "\(facts.ramps.count)", detail: rampDetail(facts), severity: facts.ramps.contains(where: \.isTooSteep) ? .barrier : facts.ramps.isEmpty ? nil : .good, symbol: "figure.roll")
-                        StatTile(title: "Elevators", value: "\(facts.elevators.count)", detail: elevatorDetail(facts), severity: facts.elevators.isEmpty ? .warning : facts.elevators.contains(where: \.requiresAssistance) ? .warning : .good, symbol: "arrow.up.arrow.down.square")
-                        StatTile(title: "Stairs", value: "\(facts.stairsCount)", detail: facts.stairsCount == 0 ? "None found" : "Routed around", severity: nil, symbol: "figure.stairs")
-                        StatTile(title: "Furniture", value: "\(facts.furnitureCount)", detail: "Mapped as obstacles", severity: nil, symbol: "chair.lounge")
-                        StatTile(title: "Area", value: facts.mappedArea.map { "≈\(Int($0.rounded())) m²" } ?? "–", detail: "Floor mapped", severity: nil, symbol: "square.dashed")
+                        StatTile(title: "Doors", value: "\(facts.doorWidths.count)", detail: facts.narrowDoors == 0 ? "All wide enough" : "\(facts.narrowDoors) too narrow", severity: facts.narrowDoors == 0 ? .good : .barrier, symbol: Theme.Symbol.door)
+                        StatTile(title: "Ramps", value: "\(facts.ramps.count)", detail: rampDetail(facts), severity: facts.ramps.contains(where: \.isTooSteep) ? .barrier : facts.ramps.isEmpty ? nil : .good, symbol: AccessPoint.Kind.ramp.symbolName)
+                        StatTile(title: "Elevators", value: "\(facts.elevators.count)", detail: elevatorDetail(facts), severity: facts.elevators.isEmpty ? .warning : facts.elevators.contains(where: \.requiresAssistance) ? .warning : .good, symbol: AccessPoint.Kind.elevator.symbolName)
+                        StatTile(title: "Stairs", value: "\(facts.stairsCount)", detail: facts.stairsCount == 0 ? "None found" : "Routed around", severity: nil, symbol: VisionDetection.Kind.stairs.symbolName)
+                        StatTile(title: "Furniture", value: "\(facts.furnitureCount)", detail: "Mapped as obstacles", severity: nil, symbol: Theme.Symbol.furniture)
+                        StatTile(title: "Area", value: facts.mappedArea.map { "≈\(Int($0.rounded())) m²" } ?? "–", detail: "Floor mapped", severity: nil, symbol: Theme.Symbol.area)
                     }
                 }
 
@@ -211,7 +218,7 @@ private struct StatTile: View {
             Label(title, systemImage: symbol)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text(value).font(.system(.title, design: .rounded).weight(.bold))
+            Text(value).font(.metric)
             HStack(spacing: 4) {
                 if let severity {
                     Image(systemName: Theme.symbol(for: severity)).foregroundStyle(Theme.color(for: severity))
@@ -242,7 +249,7 @@ private struct DoorWidthChart: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color(.tertiarySystemFill)).frame(height: 8)
                             Capsule()
-                                .fill(passes ? Color.green : Color.red)
+                                .fill(Theme.color(for: passes ? .good : .barrier))
                                 .frame(width: geometry.size.width * CGFloat(min(width, scaleMaximum) / scaleMaximum), height: 8)
                             Rectangle().fill(.primary).frame(width: 2, height: 18).offset(x: threshold - 1)
                         }
@@ -250,8 +257,8 @@ private struct DoorWidthChart: View {
                     }
                     .frame(height: 18)
                     HStack(spacing: 3) {
-                        Image(systemName: passes ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                            .foregroundStyle(passes ? .green : .red)
+                        Image(systemName: Theme.symbol(for: passes ? .good : .barrier))
+                            .foregroundStyle(Theme.color(for: passes ? .good : .barrier))
                         Text("\(Int((width * 100).rounded())) cm").monospacedDigit()
                     }
                     .font(.caption.weight(.semibold))
@@ -283,7 +290,7 @@ private struct SlopeGauge: View {
                     Capsule().fill(Color(.tertiarySystemFill)).frame(height: 8)
                     if let slope = ramp.slopeDegrees {
                         Capsule()
-                            .fill(ramp.isTooSteep ? Color.red : Color.green)
+                            .fill(Theme.color(for: ramp.isTooSteep ? .barrier : .good))
                             .frame(width: max(8, geometry.size.width * CGFloat(min(slope, scaleMaximum) / scaleMaximum)), height: 8)
                     }
                     Rectangle().fill(.primary).frame(width: 2, height: 18).offset(x: limit - 1)
@@ -309,8 +316,8 @@ private struct SlopeGauge: View {
         if let slope = ramp.slopeDegrees {
             let run = 1 / tan(slope * .pi / 180)
             HStack(spacing: 4) {
-                Image(systemName: ramp.isTooSteep ? "xmark.octagon.fill" : "checkmark.circle.fill")
-                    .foregroundStyle(ramp.isTooSteep ? .red : .green)
+                Image(systemName: Theme.symbol(for: ramp.isTooSteep ? .barrier : .good))
+                    .foregroundStyle(Theme.color(for: ramp.isTooSteep ? .barrier : .good))
                 Text(String(format: "%.1f° · 1:%.0f", slope, run)).monospacedDigit()
             }
             .font(.caption.weight(.semibold))

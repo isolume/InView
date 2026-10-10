@@ -4,7 +4,7 @@ import SwiftUI
 struct BackendSettingsView: View {
     @State private var address = AppConfig.backendAddress
     @State private var continuousScanning = AppConfig.continuousScanning
-    @State private var connectionStatus: String?
+    @State private var connectionStatus: ConnectionStatus?
     @State private var isChecking = false
     @State private var connectionTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
@@ -34,8 +34,12 @@ struct BackendSettingsView: View {
                             Text("Checking…")
                         }
                     } else if let connectionStatus {
-                        Text(connectionStatus)
-                            .foregroundStyle(.secondary)
+                        let severity: AccessibilityReport.Finding.Severity = connectionStatus.isConnected ? .good : .barrier
+                        Label {
+                            Text(connectionStatus.message).foregroundStyle(.secondary)
+                        } icon: {
+                            Image(systemName: Theme.symbol(for: severity)).foregroundStyle(Theme.color(for: severity))
+                        }
                     }
                 } header: {
                     Text("Scan processing server")
@@ -51,9 +55,11 @@ struct BackendSettingsView: View {
             .navigationTitle("Scan processing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() }
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button("Save", systemImage: "checkmark", role: .confirm) {
                         AppConfig.setBackendAddress(address)
                         AppConfig.setContinuousScanning(continuousScanning)
                         dismiss()
@@ -77,18 +83,23 @@ struct BackendSettingsView: View {
         isChecking = true
         connectionStatus = nil
         connectionTask = Task {
-            let status: String
+            let status: ConnectionStatus
             do {
                 try await BackendClient(baseURL: url).checkHealth()
-                status = "Connected to the scan processing server."
+                status = ConnectionStatus(message: "Connected to the scan processing server.", isConnected: true)
             } catch is CancellationError {
                 return
             } catch {
-                status = error.localizedDescription
+                status = ConnectionStatus(message: error.localizedDescription, isConnected: false)
             }
             guard !Task.isCancelled, address == testedAddress else { return }
             connectionStatus = status
             isChecking = false
         }
     }
+}
+
+private struct ConnectionStatus {
+    let message: String
+    let isConnected: Bool
 }

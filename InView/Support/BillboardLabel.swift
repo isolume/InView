@@ -1,7 +1,7 @@
 import RealityKit
 import UIKit
 
-/// A text label on a rounded plate that always turns to face the camera.
+/// A text label on a capsule plate that always turns to face the camera, like the scan's find tags.
 @MainActor
 final class BillboardLabel {
     let entity = Entity()
@@ -33,11 +33,8 @@ final class BillboardLabel {
         let bounds = mesh.bounds
         text.position = SIMD3(-bounds.center.x, -bounds.center.y, 0.005)
         let padding = Float(fontSize)
-        let backing = MeshResource.generatePlane(
-            width: bounds.extents.x + padding,
-            height: bounds.extents.y + padding * 0.6,
-            cornerRadius: padding * 0.3
-        )
+        let height = bounds.extents.y + padding * 0.6
+        let backing = MeshResource.generatePlane(width: bounds.extents.x + padding, height: height, cornerRadius: height / 2)
         plate.model = ModelComponent(mesh: backing, materials: [UnlitMaterial(color: background)])
     }
 }

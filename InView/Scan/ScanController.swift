@@ -58,6 +58,7 @@ final class ScanController: ObservableObject {
     private(set) var session = ARSession()
     private(set) var detector = AccessibilityDetector()
     private var rawCapture = RawScanCapture()
+    private lazy var splatCapture = SplatCapture(scanID: scanID)
     private var scanID = UUID()
     private let elevationMonitor = FloorElevationMonitor()
     private var pendingFloor: ScanFloorIdentity?
@@ -240,6 +241,7 @@ final class ScanController: ObservableObject {
         }
         beginResourceMonitoring()
         rawCapture.start(session: session)
+        splatCapture.start(session: session)
         detector.start(session: session)
         elevationMonitor.start()
         startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -261,6 +263,7 @@ final class ScanController: ObservableObject {
             guard canFinishContinuousScan else { return }
             streamingCapture?.pause()
             rawCapture.pause()
+            splatCapture.pause()
             detector.pause()
             saveWorldMap()
             return
@@ -285,6 +288,7 @@ final class ScanController: ObservableObject {
             if let configuration = session.configuration { session.run(configuration, options: []) }
             phase = .scanning
             rawCapture.resume()
+            splatCapture.resume()
             detector.resume()
             if streamingCapture != nil { streamingCapture?.resume() }
             else { beginStreamingCapture() }
@@ -377,6 +381,7 @@ final class ScanController: ObservableObject {
         doorMonitor = nil
         detector.pause()
         rawCapture.stop()
+        splatCapture.stop()
         streamingCapture?.stop()
         streamStartTask?.cancel()
         streamStatusTimer?.invalidate()
@@ -481,6 +486,7 @@ final class ScanController: ObservableObject {
         doorMonitor = nil
         suggestsNewSection = false
         rawCapture.pause()
+        splatCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
         captureView?.captureSession.stop(pauseARSession: false)
     }
@@ -580,6 +586,7 @@ final class ScanController: ObservableObject {
             phase = .processing
             detector.pause()
             rawCapture.pause()
+            splatCapture.pause()
             if ProcessInfo.processInfo.thermalState == .critical {
                 session.pause()
             } else if let configuration = session.configuration {
@@ -619,6 +626,7 @@ final class ScanController: ObservableObject {
         beginSection()
         detector.resume()
         rawCapture.resume()
+        splatCapture.resume()
     }
 
     private func worldMapCaptured(_ worldMap: ARWorldMap?, error: Error?) {
@@ -672,6 +680,7 @@ final class ScanController: ObservableObject {
                     self.streamStatus = try await streamingCapture.finishCapture()
                 }
                 let raw = await self.rawCapture.finishSnapshot()
+                self.splatCapture.finish(meshes: raw.meshes)
                 try Task.checkCancellation()
                 self.draft = try await ScanWork.run {
                     MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
@@ -718,6 +727,7 @@ final class ScanController: ObservableObject {
                 reportTask?.cancel()
                 detector.pause()
                 rawCapture.stop()
+                splatCapture.stop()
                 streamingCapture?.stop()
                 streamingCapture = nil
                 streamStartTask?.cancel()
@@ -734,6 +744,8 @@ final class ScanController: ObservableObject {
                 detector = AccessibilityDetector()
                 rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
                 scanID = UUID()
+                // The next floor is its own scan, so its splat photos belong in its own folder.
+                splatCapture = SplatCapture(scanID: scanID)
                 currentFloor = nextFloor
                 pendingFloor = nil
                 rooms = []
@@ -975,6 +987,7 @@ final class ScanController: ObservableObject {
         phase = .interrupted
         detector.pause()
         rawCapture.pause()
+        splatCapture.pause()
         streamingCapture?.pause()
     }
 
