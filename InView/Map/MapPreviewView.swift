@@ -5,8 +5,6 @@ import SwiftUI
 /// Top-down drawing of a venue map. Tapping reports the venue floor point under the finger.
 struct MapPreviewView: View {
     let map: VenueMap
-    /// Points the crew reported broken, drawn crossed out in red.
-    var outOfService: Set<UUID> = []
     var onTap: ((SIMD2<Float>) -> Void)?
 
     var body: some View {
@@ -45,10 +43,8 @@ struct MapPreviewView: View {
         for point in map.points {
             let center = projection.screenPoint(point.floorPoint)
             let disc = CGRect(x: center.x - 13, y: center.y - 13, width: 26, height: 26)
-            let isDown = outOfService.contains(point.id)
-            let color: Color = isDown ? .red : point.isTooSteep ? .orange : point.kind.tint
-            context.fill(Path(ellipseIn: disc), with: .color(color))
-            var symbol = context.resolve(Image(systemName: isDown ? "xmark" : point.kind.symbolName))
+            context.fill(Path(ellipseIn: disc), with: .color(point.isTooSteep ? .orange : point.kind.tint))
+            var symbol = context.resolve(Image(systemName: point.kind.symbolName))
             symbol.shading = .color(.white)
             context.draw(symbol, in: disc.insetBy(dx: 6, dy: 6))
             context.draw(Text(point.name).font(.caption2.weight(.semibold)), at: CGPoint(x: center.x, y: disc.maxY + 2), anchor: .top)

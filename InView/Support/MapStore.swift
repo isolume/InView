@@ -50,18 +50,6 @@ enum MapStore {
         }
     }
 
-    /// Sends the map and report to the server so the crew's iMessage agent knows the points by name.
-    /// - Returns: Why it failed, or nil on success or when no server is configured.
-    static func sync(_ map: VenueMap, report: AccessibilityReport) async -> String? {
-        guard let client = ServerClient() else { return nil }
-        do {
-            try await client.uploadVenue(map, report: report)
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

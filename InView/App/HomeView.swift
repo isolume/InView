@@ -12,7 +12,6 @@ struct HomeView: View {
     @State private var savedMap = MapStore.load()
     @State private var report = MapStore.loadReport()
     @State private var mode: Mode?
-    @StateObject private var liveStatus = LiveStatus()
 
     var body: some View {
         NavigationStack {
@@ -34,8 +33,7 @@ struct HomeView: View {
                     ) { mode = .scan }
 
                     if let savedMap {
-                        OutageList(map: savedMap, status: liveStatus)
-                        SavedMapCard(map: savedMap, report: report, outOfService: liveStatus.outOfService)
+                        SavedMapCard(map: savedMap, report: report)
                     } else {
                         Text("No map saved yet. A volunteer scans the floor first, then anyone can navigate it.")
                             .font(.subheadline)
@@ -46,11 +44,6 @@ struct HomeView: View {
                 .padding()
             }
             .navigationTitle("InView")
-        }
-        .onAppear { liveStatus.start() }
-        .onChange(of: mode) { _, mode in
-            // Navigation polls on its own while it's open.
-            if mode == nil { liveStatus.start() } else { liveStatus.stop() }
         }
         .fullScreenCover(item: $mode, onDismiss: reload) { mode in
             switch mode {
@@ -63,42 +56,6 @@ struct HomeView: View {
     private func reload() {
         savedMap = MapStore.load()
         report = MapStore.loadReport()
-    }
-}
-
-/// What the crew has reported broken, newest first.
-private struct OutageList: View {
-    let map: VenueMap
-    @ObservedObject var status: LiveStatus
-
-    var body: some View {
-        let outages = status.statuses.values
-            .filter { $0.state == .outOfService }
-            .sorted { $0.reportedAt > $1.reportedAt }
-            .compactMap { status in map.points.first { $0.id == status.pointId }.map { (point: $0, status: status) } }
-        if !outages.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Reported by the crew", systemImage: "exclamationmark.bubble.fill")
-                    .font(.headline)
-                    .foregroundStyle(.red)
-                ForEach(outages, id: \.point.id) { outage in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(outage.point.name) is out of service").font(.subheadline.weight(.semibold))
-                        Text(detail(for: outage.status)).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-
-    private func detail(for status: PointStatus) -> String {
-        var parts = [status.reportedAt.formatted(.relative(presentation: .named))]
-        if status.photoVerified { parts.append("photo verified") }
-        if let note = status.note, !note.isEmpty { parts.append("\u{201C}\(note)\u{201D}") }
-        return parts.joined(separator: " · ")
     }
 }
 
@@ -136,30 +93,18 @@ private struct ModeCard: View {
 private struct SavedMapCard: View {
     let map: VenueMap
     let report: AccessibilityReport?
-    let outOfService: Set<UUID>
-    @State private var syncState: SyncState = .idle
-
-    private enum SyncState: Equatable {
-        case idle
-        case syncing
-        case synced
-        case failed(String)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Saved map").font(.headline)
                 Spacer()
-                if AppConfig.serverURL != nil {
-                    syncButton
-                }
                 ShareLink(item: MapStore.mapURL) {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .accessibilityLabel("Export map")
             }
-            MapPreviewView(map: map, outOfService: outOfService).frame(height: 240)
+            MapPreviewView(map: map).frame(height: 240)
             Text(summary).font(.footnote).foregroundStyle(.secondary)
             if let report {
                 Divider()
@@ -172,31 +117,9 @@ private struct SavedMapCard: View {
                     .font(.subheadline.weight(.semibold))
                 }
             }
-            if case .failed(let message) = syncState {
-                Text("Sync failed: \(message)").font(.caption).foregroundStyle(.red)
-            }
         }
         .padding()
         .background(Color(.secondarySystemBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private var syncButton: some View {
-        Button {
-            guard let report else { return }
-            syncState = .syncing
-            Task {
-                let failure = await MapStore.sync(map, report: report)
-                syncState = failure.map(SyncState.failed) ?? .synced
-            }
-        } label: {
-            switch syncState {
-            case .syncing: ProgressView()
-            case .synced: Label("Synced", systemImage: "checkmark.icloud")
-            default: Label("Sync", systemImage: "arrow.triangle.2.circlepath.icloud")
-            }
-        }
-        .font(.subheadline)
-        .disabled(report == nil || syncState == .syncing)
     }
 
     private var summary: String {

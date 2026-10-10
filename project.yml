@@ -29,14 +29,6 @@ targets:
         NSCameraUsageDescription: InView uses the camera and LiDAR to map buildings and guide you to accessible entrances, elevators and ramps.
         GeminiAPIKey: $(GEMINI_API_KEY)
         GeminiModel: $(GEMINI_MODEL)
-        ElevenLabsAPIKey: $(ELEVENLABS_API_KEY)
-        ElevenLabsVoiceID: $(ELEVENLABS_VOICE_ID)
-        ElevenLabsModel: $(ELEVENLABS_MODEL)
-        ServerHost: $(SERVER_HOST)
-        ServerScheme: $(SERVER_SCHEME)
-        NSAppTransportSecurity:
-          # The demo server may run over plain HTTP on a laptop or a bare VPS IP.
-          NSAllowsArbitraryLoads: true
     settings:
       base:
         MARKETING_VERSION: "0.1.0"

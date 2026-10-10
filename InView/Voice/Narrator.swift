@@ -9,7 +9,6 @@ final class Narrator {
     /// Why the route changed, which decides how the change is announced.
     enum Reason {
         case started
-        case outage(AccessPoint)
         case obstacle
         case update
     }
@@ -39,20 +38,21 @@ final class Narrator {
         destination = route.destination
 
         switch reason {
-        case .outage(let lost) where changedDestination:
-            announcedTurns = []
-            lines.append(Line(text: "\(lost.name) was just reported out of service. Rerouting to \(heading(for: route))", isUrgent: true))
         case .obstacle:
             announcedTurns = []
             lines.append(Line(text: "Something's in the way. Finding a way around.", isUrgent: true))
         case .started:
             announcedTurns = []
             lines.append(Line(text: "Heading to \(heading(for: route))", isUrgent: true))
-        case .outage, .update:
+        case .update:
             if changedDestination {
                 announcedTurns = []
                 lines.append(Line(text: "Rerouting to \(heading(for: route))", isUrgent: true))
             }
+        }
+
+        if changedDestination, route.destination.requiresAssistance {
+            lines.append(Line(text: "\(route.destination.name) needs a staff member to operate it.", isUrgent: false))
         }
 
         if let maneuver = route.nextManeuver,
@@ -69,7 +69,11 @@ final class Narrator {
     }
 
     func arrival(at point: AccessPoint) -> Line {
-        Line(text: "You've arrived at \(point.name).", isUrgent: true)
+        var text = "You've arrived at \(point.name)."
+        if point.requiresAssistance {
+            text += " It needs a staff member to operate it."
+        }
+        return Line(text: text, isUrgent: true)
     }
 
     /// "the lobby elevator, 14 meters." plus what's worth knowing about getting there.

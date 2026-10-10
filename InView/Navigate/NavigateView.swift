@@ -25,7 +25,6 @@ struct NavigateView: View {
                             dismiss()
                         }
                         Spacer()
-                        LiveBadge(status: controller.liveStatus)
                     }
                     if let caption = controller.caption {
                         Text(caption)
@@ -79,6 +78,11 @@ struct NavigateView: View {
                     .foregroundStyle(.green)
                 if let route = controller.route {
                     Text(route.destination.name).font(.title3)
+                    if route.destination.requiresAssistance {
+                        Label("Needs a staff member to operate", systemImage: "person.fill.questionmark")
+                            .font(.subheadline)
+                            .foregroundStyle(.orange)
+                    }
                 }
                 Button("Done", action: controller.endNavigation)
                     .buttonStyle(.bordered)
@@ -168,23 +172,6 @@ private struct RouteCard: View {
             parts.append(String(format: "%.1f° slope", slope))
         }
         return parts.joined(separator: " · ")
-    }
-}
-
-/// Shows whether crew outage reports are reaching this phone.
-private struct LiveBadge: View {
-    @ObservedObject var status: LiveStatus
-
-    var body: some View {
-        if status.isConfigured {
-            Label(status.isReachable ? "Live" : "Offline", systemImage: "dot.radiowaves.left.and.right")
-                .font(.caption.bold())
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(status.isReachable ? Color.green.opacity(0.85) : Color.gray.opacity(0.7), in: Capsule())
-                .foregroundStyle(.white)
-                .accessibilityLabel(status.isReachable ? "Live outage updates on" : "Live outage updates offline")
-        }
     }
 }
 

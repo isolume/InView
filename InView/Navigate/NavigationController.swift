@@ -5,8 +5,8 @@ import RealityKit
 import UIKit
 
 /// Drives a navigation session: relocalize against the saved AR map, route the user to the nearest
-/// usable access point, and keep re-routing as they move, as the crew reports outages, and as the
-/// camera spots obstacles. Every change is spoken.
+/// usable access point, and keep re-routing as they move and as the camera spots obstacles.
+/// Every change is spoken and captioned.
 @MainActor
 final class NavigationController: ObservableObject {
     enum Phase: Equatable {
@@ -28,7 +28,6 @@ final class NavigationController: ObservableObject {
 
     let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
     let startView = MapStore.loadStartView()
-    let liveStatus = LiveStatus()
 
     private static let rerouteInterval: TimeInterval = 1
     private static let obstacleCheckInterval: TimeInterval = 0.5
@@ -43,7 +42,6 @@ final class NavigationController: ObservableObject {
     private let obstacles = ObstacleTracker()
     private var renderer: PathRenderer?
     private var timer: Timer?
-    private var statusSubscription: AnyCancellable?
     private var locatingSince = Date.now
     private var isRouting = false
     private var pendingReason: Narrator.Reason?
@@ -65,29 +63,11 @@ final class NavigationController: ObservableObject {
             MainActor.assumeIsolated { self?.tick() }
         }
         voice.activate()
-        voice.prefetch(Self.commonPhrases)
-        liveStatus.start()
-        var previous = liveStatus.outOfService
-        statusSubscription = liveStatus.$statuses.dropFirst().sink { [weak self] _ in
-            // @Published fires before the value changes; read it on the next turn of the run loop.
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    let current = self.liveStatus.outOfService
-                    guard current != previous else { return }
-                    let newlyOut = current.subtracting(previous)
-                    previous = current
-                    self.outageChanged(newlyOut: newlyOut)
-                }
-            }
-        }
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
-        statusSubscription = nil
-        liveStatus.stop()
         voice.deactivate()
         arView.session.pause()
     }
@@ -162,24 +142,12 @@ final class NavigationController: ObservableObject {
     private func didLocate() {
         guard let map else { return }
         renderer = PathRenderer(scene: arView.scene, map: map)
-        renderer?.setOutOfService(liveStatus.outOfService)
         phase = .ready
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
-    private func outageChanged(newlyOut: Set<UUID>) {
-        renderer?.setOutOfService(liveStatus.outOfService)
-        guard phase == .navigating || phase == .routing, let route else { return }
-        if newlyOut.contains(route.destination.id) {
-            requestRoute(.outage(route.destination))
-        } else {
-            // Something came back into service, or another point went down: the best destination may have changed.
-            requestRoute(.update)
-        }
-    }
-
     private var conditions: RouteConditions {
-        RouteConditions(unavailable: liveStatus.outOfService, obstacles: obstacles.obstacles)
+        RouteConditions(obstacles: obstacles.obstacles)
     }
 
     /// Computes a route off the main thread. Requests that arrive mid-computation run right after it.
@@ -265,13 +233,4 @@ final class NavigationController: ObservableObject {
         let position = frame.camera.transform.translation
         return SIMD2(position.x, position.z)
     }
-
-    /// Turn prompts are the same few sentences every time, so fetch their audio up front.
-    private static let commonPhrases: [String] = {
-        let turns = ["turn left", "turn right", "bear left", "bear right"]
-        var phrases = turns.flatMap { turn in (2...4).map { "In \($0) meters, \(turn)." } }
-        phrases += turns.map { "\($0.prefix(1).uppercased() + $0.dropFirst()) now." }
-        phrases.append("Something's in the way. Finding a way around.")
-        return phrases
-    }()
 }
