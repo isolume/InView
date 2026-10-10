@@ -43,6 +43,9 @@ async fn scan_and_native_processing_share_admission_without_blocking_reads() {
         call(&router, "GET", "/scans/demo-room", None).await.0,
         StatusCode::OK
     );
+    let (status, error) = call_package(&router, Vec::new()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(error["error"]["code"], "processing_busy");
     drop(permits);
     assert_eq!(
         call(&router, "GET", "/scans/demo-room/scene", None).await.0,
