@@ -319,4 +319,3 @@ def _infer_doorways(seg: Segmentation, params: Params) -> None:
         labels[cells] = next_label
         seg.doorways[next_label] = door
         next_label += 1
-
