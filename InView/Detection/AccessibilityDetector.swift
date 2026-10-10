@@ -125,6 +125,8 @@ final class AccessibilityDetector: ObservableObject {
     static let spottedStairsSize = SIMD2<Float>(1.2, 1.5)
     /// A floor-plane hit further out than this is a grazing ray, not where the model pointed.
     private static let maxFloorPlaneDistance: Float = 6
+    /// A horizontal plane this far below the phone is the floor, not a table.
+    private static let minimumFloorDrop: Float = 1
     /// Slope samples form a grid this wide around the surface point, in normalized image units.
     /// 4 × 4 = 16 raycasts: enough for SurfaceFit's 8-sample minimum after outliers go, a third of the old 7 × 7.
     private static let slopeSampleSpan: CGFloat = 0.08
@@ -402,8 +404,13 @@ final class AccessibilityDetector: ObservableObject {
             return position
         }
         let ray = camera.ray(through: imagePoint)
-        let floor = ARRaycastQuery(origin: ray.origin, direction: ray.direction, allowing: .existingPlaneInfinite, alignment: .horizontal)
-        if let position = session.raycast(floor).first?.worldTransform.translation, simd_distance(position, ray.origin) < Self.maxFloorPlaneDistance {
+        let planes = ARRaycastQuery(origin: ray.origin, direction: ray.direction, allowing: .existingPlaneInfinite, alignment: .horizontal)
+        // Extended planes include tables and counters; the floor is the one well below the phone, and a hit
+        // far out along the ray is a grazing angle, not where the model pointed.
+        let floorHit = session.raycast(planes).map(\.worldTransform.translation).first {
+            ray.origin.y - $0.y >= Self.minimumFloorDrop && simd_distance($0, ray.origin) < Self.maxFloorPlaneDistance
+        }
+        if let position = floorHit {
             Log.detection.info("    placed on a floor plane at (\(String(format: "%.1f, %.1f, %.1f", position.x, position.y, position.z), privacy: .public))")
             return position
         }
