@@ -27,6 +27,10 @@ struct MapScreen: View {
     /// A scan may have saved a new map, which replaces this one when the scan closes.
     @State private var reloadsAfterCover = false
     @State private var selectedFloorID: String?
+    /// Floors saved by earlier scans, each its own map; the sheet's header switches between them.
+    @State private var savedBuildings: [SavedBuilding] = []
+    @State private var savedFloor: SavedFloor?
+    @State private var floorSwitchError: String?
     @State private var detent = PresentationDetent.height(MapScreen.collapsedHeight)
     @Environment(\.dismiss) private var dismiss
 
@@ -40,6 +44,8 @@ struct MapScreen: View {
         _report = State(initialValue: isDemo ? nil : MapStore.loadReport())
         _presentation = State(initialValue: controller.map?.geographicReference == nil ? .indoor : .mapbox)
         _scene = State(initialValue: isDemo ? NavigationDemo.comparisonScene : map.flatMap(VenueScene.make))
+        _savedBuildings = State(initialValue: isDemo ? [] : MapStore.savedBuildings())
+        _savedFloor = State(initialValue: isDemo ? nil : MapStore.currentFloor)
     }
 
     var body: some View {
@@ -53,6 +59,12 @@ struct MapScreen: View {
                     FloorPicker(floors: floors, floorID: floorSelection).padding(.horizontal, 16).padding(.top, 8)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: MapStore.selectionDidChange)) { _ in
+                if cover == nil { reload() }
+            }
+            .alert("Couldn't open this floor", isPresented: Binding(
+                get: { floorSwitchError != nil }, set: { if !$0 { floorSwitchError = nil } }
+            )) { Button("OK", role: .cancel) {} } message: { Text(floorSwitchError ?? "") }
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
@@ -195,6 +207,7 @@ struct MapScreen: View {
                              destinationTitle: floorContent.isRouteFloor ? destination?.title : nil,
                              places: floorContent.isRouteFloor ? MapPlace.places(in: controller.map) : [],
                              onSelectPlace: select) { showsPlacement = true }
+            .id(savedFloor?.storageID.uuidString ?? "legacy")
     }
 
     // MARK: Sheet
@@ -301,6 +314,7 @@ struct MapScreen: View {
     private var destinationPicker: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 5) {
+                savedFloorPicker
                 Menu {
                     Button("Nearest elevator or ramp") { controller.selectDestination(nil) }
                     ForEach(controller.map?.points ?? []) { point in
@@ -324,6 +338,50 @@ struct MapScreen: View {
             Spacer(minLength: 0)
             if controller.isDemo { Text("Demo").font(.subheadline).foregroundStyle(.secondary) }
         }
+    }
+
+    /// Which saved scan is open, above the destination like a venue's name in Maps.
+    @ViewBuilder
+    private var savedFloorPicker: some View {
+        if let savedFloor {
+            if savedFloorCount > 1 {
+                Menu {
+                    ForEach(savedBuildings) { building in
+                        Section(building.name) {
+                            ForEach(building.floors) { floor in
+                                Button(floor.name, systemImage: floor.id == savedFloor.id ? "checkmark" : "building.2") {
+                                    selectSavedFloor(floor)
+                                }
+                            }
+                        }
+                    }
+                } label: { savedFloorLabel(savedFloor, showsChevron: true) }
+                .tint(.secondary)
+                .accessibilityLabel("Choose saved floor. \(savedFloorTitle(savedFloor))")
+            } else {
+                savedFloorLabel(savedFloor, showsChevron: false)
+                    .accessibilityLabel(savedFloorTitle(savedFloor))
+            }
+        }
+    }
+
+    private func savedFloorLabel(_ floor: SavedFloor, showsChevron: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "building.2")
+            Text(savedFloorTitle(floor))
+            if showsChevron { Image(systemName: "chevron.up.chevron.down").font(.caption2) }
+        }
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(.secondary)
+    }
+
+    private var savedFloorCount: Int { savedBuildings.reduce(0) { $0 + $1.floors.count } }
+
+    /// The building is only worth naming when more than one has been scanned.
+    private func savedFloorTitle(_ floor: SavedFloor) -> String {
+        guard savedBuildings.count > 1,
+              let building = savedBuildings.first(where: { $0.id == floor.identity.buildingID }) else { return floor.name }
+        return "\(building.name) · \(floor.name)"
     }
 
     /// Every place on the floor, one tap from being the destination.
@@ -379,6 +437,19 @@ struct MapScreen: View {
         controller.selectDestination(point)
     }
 
+    /// Opening another saved floor is like opening another map: guidance stops, then the store publishes
+    /// the new selection and `reload` runs from that.
+    private func selectSavedFloor(_ floor: SavedFloor) {
+        guard floor.id != savedFloor?.id else { return }
+        do {
+            controller.endGuidance()
+            mode = .map
+            try MapStore.selectFloor(buildingID: floor.identity.buildingID, floorID: floor.id)
+        } catch {
+            floorSwitchError = error.localizedDescription
+        }
+    }
+
     /// Ending a route turns the camera off and goes back to the map, like ending directions in Maps.
     private func endRoute() {
         controller.endNavigation()
@@ -401,7 +472,11 @@ struct MapScreen: View {
         let map = MapStore.load()
         report = MapStore.loadReport()
         scene = map.flatMap(VenueScene.make)
+        savedBuildings = MapStore.savedBuildings()
+        savedFloor = MapStore.currentFloor
         selectedFloorID = nil
+        presentation = map?.geographicReference == nil ? .indoor : .mapbox
+        resetID += 1
         controller.reload(map: map)
         Task {
             await prepareReport()

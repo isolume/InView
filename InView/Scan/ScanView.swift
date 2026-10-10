@@ -23,8 +23,8 @@ struct ScanView: View {
                         Text(controller.errorMessage ?? "Save this floor before continuing.")
                             .multilineTextAlignment(.center)
                         Button("Continue to \(nextFloor)", action: controller.retryFloorSwitch)
-                            .buttonStyle(.borderedProminent)
-                        Button("Close", action: close).buttonStyle(.bordered)
+                            .buttonStyle(.glassProminent)
+                        Button("Close", role: .cancel, action: close).buttonStyle(.glass)
                     }.padding()
                 } else {
                     MapReviewView(controller: controller, onClose: close)
@@ -122,17 +122,17 @@ struct ScanView: View {
                 .multilineTextAlignment(.center)
             HStack {
                 Button("Choose floor", action: controller.requestFloorChange)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                 Button("Stay on this floor", action: controller.cancelFloorChange)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
             }
             if let error = controller.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.orange)
             }
         }
-        .padding(18)
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .glassPanel()
+        .glassEffectID("status", in: glass)
     }
 
     /// The volunteer walked through a doorway. RoomPlan keeps one room per section, so this is the moment to split.
