@@ -150,34 +150,78 @@ RoomPlan + ARKit scan ─► floor outline (walls) ─► minus furniture ─►
 
 ---
 
-## Navigation: routing, localization, and guidance
-
-Planning source: [InView Navigation Planning](chatgpt-conversation://6ac9d70f-5040-83e9-beb5-8a8e479a1b5d). The implementation below is the proposed hackathon approach to validate with the team and at the venue.
+## Jacob: navigation, routing, and directions
 
 ### My part
 
-Navigation connects three pieces:
+I own **how the user gets from where they are to where they want to go**:
 
-| Piece | Responsibility |
-|-------|----------------|
-| **Localization** | Find the phone's position and orientation relative to the saved scan |
-| **Routing** | Choose connected, eligible passages for the complete trip across floors |
-| **Guidance** | Place the AR path, track progress, and advance text, voice, and haptic instructions |
+- **Localization:** find the phone's position and orientation relative to the saved scan.
+- **Routing:** choose a route through the building that meets the user's requirements, including trips between floors.
+- **Directions and progress:** decide the next instruction, track when the user reaches it, and reroute when needed.
 
-Faizan provides the scan, graph, and front-end rendering. Navigation provides route selection, alignment state, route progress, and maneuvers for those views.
+Faizan owns map creation and the front-end rendering. I provide the route, alignment state, progress, and instructions that his AR view, mini-map, and the team's voice guidance use.
 
 ### What I researched
 
-- A point cloud describes geometry; the saved **`ARWorldMap`** supplies ARKit's mapping state for recognizing that space in a later session. Restore it through `initialWorldMap`, then wait for relocalization. ([Apple: saving and loading world data](https://developer.apple.com/documentation/arkit/saving-and-loading-world-data))
-- A known printed image can provide position **and orientation** through `ARImageAnchor`. Record its pose during scanning and configure its physical dimensions accurately. A decoded QR identifier alone only identifies the checkpoint. ([Apple: image anchors](https://developer.apple.com/documentation/arkit/arimageanchor), [reference image size](https://developer.apple.com/documentation/arkit/arreferenceimage/physicalsize))
-- A building graph can span multiple floors while each surface path retains real **3D coordinates** in its own scanned map. Reviewed corridor paths are enough for the first demo; automatic navmesh generation can follow later.
-- **Step-free** and **wheelchair accessible** describe different properties. Track the user's specific requirements and measured route properties; unknown clearance or slope is not verified suitability.
+**1. Routing through a building**
 
-### What I want to build
+- A **graph** connects meaningful places: corridor turns, doors, destinations, and elevator or stair landings.
+- One graph can span the whole building while each floor's paths keep their own **3D scan coordinates**.
+- Elevator landings connect through the **same elevator and its served floors**. Nearby coordinates do not prove that two places connect.
+- **Dijkstra** is a straightforward first routing algorithm. It can search the complete trip across floors without a special elevator heuristic.
+- **Reviewed paths are enough for the MVP.** Automatic path extraction can later produce the same graph and route format.
 
-**1. A shared graph and route contract**
+**2. Accessibility requirements**
 
-Keep the existing snake_case field style. This expands the earlier `id/x/y/z` and `from/to/length_m` contract:
+- **Step-free is a hard requirement:** remove stairs and escalators before searching, rather than giving them a large cost.
+- Closed elevators and passages that fail selected clearance or slope requirements are also excluded.
+- **Unknown is not verified.** Having no stairs does not by itself establish wheelchair accessibility; widths, slopes, surfaces, and maneuvering space matter too.
+- If nothing eligible connects the start and destination, the correct result is **no verified route**, with the user's requirements preserved.
+
+**3. Aligning AR with the scan**
+
+- The point cloud describes the space; a saved **`ARWorldMap`** helps ARKit recognize it in a later session. Restore it through `initialWorldMap` and wait for relocalization. ([Apple: saving and loading world data](https://developer.apple.com/documentation/arkit/saving-and-loading-world-data))
+- **Camera tracking and map alignment are separate.** The phone can track its movement while still not knowing where it is in our saved building map.
+- A known printed image can provide **position and orientation** through `ARImageAnchor`, with its pose saved during scanning and its physical dimensions configured accurately. A decoded QR identifier alone only identifies the checkpoint. ([Apple: image anchors](https://developer.apple.com/documentation/arkit/arimageanchor), [reference image size](https://developer.apple.com/documentation/arkit/arreferenceimage/physicalsize))
+- **Key insight:** the scan, route, and localization must agree on coordinates. A route that looks right in the model can still be misplaced in the real room if exports change the origin or rotation.
+
+**4. Frameworks and interfaces**
+
+- **Routing:** NetworkX for graph processing and Dijkstra, using Faizan's map output.
+- **iOS localization:** ARKit world maps, camera poses, and image anchors.
+- **Rendering:** RealityKit for Faizan's AR route; the mini-map and voice use the same route and maneuvers.
+- **Planning source:** [InView Navigation Planning](chatgpt-conversation://6ac9d70f-5040-83e9-beb5-8a8e479a1b5d). The build choices below are my proposed hackathon approach to validate with the team and at the venue.
+
+### What I want to build: navigation
+
+**Four pieces:**
+
+| Piece | What it does for the user |
+|-------|--------------------------|
+| **Positioning** | Recognizes the starting area and aligns the live camera with the saved scan |
+| **Route selection** | Finds a suitable route to the destination across every required floor |
+| **Floor transitions** | Identifies the right elevator and destination floor, then restores positioning after exiting |
+| **Guidance** | Keeps AR, the mini-map, text, speech, haptics, and repeat instruction on the same next step |
+
+**Routing rules:**
+
+- Use individual requirements such as `requires_step_free`, optional `minimum_clear_width` and `maximum_slope`, plus presentation preferences such as spoken guidance.
+- Filter incompatible connections first, then run **Dijkstra over the full eligible graph**. Choosing the nearest elevator first can pick one that does not serve the destination floor or leaves the user farther away upstairs.
+- Use one nonnegative cost unit: **estimated seconds**. Surface cost is path length divided by configured movement speed; an elevator ride adds its boarding/wait allowance and ride estimate. Charge the wait allowance once per ride.
+- If no eligible route remains, show **"No verified step-free route is currently available to Room 204."** Keep the same requirements when rerouting after a closure.
+
+### How a map becomes a route
+
+```text
+graph.json + scan bundle ─► locate user in the saved map
+                        ─► filter connections using the user's requirements
+                        ─► search the complete trip across floors
+                        ─► 3D surface paths + floor transitions + maneuvers
+                        ─► AR + mini-map + text + voice + haptics
+```
+
+**`graph.json` is the contract with map creation.** I want to expand the earlier `id/x/y/z` and `from/to/length_m` format while keeping its snake_case field style:
 
 | Record | Proposed fields |
 |--------|-----------------|
@@ -187,27 +231,16 @@ Keep the existing snake_case field style. This expands the earlier `id/x/y/z` an
 | Connector | `id, kind, served_floors`, and the landing node for each served floor |
 | Route response | Ordered node IDs, **surface segments**, **transition segments**, and **maneuvers** |
 
-`step_free` has three states: `true`, `false`, or `unknown`. `availability` is `available`, `closed`, or `unknown`; absent measurements remain unknown. These properties replace the single `accessible` flag as the basis for route eligibility.
+`step_free` is `true`, `false`, or `unknown`. `availability` is `available`, `closed`, or `unknown`; absent measurements stay unknown. These properties replace the single `accessible` flag as the basis for eligibility.
 
-- **Surface segments** carry `map_id`, `floor_id`, and ordered 3D `path_points` in meters, with ARKit's y-up axes. Corridor paths use the scanned floor elevation; ramps preserve changing heights along their length.
-- **Transition segments** carry the connector ID, type, entry/exit nodes, and source/destination floors. An elevator ride has no ground polyline through the shaft.
-- **Maneuvers** carry the action, route location, optional landmark, and readable/spoken instruction. The guidance controller calculates the current distance to that action.
-- Join elevator landings by **connector identity and served floors**. Similar coordinates or nearby points do not prove a traversable connection. Review shortcuts and smoothing so they preserve walls and clearance.
+- **Surface segments:** `map_id`, `floor_id`, and ordered 3D `path_points` in meters, with ARKit's y-up axes. Corridors use their scanned floor elevation; ramps preserve changing heights along their length.
+- **Transition segments:** connector ID, type, entry/exit nodes, and source/destination floors. The ground path ends at the elevator entrance; the ride has no ground line through the shaft.
+- **Maneuvers:** action, route location, optional landmark, and readable/spoken instruction. I calculate the current distance to the action as the user moves.
+- **Path review:** shortcuts and smoothing must preserve walls and clearance. A nearby point on the other side of a wall is not a valid connection.
 
-**2. Route selection that preserves requirements**
+**AR alignment:**
 
-Use individual requirements such as `requires_step_free`, optional `minimum_clear_width` and `maximum_slope`, plus presentation preferences such as spoken guidance.
-
-1. Remove incompatible connections before searching: stairs and escalators for step-free users, closed elevators, and passages or ramps that fail selected requirements. Unknown required properties cannot qualify as verified suitability.
-2. Run **Dijkstra over the eligible graph for the full trip**, including every floor transition. Choosing the nearest elevator first can miss a better route or an elevator that serves the destination floor.
-3. Use one nonnegative cost unit. For the MVP, estimated seconds: surface length divided by configured movement speed; elevator boarding/wait allowance plus ride estimate. Represent a ride between its boarding and destination landings and charge the wait allowance once.
-4. If no eligible route remains, show **"No verified step-free route is currently available to Room 204."** Preserve requirements when rerouting after a closure.
-
-**3. Alignment between the live camera and saved scan**
-
-Start navigation by selecting the building and starting region, showing a recognizable reference view, and attempting saved-map relocalization. Track **camera tracking** and **registration to the saved map** separately: motion tracking alone does not prove that the phone is aligned to the building.
-
-Prepare a distinctive printed image at the demo entrance and each elevator landing as an alignment fallback. Use its saved map pose and current session pose to calculate `sessionFromMap`. With `AFromB` meaning a transform from B coordinates into A:
+I start with building/region selection, a recognizable reference view, and saved-map relocalization. A printed image at the entrance and each demo elevator landing provides another alignment path. Its saved pose and live pose give the map-to-session transform; `AFromB` means a transform from B coordinates into A:
 
 ```text
 sessionFromMap = sessionFromImage × inverse(mapFromImage)
@@ -215,9 +248,9 @@ pointInSession = sessionFromMap × pointInMap
 cameraInMap = inverse(sessionFromMap) × cameraInSession
 ```
 
-Put the scan geometry and route under the **same map root** in RealityKit and apply that alignment to the root. Handle anchor updates and replace the alignment after recovery or a map change. A floor plan can rotate for display as long as its positions can be converted back into the scan's coordinates.
+Faizan's scan geometry and route sit under the **same map root** in RealityKit, with that alignment applied to the root. I handle alignment updates after recovery or a map change. A floor plan can rotate for display if its positions still convert back into the scan's coordinates. During development, we can show the point cloud to check registration against the real space.
 
-**4. Floor transitions and recovery**
+**Floor changes and recovery:**
 
 | State | What the user sees and what advances the trip |
 |-------|---------------------------------------------|
@@ -228,50 +261,52 @@ Put the scan geometry and route under the **same map root** in RealityKit and ap
 | Continuing | Resume ground guidance only after both floor identity and map alignment are established |
 | Positioning lost | Preserve the route, pause precise AR cues and position-dependent advancement, and show **"Look toward the elevator sign to restore positioning."** |
 
-A button saying **"I'm on Floor 2"** confirms the stated floor but does not align the phone to its scan. If a checkpoint identifies Floor 3 instead, update the actual location and reroute from there. Ramps can remain continuous surface paths; stairs and other connectors need explicit transition handling appropriate to their geometry.
+A button saying **"I'm on Floor 2"** confirms the stated floor but does not align the phone to its scan. If a checkpoint identifies Floor 3 instead, I update the actual location and reroute from there. Ramps can remain continuous surface paths; stairs and other connectors need transition handling appropriate to their geometry.
 
-**5. One route for every guidance mode**
+**Directions and progress:**
 
-Convert the phone pose into map coordinates, associate it with the current route segment on the correct floor and connected passage, and estimate progress and distance to the next maneuver. Advance at the maneuver; reroute after sustained deviation or an explicit change such as a closed elevator, rather than every small tracking fluctuation.
+I convert the phone pose into map coordinates, match it to the current route segment on the correct floor and connected passage, and track progress toward the next maneuver. Instructions advance when the user reaches the maneuver. Sustained deviation or a closure triggers rerouting; small tracking fluctuations do not.
 
-Use the same maneuver for AR, the mini-map, large text, spoken directions, haptics, and **repeat instruction**. Give one action at a time and use recognizable landmarks, for example **"At reception, turn right toward Elevator A."** Show only the upcoming corridor or turn to limit visual clutter and cues appearing through walls, with a stronger cue at the next turn and a label on the relevant doorway or elevator. The point cloud can be shown during development to check that the scan and route align with the real space.
+The same maneuver drives AR, the mini-map, large text, speech, haptics, and **repeat instruction**. Give one action at a time with recognizable landmarks: **"At reception, turn right toward Elevator A."** Show the upcoming corridor or turn, a stronger turn cue, and the relevant doorway/elevator label to limit clutter and cues appearing through walls.
 
 ### What I need from the team
 
 | From | What | Why |
 |------|------|-----|
-| Faizan / scanning | Scan bundle, labeled floor plans, reviewed 3D paths, coordinate transforms, and known-image poses | Route geometry and camera alignment must match the captured space |
-| Venue / map review | Confirm elevator identities, served floors, ramp and doorway properties, and checkpoint locations | Verify the demo's routes and floor transitions |
-| Front end | Shared alignment/progress states, floor transition UI, readable instructions, and repeat action | Keep positional cues paused until they are valid |
-| AI + voice | Landmark labels and audio for the route's maneuvers | Speak the same directions shown on screen |
-| Data | Store map/floor IDs, graph properties, connectors, and availability | Save and reload the complete building route model |
+| **Faizan: map creation** | Scan bundle, labeled floor plans, reviewed 3D paths, coordinate transforms, and known-image poses | My routes and localization must match his scan |
+| **Faizan: front end** | Shared alignment/progress states, floor transition UI, readable instructions, and repeat action | His views need to follow the route and pause positional cues during recovery |
+| Venue / map review | Elevator identities, served floors, ramp/doorway properties, and checkpoint locations | Verify the demo route and floor transitions |
+| AI + voice | Landmark labels and audio for each maneuver | Speak the same directions shown on screen |
+| Data | Map/floor IDs, graph properties, connectors, and availability | Save and reload the complete building route |
 
 ### My build order
 
-**First complete deliverable:** open a fresh AR session, align to a saved corridor scan, follow a path around a corner, take the correct elevator, and resume correctly aligned guidance upstairs. Complete this physical journey before polishing the presentation.
+1. Save a corridor scan + world map, end the session, reopen from a different position, and prove alignment against real locations. Test the known-image fallback. *(The riskiest step, so it goes first.)*
+2. Follow one reviewed AR path around a corner to a doorway; check floor height, wall clearance, turn placement, and progress.
+3. Connect route selection and accessibility filtering. Compare stairs with a verified step-free alternative, then close the only eligible connector and confirm no route is returned.
+4. Complete a two-floor trip: approach the correct elevator, show the destination floor, recover positioning after exiting, and continue. Test exiting on the wrong floor.
+5. Connect and polish the ribbon, doorway labels, mini-map, text, speech, haptics, repeat instruction, and recovery messages. Check that recovery pauses instruction advancement.
+6. Stretch: improve automatic path extraction and map coverage after the short physical journey works end to end.
 
-1. **Prove alignment in a fresh session:** scan a corridor with a corner, save geometry and world map, end the session, reopen from a different position, and check several overlays against real locations. Also test the known-image fallback.
-2. **Draw one reviewed AR path:** follow the floor around that corner to a doorway, verify wall clearance and turn placement, and advance progress while moving.
-3. **Add route selection and filtering:** compare stairs and a verified step-free alternative; confirm stairs are excluded and that closing the only eligible connector returns no route.
-4. **Complete a two-floor trip:** route to the correct elevator, show its destination floor, reacquire positioning at the exit, and continue to the destination. Test exiting on the wrong floor.
-5. **Connect and polish every guidance mode:** after the complete journey works, add the ground ribbon, doorway labels, speech, haptics, and recovery messages. Keep AR, mini-map, text, speech, haptics, and repeat instruction on the same route; verify recovery pauses instruction advancement.
-6. **Expand and polish:** improve automatic path extraction and map coverage after the short physical journey works end to end.
+**Demo target:** open a fresh AR session, align to the saved corridor, follow a path around a corner, take the correct elevator, and resume aligned guidance upstairs. Complete that journey before polishing the presentation.
+
+**Fallback:** use the known printed image if saved-map relocalization fails. While alignment is unresolved, preserve the route and pause precise AR cues and position-dependent progress. Manual map/text guidance can remain available; tapping a location alone does not establish AR orientation.
 
 ### Risks I see
 
-- **Saved-map relocalization may fail at the venue:** prove it early on a real device and keep known-image alignment available.
-- **Coordinates change during export:** preserve original coordinates or record every transform; separate floors must retain their map IDs.
-- **Elevator travel breaks location assumptions:** reacquire floor identity and alignment after exiting before resuming AR.
-- **Accessibility data is incomplete:** manually verify the demo route's relevant properties and keep unknown values explicit.
-- **Automatic mapping takes too long:** reviewed paths support the same routing and AR interface for the MVP.
+- **The phone can't recognize the venue:** test saved-map relocalization early on a real device and keep the known-image fallback.
+- **Coordinates change during export:** preserve the originals or record every transform, including map IDs for separate floors.
+- **Elevator travel breaks positioning:** recover floor identity and alignment after exiting before resuming AR.
+- **Accessibility data is incomplete:** verify the demo route's relevant properties and keep unknown values explicit.
+- **Automatic mapping takes too long:** use reviewed paths with the same graph/route contract.
 
 ### Open questions
 
 1. Which building, two floors, destination, and elevator can we scan and physically test for the demo? Can we place known images at the entrance and landings?
 2. Which route properties can we verify, and what clearance/slope requirements will the initial profile support?
-3. Which teammate owns localization and route progress alongside route selection, and where does the routing engine run?
-4. Confirm the graph/route field types, shared state interface, and who updates connector availability before implementation.
-5. Is there a strong Photon / iMessage integration that improves navigation or accessibility enough to justify targeting its prize category?
+3. Where does the routing engine run, and how do Faizan and I split the iOS work for alignment and route progress?
+4. Can we agree on the graph/route field types, shared state interface, and who updates connector availability before implementation?
+5. If we build the access agent in [photon.md](photon.md), who owns connecting its acceptance/readiness states to the active journey?
 
 ---
 
