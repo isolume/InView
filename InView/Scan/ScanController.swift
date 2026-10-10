@@ -37,6 +37,7 @@ final class ScanController: ObservableObject {
     let session = ARSession()
     let detector = AccessibilityDetector()
     private let rawCapture = RawScanCapture()
+    private let contextTracker = CaptureContextTracker()
     private let scanID = UUID()
     private var captureBundle: CaptureBundle?
     private var localScene: ProcessedScene?
@@ -67,12 +68,14 @@ final class ScanController: ObservableObject {
 
     init() {
         phase = RoomCaptureSession.isSupported ? .scanning : .unsupported
+        rawCapture.environmentSampleProvider = { [weak contextTracker] in contextTracker?.sample() }
     }
 
     func start() {
         guard phase == .scanning, !hasStarted else { return }
         hasStarted = true
         captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
+        contextTracker.start()
         rawCapture.start(session: session)
         detector.start(session: session)
         startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -113,6 +116,7 @@ final class ScanController: ObservableObject {
         startViewTimer = nil
         detector.pause()
         rawCapture.stop()
+        contextTracker.stop()
         sceneTask?.cancel()
         reportTask?.cancel()
         if phase == .scanning { captureView.captureSession.stop() }
@@ -255,6 +259,7 @@ final class ScanController: ObservableObject {
             let raw = await rawCapture.finalizedSnapshot()
             guard phase == .savingWorldMap else { return }
             rawSnapshot = raw
+            applyGeographicContext(from: raw)
             prepareScene(raw: raw)
         }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -266,6 +271,38 @@ final class ScanController: ObservableObject {
         let raw: RawScanSnapshot
         let scanID: UUID
         let worldMap: ARWorldMap
+    }
+
+    /// GPS/heading place the *building* only when the fix is genuinely good. ARWorldMap
+    /// relocalization remains mandatory for the current room and navigation start point.
+    private func applyGeographicContext(from raw: RawScanSnapshot) {
+        guard draft?.geographicReference == nil else { return }
+        let frameByID = Dictionary(uniqueKeysWithValues: raw.frames.map { ($0.id, $0) })
+        let candidates = raw.depthBuffers.compactMap { buffer -> (CaptureDepthFrame, CaptureEnvironmentSample)? in
+            guard let frame = frameByID[buffer.id], let environment = buffer.environment,
+                  let latitude = environment.latitude, let longitude = environment.longitude,
+                  let accuracy = environment.horizontalAccuracyM, accuracy <= 20,
+                  let heading = environment.headingDegrees,
+                  (environment.headingAccuracyDegrees ?? .infinity) <= 20,
+                  latitude.isFinite, longitude.isFinite, heading.isFinite else { return nil }
+            return (frame, environment)
+        }
+        guard let (frame, context) = candidates.min(by: {
+            ($0.1.horizontalAccuracyM ?? .infinity) < ($1.1.horizontalAccuracyM ?? .infinity)
+        }), let latitude = context.latitude, let longitude = context.longitude,
+           let heading = context.headingDegrees else { return }
+        do {
+            // The recorded GPS position belongs to the camera pose, not necessarily ARKit's origin.
+            let atCamera = BuildingMapReference(latitude: latitude, longitude: longitude,
+                                                headingDegrees: heading, horizontalAccuracyM: context.horizontalAccuracyM)
+            let origin = try atCamera.coordinate(for: SIMD2(-frame.mapFromCamera[12], -frame.mapFromCamera[14]))
+            draft?.geographicReference = BuildingMapReference(
+                latitude: origin.latitude, longitude: origin.longitude,
+                headingDegrees: heading, horizontalAccuracyM: context.horizontalAccuracyM
+            )
+        } catch {
+            Log.scan.notice("ignored unsuitable geographic context: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func prepareScene(raw: RawScanSnapshot) {

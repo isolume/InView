@@ -153,6 +153,7 @@ enum CaptureStore {
                 rawDepth: native.map { .init(asset: "raw-snapshot.json", width: $0.width, height: $0.height,
                                                bytesPerRow: $0.bytesPerRow, pixelFormat: $0.pixelFormat,
                                                confidenceBytesPerRow: $0.confidenceBytesPerRow,
+                                               environment: $0.environment,
                                                smoothedWidth: $0.smoothedWidth, smoothedHeight: $0.smoothedHeight,
                                                smoothedBytesPerRow: $0.smoothedBytesPerRow,
                                                smoothedPixelFormat: $0.smoothedPixelFormat) }
@@ -259,13 +260,14 @@ private struct PackageManifest: Codable {
             var bytesPerRow: Int
             var pixelFormat: UInt32
             var confidenceBytesPerRow: Int?
+            var environment: CaptureEnvironmentSample?
             var smoothedWidth: Int?
             var smoothedHeight: Int?
             var smoothedBytesPerRow: Int?
             var smoothedPixelFormat: UInt32?
             enum CodingKeys: String, CodingKey {
                 case asset, width, height, bytesPerRow = "bytes_per_row", pixelFormat = "pixel_format"
-                case confidenceBytesPerRow = "confidence_bytes_per_row", smoothedWidth = "smoothed_width"
+                case confidenceBytesPerRow = "confidence_bytes_per_row", environment, smoothedWidth = "smoothed_width"
                 case smoothedHeight = "smoothed_height", smoothedBytesPerRow = "smoothed_bytes_per_row"
                 case smoothedPixelFormat = "smoothed_pixel_format"
             }

@@ -66,29 +66,41 @@ struct RawDepthBuffers: Codable, Sendable {
     var smoothedBytesPerRow: Int?
     var smoothedPixelFormat: UInt32?
     var smoothedDepth: Data?
+    /// Coarse location/pressure/heading evidence sampled with this ARKit pose.
+    var environment: CaptureEnvironmentSample?
 }
 
 /// Polls the shared RoomPlan session; it never replaces its ARSessionDelegate.
 @MainActor
 final class RawScanCapture {
     private weak var session: ARSession?
+    var environmentSampleProvider: (() -> CaptureEnvironmentSample?)?
     private var timer: Timer?
     private var meshes: [CaptureMesh] = []
     private var meshBuffers: [RawMeshBuffers] = []
+    /// ARKit updates only the anchors it is actively refining. Keep their latest value by ID so
+    /// earlier rooms and dead ends remain represented when the scan continues elsewhere.
+    private var meshesByID: [String: CaptureMesh] = [:]
+    private var meshBuffersByID: [String: RawMeshBuffers] = [:]
     private var frames: [CaptureDepthFrame] = []
     private var depthBuffers: [RawDepthBuffers] = []
     private var colorKeyframes: [RawColorKeyframe] = []
     private var colorTask: Task<Void, Never>?
     private var lastDepthPose: simd_float4x4?
     private var lastDepthTimestamp: TimeInterval?
+    private var lastMeshTimestamp: TimeInterval?
     private var meshReadFailures = 0
     private var depthReadFailures = 0
     private var evictedDepthFrames = 0
     private var meshEnabled = false
     private var depthEnabled = false
-    private let maximumDepthFrames = 6
-    private let pollingInterval: TimeInterval = 0.75
-    private let depthInterval: TimeInterval = 2
+    /// Keep spatially distributed evidence for the full RoomPlan walk, not only its final room.
+    /// Native depth stays in the archive; the portable JSON exporter can omit it if necessary.
+    private let maximumDepthFrames = 32
+    private let pollingInterval: TimeInterval = 0.5
+    private let depthInterval: TimeInterval = 1.25
+    /// Full mesh-buffer copies are expensive and visibly contend with RoomPlan rendering.
+    private let meshInterval: TimeInterval = 3
 
     /// Call before constructing RoomCaptureView with the custom session. RoomPlan preserves
     /// the supplied world-tracking settings. No reset/remove-anchor options are used.
@@ -127,7 +139,7 @@ final class RawScanCapture {
     }
 
     func pause() {
-        sample()
+        sample(forceMesh: true)
         timer?.invalidate()
         timer = nil
     }
@@ -147,14 +159,14 @@ final class RawScanCapture {
             meshes: meshes, frames: frames, meshBuffers: meshBuffers, depthBuffers: depthBuffers,
             colorKeyframes: colorKeyframes,
             metadata: .object([
-                "status": .string("bounded_keyframes_and_latest_mesh_snapshot"),
+                "status": .string("spatially_distributed_keyframes_and_throttled_mesh_snapshot"),
                 "mesh_requested": .bool(meshEnabled),
                 "scene_depth_requested": .bool(depthEnabled),
                 "mesh_anchor_count": .number(Double(meshes.count)),
                 "depth_keyframe_count": .number(Double(frames.count)),
                 "maximum_depth_keyframes": .number(Double(maximumDepthFrames)),
                 "depth_keyframe_minimum_interval_seconds": .number(depthInterval),
-                "depth_selection": .string("tracking_normal; at_least_2_seconds; translation_0.2m_or_rotation_15deg_or_10_seconds; latest_6"),
+                "depth_selection": .string("tracking_normal; at_least_1.25_seconds; translation_0.45m_or_rotation_25deg_or_12_seconds; bounded_32_full_walk_coverage"),
                 "evicted_depth_keyframes": .number(Double(evictedDepthFrames)),
                 "mesh_read_failures": .number(Double(meshReadFailures)),
                 "depth_read_failures": .number(Double(depthReadFailures)),
@@ -163,30 +175,35 @@ final class RawScanCapture {
                 "color_keyframe_count": .number(Double(colorKeyframes.count)),
                 "color_keyframe_encoding": .string("adaptive_jpeg_max_720px"),
                 "smoothed_depth_collected": .bool(depthBuffers.contains { $0.smoothedDepth != nil }),
+                "environment_sample_count": .number(Double(depthBuffers.filter { $0.environment != nil }.count)),
+                "environment_precision": .string("coarse_building_and_floor_context; arkit_pose_is_room_precision"),
                 "native_buffer_archive": .string("local_only_includes_raw_and_smoothed_depth_row_strides_original_float_bits_and_confidence"),
             ])
         )
     }
 
-    private func sample() {
+    private func sample(forceMesh: Bool = false) {
         guard let frame = session?.currentFrame, case .normal = frame.camera.trackingState else { return }
-        let anchors = frame.anchors.compactMap { $0 as? ARMeshAnchor }
-            .sorted { $0.identifier.uuidString < $1.identifier.uuidString }
-        var currentMeshes: [CaptureMesh] = []
-        var currentBuffers: [RawMeshBuffers] = []
-        for anchor in anchors {
-            do {
-                let copied = try copyMesh(anchor)
-                currentMeshes.append(copied.0)
-                currentBuffers.append(copied.1)
-            } catch { meshReadFailures += 1 }
+        if forceMesh || lastMeshTimestamp.map({ frame.timestamp - $0 >= meshInterval }) ?? true {
+            let anchors = frame.anchors.compactMap { $0 as? ARMeshAnchor }
+                .sorted { $0.identifier.uuidString < $1.identifier.uuidString }
+            for anchor in anchors {
+                do {
+                    let copied = try copyMesh(anchor)
+                    meshesByID[copied.0.id] = copied.0
+                    meshBuffersByID[copied.1.id] = copied.1
+                } catch { meshReadFailures += 1 }
+            }
+            meshes = meshesByID.values.sorted { $0.id < $1.id }
+            meshBuffers = meshBuffersByID.values.sorted { $0.id < $1.id }
+            lastMeshTimestamp = frame.timestamp
         }
-        // ARFrame.anchors describes the current reconstructed snapshot, including removals.
-        meshes = currentMeshes
-        meshBuffers = currentBuffers
         guard shouldKeepDepth(frame), let depth = frame.sceneDepth else { return }
         do {
-            let copied = try copyDepth(depth, smoothedDepth: frame.smoothedSceneDepth, frame: frame)
+            let copied = try copyDepth(
+                depth, smoothedDepth: frame.smoothedSceneDepth, frame: frame,
+                environment: environmentSampleProvider?()
+            )
             frames.append(copied.0)
             depthBuffers.append(copied.1)
             captureColorKeyframe(frame.capturedImage, frameID: copied.0.id)
@@ -227,7 +244,7 @@ final class RawScanCapture {
                                      SIMD3(pose.columns.3.x, pose.columns.3.y, pose.columns.3.z))
         let directionDot = simd_dot(SIMD3(camera.columns.2.x, camera.columns.2.y, camera.columns.2.z),
                                     SIMD3(pose.columns.2.x, pose.columns.2.y, pose.columns.2.z))
-        return distance >= 0.2 || directionDot < cos(Float.pi / 12) || elapsed >= 10
+        return distance >= 0.45 || directionDot < cos(Float.pi / 7.2) || elapsed >= 12
     }
 
     private func copyMesh(_ anchor: ARMeshAnchor) throws -> (CaptureMesh, RawMeshBuffers) {
@@ -295,7 +312,10 @@ final class RawScanCapture {
         )
     }
 
-    private func copyDepth(_ depth: ARDepthData, smoothedDepth: ARDepthData?, frame: ARFrame) throws -> (CaptureDepthFrame, RawDepthBuffers) {
+    private func copyDepth(
+        _ depth: ARDepthData, smoothedDepth: ARDepthData?, frame: ARFrame,
+        environment: CaptureEnvironmentSample?
+    ) throws -> (CaptureDepthFrame, RawDepthBuffers) {
         let buffer = depth.depthMap
         let width = CVPixelBufferGetWidth(buffer)
         let height = CVPixelBufferGetHeight(buffer)
@@ -354,7 +374,7 @@ final class RawScanCapture {
                 confidenceBytesPerRow: confidenceStride, confidence: confidenceBytes,
                 smoothedWidth: smoothed?.width, smoothedHeight: smoothed?.height,
                 smoothedBytesPerRow: smoothed?.bytesPerRow, smoothedPixelFormat: smoothed?.pixelFormat,
-                smoothedDepth: smoothed?.data
+                smoothedDepth: smoothed?.data, environment: environment
             )
         )
     }
