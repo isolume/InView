@@ -452,8 +452,10 @@ private func expectUnitedRegions(
 }
 
 @Test func cutawayFloorUnionCombinesManyOverlappingSectionsWithinTheWorkBudget() throws {
-    let floors = (0..<8).flatMap { x in
-        (0..<8).map { y in cutawayRectangle(Float(x), Float(y), Float(x) + 1.5, Float(y) + 1.5) }
+    let floors: [[CutawayPoint]] = (0..<8).flatMap { (x: Int) -> [[CutawayPoint]] in
+        (0..<8).map { (y: Int) -> [CutawayPoint] in
+            cutawayRectangle(Float(x), Float(y), Float(x) + 1.5, Float(y) + 1.5)
+        }
     }
     let regions = try BuildingFootprintCutaway.unionRegions(floors)
     #expect(regions == [.init(exterior: cutawayRectangle(0, 0, 8.5, 8.5))])
