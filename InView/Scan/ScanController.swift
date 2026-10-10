@@ -12,6 +12,9 @@ final class ScanController: ObservableObject {
         case unsupported
         case scanning
         case processing
+        /// RoomPlan ended the section on its own, usually after tracking failed. The room is kept, and the
+        /// volunteer chooses whether to scan more or finish.
+        case interrupted
         case savingWorldMap
         case review
     }
@@ -65,7 +68,21 @@ final class ScanController: ObservableObject {
     /// Ends the current section and starts another in the same coordinate space, for floors too big for one scan.
     func addSection() { endSection(thenFinish: false) }
 
-    func finish() { endSection(thenFinish: true) }
+    func finish() {
+        // After an interruption there's no section to stop; RoomPlan already processed it.
+        if phase == .interrupted {
+            saveWorldMap()
+        } else {
+            endSection(thenFinish: true)
+        }
+    }
+
+    /// Starts another section after RoomPlan ended one by itself.
+    func continueScanning() {
+        guard phase == .interrupted else { return }
+        errorMessage = nil
+        startSection()
+    }
 
     /// Captures the session's map of visual features. Also the retry when a capture fails.
     func saveWorldMap() {
@@ -141,16 +158,38 @@ final class ScanController: ObservableObject {
     }
 
     private func sectionProcessed(_ room: CapturedRoom) {
-        guard phase == .processing else { return }
-        rooms.append(room)
-        sectionCount = rooms.count
-        if finishAfterProcessing {
-            saveWorldMap()
-        } else {
-            phase = .scanning
-            captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
-            detector.resume()
+        switch phase {
+        case .processing:
+            rooms.append(room)
+            sectionCount = rooms.count
+            Log.scan.notice("section \(self.rooms.count) processed: \(room.walls.count) walls, \(room.doors.count) doors, \(room.objects.count) objects")
+            if finishAfterProcessing {
+                saveWorldMap()
+            } else {
+                startSection()
+            }
+        case .scanning:
+            // RoomPlan stopped the section itself (for example "too many bad tracking reports"). Keep what it
+            // scanned rather than losing the room and leaving the volunteer looking at a frozen session.
+            rooms.append(room)
+            sectionCount = rooms.count
+            detector.pause()
+            Log.scan.error("RoomPlan ended section \(self.rooms.count) on its own: \(self.errorMessage ?? "no error reported", privacy: .public)")
+            // RoomPlan may have paused the shared AR session; keep tracking alive so the world map can still
+            // be captured and the next section starts in the same coordinates.
+            if let configuration = session.configuration {
+                session.run(configuration)
+            }
+            phase = .interrupted
+        default:
+            Log.scan.notice("ignored a processed room while \(String(describing: self.phase), privacy: .public)")
         }
+    }
+
+    private func startSection() {
+        phase = .scanning
+        captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
+        detector.resume()
     }
 
     private func worldMapCaptured(_ worldMap: ARWorldMap?, error: Error?) {

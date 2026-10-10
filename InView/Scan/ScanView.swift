@@ -11,7 +11,7 @@ struct ScanView: View {
             switch controller.phase {
             case .unsupported:
                 UnsupportedDeviceView(onClose: close)
-            case .scanning, .processing, .savingWorldMap:
+            case .scanning, .processing, .interrupted, .savingWorldMap:
                 captureScreen
             case .review:
                 MapReviewView(controller: controller, onClose: close)
@@ -52,6 +52,8 @@ struct ScanView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 14)
                     .background(.regularMaterial, in: Capsule())
+                case .interrupted:
+                    interruptedPanel
                 case .savingWorldMap:
                     worldMapPanel
                 default:
@@ -60,6 +62,36 @@ struct ScanView: View {
             }
             .padding()
         }
+    }
+
+    /// RoomPlan ended the section by itself; what it scanned is kept, and the volunteer decides what's next.
+    private var interruptedPanel: some View {
+        VStack(spacing: 12) {
+            Label("Scanning stopped", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            Text(controller.errorMessage ?? "The scanner ended this section, usually because it lost track of where it was.")
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+            Text("Section \(controller.sectionCount) is kept. Move somewhere with more detail in view, then continue, or finish with what you have.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 10) {
+                Button(action: controller.continueScanning) {
+                    Label("Continue scanning", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                Button(action: controller.finish) {
+                    Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .controlSize(.large)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
     private var worldMapPanel: some View {
