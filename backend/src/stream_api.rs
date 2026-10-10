@@ -128,7 +128,69 @@ pub async fn result(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<(HeaderMap, Vec<u8>), ApiError> {
-    reconstruct(state, id, false, accepts_gzip(&headers)).await
+    let response = reconstruct(state.clone(), id.clone(), false, accepts_gzip(&headers)).await?;
+    package_in_background(state, id);
+    Ok(response)
+}
+
+/// Stores a whole-capture attachment (RoomPlan export, semantics, OCR text, movement track).
+pub async fn asset(
+    State(state): State<AppState>,
+    Path((id, name)): Path<(String, String)>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<StatusCode, ApiError> {
+    let body = body.map_err(|error| ApiError::invalid(error.body_text()))?;
+    blocking(move || state.streams.put_asset(&id, &name, &body)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Once a stream has a reconstruction, package it as an ordinary immutable scan so the scan
+/// store, Studio, building maps and the analysis worker can use it. Runs once per stream; a
+/// failure is logged and retried on the next result request.
+fn package_in_background(state: AppState, id: String) {
+    tokio::spawn(async move {
+        if state.scans.get(&id).await.is_some() {
+            return;
+        }
+        let streams = state.streams.clone();
+        let stream_id = id.clone();
+        let built = tokio::task::spawn_blocking(move || {
+            let result = streams.reconstruct_encoded(&stream_id, false)?;
+            crate::stream_scan::build_package(&streams, &stream_id, &result)
+        })
+        .await;
+        let archive = match built {
+            Ok(Ok(archive)) => archive,
+            Ok(Err(error)) => {
+                tracing::warn!(stream = %id, ?error, "Could not package stream as a scan");
+                return;
+            }
+            Err(error) => {
+                tracing::error!(stream = %id, %error, "Stream packaging task failed");
+                return;
+            }
+        };
+        let package = match crate::scan_package::decode(&archive) {
+            Ok(package) => package,
+            Err(error) => {
+                tracing::error!(stream = %id, %error, "Packaged stream failed scan validation");
+                return;
+            }
+        };
+        let scan = crate::store::StoredScan {
+            original: package.original,
+            bundle: package.bundle,
+            package_assets: Some(package.assets),
+            package_manifest: package.manifest,
+        };
+        match state.scans.insert(scan, Some(archive)).await {
+            Ok(()) => {
+                tracing::info!(stream = %id, "Packaged stream as a scan for the analysis pipeline")
+            }
+            Err(crate::store::ScanInsertError::Exists) => {}
+            Err(error) => tracing::error!(stream = %id, ?error, "Could not store packaged stream"),
+        }
+    });
 }
 
 pub async fn scene(

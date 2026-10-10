@@ -60,6 +60,18 @@ def _objects(ctx) -> list[dict]:
     return out
 
 
+def _phone_access_points(ctx) -> list[dict]:
+    """Confirmed points from the phone's `semantics.json` package attachment, when present."""
+    raw = ctx.asset("semantics.json")
+    if not raw:
+        return []
+    try:
+        semantics = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return []
+    return _dicts(semantics.get("access_points")) if isinstance(semantics, dict) else []
+
+
 def _dicts(items) -> list[dict]:
     """Only well-formed entries of an upstream list product (anything else is skipped)."""
     return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
@@ -84,7 +96,8 @@ def scene(ctx) -> places.Scene:
         outlines=[o["polygon_xz_m"] for o in floor_map.get("outlines") or []
                   if isinstance(o, dict) and places._contour(o.get("polygon_xz_m")) is not None],
         signs=_dicts(ctx.json(ProductName.SIGNS)), texts=_dicts(ctx.json(ProductName.TEXT)),
-        hazards=_dicts(ctx.json(ProductName.HAZARDS)))
+        hazards=_dicts(ctx.json(ProductName.HAZARDS)),
+        access_points=_phone_access_points(ctx))
 
 
 @register

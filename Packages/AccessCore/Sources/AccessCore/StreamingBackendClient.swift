@@ -44,6 +44,15 @@ public struct StreamingBackendClient: Sendable {
         return try await uploadEncodedChunk(chunk.encoded(), sequence: chunk.sequence, manifest: manifest)
     }
 
+    /// Uploads a whole-capture attachment (`StreamAttachment.allowedNames`) for this stream.
+    public func putAttachment(_ data: Data, named name: String, manifest: StreamManifest) async throws {
+        try manifest.validate()
+        guard StreamAttachment.allowedNames.contains(name), data.count <= StreamAttachment.maximumBytes else {
+            throw StreamingCaptureError.invalidChunk
+        }
+        _ = try await request(path: ["streams", manifest.id, "assets", name], method: "PUT", stage: .upload, body: data)
+    }
+
     @discardableResult
     public func finish(_ manifest: StreamManifest, chunkCount: Int) async throws -> StreamSummary {
         try manifest.validate()

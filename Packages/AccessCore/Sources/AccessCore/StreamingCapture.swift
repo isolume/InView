@@ -46,14 +46,36 @@ public struct StreamChunk: Codable, Equatable, Sendable {
     public var colorJPEG: Data
     public var surfaces: [CaptureSurface]
     public var objects: [CaptureObject]
+    /// Geographic/building context at this frame (GPS, heading, barometer). Optional evidence.
+    public var environment: CaptureEnvironmentSample?
+    /// Dense camera poses recorded since the previous chunk: the walk between keyframes.
+    public var poses: [StreamPose]
+
+    public static let maximumPoses = 600
 
     public init(sequence: Int, frame: CaptureDepthFrame, colorJPEG: Data,
-                surfaces: [CaptureSurface] = [], objects: [CaptureObject] = []) {
+                surfaces: [CaptureSurface] = [], objects: [CaptureObject] = [],
+                environment: CaptureEnvironmentSample? = nil, poses: [StreamPose] = []) {
         self.sequence = sequence; self.frame = frame; self.colorJPEG = colorJPEG
         self.surfaces = surfaces; self.objects = objects
+        self.environment = environment; self.poses = poses
     }
 
-    enum CodingKeys: String, CodingKey { case sequence, frame, colorJPEG = "color_jpeg", surfaces, objects }
+    enum CodingKeys: String, CodingKey {
+        case sequence, frame, colorJPEG = "color_jpeg", surfaces, objects, environment, poses
+    }
+
+    /// Older servers reject unknown keys, so empty context is omitted rather than sent as `[]`/`null`.
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(sequence, forKey: .sequence)
+        try values.encode(frame, forKey: .frame)
+        try values.encode(colorJPEG, forKey: .colorJPEG)
+        try values.encode(surfaces, forKey: .surfaces)
+        try values.encode(objects, forKey: .objects)
+        try values.encodeIfPresent(environment, forKey: .environment)
+        if !poses.isEmpty { try values.encode(poses, forKey: .poses) }
+    }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -62,6 +84,8 @@ public struct StreamChunk: Codable, Equatable, Sendable {
         colorJPEG = try values.decode(Data.self, forKey: .colorJPEG)
         surfaces = try values.decodeIfPresent([CaptureSurface].self, forKey: .surfaces) ?? []
         objects = try values.decodeIfPresent([CaptureObject].self, forKey: .objects) ?? []
+        environment = try values.decodeIfPresent(CaptureEnvironmentSample.self, forKey: .environment)
+        poses = try values.decodeIfPresent([StreamPose].self, forKey: .poses) ?? []
     }
 
     public func validate() throws {
@@ -72,7 +96,9 @@ public struct StreamChunk: Codable, Equatable, Sendable {
               !pixels.overflow, pixels.partialValue <= Self.maximumColorPixels,
               frame.depth.valuesM.count <= Self.maximumDepthSamples,
               frame.depth.confidence != nil,
-              surfaces.count <= 1024, objects.count <= 1024 else {
+              surfaces.count <= 1024, objects.count <= 1024,
+              poses.count <= Self.maximumPoses, poses.allSatisfy(\.isValid),
+              environment?.isFinite ?? true else {
             throw StreamingCaptureError.invalidChunk
         }
         let observation = CaptureBundle(id: "stream", mapID: "stream", frames: [frame],

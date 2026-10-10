@@ -18,6 +18,7 @@ pub mod scan_package;
 pub mod scene;
 pub mod store;
 pub mod stream_api;
+pub mod stream_scan;
 pub mod streaming;
 pub mod studio;
 
@@ -65,6 +66,11 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/streams/{id}/scene", get(stream_api::scene))
         .route("/streams/{id}/result", get(stream_api::result))
+        .route(
+            "/streams/{id}/assets/{name}",
+            axum::routing::put(stream_api::asset)
+                .layer(DefaultBodyLimit::max(streaming::MAX_ASSET_BYTES)),
+        )
         .route(
             "/api/buildings",
             get(buildings::list).post(buildings::create),

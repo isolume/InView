@@ -194,6 +194,17 @@ final class CameraTrackRecorder {
         timer = nil
     }
 
+    /// Poses recorded strictly after `time` (all poses when nil), as stream movement samples.
+    func poses(after time: TimeInterval?) -> [StreamPose] {
+        let start = time.map { t in samples.firstIndex { $0.timestamp > t } ?? samples.count } ?? 0
+        return samples[start...].map { sample in
+            let m = sample.mapFromCamera
+            return StreamPose(t: sample.timestamp,
+                              m: (0..<4).flatMap { column in (0..<4).map { row in m[column][row] } },
+                              tracking: sample.tracking.label, mapping: sample.mapping.label)
+        }
+    }
+
     var track: CameraTrack? {
         guard let unixOffset, !samples.isEmpty else { return nil }
         return CameraTrack(unixOffsetSeconds: unixOffset, samples: samples, sampleIntervalSeconds: interval)

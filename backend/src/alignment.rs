@@ -6,7 +6,7 @@
 
 use crate::geometry::{Transform, Vec3};
 use nalgebra::{DMatrix, DVector, Matrix3, Rotation3, UnitQuaternion, Vector3};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const MAX_FRAMES: usize = 64;
 const MAX_POINTS: usize = 512;
@@ -28,7 +28,7 @@ pub struct AlignmentFrame {
     pub visual_signature: Vec<f64>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlignedFrame {
     pub frame_id: String,
     pub timestamp_seconds: f64,
@@ -36,7 +36,7 @@ pub struct AlignedFrame {
     pub optimized_map_from_camera: Transform,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConstraintDiagnostic {
     pub source_frame_id: String,
     pub target_frame_id: String,
@@ -48,7 +48,7 @@ pub struct ConstraintDiagnostic {
     pub measured_target_from_source: Option<Transform>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlignmentResult {
     pub reference_frame: String,
     pub optimized: bool,

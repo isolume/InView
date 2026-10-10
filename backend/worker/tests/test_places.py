@@ -452,3 +452,22 @@ def test_stage_survives_malformed_products(synthetic_ctx):
                                                           "score": "n/a"}])
     result = PlacesStage().run(synthetic_ctx)
     assert any(p["category"] in ("exit", "emergency_exit") for p in result.products[ProductName.PLACES].json)
+
+
+def test_phone_confirmed_access_points_become_places(synthetic_ctx):
+    from inview_worker.core import MemorySource, ScanContext
+    semantics = {"schema_version": 1, "access_points": [
+        {"id": "p1", "kind": "destination", "name": "Main Reception", "position": [1.5, 0.0, 1.0], "source": "manual"},
+        {"id": "p2", "kind": "elevator", "name": "Lift A", "position": [-1.5, 0.0, -1.5], "source": "detected",
+         "confidence": 0.8},
+        {"id": "bad", "kind": "ramp", "position": [None, 0, 0]},
+    ]}
+    files = dict(synthetic_ctx.source._assets)
+    files["semantics.json"] = json.dumps(semantics).encode()
+    ctx = ScanContext(synthetic_ctx.scan_id, synthetic_ctx.inputs, MemorySource(synthetic_ctx.manifest(), files))
+    result = PlacesStage().run(ctx)
+    found = {p["name"]: p for p in result.products[ProductName.PLACES].json}
+    assert found["Main Reception"]["category"] == "reception"
+    assert found["Main Reception"]["sources"] == ["phone:p1"] and found["Main Reception"]["confidence"] >= 0.9
+    assert found["Lift A"]["category"] == "elevator" and found["Lift A"]["access_point_kind"] == "elevator"
+    assert result.summary["candidates"]["phone"] == 2

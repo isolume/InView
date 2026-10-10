@@ -23,6 +23,7 @@ tar = "0.4"
 tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+jpeg-encoder = "0.6"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

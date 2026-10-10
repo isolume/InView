@@ -1,31 +1,7 @@
+import AccessCore
 import CoreLocation
 import CoreMotion
 import Foundation
-
-/// Coarse geographic/building context for a scan. ARKit's shared local frame remains the only
-/// room-precision coordinate system; GPS, heading, and pressure are supporting evidence.
-struct CaptureEnvironmentSample: Codable, Sendable {
-    var recordedAtUnixSeconds: Double
-    var latitude: Double?
-    var longitude: Double?
-    var horizontalAccuracyM: Double?
-    var altitudeM: Double?
-    var verticalAccuracyM: Double?
-    var courseDegrees: Double?
-    var speedMps: Double?
-    var headingDegrees: Double?
-    var headingAccuracyDegrees: Double?
-    var relativeAltitudeM: Double?
-    var pressureKPa: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case recordedAtUnixSeconds = "recorded_at_unix_seconds"
-        case latitude, longitude, altitudeM = "altitude_m", horizontalAccuracyM = "horizontal_accuracy_m"
-        case verticalAccuracyM = "vertical_accuracy_m", courseDegrees = "course_degrees", speedMps = "speed_mps"
-        case headingDegrees = "heading_degrees", headingAccuracyDegrees = "heading_accuracy_degrees"
-        case relativeAltitudeM = "relative_altitude_m", pressureKPa = "pressure_kpa"
-    }
-}
 
 @MainActor
 final class CaptureContextTracker: NSObject, @preconcurrency CLLocationManagerDelegate {

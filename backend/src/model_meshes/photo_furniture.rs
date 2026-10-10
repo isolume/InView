@@ -634,6 +634,8 @@ fn square_vessel(
     model.meshes.push(mesh);
 }
 
+// 0.318 m is the pad width, not an approximation of 1/π.
+#[allow(clippy::approx_constant)]
 pub(super) fn bench(model: &mut ModelBuilder) {
     for (index, x) in [-0.328, 0.0, 0.328].into_iter().enumerate() {
         soft_box(
