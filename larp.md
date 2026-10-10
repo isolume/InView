@@ -254,8 +254,8 @@ Faizan's scan geometry and route sit under the **same map root** in RealityKit, 
 
 | State | What the user sees and what advances the trip |
 |-------|---------------------------------------------|
-| Following a surface path | Upcoming ground arrows/ribbon, next maneuver, distance, and mini-map |
-| Approaching the elevator | Ground path ends at the boarding position; identify the elevator |
+| Following a surface path | Dotted floor path to the next highlighted checkpoint, next maneuver, distance, and mini-map |
+| Approaching the elevator | Dotted path ends at the boarding position; subtly highlight the correct elevator entrance |
 | Waiting or riding | **"Take Elevator A to Floor 2."** Suspend building-relative progress assumptions inside the moving cabin |
 | Exiting | Confirm the actual landing/floor and recover alignment to that floor's saved map or image |
 | Continuing | Resume ground guidance only after both floor identity and map alignment are established |
@@ -267,7 +267,18 @@ A button saying **"I'm on Floor 2"** confirms the stated floor but does not alig
 
 I convert the phone pose into map coordinates, match it to the current route segment on the correct floor and connected passage, and track progress toward the next maneuver. Instructions advance when the user reaches the maneuver. Sustained deviation or a closure triggers rerouting; small tracking fluctuations do not.
 
-The same maneuver drives AR, the mini-map, large text, speech, haptics, and **repeat instruction**. Give one action at a time with recognizable landmarks: **"At reception, turn right toward Elevator A."** Show the upcoming corridor or turn, a stronger turn cue, and the relevant doorway/elevator label to limit clutter and cues appearing through walls.
+The same maneuver drives AR, the mini-map, large text, speech, haptics, and **repeat instruction**. Give one action at a time with recognizable landmarks: **"At reception, turn right toward Elevator A."** The dotted path and checkpoint highlight show that same next action in the camera view.
+
+**AR path and checkpoint style:**
+
+I want a **dotted line on the real floor that leads all the way to the next checkpoint**. The dots answer **"Where do I walk?"** and the checkpoint highlight answers **"What am I trying to reach or use?"**
+
+- **Floor path:** small, evenly spaced dots follow the reviewed walkable path and its actual floor height. Show the current segment to the next checkpoint. A corner can be a checkpoint, keeping the next action visible as the user rounds it. At an elevator, the dots end at the boarding position; the next floor's path appears after exiting and restoring alignment.
+- **Checkpoints:** places where the instruction changes, such as a turn, doorframe, elevator entrance, stair landing on an eligible route, or destination. Use the relevant physical feature as the target: the doorway's frame, the elevator entrance's surround, or the stair entry/landing. A turn can use a small floor marker. These are meaningful guidance stops, rather than every node in the routing graph.
+- **Clean highlight:** use the visual feel of **iOS lifting a subject from a photo** as the reference: a fine, softly luminous contour that closely hugs the target's visible shape, with a very narrow feathered glow and a transparent interior. A brief, gentle shimmer can trace the edge when it becomes the active checkpoint, then settle into a quiet outline. Keep the floor dots and contour in one restrained accent, with contrast adjusted for the surroundings. This describes the intended appearance; the first version can use reviewed doorway or landing geometry to place it.
+- **Focus and progress:** highlight one checkpoint at a time, with a small nearby label only when useful, such as **"Elevator A · Floor 2."** Keep the outline attached to the real feature and respect walls and visibility. Fade the completed checkpoint and reveal the next segment when the maneuver is confirmed; reaching the elevator entrance alone does not complete the ride. Pause both positional cues when alignment is lost.
+
+Text, speech, and haptics carry the same instruction so the route remains understandable without relying on the outline or its color.
 
 ### What I need from the team
 
@@ -282,10 +293,10 @@ The same maneuver drives AR, the mini-map, large text, speech, haptics, and **re
 ### My build order
 
 1. Save a corridor scan + world map, end the session, reopen from a different position, and prove alignment against real locations. Test the known-image fallback. *(The riskiest step, so it goes first.)*
-2. Follow one reviewed AR path around a corner to a doorway; check floor height, wall clearance, turn placement, and progress.
+2. Follow one reviewed dotted AR path around a corner to a highlighted doorway; check floor height, wall clearance, checkpoint placement, and progress.
 3. Connect route selection and accessibility filtering. Compare stairs with a verified step-free alternative, then close the only eligible connector and confirm no route is returned.
 4. Complete a two-floor trip: approach the correct elevator, show the destination floor, recover positioning after exiting, and continue. Test exiting on the wrong floor.
-5. Connect and polish the ribbon, doorway labels, mini-map, text, speech, haptics, repeat instruction, and recovery messages. Check that recovery pauses instruction advancement.
+5. Connect and polish the floor dots, subtle checkpoint contours and labels, mini-map, text, speech, haptics, repeat instruction, and recovery messages. Check that recovery pauses instruction advancement.
 6. Stretch: improve automatic path extraction and map coverage after the short physical journey works end to end.
 
 **Demo target:** open a fresh AR session, align to the saved corridor, follow a path around a corner, take the correct elevator, and resume aligned guidance upstairs. Complete that journey before polishing the presentation.
