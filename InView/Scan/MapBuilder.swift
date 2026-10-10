@@ -32,6 +32,47 @@ enum MapBuilder {
         return map
     }
 
+    /// The backend supplies corrected measured poses. Rebuild routing coverage from those
+    /// surfaces, keeping raw reconstructed triangles as display geometry only.
+    static func streamingMap(_ capture: CaptureBundle, points: [AccessPoint], stairs: [Footprint],
+                             previous: VenueMap) -> VenueMap {
+        func pose(_ values: [Float]) -> simd_float4x4 {
+            simd_float4x4(columns: (SIMD4(values[0], values[1], values[2], values[3]),
+                                   SIMD4(values[4], values[5], values[6], values[7]),
+                                   SIMD4(values[8], values[9], values[10], values[11]),
+                                   SIMD4(values[12], values[13], values[14], values[15])))
+        }
+        var footprints: [Footprint] = []
+        for surface in capture.surfaces {
+            let transform = pose(surface.mapFromSurface)
+            let size = SIMD3(surface.dimensionsM[0], surface.dimensionsM[1], surface.dimensionsM[2])
+            if surface.kind == "floor" {
+                let corners = surface.polygonCorners ?? [
+                    [-size.x / 2, -size.y / 2, 0], [size.x / 2, -size.y / 2, 0],
+                    [size.x / 2, size.y / 2, 0], [-size.x / 2, size.y / 2, 0]
+                ]
+                let world = corners.map { transform * SIMD4($0[0], $0[1], $0[2], 1) }
+                footprints.append(Footprint(floor: world.map { [$0.x, $0.z] },
+                                            bottom: world.reduce(Float.zero) { $0 + $1.y } / Float(world.count)))
+            } else if let kind = Footprint.Kind(rawValue: surface.kind) {
+                footprints.append(Footprint(kind: kind, transform: transform, dimensions: size, depth: wallThickness))
+            }
+        }
+        let floorY = median(footprints.filter { $0.kind == .floor }.compactMap(\.bottom)) ?? previous.floorY
+        for object in capture.objects {
+            let transform = pose(object.mapFromObject)
+            let size = SIMD3(object.dimensionsM[0], object.dimensionsM[1], object.dimensionsM[2])
+            guard transform.translation.y - size.y / 2 < floorY + overheadClearance else { continue }
+            footprints.append(Footprint(kind: .obstacle, transform: transform, dimensions: size))
+        }
+        var map = VenueMap(createdAt: previous.createdAt, floorY: floorY, footprints: footprints,
+                           points: [], geographicReference: previous.geographicReference,
+                           requiresMeasuredFloorCoverage: true)
+        for stair in stairs { add(spottedStairs: stair, to: &map) }
+        for point in points { add(point, to: &map) }
+        return map
+    }
+
     /// Routing and scene export must select the same supplemental measurements.
     static func observedAdditions(_ observed: [Footprint], to parts: RoomParts, floorY: Float) -> [Footprint] {
         var kept = flatten(parts, floorY: floorY)

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct BackendSettingsView: View {
     @State private var address = AppConfig.backendAddress
+    @State private var continuousScanning = AppConfig.continuousScanning
     @State private var connectionStatus: String?
     @State private var isChecking = false
     @State private var connectionTask: Task<Void, Never>?
@@ -12,13 +13,18 @@ struct BackendSettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    Toggle("Continuous scanning", isOn: $continuousScanning)
+                } footer: {
+                    Text("Scan without sections. This preview saves camera and depth samples on the phone and sends them to your server for the 3D model.")
+                }
+                Section {
                     TextField("Server address (optional)", text: $address)
                         .textContentType(.URL)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     if !address.isEmpty {
-                        Button("Use on-device processing") { address = "" }
+                        Button("Clear server address") { address = "" }
                     }
                     Button("Test connection") { checkConnection() }
                         .disabled(isChecking || AppConfig.validatedBackendURL(address) == nil)
@@ -34,7 +40,12 @@ struct BackendSettingsView: View {
                 } header: {
                     Text("Scan processing server")
                 } footer: {
-                    Text("Leave blank to process scans on this device. If set, scans are sent to this server.")
+                    Text(continuousScanning
+                         ? "Without a server, the scan stays on this phone. Connect a server to build the full 3D model."
+                         : "Leave blank to process scans on this device. If set, scans are sent to this server.")
+                }
+                Section {
+                    NavigationLink("Saved scans") { SavedStreamUploadsView() }
                 }
             }
             .navigationTitle("Scan processing")
@@ -44,6 +55,7 @@ struct BackendSettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         AppConfig.setBackendAddress(address)
+                        AppConfig.setContinuousScanning(continuousScanning)
                         dismiss()
                     }
                     .disabled(!address.isEmpty && AppConfig.validatedBackendURL(address) == nil)

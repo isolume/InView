@@ -29,11 +29,13 @@ struct HomeView: View {
 
                     ActionCard(
                         title: "Navigate",
-                        subtitle: savedMap == nil ? "Map this floor first" : "Nearest elevator or ramp, step-free",
+                        subtitle: savedMap == nil ? "Map this floor first"
+                            : savedMap?.requiresOptimizedLocalization == true ? "Positioning setup needed"
+                            : "Nearest elevator or ramp, step-free",
                         systemImage: "figure.roll",
                         style: .primary
                     ) { mode = .navigate }
-                    .disabled(savedMap == nil)
+                    .disabled(savedMap == nil || savedMap?.requiresOptimizedLocalization == true)
 
                     ActionCard(
                         title: "Map a space",

@@ -148,6 +148,8 @@ public struct VenueMap: Codable, Sendable {
     public var geographicReference: BuildingMapReference?
     /// New scans require observed floor; nil preserves floorless legacy-map compatibility.
     public var requiresMeasuredFloorCoverage: Bool?
+    /// A nonrigid backend correction needs localization against that corrected map before live AR routing.
+    public var requiresOptimizedLocalization: Bool?
 
     public init(
         createdAt: Date = .now,

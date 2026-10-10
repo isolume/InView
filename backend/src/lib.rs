@@ -1,3 +1,4 @@
+pub mod alignment;
 pub mod api;
 pub mod capture;
 pub mod error;
@@ -8,6 +9,8 @@ pub mod routing;
 pub mod scan_api;
 pub mod scene;
 pub mod store;
+pub mod stream_api;
+pub mod streaming;
 
 use axum::{Router, extract::DefaultBodyLimit, routing::get};
 use tower_http::trace::TraceLayer;
@@ -18,11 +21,28 @@ use store::{GraphStore, ScanStore};
 pub struct AppState {
     pub graphs: GraphStore,
     pub scans: ScanStore,
+    pub streams: streaming::StreamStore,
 }
 
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/health", get(api::health))
+        .route(
+            "/streams",
+            axum::routing::post(stream_api::create).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
+        .route("/streams/{id}", get(stream_api::summary))
+        .route(
+            "/streams/{id}/chunks/{sequence}",
+            axum::routing::put(stream_api::chunk)
+                .layer(DefaultBodyLimit::max(streaming::MAX_CHUNK_BYTES)),
+        )
+        .route(
+            "/streams/{id}/finish",
+            axum::routing::post(stream_api::finish),
+        )
+        .route("/streams/{id}/scene", get(stream_api::scene))
+        .route("/streams/{id}/result", get(stream_api::result))
         .route("/graphs", get(api::list_graphs))
         .route(
             "/graphs/{graph_id}",

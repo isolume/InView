@@ -2,6 +2,15 @@ import Foundation
 
 /// Build-time settings from Config/*.xcconfig, passed through Info.plist.
 enum AppConfig {
+    /// The streaming branch defaults to the continuous scanner; RoomPlan remains available for comparison.
+    static var continuousScanning: Bool {
+        UserDefaults.standard.object(forKey: "continuousScanning") as? Bool ?? true
+    }
+
+    static func setContinuousScanning(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "continuousScanning")
+    }
+
     /// Which vision model spots elevators, ramps and stairs while scanning.
     static var visionProvider: VisionProvider { value(for: "VisionProvider").flatMap(VisionProvider.init) ?? .openai }
 

@@ -105,7 +105,8 @@ struct NavigateView: View {
     @ViewBuilder
     private func mapContent(bottomInset: CGFloat) -> some View {
         if controller.phase == .noMap {
-            ContentUnavailableView("No map yet", systemImage: "map", description: Text("A volunteer needs to scan this floor first."))
+            ContentUnavailableView(controller.unavailableReason == nil ? "No map yet" : "Positioning unavailable", systemImage: "map",
+                                   description: Text(controller.unavailableReason ?? "A volunteer needs to scan this floor first."))
         } else {
             ZStack {
                 // Keep camera tracking mounted when the overview is visible. Switching views

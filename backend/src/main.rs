@@ -1,6 +1,6 @@
 use std::{env, net::SocketAddr};
 
-use inview_backend::{AppState, app};
+use inview_backend::{AppState, app, streaming::StreamStore};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -16,8 +16,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
         .parse()?;
     let listener = tokio::net::TcpListener::bind(address).await?;
+    let stream_path = env::var("INVIEW_STREAM_DIR").unwrap_or_else(|_| "data/streams".to_owned());
+    let streams = StreamStore::open(stream_path)
+        .map_err(|error| format!("Cannot open streaming scan store: {error:?}"))?;
+    let state = AppState {
+        streams,
+        ..AppState::default()
+    };
     tracing::info!(address = %listener.local_addr()?, "InView backend listening");
-    axum::serve(listener, app(AppState::default()))
+    axum::serve(listener, app(state))
         .with_graceful_shutdown(shutdown())
         .await?;
     Ok(())

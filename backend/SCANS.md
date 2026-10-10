@@ -2,7 +2,144 @@
 
 The first processing path uses ARKit geometry and optional RoomPlan labels together.
 It preserves the submitted capture and produces a replaceable scene description.
-All captures remain in memory and disappear on restart, like the graph store.
+The `/scans` captures remain in memory and disappear on restart, like the graph store.
+The continuous `/streams` path described below durably retains observations on disk.
+
+## Continuous capture prototype
+
+The new path accepts one ARKit session without RoomPlan sections. The phone keeps
+tracking and submits selected calibrated depth/RGB keyframes in a fixed map frame.
+The backend retains each observation and builds a measured triangle mesh after
+Finish. Verified revisits can correct drift through rigid registration and a
+pose graph before the depth is reintegrated. This is an initial, bounded mapping
+pipeline: it does not texture geometry, recognize objects or floors, or turn the
+mesh into reviewed navigation geometry. Device validation remains necessary.
+
+The executable saves streams to `data/streams` relative to its working directory.
+Set `INVIEW_STREAM_DIR` to choose a different local directory. Only this stream
+store survives restart; `/scans` and `/graphs` retain their existing behavior.
+`AppState::default()` uses a private temporary stream store for tests and embedders;
+the executable explicitly opens the durable directory. Run only one backend
+process against a given directory. The prototype has no authentication; use the
+same trusted development-network boundary as the existing endpoints.
+
+| Method | Endpoint | Payload / response |
+|--------|----------|--------------------|
+| POST | `/streams` | Manifest → summary; 201 new, 200 identical retry |
+| GET | `/streams/{id}` | Summary including acknowledged prefix and finished state |
+| PUT | `/streams/{id}/chunks/{sequence}` | One observation → summary after durable write |
+| POST | `/streams/{id}/finish` | `{ "chunk_count": N }` → sealed summary |
+| GET | `/streams/{id}/result` | `{ "capture": derived_bundle, "scene": processed_scene, "alignment": alignment }` |
+| GET | `/streams/{id}/scene` | Same processed scene without the derived bundle |
+
+The manifest contains `schema_version: 1`, a UUID `id`, `map_id`, `floor_id`, and
+the existing `coordinates` object. A chunk contains zero-based `sequence`, one
+existing `frame`, base64 `color_jpeg`, and optional `surfaces` and `objects` arrays.
+Those arrays are **measurement delta updates**: submit only new or changed labels
+observed with that chunk's frame. Omitting an unchanged label retains its last
+measurement and original correction timestamp; omission does not delete it.
+Resending a stale accumulated snapshot would falsely assign old labels to a later
+camera observation, so clients must retain their last saved label values and emit
+an update only when a fresh measurement changes them. A same-id update replaces
+the earlier observation and receives the new source frame's correction.
+The encoded JPEG is the **unrotated sensor-native** image. Its dimensions must
+match `frame.camera.image_width/image_height`, and intrinsics must be scaled to
+that image if RGB was resized. Depth covers the same normalized image with the
+same aspect ratio. All rigid poses remain in the original ARKit session map frame.
+Depth is optical-axis distance; ARKit cameras look along negative z, with image
+y-down converted to camera y-up before applying the column-major pose.
+
+Summaries contain `id`, `map_id`, `floor_id`, `next_sequence`, `finished`, and
+`frame_count`. Send only contiguous sequences. Timestamps must strictly increase
+and frame IDs must be unique. Retrying identical manifest/chunk JSON values is
+idempotent, including a chunk retry after Finish. Different values for an existing
+id/sequence return 409 `stream_conflict`. A client that loses the response can
+reload status and resume from `next_sequence`; Finish seals exactly the complete,
+nonempty acknowledged prefix and is idempotent for the same count.
+
+Writes use a temporary file, file sync, atomic rename, and directory sync before
+acknowledgment. Startup recovers contiguous committed chunks one file at a time;
+unfinished temporary files are never acknowledged observations. Corrupt committed
+files, gaps, or inconsistent finish markers fail recovery explicitly. UUID-only
+paths and regular-file/directory checks reject traversal and symlink captures.
+Original RGB/depth JSON stays on disk after the compact model is generated.
+
+The current reconstruction triangulates neighboring medium/high-confidence depth
+samples from 0.15 to 8 meters, omits missing samples, avoids depth jumps and edges
+longer than 0.5 meters, transforms triangles with the supplied rigid camera pose,
+and welds observations into 2 cm cells. A cell retains its first measured vertex;
+duplicate triangle faces are removed. This produces actual measured geometry,
+with no guessed holes, rooms, floors, doorways or walkability. Supplied object and
+surface labels are retained by id using their latest submitted observation.
+The compact derived capture contains the fused mesh at an identity transform,
+retained observed labels and reconstruction metadata; it omits the raw keyframes.
+Its existing `Scene` uses the same measured mesh and source ids, enabling the
+native app to validate and archive it through its normal capture/scene path.
+
+### Loop closure and map corrections
+
+The backend selects at most 64 uniformly spaced graph keyframes, including the
+first and final observation. Each contributes up to 512 calibrated camera-local
+depth samples and a sensor-native 16×12 RGB thumbnail. Nonadjacent frames separated
+by at least four seconds are candidates when their original camera positions are
+within 3 meters and their textured thumbnails are sufficiently similar. The best
+24 candidates across the entire capture receive measured registration; selecting
+globally prevents early rejected matches from exhausting the final revisit budget.
+
+Registration fits a full rigid rotation and translation with trimmed ICP and SVD,
+using both the odometry seed and a centroid seed. A match requires at least 60%
+symmetric overlap and at most 5.5 cm RMS residual. Cloud covariance and local
+surface-normal directional information reject wall-only observations and ambiguous
+straight corridors. Blank RGB views and incompatible depth cannot create loops.
+This conservative place descriptor does not provide global visual relocalization;
+revisits with substantially different appearance, insufficient overlapping surfaces,
+or drift beyond the candidate radius can remain uncorrected.
+
+Accepted measured loop edges join rigid odometry edges in an SE(3) pose graph.
+The first pose is fixed in the original ARKit map gauge. Damped Gauss-Newton fits
+translation and rotation with robust Huber loop weights. Inconsistent loop edges
+are removed and the graph is fitted again. Excessive correction or odometry strain
+is rejected; captures without verified loops preserve their original poses.
+The conservative prototype permits at most 0.75 meters of position correction
+per graph frame. Each corrected odometry edge may change translation by at most
+2.5 cm plus 15% of that edge's original travel and rotation by at most one degree
+plus 15% of its original rotation. These checks reject large path
+contractions, including the tested repeated-alcove match during a straight
+traversal. Larger drift remains uncorrected rather
+than exceeding the prototype's trusted odometry budget.
+The result reports each tested constraint's frame IDs, acceptance, reason, thumbnail
+distance, overlap, depth residual and measured relative transform, alongside
+`initial_cost` and `final_cost` from the retained graph.
+
+`alignment` contains `reference_frame: "original_arkit_session"`, `optimized`,
+`frames` with `frame_id`, `timestamp_seconds`, `original_map_from_camera`, and
+`optimized_map_from_camera`, plus `constraints`, `initial_cost`, and `final_cost`.
+The retained graph frames identify correction support, not every raw observation.
+For a graph frame, the rigid correction is `optimized_pose * inverse(original_pose)`.
+For raw observations between graph frames, correction translation is interpolated
+linearly and correction rotation uses shortest-path quaternion interpolation by
+timestamp. Every raw depth frame is reintegrated using that correction. Supplied
+surface/object poses receive the corresponding source-frame correction; measured
+dimensions and outlines remain unchanged. The compact capture metadata records
+`alignment_optimized`, `alignment_refined`, graph frame count and
+`correction_interpolation: "rigid_by_timestamp"`.
+
+These corrections can vary across a capture. A saved ARWorldMap does not become
+an optimized-map localization model merely because the geometry was corrected.
+Review points must use their corresponding frame correction, and live AR guidance
+requires consistent localization against the optimized map before being enabled.
+
+Bounds are explicit and never silently truncate geometry: manifest 16 KiB, chunk
+4 MiB, JPEG 512 KiB, RGB 1,048,576 pixels and at most 2,048 pixels per axis,
+depth 262,144 samples, 10,000 frames,
+2 GiB of canonical chunk JSON per stream, 1,024 unique objects and 1,024 unique
+surfaces, 250,000 mesh vertices and 500,000 triangles, and 64 MiB for the complete
+serialized capture/scene result. Limit errors return 413 `stream_limit` or
+`result_too_large`. At most two reconstructions run at once; excess requests return
+retryable 503 `processing_busy`. Reconstruction reads one disk chunk at a time,
+with bounded sparse vertex/face tables instead of retaining all frames in memory.
+Large-building scans still need a more capable reconstruction pipeline and physical
+LiDAR-device tests for tracking drift, coverage, heat, upload sizes and recovery.
 
 ## What works now
 
