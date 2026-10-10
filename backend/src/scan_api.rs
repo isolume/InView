@@ -31,6 +31,7 @@ pub async fn upload(
         original,
         bundle,
         package_assets: None,
+        package_manifest: None,
     };
     let summary = scan.summary();
     state.scans.insert(scan).await.map_err(|()| {
@@ -54,6 +55,7 @@ pub async fn upload_package(
         original: package.original,
         bundle: package.bundle,
         package_assets: Some(package.assets),
+        package_manifest: package.manifest,
     };
     let summary = scan.summary();
     state.scans.insert(scan).await.map_err(|()| {

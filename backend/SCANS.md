@@ -35,6 +35,8 @@ retain their existing limits. `POST /scan-packages` accepts an uncompressed `.in
 up to 128 MiB. Every TAR entry must be a regular file at `<scan-id>/<filename>`, entry names
 must be unique, and `capture.json` must validate and name the same scan ID. Binary sidecars are
 retained immutably in the process-local scan store and are never extracted to the filesystem.
+If present, `package-manifest.json` is parsed and validated against the capture and sidecars; it
+is retained with the package for reconstruction, OCR, and VLM workers.
 `GET /scans/{id}` returns the original JSON semantically unchanged; JSON whitespace,
 key order, and numerical spelling are not preserved byte-for-byte.
 
@@ -149,9 +151,17 @@ binary sidecars. `POST /scan-packages` receives the TAR sidecars with their port
 the current prototype retains them only in memory and does not yet decode native Apple assets.
 
 The iOS capture store produces `<scan-id>.inviewscan.tar`: a sequential TAR containing that
-scan's `capture.json`, RoomPlan original, raw depth/mesh snapshot, JPEG color keyframes, derived
-scene when available, and `worldmap.archive`. The app prefers the archive endpoint and falls
-back to the JSON endpoint only when connecting to an older backend that lacks it.
+scan's `capture.json`, `package-manifest.json`, RoomPlan original, raw depth/mesh snapshot, JPEG
+color keyframes, derived scene when available, and `worldmap.archive`. The app prefers the
+archive endpoint and falls back to the JSON endpoint only when connecting to an older backend
+that lacks it.
+
+`package-manifest.json` is the versioned AI/reconstruction handoff. It inventories every sidecar
+with path, role, media type, and byte length; declares the shared right-handed, meter, y-up ARKit
+frame; and lists each selected observation with its frame ID, timestamp, `map_from_camera`, RGB
+asset (when available), camera intrinsics, and raw/smoothed depth buffer layout. Workers must use
+that pose/calibration metadata to align OCR/VLM image findings with RoomPlan, depth, mesh, and
+routing geometry; Wi-Fi/BLE or image pixels alone must never establish map coordinates.
 
 Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/videos/play/wwdc2023/10192/),
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).

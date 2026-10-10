@@ -4,6 +4,7 @@ use std::{
     path::Component,
 };
 
+use serde::Deserialize;
 use serde_json::Value;
 use tar::Archive;
 
@@ -17,7 +18,41 @@ const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 pub struct ScanPackage {
     pub original: Value,
     pub bundle: ScanBundle,
+    /// Versioned inventory used by VLM/OCR and reconstruction workers to locate sidecars.
+    pub manifest: Option<Value>,
     pub assets: BTreeMap<String, Vec<u8>>,
+}
+
+#[derive(Deserialize)]
+struct PackageManifest {
+    schema_version: u32,
+    capture_id: String,
+    map_id: String,
+    floor_id: String,
+    coordinate_frame: CoordinateFrame,
+    assets: Vec<ManifestAsset>,
+    #[serde(default)]
+    observations: Vec<ManifestObservation>,
+}
+
+#[derive(Deserialize)]
+struct CoordinateFrame {
+    units: String,
+    up_axis: String,
+    handedness: String,
+    name: String,
+}
+#[derive(Deserialize)]
+struct ManifestAsset {
+    path: String,
+    role: String,
+    media_type: String,
+    bytes: usize,
+}
+#[derive(Deserialize)]
+struct ManifestObservation {
+    id: String,
+    rgb_asset: Option<String>,
 }
 
 pub fn decode(bytes: &[u8]) -> Result<ScanPackage, String> {
@@ -87,10 +122,76 @@ pub fn decode(bytes: &[u8]) -> Result<ScanPackage, String> {
     if bundle.id != root {
         return Err("The archive directory must match capture.json id.".into());
     }
+    let manifest = assets
+        .get("package-manifest.json")
+        .map(|bytes| {
+            serde_json::from_slice::<Value>(bytes)
+                .map_err(|error| format!("package-manifest.json is invalid: {error}"))
+        })
+        .transpose()?;
+    if let Some(manifest) = &manifest {
+        validate_manifest(manifest, &bundle, &assets)?;
+    }
 
     Ok(ScanPackage {
         original,
         bundle,
+        manifest,
         assets,
     })
+}
+
+fn validate_manifest(
+    value: &Value,
+    bundle: &ScanBundle,
+    files: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), String> {
+    let manifest: PackageManifest = serde_json::from_value(value.clone())
+        .map_err(|error| format!("package-manifest.json has an invalid shape: {error}"))?;
+    if manifest.schema_version != 1
+        || manifest.capture_id != bundle.id
+        || manifest.map_id != bundle.map_id
+        || manifest.floor_id != bundle.floor_id
+    {
+        return Err("package-manifest.json does not identify the embedded capture.".into());
+    }
+    if manifest.coordinate_frame.units != bundle.coordinates.units
+        || manifest.coordinate_frame.up_axis != bundle.coordinates.up_axis
+        || manifest.coordinate_frame.handedness != bundle.coordinates.handedness
+        || manifest.coordinate_frame.name != "shared_arkit_session"
+    {
+        return Err("package-manifest.json does not use the capture coordinate frame.".into());
+    }
+    if manifest.assets.is_empty()
+        || !manifest
+            .assets
+            .iter()
+            .any(|asset| asset.path == "capture.json" && asset.role == "portable_capture")
+    {
+        return Err("package-manifest.json must index capture.json.".into());
+    }
+    for asset in &manifest.assets {
+        let bytes = files
+            .get(&asset.path)
+            .ok_or("package-manifest.json refers to a missing asset.")?;
+        if bytes.len() != asset.bytes
+            || asset.path.contains('/')
+            || asset.path.is_empty()
+            || asset.role.is_empty()
+            || asset.media_type.is_empty()
+        {
+            return Err("package-manifest.json contains an invalid asset record.".into());
+        }
+    }
+    for observation in &manifest.observations {
+        if !bundle.frames.iter().any(|frame| frame.id == observation.id) {
+            return Err("package-manifest.json refers to an unknown depth frame.".into());
+        }
+        if let Some(rgb) = &observation.rgb_asset
+            && !files.contains_key(rgb)
+        {
+            return Err("package-manifest.json refers to a missing RGB keyframe.".into());
+        }
+    }
+    Ok(())
 }

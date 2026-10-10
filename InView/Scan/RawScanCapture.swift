@@ -345,7 +345,8 @@ final class RawScanCapture {
                     imageWidth: Int(image.width), imageHeight: Int(image.height),
                     fx: calibration[0][0], fy: calibration[1][1], cx: calibration[2][0], cy: calibration[2][1]
                 ),
-                depth: CaptureDepthImage(width: width, height: height, valuesM: values, confidence: confidence)
+                depth: CaptureDepthImage(width: width, height: height, valuesM: values, confidence: confidence),
+                colorAsset: "\(id).color.jpg"
             ),
             RawDepthBuffers(
                 id: id, width: width, height: height, bytesPerRow: stride,

@@ -83,6 +83,7 @@ enum CaptureStore {
     /// `CaptureBundle` JSON upload. The backend archive endpoint can ingest this immutable package.
     static func makeArchive(for captureID: String) throws -> URL {
         let source = try directory(for: captureID)
+        try writePackageManifest(in: source, captureID: captureID)
         let archiveURL = source.deletingPathExtension().appendingPathExtension("inviewscan.tar")
         let files = try FileManager.default.contentsOfDirectory(
             at: source,
@@ -118,6 +119,70 @@ enum CaptureStore {
             try? FileManager.default.removeItem(at: temporaryURL)
             throw error
         }
+    }
+
+    /// A machine-readable inventory for backend pipelines. It lets OCR/VLM and reconstruction jobs
+    /// find calibrated RGB, depth, mesh, RoomPlan, and relocalization evidence without guessing
+    /// filenames or inventing a second coordinate system.
+    private static func writePackageManifest(in directory: URL, captureID: String) throws {
+        let captureURL = directory.appending(path: "capture.json")
+        let rawURL = directory.appending(path: "raw-snapshot.json")
+        let bundle = try JSONDecoder().decode(CaptureBundle.self, from: Data(contentsOf: captureURL))
+        guard bundle.id == captureID else { throw CaptureValidationError.invalid("The capture package identifier does not match its source.") }
+        let raw = try? JSONDecoder().decode(RawScanSnapshot.self, from: Data(contentsOf: rawURL))
+        let files = try FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]
+        )
+        .filter { $0.lastPathComponent != "package-manifest.json" && $0.pathExtension != "tar" }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let assets = try files.map { file in
+            let name = file.lastPathComponent
+            let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            return PackageManifest.Asset(path: name, role: assetRole(for: name), mediaType: mediaType(for: name), bytes: size)
+        }
+        let colorNames = Set(raw?.colorKeyframes.map(\.filename) ?? [])
+        let buffers = Dictionary(uniqueKeysWithValues: (raw?.depthBuffers ?? []).map { ($0.id, $0) })
+        let observations = bundle.frames.map { frame in
+            let native = buffers[frame.id]
+            let colorAsset = frame.colorAsset.flatMap { colorNames.contains($0) ? $0 : nil }
+            return PackageManifest.Observation(
+                id: frame.id, timestampSeconds: frame.timestampSeconds, rgbAsset: colorAsset,
+                mapFromCamera: frame.mapFromCamera,
+                image: .init(width: frame.camera.imageWidth, height: frame.camera.imageHeight,
+                             fx: frame.camera.fx, fy: frame.camera.fy, cx: frame.camera.cx, cy: frame.camera.cy),
+                rawDepth: native.map { .init(asset: "raw-snapshot.json", width: $0.width, height: $0.height,
+                                               bytesPerRow: $0.bytesPerRow, pixelFormat: $0.pixelFormat,
+                                               confidenceBytesPerRow: $0.confidenceBytesPerRow,
+                                               smoothedWidth: $0.smoothedWidth, smoothedHeight: $0.smoothedHeight,
+                                               smoothedBytesPerRow: $0.smoothedBytesPerRow,
+                                               smoothedPixelFormat: $0.smoothedPixelFormat) }
+            )
+        }
+        let manifest = PackageManifest(
+            captureID: bundle.id, mapID: bundle.mapID, floorID: bundle.floorID,
+            assets: assets, observations: observations,
+            coordinateFrame: .init(units: bundle.coordinates.units, upAxis: bundle.coordinates.upAxis,
+                                   handedness: bundle.coordinates.handedness, name: "shared_arkit_session")
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try encoder.encode(manifest).write(to: directory.appending(path: "package-manifest.json"), options: .atomic)
+    }
+
+    private static func assetRole(for filename: String) -> String {
+        if filename == "capture.json" { return "portable_capture" }
+        if filename == "roomplan.json" { return "roomplan_original" }
+        if filename == "raw-snapshot.json" { return "raw_lidar_snapshot" }
+        if filename == "worldmap.archive" { return "arkit_world_map" }
+        if filename == "scene.json" { return "derived_scene" }
+        if filename.hasSuffix(".color.jpg") { return "rgb_keyframe" }
+        return "opaque_sidecar"
+    }
+
+    private static func mediaType(for filename: String) -> String {
+        if filename.hasSuffix(".json") { return "application/json" }
+        if filename.hasSuffix(".jpg") { return "image/jpeg" }
+        return "application/octet-stream"
     }
 
     private static func append(file: URL, to output: FileHandle) throws {
@@ -160,5 +225,72 @@ enum CaptureStore {
             throw CaptureValidationError.invalid("The saved capture identifier is invalid.")
         }
         return root.appending(path: id, directoryHint: .isDirectory)
+    }
+}
+
+private struct PackageManifest: Codable {
+    struct CoordinateFrame: Codable {
+        var units: String
+        var upAxis: String
+        var handedness: String
+        var name: String
+        enum CodingKeys: String, CodingKey { case units, upAxis = "up_axis", handedness, name }
+    }
+    struct Asset: Codable {
+        var path: String
+        var role: String
+        var mediaType: String
+        var bytes: Int
+        enum CodingKeys: String, CodingKey { case path, role, mediaType = "media_type", bytes }
+    }
+    struct Observation: Codable {
+        struct Image: Codable {
+            var width: Int
+            var height: Int
+            var fx: Float
+            var fy: Float
+            var cx: Float
+            var cy: Float
+        }
+        struct NativeDepth: Codable {
+            var asset: String
+            var width: Int
+            var height: Int
+            var bytesPerRow: Int
+            var pixelFormat: UInt32
+            var confidenceBytesPerRow: Int?
+            var smoothedWidth: Int?
+            var smoothedHeight: Int?
+            var smoothedBytesPerRow: Int?
+            var smoothedPixelFormat: UInt32?
+            enum CodingKeys: String, CodingKey {
+                case asset, width, height, bytesPerRow = "bytes_per_row", pixelFormat = "pixel_format"
+                case confidenceBytesPerRow = "confidence_bytes_per_row", smoothedWidth = "smoothed_width"
+                case smoothedHeight = "smoothed_height", smoothedBytesPerRow = "smoothed_bytes_per_row"
+                case smoothedPixelFormat = "smoothed_pixel_format"
+            }
+        }
+        var id: String
+        var timestampSeconds: Double
+        var rgbAsset: String?
+        var mapFromCamera: [Float]
+        var image: Image
+        var rawDepth: NativeDepth?
+        enum CodingKeys: String, CodingKey {
+            case id, timestampSeconds = "timestamp_seconds", rgbAsset = "rgb_asset"
+            case mapFromCamera = "map_from_camera", image, rawDepth = "raw_depth"
+        }
+    }
+
+    var schemaVersion = 1
+    var captureID: String
+    var mapID: String
+    var floorID: String
+    var coordinateFrame: CoordinateFrame
+    var assets: [Asset]
+    var observations: [Observation]
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version", captureID = "capture_id", mapID = "map_id", floorID = "floor_id"
+        case coordinateFrame = "coordinate_frame", assets, observations
     }
 }

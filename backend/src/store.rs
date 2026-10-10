@@ -21,6 +21,8 @@ pub struct StoredScan {
     /// Raw RoomPlan, LiDAR, color, and relocalization assets from a scan package.
     /// The current store is process-local, so these remain immutable in memory with the scan.
     pub package_assets: Option<BTreeMap<String, Vec<u8>>>,
+    /// Parsed package inventory. Workers use it to select calibrated RGB/depth observations.
+    pub package_manifest: Option<Value>,
 }
 
 #[derive(Clone, Default)]

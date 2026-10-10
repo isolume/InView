@@ -413,11 +413,19 @@ async fn call_package(app: &Router, payload: Vec<u8>) -> (StatusCode, Value) {
 async fn scan_package_validates_paths_and_processes_embedded_capture() {
     let app = app(AppState::default());
     let source = fixture();
+    let capture = serde_json::to_vec(&source).unwrap();
+    let manifest = json!({
+        "schema_version": 1,
+        "capture_id": "demo-room",
+        "map_id": "demo-room-map",
+        "floor_id": "ground",
+        "coordinate_frame": { "units": "meters", "up_axis": "y", "handedness": "right", "name": "shared_arkit_session" },
+        "assets": [{ "path": "capture.json", "role": "portable_capture", "media_type": "application/json", "bytes": capture.len() }],
+        "observations": []
+    });
     let valid = package(vec![
-        (
-            "demo-room/capture.json",
-            serde_json::to_vec(&source).unwrap(),
-        ),
+        ("demo-room/capture.json", capture),
+        ("demo-room/package-manifest.json", serde_json::to_vec(&manifest).unwrap()),
         ("demo-room/raw-snapshot.json", b"{\"raw\":true}".to_vec()),
         ("demo-room/worldmap.archive", vec![1, 2, 3]),
     ]);
