@@ -206,6 +206,22 @@ struct MapReviewView: View {
                     } footer: {
                         Text("Tap the plan to add an elevator or ramp the camera missed.")
                     }
+                    if !controller.unconfirmed.isEmpty {
+                        Section {
+                            ForEach(controller.unconfirmed) { sighting in
+                                UnconfirmedRow(
+                                    sighting: sighting,
+                                    thumbnail: { evidenceThumbnail(for: sighting.id, title: sighting.name) },
+                                    onKeep: { controller.keep(sighting) },
+                                    onDrop: { controller.drop(sighting) }
+                                )
+                            }
+                        } header: {
+                            Text("Unconfirmed \u{2013} keep?")
+                        } footer: {
+                            Text("The camera saw these only briefly, or LiDAR couldn't check them. Tap a photo to look, then keep the real ones.")
+                        }
+                    }
                     Section {
                         if draft.points.isEmpty {
                             Text("None yet").foregroundStyle(.secondary)
@@ -343,6 +359,48 @@ struct MapReviewView: View {
 
     private var isShowingSaveError: Binding<Bool> {
         Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })
+    }
+}
+
+/// A find that didn't confirm, with its photo and a Keep / Drop choice.
+private struct UnconfirmedRow<Thumbnail: View>: View {
+    let sighting: AccessibilityDetector.Sighting
+    @ViewBuilder let thumbnail: () -> Thumbnail
+    let onKeep: () -> Void
+    let onDrop: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            thumbnail()
+            VStack(alignment: .leading, spacing: 6) {
+                Label {
+                    Text("\(sighting.name)?").font(.body.weight(.medium))
+                } icon: {
+                    Image(systemName: sighting.kind.symbolName).foregroundStyle(sighting.kind.tint)
+                }
+                Text(reason).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button("Keep", action: onKeep)
+                        .buttonStyle(.borderedProminent)
+                        .tint(sighting.kind.tint)
+                    Button("Drop", role: .destructive, action: onDrop)
+                        .buttonStyle(.bordered)
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var reason: String {
+        var parts = ["Seen in \(sighting.frames) frame\(sighting.frames == 1 ? "" : "s")", "\(Int(sighting.confidence * 100))% sure"]
+        if sighting.kind != .elevator, sighting.verifiedFrames == 0 {
+            parts.append("LiDAR couldn't check it")
+        }
+        if let slope = sighting.slopeDegrees {
+            parts.append(String(format: "%.1f° slope", slope))
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

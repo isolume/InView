@@ -23,6 +23,8 @@ final class ScanController: ObservableObject {
         didSet { scheduleReport() }
     }
     @Published private(set) var report: AccessibilityReport?
+    /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
+    @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
 
     let session = ARSession()
     let detector = AccessibilityDetector()
@@ -106,6 +108,22 @@ final class ScanController: ObservableObject {
         draft?.points[index].requiresAssistance = value
     }
 
+    /// The volunteer vouches for an unconfirmed find: it goes on the map like a confirmed one.
+    func keep(_ sighting: AccessibilityDetector.Sighting) {
+        guard var map = draft else { return }
+        if let point = AccessibilityDetector.accessPoint(for: sighting) {
+            MapBuilder.add(point, to: &map)
+        } else if let stairs = AccessibilityDetector.stairsFootprint(for: sighting) {
+            MapBuilder.add(spottedStairs: stairs, to: &map)
+        }
+        draft = map
+        unconfirmed.removeAll { $0.id == sighting.id }
+    }
+
+    func drop(_ sighting: AccessibilityDetector.Sighting) {
+        unconfirmed.removeAll { $0.id == sighting.id }
+    }
+
     func save() throws {
         guard let draft, let worldMap else { return }
         let report = report ?? AccessibilityReport(map: draft)
@@ -143,6 +161,7 @@ final class ScanController: ObservableObject {
         self.worldMap = worldMap
         session.pause()
         draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints(), spottedStairs: detector.stairsFootprints())
+        unconfirmed = detector.unconfirmedSightings()
         phase = .review
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }

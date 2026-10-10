@@ -36,15 +36,24 @@ enum MapBuilder {
             let kind: Footprint.Kind = object.category == .stairs ? .stairs : .obstacle
             footprints.append(Footprint(kind: kind, transform: object.transform, dimensions: object.dimensions, furniture: furniture(for: object.category)))
         }
-        let scannedStairs = footprints.filter { $0.kind == .stairs }
-        for stairs in spottedStairs where !scannedStairs.contains(where: { overlaps($0, stairs) }) {
-            var stairs = stairs
-            stairs.bottom = floorY
-            footprints.append(stairs)
-        }
-        // RoomPlan measures door openings precisely; move elevator pins in front of the doors they belong to.
-        let snapped = points.map { DoorSnap.snap($0, to: footprints, floorY: floorY) }
-        return VenueMap(floorY: floorY, footprints: footprints, points: snapped)
+        var map = VenueMap(floorY: floorY, footprints: footprints, points: [])
+        for stairs in spottedStairs { add(spottedStairs: stairs, to: &map) }
+        for point in points { add(point, to: &map) }
+        return map
+    }
+
+    /// Adds stairs the camera spotted, unless RoomPlan already measured stairs there.
+    static func add(spottedStairs stairs: Footprint, to map: inout VenueMap) {
+        guard !map.footprints.contains(where: { $0.kind == .stairs && overlaps($0, stairs) }) else { return }
+        var stairs = stairs
+        stairs.bottom = map.floorY
+        map.footprints.append(stairs)
+    }
+
+    /// Adds an access point. RoomPlan measures door openings precisely, so elevator pins move in front of
+    /// the doors they belong to.
+    static func add(_ point: AccessPoint, to map: inout VenueMap) {
+        map.points.append(DoorSnap.snap(point, to: map.footprints, floorY: map.floorY))
     }
 
     /// Whether two footprints' areas come within `sameStairsSlack` of each other.
