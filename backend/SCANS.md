@@ -269,7 +269,13 @@ Importing or processing scans never creates navigation graphs or accessible rout
 a summary, and rejects a reused scan ID with HTTP 409 `scan_exists`. Captures are
 immutable within this service instance. Use another ID for a correction or rescan.
 `POST /scans` accepts up to 32 MiB for multiroom captures; other prototype endpoints
-retain their existing limits. `GET /scans/{id}` returns the original JSON semantically unchanged; JSON whitespace,
+retain their existing limits. `POST /scan-packages` accepts an uncompressed `.inviewscan.tar`
+up to 256 MiB (at most 4096 entries, 64 MiB each). Every TAR entry must be a regular file at `<scan-id>/<filename>`, entry names
+must be unique, and `capture.json` must validate and name the same scan ID. Binary sidecars are
+retained immutably in the process-local scan store and are never extracted to the filesystem.
+If present, `package-manifest.json` is parsed and validated against the capture and sidecars; it
+is retained with the package for reconstruction, OCR, and VLM workers.
+`GET /scans/{id}` returns the original JSON semantically unchanged; JSON whitespace,
 key order, and numerical spelling are not preserved byte-for-byte.
 
 `GET /scans/{id}/scene` processes with the default options. A fresh scene is derived
@@ -360,6 +366,7 @@ into these records. Native RoomPlan JSON is archived separately in `roomplan.jso
 rather than duplicated as a large `roomplan_original` tree in every portable capture.
 The optional field remains supported when importing other providers' bundles.
 `RawScanCapture.swift` polls the same session without replacing its delegate,
+<<<<<<< HEAD
 selecting up to six calibrated depth keyframes within an 8 MiB retained-payload
 budget. It does not request or repeatedly copy a second raw mesh reconstruction;
 RoomPlan's measured surfaces and objects supply navigation geometry, supplemented
@@ -368,27 +375,261 @@ side measurements can also produce generic small-obstacle objects, using repeate
 observations near a measured floor. Their saved, rendered and routing bounds agree;
 no furniture identity is inferred. Native depth bytes are copied before one
 background worker decodes them; busy samples are skipped.
+=======
+copies the latest classified mesh snapshot, and keeps up to 48 calibrated depth keyframes spread
+over the whole walk (see [Capture format changes](#capture-format-changes)).
+For each selected keyframe it retains original raw `sceneDepth`, confidence bytes, and,
+when ARKit provides it, original `smoothedSceneDepth` bytes as separate local native buffers.
+>>>>>>> origin/feat/navigation-pipeline
 These records preserve the shared ARKit frame; no export origin reset is applied.
 Overlapping sections use the latest component with the same RoomPlan identifier.
 Recovered floor and wall extensions are retained when not wholly covered, and
 the routing map and portable scene share the same supplement selection. Long
 sections save and continue automatically without resetting the AR session.
 
+<<<<<<< HEAD
 The app archives native RoomPlan JSON and selected depth bytes locally before upload.
 Local processing has no upload-size limit and does not project a display point cloud
 that navigation doesn't render. The network client enforces the 32 MiB limit only
 when sending a capture; an oversized upload can still use its complete local map.
 Native RoomPlan/semantic data is never silently truncated.
+=======
+The app archives native RoomPlan JSON, the portable `capture.json`, copied mesh/depth
+bytes, and `worldmap.archive` in the same `Documents/Captures/<scan-id>/` directory before
+upload. `worldmap.archive` is an Apple-only ARWorldMap relocalization asset and is referenced
+from `metadata.assets.world_map`. The current JSON upload does not send binary sidecars yet.
+If a bundle exceeds the 32 MiB limit, optional whole depth/mesh layers remain
+local and their omission is recorded in metadata. Native RoomPlan/semantic data is
+never silently truncated; if that layer alone is too large, upload reports an error.
+>>>>>>> origin/feat/navigation-pipeline
 The saved active capture identifies its cached scene, so a failed new scan cannot
 replace a previously saved room view. Network failures support retry; the saved
 source can restore the backend's in-memory capture after a restart.
 
-`color_asset` and other asset references are opaque strings. This API does not fetch,
-decode, upload, or durably store image/world-map/USDZ binaries. RGB coloring is not
-implemented. The current 32 MiB request limit is suitable for small prototype bundles;
-large captures need a separate binary-asset storage/upload design.
+`color_asset` and other asset references are opaque strings. The native raw snapshot now retains
+bounded adaptive JPEG keyframes paired with calibrated depth-frame IDs; sidecar files use
+`<frame-id>.color.jpg` and are listed in `metadata.assets.color_keyframes`. The local LiDAR
+review can render these as colorized points. The JSON endpoint intentionally does not send
+binary sidecars. `POST /scan-packages` receives the TAR sidecars with their portable capture.
+`GET /scans/{id}/raw-preview`, `/native-mesh`, and `/color/{file}` decode them: they read the
+manifest-indexed binary sidecars (`packageFormat: "binary_sidecars"`) and fall back to the base64
+buffers in `raw-snapshot.json` for packages made before sidecars existed
+(`"legacy_raw_snapshot"`). Up to 64 depth observations and 2048 mesh anchors are previewed.
+
+The iOS capture store produces `<scan-id>.inviewscan.tar`: a sequential TAR containing that
+scan's `capture.json`, `package-manifest.json`, RoomPlan original, binary depth/confidence/mesh
+sidecars, JPEG color keyframes, derived scene when available, and `worldmap.archive`.
+`raw-snapshot.json` stays on the phone: it duplicates every sidecar as base64. Captures saved
+before sidecars existed have them written from that snapshot when the archive is built. The app
+prefers the archive endpoint and falls back to the size-bounded JSON endpoint when the backend
+lacks it (404/405) or the package exceeds the archive limit (413, or over 256 MiB locally).
+
+`package-manifest.json` is the versioned AI/reconstruction handoff. It inventories every sidecar
+with path, role, media type, and byte length; declares the shared right-handed, meter, y-up ARKit
+frame; and lists each selected observation — built from the complete raw capture, so it remains
+valid when `capture.json` omits portable frames for size — with its frame ID, timestamp, `map_from_camera`, RGB
+asset (when available), camera intrinsics, raw/smoothed depth sidecar filenames, confidence sidecar,
+buffer layout, and optional coarse location context (`environment`, including the iPhone's
+`recorded_at_unix_seconds`). It also indexes each classified mesh anchor's exact vertex, index, normal, and
+classification sidecars with their native offsets, strides, formats, and anchor transform. Workers
+must use that pose/calibration metadata to align OCR/VLM image findings with RoomPlan, depth, mesh,
+and routing geometry; Wi-Fi/BLE or image pixels alone must never establish map coordinates.
 
 Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/videos/play/wwdc2023/10192/),
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).
 The adapter builds against the iOS SDK; physical capture and relocalization still
 need verification on the actual LiDAR device before expanding recognition or storage.
+
+## RoomPlan semantics read by the worker
+
+The `roomplan` pipeline stage (`worker/inview_worker/stages/roomplan.py`, helpers in
+`worker/inview_worker/roomplan/`) reads Apple's native export instead of only the portable records.
+Source order: the package's `roomplan.json` (the iPhone's verbatim `JSONEncoder().encode([CapturedRoom])`),
+then `capture.json`'s `roomplan_original`, then the portable `surfaces`/`objects` (rectangles only, no
+labels or door state). An empty array (`[]`) counts as absent. Accepted shapes: `[CapturedRoom]`, one
+`CapturedRoom`, or a `CapturedStructure` (`rooms` plus merged top-level components).
+
+Fields read, per `CapturedRoom`: `identifier`, `story`, `version`, `walls`, `doors`, `windows`,
+`openings`, `floors`, `objects`, `sections`. Per surface: `identifier`, `category` (including
+`door.isOpen`), `dimensions`, `transform`, `polygonCorners` (surface-local, floors only),
+`confidence`, `story`, `parentIdentifier`, `completedEdges`, `curve`. Per object: `identifier`,
+`category`, `dimensions`, `transform`, `attributes`, `confidence`, `story`, `parentIdentifier`.
+Per section: `label`, `center`, `story`. Unknown or missing keys are tolerated. Malformed components
+are counted and skipped. Both Swift Codable spellings are accepted: enums as `{"case": {payload}}` or
+bare strings, and `simd_float4x4` as four column arrays or 16 column-major numbers.
+
+Derived product: room polygons in X/Z from the floor corners, or the floor rectangle, or the wall hull
+for iOS 16. Each room gets a section label when a section center falls inside its polygon. Doors keep
+their open/closed state from the latest section and record which rooms they `connect`. Also derived:
+openings, windows with sill height, walls, objects with their attributes and room, and stories. Labels
+and states are RoomPlan's own estimates, not verified accessibility data. The iPhone needs no format
+change. `roomplan.json` already carries everything above.
+
+## Capture format changes
+
+All changes below are **additive and optional**: older packages (no track, no stills, 32 FIFO
+keyframes) still decode, and older backends ignore the new files and fields.
+
+### Coverage-preserving depth keyframes (iOS)
+
+What changed: `RawScanCapture` keeps up to **48** depth keyframes (was 32) and, when over budget,
+evicts the keyframe whose removal least reduces pose-space coverage — the one with the closest
+neighbour, measured as camera travel in metres plus 1.03 m per radian of view-direction change —
+instead of the oldest. Frames carrying an OCR still are evicted only if every frame carries one;
+colour keyframes get a 0.3 m retention bonus. `.smoothedSceneDepth` is now requested explicitly, so
+`smoothed_asset` sidecars are actually present. Metadata (`capture.json` →
+`metadata.raw_capture`) adds `depth_retention_policy: "pose_space_coverage_v1"`,
+`smoothed_scene_depth_requested`, `ocr_still_*` counts/budget, and `camera_track_*` counts.
+
+Why: FIFO eviction silently dropped the first rooms of long walks, leaving the floor-map, door
+and sign workers with depth/colour evidence for only the last ~40–60 s of the scan.
+
+Budget: 48 × (≈432 KiB native depth + ≈60 KiB colour) ≈ 24 MiB of sidecars; `capture.json`
+remains ≤ 32 MiB because `ScanExporter` drops whole optional layers past that limit.
+
+### `camera-track.json` (asset role `camera_track`)
+
+A dense ARKit pose track sampled at ≈10 Hz from the same session (bounded to 18 000 poses; on
+overflow every other pose is dropped and `sample_interval_seconds` doubles):
+
+```json
+{"schema_version": 1, "clock": "arkit_uptime_seconds",
+ "unix_offset_seconds": 1791000000.25, "sample_interval_seconds": 0.1,
+ "poses": [{"t": 100.3, "m": [16 column-major map_from_camera entries],
+            "tracking": "normal | limited:<initializing|excessive_motion|insufficient_features|relocalizing|other> | not_available",
+            "mapping": "not_available | limited | extending | mapped"}]}
+```
+
+`t` uses the same clock as observation `timestamp_seconds`; `t + unix_offset_seconds` is the
+iPhone wall clock (fixing the mismatch between ARKit times and the wall-clock
+`environment.recorded_at_unix_seconds`). `StoredScan::camera_track()` and
+`GET /scans/{id}/camera-track` now prefer this sidecar: poses with `not_available`,
+`limited:initializing` (near-origin) or `limited:relocalizing` (jumping) tracking, non-rigid
+matrices, or non-increasing `t` are dropped (other limited poses are kept and labelled), `unix_seconds` is derived from the offset,
+and each pose carries `tracking`/`mapping`. The response's `source` is `camera_track_sidecar`,
+`package_manifest`, or `portable_frames`; a malformed sidecar falls back to the manifest. Building
+pose observations now record `tracking_state` from the dense track, thinned to one pose per
+0.5 s and inserted in a single batched statement.
+
+Why: the sparse keyframe poses (one per ≥0.45 m) are too coarse for walked-path evidence,
+doorway traversal and dwell detection, and they carry no tracking quality.
+
+### OCR stills `<frame-id>.ocr.jpg` (asset role `ocr_still`)
+
+Upright portrait JPEGs at ≈1920 px long side, quality 0.85, captured when the camera is steady
+(< 0.3 rad/s and < 0.6 m/s over 0.3 s of the dense track) and has moved ≥ 1.5 m or turned ≥ 30°
+since the last still; at most 32 stills / 60 MB, with pose-space coverage replacement at the caps.
+Each still shares a depth keyframe (a due, steady still may add one), so its manifest observation
+adds:
+
+```json
+"ocr_asset": "<frame-id>.ocr.jpg",
+"ocr_image": {"width": 1440, "height": 1920, "orientation": "rotated_90_cw_from_sensor"}
+```
+
+The still is the sensor image rotated 90° clockwise and uniformly scaled; a still pixel `(x, y)`
+maps to the calibrated sensor image (`image` intrinsics) as
+`u = y / ocr_image.height · image.width`, `v = (1 − x / ocr_image.width) · image.height`. The
+backend rejects an `ocr_asset` that is not in the package and an out-of-range `ocr_image` size.
+Stills are served by `GET /scans/{id}/assets/{file}`.
+
+Why: 640 px colour keyframes are too small to read most signs, room numbers and door labels; OCR
+needs sharp, high-resolution pixels tied to a pose and depth so text can be placed in the map frame.
+
+Package budget (worst case): capture.json 32 + depth 24 + OCR 60 + mesh ≈ 60 + world map ≈ 30 +
+RoomPlan ≈ 5 ≈ 211 MiB, inside the 256 MiB package limit (4096 entries, 64 MiB per file).
+
+### Info.plist
+
+`NSMotionUsageDescription` is declared in `project.yml` (the capture context already uses
+`CMAltimeter`).
+
+## Capture format changes: on-device OCR and capture semantics
+
+Both files below are **additive, optional** sidecars inside `.inviewscan.tar`, written with
+`CaptureStore.stageSidecar` before the archive is built and inventoried in `package-manifest.json`
+(roles `text_observations` and `capture_semantics`). Older packages lack them; readers must treat a
+missing file, a missing optional key, or an unknown key as "no evidence", never as an error. Both
+use `schema_version: 1`; a breaking change bumps it. JSON keys are sorted; `null` values are omitted.
+The Swift models are `TextObservationsDocument` and `CaptureSemantics` in `Packages/AccessCore`.
+
+### `text-observations.json` (on-device OCR)
+
+Apple Vision `VNRecognizeTextRequest` (`.accurate`, language correction, automatic language
+detection) runs off the main thread when the capture is finalized, overlapping the local scene
+build. It reads high-resolution `<frame-id>.ocr.jpg` stills already in the capture directory first,
+then the `<frame-id>.color.jpg` keyframes, bounded to 48 images and 12 s. Lines under 0.3 confidence
+or under ~1.5% of the image height are dropped. Any failure skips the file or an image; the capture
+continues. An empty `observations` list means OCR ran and found nothing.
+
+```json
+{"schema_version": 1, "engine": "apple_vision", "observations": [
+  {"frame_id": "depth-3", "image_asset": "depth-3.color.jpg", "image_size_px": [480, 640],
+   "image_orientation": "upright_rotated_right_from_sensor",
+   "text": "EXIT", "confidence": 1.0, "bbox_norm": [0.25, 0.25, 0.5, 0.25],
+   "bbox_sensor_norm": [0.25, 0.25, 0.25, 0.5], "languages": ["en"]}]}
+```
+
+- `frame_id` is the depth observation (`package-manifest.json` `observations[].id`) whose pose and
+  intrinsics describe the image. `image_asset` is the package file that was read.
+- `image_size_px` is `[width, height]` of that **upright** JPEG (the sensor image rotated right).
+- `bbox_norm` is `[x, y, w, h]`, normalized to the upright JPEG with a **top-left origin, y down**
+  (converted from Vision's bottom-left origin and clipped to `[0, 1]`). Pixel box =
+  `bbox_norm * [w, h, w, h]`. Manifest intrinsics describe the landscape sensor image, not the
+  JPEG, so never unproject `bbox_norm` directly.
+- `image_orientation` (required) names the transform from the calibrated sensor-native image to
+  the OCR'd image. iPhone keyframes and stills are always `upright_rotated_right_from_sensor`
+  (rotated 90° clockwise): upright pixel `(px, py)` of a `W×H` image is sensor-normalized
+  `(u, v) = (py / H, 1 − px / W)` (`geometry.jpeg_to_sensor_uv`). Consumers must reject
+  orientations they do not know.
+- `bbox_sensor_norm` is the same box already in the sensor-native image (`[u, v, w, h]`, top-left
+  origin, normalized): `[y, 1 − x − w, h, w]` of `bbox_norm`. It can be unprojected with the frame's
+  intrinsics directly.
+- `languages` are BCP 47 guesses from `NLLanguageRecognizer` (most likely first, each ≥ 0.2
+  probability), empty for text with fewer than three letters (room numbers, arrows). Vision reports
+  no per-line language.
+- Observations are sorted by image, then top-to-bottom, left-to-right. The same sign is usually
+  read in several frames; deduplication and triangulation are the backend's job.
+
+### `semantics.json` (reviewed capture semantics)
+
+Written before every archive is built (so upload retries carry the current review state) and again
+when the volunteer saves the map.
+
+```json
+{"schema_version": 1, "coordinate_frame": "shared_arkit_session", "floor_y": -1.2,
+ "geographic_reference": {"latitude": 33.75, "longitude": -84.39, "heading_degrees": 12,
+                          "horizontal_accuracy_m": 5},
+ "access_points": [{"id": "UUID", "kind": "ramp", "name": "South ramp", "position": [1, -1.2, 2],
+                    "source": "detected", "confidence": 0.8, "slope_degrees": 6,
+                    "requires_assistance": false}],
+ "stairs_footprints": [{"source": "roomplan", "center_xz": [2, 1], "size_m": [1, 3], "yaw_radians": 0,
+                        "corners_xz": [[2.5, 2.5], "..."], "bottom_y": -1.2, "height_m": 0.8}],
+ "roomplan": {"rooms": [{"id": "UUID", "story": 0,
+   "sections": [{"label": "kitchen", "center": [1, -1.2, 1], "story": 0}],
+   "surfaces": [{"id": "UUID", "kind": "door", "is_open": true, "confidence": "high", "story": 0,
+                 "parent_id": "UUID", "map_from_surface": ["16 floats"], "dimensions_m": [0.9, 2, 0],
+                 "polygon_corners_m": [["x", "y", "z"]]}]}]},
+ "capture": {"app_version": "0.1.0", "app_build": "1", "device_model": "iPhone16,1",
+             "system_name": "iOS", "system_version": "18.2", "floor_id": "ground"}}
+```
+
+- **Frame:** every position, transform and corner is in the shared ARKit session frame of
+  `capture.json` (meters, right-handed, +Y up). `*_xz` are floor-plane `[x, z]` pairs.
+  `map_from_surface` is column-major like `capture.json`. `floor_y` is the map's floor height.
+- `geographic_reference` (omitted when unknown) places the **scan origin**, not the phone: heading
+  is clockwise from true north to local −Z (`BuildingMapReference`). It is the app's filtered GPS fix
+  (≤ 20 m, heading accuracy ≤ 20°) or the volunteer's manual placement.
+- `access_points` are the map's confirmed elevator/ramp/destination points (repeat-sighted
+  detections, volunteer-kept sightings, and manual pins); unconfirmed sightings are excluded.
+  `slope_degrees` is the LiDAR-measured ramp incline when known.
+- `stairs_footprints`: `source` is `detected` for vision-model stairs RoomPlan missed, else
+  `roomplan`.
+- `roomplan.rooms` has one entry per RoomPlan section in scan order, with the fields the portable
+  `capture.json` projection drops: `sections` (RoomPlan room-type labels `livingRoom`, `bedroom`,
+  `bathroom`, `kitchen`, `diningRoom`, `unidentified`), `story`, door `is_open`, `parent_id` (the wall
+  a door/window/opening is cut into), `confidence`, and `polygon_corners_m` — RoomPlan's
+  surface-local polygon corners **transformed into the session frame** (may be empty for plain
+  rectangles). Adjacent sections can repeat a surface `id`; the later section is the latest
+  measurement.
+- `capture` is provenance: app version/build, hardware identifier, OS, and the capture's `floor_id`.

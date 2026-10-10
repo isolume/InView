@@ -33,6 +33,7 @@ public actor StreamingCaptureQueue {
     public nonisolated let root: URL
     public nonisolated let manifest: StreamManifest
     private let session: URLSession
+    private let accessToken: String?
     private let limits: StreamingCaptureLimits
     private var state: Checkpoint
     private var captured: Int
@@ -54,14 +55,16 @@ public actor StreamingCaptureQueue {
 
     /// Reopening restores saved progress but does not send anything until append/synchronize/finish.
     /// A saved server binding must match an explicitly supplied address; changing it is a separate action.
-    public init(root: URL, manifest: StreamManifest, backendURL: URL?, session: URLSession = .shared,
-                limits: StreamingCaptureLimits = .standard) throws {
+    /// `accessToken` is held in memory only; it is never written to the queue's checkpoint.
+    public init(root: URL, manifest: StreamManifest, backendURL: URL?, accessToken: String? = nil,
+                session: URLSession = .shared, limits: StreamingCaptureLimits = .standard) throws {
         try manifest.validate()
         guard limits.maximumFrames > 0, limits.maximumSavedBytes > 0 else {
             throw StreamingCaptureError.invalidLimits
         }
         guard root.isFileURL else { throw StreamingCaptureError.storageFailure }
         self.root = root; self.manifest = manifest; self.session = session; self.limits = limits
+        self.accessToken = accessToken
         let suppliedURL = try backendURL.map(StreamingBackendClient.normalizedURL)
         let manager = FileManager.default
         let manifestURL = root.appendingPathComponent("manifest.json")
@@ -348,7 +351,7 @@ public actor StreamingCaptureQueue {
         guard let address = state.backendURL, let url = URL(string: address) else {
             throw StreamingCaptureError.notConfigured
         }
-        return StreamingBackendClient(baseURL: url, session: session)
+        return StreamingBackendClient(baseURL: url, accessToken: accessToken, session: session)
     }
 
     private func save(_ checkpoint: Checkpoint) throws {
@@ -404,7 +407,7 @@ public actor StreamingCaptureQueue {
         if let backend = error as? BackendClientError {
             switch backend {
             case .http(let status, _, _): return (400...499).contains(status) && status != 408 && status != 429
-            case .invalidResponse, .invalidCapture, .invalidURL, .captureConflict: return true
+            case .invalidResponse, .invalidCapture, .invalidURL, .captureConflict, .archiveTooLarge: return true
             case .connection: return false
             }
         }

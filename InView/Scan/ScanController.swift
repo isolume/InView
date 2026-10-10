@@ -67,6 +67,10 @@ final class ScanController: ObservableObject {
     private var captureBundle: CaptureBundle?
     private var localScene: ProcessedScene?
     private var sceneTask: Task<Void, Never>?
+    /// Polls the backend's OpenCV analysis after an upload and merges its places into the draft.
+    private var analysisTask: Task<Void, Never>?
+    /// Detected place IDs already offered once, so a point the volunteer deleted is not re-added.
+    private var mergedDetectionIDs: Set<UUID> = []
     private var streamingCapture: StreamingScanCapture?
     var streamEvidenceID: String? { streamingCapture?.queue.manifest.id }
     private var streamStartTask: Task<Void, Never>?
@@ -364,6 +368,7 @@ final class ScanController: ObservableObject {
 
     func stop() {
         isActive = false
+        analysisTask?.cancel()
         elevationMonitor.stop()
         floorSwitchTask?.cancel()
         floorSwitchTask = nil
@@ -841,7 +846,9 @@ final class ScanController: ObservableObject {
             result = localScene
             sceneError = "Your scan is saved on this phone. Choose a server in Settings, then try again to build the full 3D model."
         } else if let backendURL {
-            result = try await BackendClient(baseURL: backendURL).uploadAndProcess(bundle)
+            let client = BackendClient(baseURL: backendURL, accessToken: AppConfig.backendToken)
+            result = try await client.uploadAndProcess(bundle)
+            if !Task.isCancelled { fetchDetectedPlaces(scanID: bundle.id, client: client) }
         } else if let localScene {
             result = localScene
         } else {
@@ -851,6 +858,46 @@ final class ScanController: ObservableObject {
         try await ScanWork.run(priority: .utility) { try CaptureStore.saveScene(result, for: bundle) }
         try Task.checkCancellation()
         return result
+    }
+
+    /// The worker analyses an upload asynchronously (seconds to minutes), so poll a few times with
+    /// backoff while the volunteer reviews, then merge its places into the draft's points.
+    private func fetchDetectedPlaces(scanID: String, client: BackendClient) {
+        analysisTask?.cancel()
+        analysisTask = Task { [weak self] in
+            for delay in [0, 5, 15, 30, 60] {
+                if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+                guard !Task.isCancelled else { return }
+                do {
+                    guard let analysis = try await client.analysis(scanID: scanID) else { continue }
+                    guard !Task.isCancelled else { return }
+                    self?.mergeDetectedPlaces(analysis)
+                    return
+                } catch is CancellationError {
+                    return
+                } catch BackendClientError.connection {
+                    continue
+                } catch {
+                    Log.scan.notice("navigation analysis unavailable: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
+            }
+        }
+    }
+
+    /// Adds worker-detected places to the destination list. IDs derive from the place IDs, and points
+    /// near an existing one of the same kind are skipped; existing (manual) points never change.
+    private func mergeDetectedPlaces(_ analysis: ScanAnalysis) {
+        guard var map = draft else { return }
+        let detected = analysis.places
+            .compactMap { $0.accessPoint(scanID: analysis.scanID, floorY: map.floorY) }
+            .filter { !mergedDetectionIDs.contains($0.id) }
+        let added = AccessPoint.newDetections(detected, existing: map.points)
+        mergedDetectionIDs.formUnion(detected.map(\.id))
+        guard !added.isEmpty else { return }
+        for point in added { MapBuilder.add(point, to: &map) }
+        draft = map
+        Log.scan.info("merged \(added.count) detected places from the navigation analysis")
     }
 
     private func applyStreamResult(_ result: StreamResult) {
@@ -1002,7 +1049,8 @@ final class ScanController: ObservableObject {
         streamStartTask = Task { [weak self] in
             do {
                 let queue = try await ScanWork.run {
-                    try StreamingCaptureQueue(root: root, manifest: manifest, backendURL: backend)
+                    try StreamingCaptureQueue(root: root, manifest: manifest, backendURL: backend,
+                                              accessToken: AppConfig.backendToken)
                 }
                 guard let self, self.isActive, self.scanID == id, !Task.isCancelled else { return }
                 let capture = StreamingScanCapture(queue: queue)

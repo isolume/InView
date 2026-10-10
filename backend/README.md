@@ -1,8 +1,7 @@
 # InView backend (draft)
 
 An early Rust backend based on [the team plan](../larp.md). The API and graph format
-are provisional and can change alongside the iOS app. This folder is independent
-of any future app or map-processing workspace.
+are provisional and can change alongside the iOS app. This folder is now the merge target for building-frame work from the standalone LiDAR prototype. Existing RoomPlan scan/routing APIs remain unchanged. See [Building maps](BUILDING_MAPS.md) for the PostgreSQL/TimescaleDB-backed Rust slice and authenticated `start-server.sh` launcher.
 
 ## My part
 
@@ -19,15 +18,20 @@ progress, and production rendering stay with their owners in the team plan.
 
 ## What I want to build
 
-The first pass runs locally with in-memory storage. HTTP handlers, graph types,
-storage, and route selection live in separate modules so those choices can change
-without rewriting the entire service.
+When `INVIEW_SCAN_DIR` is configured, source scans persist there as immutable local files, worker analyses as replaceable files under `analysis/`, and navigation graphs as replaceable files under `graphs/` (otherwise graphs stay in memory). Building reference frames, versioned alignment transforms and pose observations use PostgreSQL/TimescaleDB. HTTP handlers, graph types, storage and route selection remain separated.
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | GET | `/health` | Service health |
+| GET/POST | `/api/buildings` | List/create persistent building reference frames (PostgreSQL required) |
+| GET | `/api/buildings/{id}` | Get current or pinned map version |
+| POST | `/api/buildings/{id}/alignments` | Provisionally align an already-uploaded scan |
+| GET | `/api/buildings/{id}/observations` | Time-indexed, version-pinned camera positions |
+| GET | `/api/buildings/{id}/overview` | Top-down preview of aligned camera paths and mesh samples |
+| GET | `/scans/{id}/camera-track` | Full camera path (dense `camera-track.json` first, then package manifest, then portable frames; `source` says which) |
+| GET/PUT | `/scans/{id}/analysis` | Derived OpenCV worker output (`places`, `doors`, `hazards`, `signs`, `nav_graph`, `routes`, ...); GET returns 404 `analysis_not_found` until the worker has run. See [worker/PIPELINE.md](worker/PIPELINE.md) |
 | GET | `/graphs` | List graph summaries |
-| PUT | `/graphs/{graph_id}` | Validate and replace a complete graph |
+| PUT | `/graphs/{graph_id}` | Validate and replace a complete graph (persisted when `INVIEW_SCAN_DIR` is set; 503 `graph_storage_error` if the write fails) |
 | GET | `/graphs/{graph_id}` | Reload the graph |
 | POST | `/graphs/{graph_id}/routes` | Select a route between node IDs |
 | POST | `/scans` | Validate and retain a new capture bundle |
@@ -144,6 +148,19 @@ coordinate conventions, supported processing, and the remaining iPhone adapter.
 - Graph requests have a 2 MiB limit. Store large scan assets elsewhere once an
   upload/storage approach is chosen. Replacing a graph affects subsequent requests;
   each active route computation uses a single graph snapshot.
+- Graph persistence: with `INVIEW_SCAN_DIR`, each accepted graph is written atomically
+  (temp file, fsync, rename) to `INVIEW_SCAN_DIR/graphs/<sha256(graph id)>.json` before
+  the PUT is acknowledged, and all graphs are reloaded at startup. Unreadable, invalid
+  or misnamed graph files are logged and skipped rather than blocking startup.
+- The Python worker's `publishers/graph.py` PUTs the analysis `nav_graph` product
+  (`id = "<scan_id>-nav"`) here after storing the analysis, so once a navigation-graph
+  stage provides it, a processed scan is routable via `POST /graphs/<scan_id>-nav/routes`.
+  Scans without a `nav_graph` (all scans until that stage lands) are skipped; 422
+  validation errors are logged by the worker.
+- The iOS app (`BackendClient.analysis(scanID:)`) polls `GET /scans/{id}/analysis` in the
+  background after processing and merges `places` (once a places stage provides them)
+  into the draft map's destination points with stable IDs, never replacing points the
+  volunteer added.
 
 ## What I need from the team
 
@@ -161,7 +178,7 @@ coordinate conventions, supported processing, and the remaining iPhone adapter.
 
 ## Risks I see
 
-Data disappears on restart. There is no deployment or external service integration.
+Without `INVIEW_SCAN_DIR`, source scans disappear on restart; PostgreSQL startup requires that directory. Graphs persist only with that directory. The Rust API uses Bearer authentication when `INVIEW_API_TOKEN` is configured. The current ngrok tunnel provides HTTPS for the Rust backend; its storage is **local PostgreSQL**, not TigerData, until cloud credentials are supplied and verified.
 Geometry validation cannot prove wall clearance, scan alignment, connector identity,
 or real-world accessibility; map review must establish those properties. The scan
 `/scans` prototype uses supplied object labels. Continuous `/streams` scans can use
