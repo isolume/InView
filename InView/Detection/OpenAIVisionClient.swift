@@ -88,7 +88,7 @@ struct OpenAIVisionClient: VisionDetector {
                 "role": "user",
                 "content": [
                     ["type": "input_text", "text": VisionPrompt.userText],
-                    ["type": "input_image", "image_url": "data:image/jpeg;base64,\(jpeg.base64EncodedString())", "detail": "auto"],
+                    ["type": "input_image", "image_url": "data:image/jpeg;base64,\(jpeg.base64EncodedString())", "detail": "high"],
                 ],
             ]],
             "text": ["format": [
