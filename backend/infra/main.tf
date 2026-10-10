@@ -17,21 +17,22 @@ resource "vultr_firewall_rule" "ssh" {
   notes             = "SSH"
 }
 
-resource "vultr_firewall_rule" "backend_http" {
+resource "vultr_firewall_rule" "web" {
+  for_each          = toset(["80", "443"])
   firewall_group_id = vultr_firewall_group.backend.id
   protocol          = "tcp"
   ip_type           = "v4"
   subnet            = "0.0.0.0"
   subnet_size       = 0
-  port              = tostring(var.backend_port)
-  notes             = "InView backend"
+  port              = each.value
+  notes             = "HTTPS and certificate renewal"
 }
 
 resource "vultr_instance" "backend" {
   label             = var.instance_label
   region            = var.region
   plan              = var.plan
-  os_id             = 1743 # Ubuntu 22.04 x64 on Vultr's current catalog
+  os_id             = 1743 # Debian 12 x64
   ssh_key_ids       = [vultr_ssh_key.deploy.id]
   firewall_group_id = vultr_firewall_group.backend.id
   hostname          = var.instance_label
@@ -40,7 +41,9 @@ resource "vultr_instance" "backend" {
   # The provider base64-encodes this itself; passing already-encoded text here
   # would double-encode it and cloud-init would fail to parse it on boot.
   user_data = templatefile("${path.module}/cloud-init.yaml.tpl", {
-    backend_image = var.backend_image
-    backend_port  = var.backend_port
+    backend_image  = var.backend_image
+    backend_port   = var.backend_port
+    backend_domain = var.backend_domain
+    api_token      = var.api_token
   })
 }

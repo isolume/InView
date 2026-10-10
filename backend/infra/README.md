@@ -1,43 +1,44 @@
 # Hosting the backend on Vultr
 
-Provisions one small Vultr instance that runs `backend/Dockerfile` under systemd,
-restarting it if it crashes or the instance reboots. The service keeps everything
-in memory (see `../SCANS.md`), so this is sized for a demo, not durable storage:
-one `vc2-1c-1gb` instance, no database, no load balancer.
+Terraform provisions a Debian 12 instance with Docker, a systemd backend service,
+and Caddy as the HTTPS reverse proxy. Only SSH, HTTP redirects/certificate
+renewal, and HTTPS are exposed. The backend port binds to loopback.
 
-## One-time setup
+Source scans, derived analyses, graphs, and continuous streams are stored under
+`/var/lib/inview`, mounted at `/data` in the container. Container restarts and
+image updates retain those files. Building-map endpoints require a separately
+configured PostgreSQL database; this deployment does not provision one.
+Local furniture recognition is not bundled into the backend image.
 
-1. **Install Terraform** (>= 1.6) and the `vultr` CLI is not required.
-2. **Get a Vultr API key**: Vultr dashboard → Account → API, enable it, copy the key.
-3. **Build and push the backend image** to a registry Vultr can pull from (GitHub
-   Container Registry is free for public images):
+## Setup
+
+1. Install Terraform >= 1.6 and Docker with Buildx.
+2. Obtain a Vultr API key and a DNS hostname you control.
+3. Build and push an image that the instance can pull:
 
    ```sh
    cd backend
    docker login ghcr.io -u <your-username>
-   docker buildx build --platform linux/amd64 -t ghcr.io/<your-username>/inview-backend:latest --push .
+   docker buildx build --platform linux/amd64 -t ghcr.io/<your-username>/inview-backend:<tag> --push .
    ```
 
-   Vultr's `vc2-1c-1gb` plan is x86_64. Building with a plain `docker build` on an
-   Apple Silicon Mac produces an arm64-only image that the instance can't pull —
-   use `buildx` with `--platform linux/amd64` as above even when building locally.
+   Use a public image or configure registry credentials on the instance. The
+   default Vultr plan is x86_64, including when the build runs on Apple Silicon.
 
-   Make the package public in GitHub (Packages → inview-backend → Package settings
-   → Change visibility), or configure a pull secret — the cloud-init script below
-   runs an anonymous `docker pull`.
-
-4. **Copy the vars file** and fill it in:
+4. Copy `terraform.tfvars.example` to `terraform.tfvars`. Set `ssh_public_key`,
+   `allowed_ssh_cidr`, `backend_image`, and `backend_domain`. Prefer a fixed image
+   tag or digest. The SSH CIDR must restrict access to your network.
+5. Supply the secrets through the environment:
 
    ```sh
-   cd infra
-   cp terraform.tfvars.example terraform.tfvars
-   # edit terraform.tfvars: ssh_public_key, allowed_ssh_cidr, backend_image
    export TF_VAR_vultr_api_key="your-vultr-api-key"
+   export TF_VAR_api_token="$(openssl rand -hex 32)"
    ```
 
-   Keep the API key out of `terraform.tfvars` — the exported env var is read
-   automatically by Terraform's `TF_VAR_` convention. `terraform.tfvars` and
-   `*.tfstate` are git-ignored; double-check `git status` before committing.
+   Save the generated backend token in your password manager. Terraform marks
+   it sensitive, but it is still present in state and instance user data. Keep
+   state private. Local vars and state files are ignored; check `jj status`
+   before committing.
 
 ## Deploy
 
@@ -46,53 +47,33 @@ cd backend/infra
 terraform init
 terraform plan
 terraform apply
+terraform output instance_ip
 ```
 
-`terraform apply` prints `backend_url` (e.g. `http://203.0.113.10:3000`) once the
-instance is up. Cloud-init takes a minute or two after the instance reports ready
-to install Docker and start the service — `terraform output ssh_command` then
-`systemctl status inview-backend` on the box if it's not responding yet.
+Point the hostname's DNS A record at `instance_ip`. Caddy obtains a certificate
+once DNS resolves to the instance. Cloud-init installs packages and starts both
+services; inspect `systemctl status inview-backend caddy` over SSH if needed.
+See [Caddy's HTTPS setup](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+for DNS and certificate requirements.
 
-Confirm it's live:
+Verify with the same backend token:
 
 ```sh
-curl http://<instance_ip>:3000/health
-# {"status":"ok","service":"inview-backend"}
+curl -H "Authorization: Bearer $TF_VAR_api_token" https://<backend_domain>/health
 ```
 
-## Point the app at it
+In the app's **Scan processing** settings, enter the HTTPS address and access
+token, then test and save. The token is stored in the phone's Keychain.
 
-Either set `INVIEW_BACKEND_URL` in `Config/Secrets.xcconfig` to the printed
-`backend_url` and rebuild, or open the app's gear icon → scan processing settings
-→ paste the address → Test connection → Save. No rebuild needed for the
-settings-entered address; it's stored on-device and takes priority over the
-build setting (see `AppConfig.backendAddress`).
+## Update and backup
 
-## Updating the backend
+Cloud-init runs only on initial boot. To update an existing instance, copy the
+new image reference into `/etc/systemd/system/inview-backend.service`, run
+`systemctl daemon-reload`, then `systemctl restart inview-backend`. Updating
+Terraform user data alone does not rerun provisioning. To rotate the token,
+update `/etc/inview/backend.env` and restart the service.
 
-Build and push a new image tag, then either:
-
-- `terraform apply` again after bumping `backend_image` to the new tag, or
-- SSH in and run `systemctl restart inview-backend` to re-pull `:latest`.
-
-## Tearing down
-
-```sh
-terraform destroy
-```
-
-This deletes the instance, its firewall group, and the uploaded SSH key. Nothing
-here provisions a database or persistent volume, so there's no data to back up
-first — captured scans live only in that process's memory.
-
-## Notes
-
-- The backend has no authentication (see `../SCANS.md`); the firewall group only
-  restricts SSH, not the backend port. Don't point this at anything beyond a
-  short-lived demo without adding auth in front of it.
-- `os_id = 1743` in `main.tf` is Vultr's Debian 12 image. Run
-  `curl -s https://api.vultr.com/v2/os -H "Authorization: Bearer $TF_VAR_vultr_api_key" | jq '.os[] | select(.name | test("Debian"))'`
-  to see current OS ids if Vultr has retired that one.
-- Regions and plans: `terraform console` isn't needed — see
-  https://www.vultr.com/api/#tag/region and the Instances pricing page for current
-  plan ids.
+Back up `/var/lib/inview` before replacing or destroying the instance. If a
+PostgreSQL database is configured, back it up together with the scan directory.
+`terraform destroy` deletes the instance and its local data. This setup has no
+separate persistent volume or automated backups.
