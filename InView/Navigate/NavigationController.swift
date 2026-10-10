@@ -159,10 +159,12 @@ final class NavigationController: ObservableObject {
         return SIMD2(translation.x, translation.z)
     }
 
-    func startFromScanOrigin() {
-        guard phase == .locating else { return }
-        run(initialWorldMap: nil)
-        didLocate()
+    /// Retry with the saved coordinate system; routing waits for actual relocalization.
+    func retryLocalization() {
+        guard phase == .locating, let worldMap else { return }
+        isRelocalizationSlow = false
+        locatingSince = .now
+        run(initialWorldMap: worldMap)
     }
 
     func navigateToNearest() {

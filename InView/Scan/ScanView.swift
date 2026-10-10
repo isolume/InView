@@ -371,6 +371,7 @@ struct MapReviewView: View {
                                   primaryTitle: isSaving ? "Saving…" : "Save map", primaryAction: save,
                                   secondaryTitle: "Review points",
                                   reviewDestination: AnyView(RoomReviewSheet(controller: controller, onSaved: onClose)),
+                                  streamEvidenceID: controller.streamEvidenceID,
                                   currentMapPosition: { controller.placementPosition },
                                   onPlaceBuilding: controller.setGeographicReference,
                                   error: $saveError)

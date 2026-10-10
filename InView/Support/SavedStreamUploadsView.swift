@@ -14,6 +14,7 @@ struct SavedStreamUploadsView: View {
     @State private var busyID: String?
     @State private var status: [String: String] = [:]
     @State private var preview: StreamResult?
+    @State private var evidenceScanID: String?
     @State private var task: Task<Void, Never>?
     @State private var listingError: String?
 
@@ -26,6 +27,7 @@ struct SavedStreamUploadsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(scan.date.formatted(date: .abbreviated, time: .shortened)).font(.headline)
                     if let message = status[scan.id] { Text(message).font(.footnote).foregroundStyle(.secondary) }
+                    Button("View scan data") { evidenceScanID = scan.id }
                     Button {
                         resume(scan)
                     } label: {
@@ -38,6 +40,7 @@ struct SavedStreamUploadsView: View {
                             .disabled(busyID != nil)
                     }
                 }
+                .buttonStyle(.borderless)
                 .padding(.vertical, 4)
             }
         }
@@ -49,8 +52,12 @@ struct SavedStreamUploadsView: View {
         .onDisappear { task?.cancel() }
         .fullScreenCover(isPresented: Binding(get: { preview != nil }, set: { if !$0 { preview = nil } })) {
             if let preview {
-                RoomMapExperience(scene: preview.scene, title: "Saved scan", onClose: { self.preview = nil })
+                RoomMapExperience(scene: preview.scene, title: "Saved scan", onClose: { self.preview = nil },
+                                  streamEvidenceID: preview.capture.id)
             }
+        }
+        .fullScreenCover(isPresented: Binding(get: { evidenceScanID != nil }, set: { if !$0 { evidenceScanID = nil } })) {
+            if let evidenceScanID { RawLidarReviewView(scanID: evidenceScanID) }
         }
     }
 

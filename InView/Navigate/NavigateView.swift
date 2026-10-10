@@ -165,7 +165,7 @@ struct NavigateView: View {
                     ProgressView("Loading map…").frame(maxWidth: .infinity, minHeight: 100)
                 case .locating:
                     LocatingPanel(startView: controller.startView, isSlow: controller.isRelocalizationSlow,
-                                  onStartHere: controller.startFromScanOrigin)
+                                  onRetry: controller.retryLocalization)
                 case .ready:
                     destinationPicker
                     Button(action: controller.navigateToNearest) {
@@ -288,7 +288,7 @@ struct NavigateView: View {
 private struct LocatingPanel: View {
     let startView: UIImage?
     let isSlow: Bool
-    let onStartHere: () -> Void
+    let onRetry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -302,8 +302,8 @@ private struct LocatingPanel: View {
                     .accessibilityLabel("Photo of where the scan started")
             }
             if isSlow {
-                Text("Stand where the scan started, facing the way the photo does.").font(.footnote)
-                Button("Start from here", action: onStartHere).buttonStyle(.bordered)
+                Text("Stand where the scan started, facing the way the photo does, then try again.").font(.footnote)
+                Button("Try again", action: onRetry).buttonStyle(.bordered)
             }
         }
     }

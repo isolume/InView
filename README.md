@@ -154,7 +154,7 @@ maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
    - Turn on **Needs staff** for anything someone has to operate.
    - Flip the map between Plan and 3D, and open the full report.
    - **Save**.
-5. **Navigate.** Stand near the table and look around until the app recognizes the space. If it hasn't after 15 s, stand on the scan start spot, face the way the photo does, and tap **Start from here**. Then:
+5. **Navigate.** Stand near the table and look around until the app recognizes the space. If it hasn't after 15 s, stand on the scan start spot, face the way the photo does, and tap **Try again**. Routing stays unavailable until the app recognizes the saved space. Then:
    - Tap **Take me to the nearest accessible point**.
    - Put a chair in the path: it gets a red marker, and the route and voice go around it.
 

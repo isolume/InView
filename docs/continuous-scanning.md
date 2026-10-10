@@ -37,6 +37,15 @@ originals use `INVIEW_STREAM_DIR`, defaulting to `data/streams/`. These archives
 contain indoor camera images as well as depth measurements. The scan-processing
 server setting identifies where those images are sent.
 
+**Saved scans → View scan data** opens the original depth measurements as an
+orbitable point cloud, with **Depth** and **Color** appearances. It works offline
+and does not resume uploads. **Map options → Scan data** opens the same view while
+reviewing a continuous scan or its saved model. This is a sampled preview of the
+original camera poses, so it may differ from the backend's corrected model. It
+reads one saved chunk at a time, selects up to 24 views across the whole walk,
+and displays at most 90,000 points. Opening it never changes the saved map,
+capture, or upload progress.
+
 ## Reconstruction and drift correction
 
 The backend keeps a bounded set of reconstruction keyframes, proposes nonadjacent
@@ -77,6 +86,10 @@ for review and saving, but live AR navigation is disabled until localization
 against the corrected model is implemented. An uncorrected model continues to use
 the existing relocalization path; absence of a verified loop is not an accuracy
 certification.
+
+If localization takes too long, **Try again** restarts with the saved AR world
+map. Routing remains unavailable until ARKit recognizes that coordinate system;
+standing at the starting spot alone does not establish alignment.
 
 The prototype caps one capture at 10,000 accepted samples or 2 GiB of chunk data.
 An individual chunk is at most 4 MiB. Those limits pause acceptance while keeping

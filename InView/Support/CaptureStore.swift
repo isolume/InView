@@ -77,6 +77,10 @@ enum CaptureStore {
         return directory.appending(path: "capture.json")
     }
 
+    static func streamRoot(for id: String) throws -> URL {
+        try directory(for: id).appending(path: "stream", directoryHint: .isDirectory)
+    }
+
     private static func directory(for id: String) throws -> URL {
         guard UUID(uuidString: id) != nil else {
             throw CaptureValidationError.invalid("The saved capture identifier is invalid.")

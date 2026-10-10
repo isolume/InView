@@ -62,6 +62,7 @@ final class ScanController: ObservableObject {
     private var localScene: ProcessedScene?
     private var sceneTask: Task<Void, Never>?
     private var streamingCapture: StreamingScanCapture?
+    var streamEvidenceID: String? { streamingCapture?.queue.manifest.id }
     private var streamStartTask: Task<Void, Never>?
     private var streamStatusTimer: Timer?
     private var streamStatusTask: Task<Void, Never>?
