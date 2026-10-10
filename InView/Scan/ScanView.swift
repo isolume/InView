@@ -138,9 +138,7 @@ struct MapReviewView: View {
     @ObservedObject var controller: ScanController
     let onClose: () -> Void
     @State private var pendingPoint: SIMD2<Float>?
-    @State private var isSaving = false
     @State private var saveError: String?
-    @State private var syncWarning: String?
 
     var body: some View {
         NavigationStack {
@@ -158,13 +156,13 @@ struct MapReviewView: View {
                             Text("None yet").foregroundStyle(.secondary)
                         }
                         ForEach(draft.points) { point in
-                            PointRow(point: point, name: name(for: point))
+                            PointRow(point: point, name: name(for: point), needsStaff: needsStaff(for: point))
                         }
                         .onDelete(perform: controller.removePoints)
                     } header: {
                         Text("Accessible points")
                     } footer: {
-                        Text("The crew uses these names when they text in a problem, so make them easy to say.")
+                        Text("Names are read aloud, so make them easy to say. Turn on \u{201C}Needs staff\u{201D} for lifts or doors someone has to operate.")
                     }
                     Section("Accessibility report") {
                         if let report = controller.report {
@@ -182,11 +180,7 @@ struct MapReviewView: View {
                     Button("Discard", role: .destructive, action: onClose)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if isSaving {
-                        ProgressView()
-                    } else {
-                        Button("Save", action: save)
-                    }
+                    Button("Save", action: save)
                 }
             }
             .confirmationDialog("Add accessible point", isPresented: isAddingPoint) {
@@ -201,32 +195,24 @@ struct MapReviewView: View {
             } message: {
                 Text(saveError ?? "")
             }
-            .alert("Saved on this phone only", isPresented: isShowingSyncWarning) {
-                Button("OK", action: onClose)
-            } message: {
-                Text("The server didn't get the map (\(syncWarning ?? "")), so crew reports can't match its points yet. Retry with Sync on the home screen.")
-            }
         }
     }
 
     private func save() {
-        isSaving = true
-        Task {
-            defer { isSaving = false }
-            do {
-                if let warning = try await controller.save() {
-                    syncWarning = warning
-                } else {
-                    onClose()
-                }
-            } catch {
-                saveError = error.localizedDescription
-            }
+        do {
+            try controller.save()
+            onClose()
+        } catch {
+            saveError = error.localizedDescription
         }
     }
 
     private func name(for point: AccessPoint) -> Binding<String> {
         Binding(get: { point.name }, set: { controller.rename(point.id, to: $0) })
+    }
+
+    private func needsStaff(for point: AccessPoint) -> Binding<Bool> {
+        Binding(get: { point.requiresAssistance }, set: { controller.setRequiresAssistance(point.id, $0) })
     }
 
     private var isAddingPoint: Binding<Bool> {
@@ -236,15 +222,12 @@ struct MapReviewView: View {
     private var isShowingSaveError: Binding<Bool> {
         Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })
     }
-
-    private var isShowingSyncWarning: Binding<Bool> {
-        Binding(get: { syncWarning != nil }, set: { if !$0 { syncWarning = nil } })
-    }
 }
 
 private struct PointRow: View {
     let point: AccessPoint
     @Binding var name: String
+    @Binding var needsStaff: Bool
 
     var body: some View {
         Label {
@@ -253,6 +236,10 @@ private struct PointRow: View {
                     .font(.body.weight(.medium))
                     .submitLabel(.done)
                 Text(details).font(.caption).foregroundStyle(point.isTooSteep ? .orange : .secondary)
+                Toggle("Needs staff", isOn: $needsStaff)
+                    .font(.caption)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
             }
         } icon: {
             Image(systemName: point.kind.symbolName).foregroundStyle(point.kind.tint)

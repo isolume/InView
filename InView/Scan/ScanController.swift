@@ -97,13 +97,15 @@ final class ScanController: ObservableObject {
         draft?.points[index].name = name
     }
 
-    /// Saves on the phone, then sends the map to the server so crew reports can name its points.
-    /// - Returns: Why the server sync failed, if it did. The map is saved locally either way.
-    func save() async throws -> String? {
-        guard let draft, let worldMap else { return nil }
+    func setRequiresAssistance(_ id: UUID, _ value: Bool) {
+        guard let index = draft?.points.firstIndex(where: { $0.id == id }) else { return }
+        draft?.points[index].requiresAssistance = value
+    }
+
+    func save() throws {
+        guard let draft, let worldMap else { return }
         let report = report ?? AccessibilityReport(map: draft)
         try MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
-        return await MapStore.sync(draft, report: report)
     }
 
     private func endSection(thenFinish finish: Bool) {

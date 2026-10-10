@@ -19,7 +19,6 @@ final class PathRenderer {
     private let chevron: ModelEntity
     private let obstacleMarker: ModelEntity
     private var markers: [UUID: PointMarker] = [:]
-    private var outOfService: Set<UUID> = []
     private var destination: UUID?
     private(set) var floorY: Float
 
@@ -65,13 +64,6 @@ final class PathRenderer {
         refreshMarkers()
     }
 
-    /// Marks points the crew reported broken.
-    func setOutOfService(_ ids: Set<UUID>) {
-        guard ids != outOfService else { return }
-        outOfService = ids
-        refreshMarkers()
-    }
-
     func showObstacles(_ positions: [SIMD2<Float>]) {
         obstacleRoot.children.removeAll()
         for position in positions {
@@ -83,9 +75,7 @@ final class PathRenderer {
 
     private func refreshMarkers(distance: Float? = nil) {
         for (id, marker) in markers {
-            if outOfService.contains(id) {
-                marker.show(.outOfService)
-            } else if id == destination, let distance {
+            if id == destination, let distance {
                 marker.show(.destination(distance: distance))
             } else if id != destination {
                 marker.show(.idle)
@@ -138,7 +128,6 @@ private final class PointMarker {
         case idle
         case destination(distance: Float)
         case arrived
-        case outOfService
     }
 
     let entity = Entity()
@@ -180,16 +169,15 @@ private final class PointMarker {
         case .arrived:
             setLabel("Arrived · \(point.name)", accent: .systemGreen, background: .systemGreen)
             entity.scale = SIMD3(repeating: 1.3)
-        case .outOfService:
-            setLabel("\(point.name) · out of service", accent: .systemRed, background: .systemRed)
-            entity.scale = .one
         }
     }
 
-    /// The name, plus the measured slope for ramps.
+    /// The name, plus the measured slope for ramps and a note when staff must operate it.
     private var title: String {
-        guard let slope = point.slopeDegrees else { return point.name }
-        return String(format: "%@ · %.1f°", point.name, slope)
+        var title = point.name
+        if let slope = point.slopeDegrees { title += String(format: " · %.1f°", slope) }
+        if point.requiresAssistance { title += " · staff" }
+        return title
     }
 
     private func setLabel(_ string: String, accent: UIColor, background: UIColor) {
