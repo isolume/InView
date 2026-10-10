@@ -773,11 +773,13 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
 
     /// ARKit's fused mesh, drawn single-sided like a dollhouse: its faces point to the side the
     /// sensor saw, so from above the near walls fall away and the room stays open. Ceilings are left
-    /// out, and each kind of surface gets its own quiet material.
+    /// out. A mesh colored from the scan's photos shows those colors unlit, since the photos already
+    /// carry the room's light; otherwise each kind of surface gets its own quiet material.
     private func buildReconstructedMesh(_ mesh: SceneMesh) {
         let positions = mesh.vertices.compactMap(vector)
         guard positions.count == mesh.vertices.count else { return }
         let labels = mesh.classifications.flatMap { $0.count == mesh.triangles.count ? $0 : nil }
+        let colors = mesh.colors.flatMap { $0.count == positions.count ? $0 : nil }
         let groups: [(labels: Set<String>, color: String)] = [
             ([ReconstructedMesh.floor], "#eef0eb"),
             (["wall"], "#dfe2dd"),
@@ -793,22 +795,30 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             let a = positions[triangle[0]], b = positions[triangle[1]], c = positions[triangle[2]]
             let normal = simd_cross(b - a, c - a)
             for vertex in triangle { normals[vertex] += normal }
-            let group = groups.firstIndex { $0.labels.contains(label) } ?? groups.count
+            let group = colors == nil ? groups.firstIndex { $0.labels.contains(label) } ?? groups.count : 0
             indices[group].append(contentsOf: triangle.map(UInt32.init))
         }
         var elements: [SCNGeometryElement] = []
         var materials: [SCNMaterial] = []
         for (group, faces) in indices.enumerated() where !faces.isEmpty {
             elements.append(SCNGeometryElement(indices: faces, primitiveType: .triangles))
-            let material = matte(group < groups.count ? groups[group].color : "#d3d8d4")
+            let material = matte(colors != nil ? "#ffffff" : group < groups.count ? groups[group].color : "#d3d8d4")
             material.isDoubleSided = false
+            if colors != nil { material.lightingModel = .constant }
             materials.append(material)
         }
         guard !elements.isEmpty else { return }
         let directions = normals.map { simd_length_squared($0) > 1e-12 ? simd_normalize($0) : SIMD3<Float>(0, 1, 0) }
-        let geometry = SCNGeometry(sources: [SCNGeometrySource(vertices: positions.map(scn)),
-                                             SCNGeometrySource(normals: directions.map(scn))],
-                                   elements: elements)
+        var sources = [SCNGeometrySource(vertices: positions.map(scn)), SCNGeometrySource(normals: directions.map(scn))]
+        if let colors {
+            let channels = colors.map { SIMD3<Float>(Float($0 >> 16 & 0xFF), Float($0 >> 8 & 0xFF), Float($0 & 0xFF)) / 255 }
+            let data = channels.withUnsafeBufferPointer { Data(buffer: $0) }
+            sources.append(SCNGeometrySource(data: data, semantic: .color, vectorCount: channels.count,
+                                             usesFloatComponents: true, componentsPerVector: 3,
+                                             bytesPerComponent: MemoryLayout<Float>.size, dataOffset: 0,
+                                             dataStride: MemoryLayout<SIMD3<Float>>.stride))
+        }
+        let geometry = SCNGeometry(sources: sources, elements: elements)
         geometry.materials = materials
         let node = SCNNode(geometry: geometry)
         node.categoryBitMask = 8

@@ -59,9 +59,21 @@ floor coverage.
 
 `CeilingMeasurement` compares ceiling and floor faces on a 25 cm plan grid. Review
 shows the median ceiling height and how much of the floor has ceiling captured above
-it; the capture metadata records both. The welded mesh also seeds the splat's
-starting point cloud. The raw archive keeps the native mesh buffers; the welded mesh
-is in the capture bundle.
+it; the capture metadata records both. The raw archive keeps the native mesh
+buffers; the welded mesh is in the capture bundle.
+
+After welding, `MeshColorizer` colors the mesh from the stream's saved photos,
+reading up to 200 chunks spread over the walk, one at a time, with each photo
+decoded at 512 px. `MeshColoring` projects every vertex into each photo and keeps
+the photo only where its measured depth agrees with the vertex (within 6 cm plus 3%
+of the distance), so a surface in front doesn't paint the one behind it. Views count
+more when they're head-on and close, and less near the image edge. Vertices no photo
+saw borrow from neighbors up to four edges away, then fall back to gray. Colors are
+stored per vertex as `vertex_colors` (0xRRGGBB) on the mesh, and the map draws them
+unlit, since the photos already carry the room's light. The colored mesh seeds the
+splat's starting point cloud (`sparse_pc.ply`) with those colors. Coloring happens on
+the phone during Finish (the "Coloring 3D model…" stage); a failure leaves the
+model plain and doesn't stop the save.
 - Finish seals the local capture before contacting the server. A failed upload
   remains retryable. **Scan processing → Saved scans** can explicitly resume a
   saved stream and review its model after an app restart. A saved stream normally

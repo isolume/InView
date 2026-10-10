@@ -10,7 +10,7 @@ import SwiftUI
 @MainActor
 final class ScanController: ObservableObject {
     enum SceneStage: Equatable {
-        case preparing, uploading, reconstructing, saving
+        case preparing, coloring, uploading, reconstructing, saving
     }
     enum Phase: Equatable {
         case unsupported
@@ -92,6 +92,7 @@ final class ScanController: ObservableObject {
         guard isContinuous else { return "Building map…" }
         switch sceneStage {
         case .preparing: return "Preparing scan…"
+        case .coloring: return "Coloring 3D model…"
         case .uploading:
             guard let streamStatus, streamStatus.captured > 0 else { return "Uploading scan…" }
             if streamStatus.pending == 0 { return "Finishing upload…" }
@@ -691,8 +692,6 @@ final class ScanController: ObservableObject {
                 }
                 let captured = await self.rawCapture.finishSnapshot()
                 var raw = try await ScanWork.run { try RawScanCapture.reconstruct(captured) }
-                // The mesh also seeds the splat's starting point cloud.
-                self.splatCapture.finish(meshes: raw.meshes)
                 try Task.checkCancellation()
                 let welded = raw
                 let built = try await ScanWork.run {
@@ -710,6 +709,29 @@ final class ScanController: ObservableObject {
                     raw.metadata = .object(metadata)
                 }
                 Log.scan.notice("ceiling: \(built.1.map { String(format: "%.2f m high over %.1f m²", $0.heightM, $0.areaM2) } ?? "not captured", privacy: .public)")
+                if self.isContinuous, let mesh = raw.meshes.first {
+                    self.sceneStage = .coloring
+                    let id = scanID.uuidString
+                    do {
+                        if let colored = try await ScanWork.run({ try MeshColorizer.color(mesh, scanID: id) }) {
+                            raw.meshes = [colored.mesh]
+                            if case .object(var metadata) = raw.metadata {
+                                metadata["mesh_color_photos"] = .number(Double(colored.photos))
+                                metadata["mesh_color_coverage"] = .number(Double(colored.coverage))
+                                raw.metadata = .object(metadata)
+                            }
+                            Log.scan.notice("colored the mesh from \(colored.photos) photos; \(Int(colored.coverage * 100))% of vertices seen")
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        // The plain model still saves; color is a finish, not a requirement.
+                        Log.scan.error("couldn't color the mesh: \(error.localizedDescription, privacy: .public)")
+                    }
+                    self.sceneStage = .preparing
+                }
+                // The mesh, colored when it could be, also seeds the splat's starting point cloud.
+                self.splatCapture.finish(meshes: raw.meshes)
                 let payload = ExportPayload(rooms: rooms, recovered: recovered, raw: raw, scanID: scanID, floor: floor)
                 let prepared = try await ScanWork.run {
                     let rawData = try ScanExporter.rawSnapshotData(payload.raw)

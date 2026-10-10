@@ -172,3 +172,14 @@ private func labeledMesh(_ faces: [(label: String, base: Float, top: Float)]) ->
     // Repeated SwiftUI updates reuse the cut.
     #expect(IndoorSceneFloors.scene(source, on: floors[1]).meshes.first == upper)
 }
+
+@Test func multilevelCutawaysKeepEachVertexsColor() throws {
+    var source = floorScene([floorSurface("ground", elevation: 0), floorSurface("upper", elevation: 3)])
+    var mesh = labeledMesh([("floor", 0, 0), ("floor", 3, 3)])
+    mesh.colors = (0..<UInt32(mesh.vertices.count)).map { $0 * 0x10 }
+    source.meshes = [mesh]
+    let floors = IndoorSceneFloors.floors(in: source)
+    let upper = try #require(IndoorSceneFloors.scene(source, on: floors[1]).meshes.first)
+    #expect(upper.colors == [0x30, 0x40, 0x50])
+    #expect(upper.vertices == Array(mesh.vertices[3...5]))
+}

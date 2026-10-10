@@ -79,6 +79,7 @@ struct SavedStreamUploadsView: View {
     private var busyLabel: String {
         switch processingStage {
         case .preparing: return "Preparing scan…"
+        case .coloring: return "Coloring 3D model…"
         case .uploading:
             guard let uploadProgress else { return "Uploading scan…" }
             if uploadProgress.pending == 0 { return "Finishing upload…" }

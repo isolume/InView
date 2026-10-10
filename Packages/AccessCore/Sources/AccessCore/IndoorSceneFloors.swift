@@ -113,6 +113,8 @@ public enum IndoorSceneFloors {
         guard let first = levels.first, let last = levels.last else { return nil }
         var remap = [Int](repeating: -1, count: mesh.vertices.count)
         var vertices: [[Float]] = []
+        var colors: [UInt32] = []
+        let sourceColors = mesh.colors.flatMap { $0.count == mesh.vertices.count ? $0 : nil }
         var triangles: [[Int]] = []
         var classifications: [String] = []
         for (index, triangle) in mesh.triangles.enumerated() where labels[index] != ReconstructedMesh.ceiling {
@@ -125,13 +127,15 @@ public enum IndoorSceneFloors {
                 if remap[vertex] < 0 {
                     remap[vertex] = vertices.count
                     vertices.append(mesh.vertices[vertex])
+                    if let sourceColors { colors.append(sourceColors[vertex]) }
                 }
                 return remap[vertex]
             })
             classifications.append(labels[index])
         }
         guard !triangles.isEmpty else { return nil }
-        return SceneMesh(sourceID: mesh.sourceID, vertices: vertices, triangles: triangles, classifications: classifications)
+        return SceneMesh(sourceID: mesh.sourceID, vertices: vertices, triangles: triangles, classifications: classifications,
+                         colors: sourceColors == nil ? nil : colors)
     }
 
     /// SwiftUI rebuilds floor content on every update; a cut is made once per floor choice.
