@@ -84,7 +84,10 @@ def test_context_caches_read_only_images(synthetic_ctx):
 
 def test_full_pipeline_on_the_synthetic_package_matches_ground_truth(synthetic_ctx):
     result = analyze(synthetic_ctx)
-    assert all(s["status"] == "ok" for s in result["stages"].values()), result["stages"]
+    # A stage may only be skipped when no registered stage provides what it requires yet.
+    provided = {product for stage in registry.stages() for product in stage.provides}
+    assert all(s["status"] == "ok" or (s["status"] == "skipped" and not set(s["missing"]) & provided)
+               for s in result["stages"].values()), result["stages"]
     assert result["floor_map"]["floor_height_m"] == pytest.approx(package.TRUTH["floor_y_m"], abs=0.02)
     assert result["floor_map"]["outlines"][0]["area_m2"] == pytest.approx(package.TRUTH["room_area_m2"], rel=0.08)
     door = result["doors"][0]

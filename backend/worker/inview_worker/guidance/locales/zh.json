@@ -1,0 +1,48 @@
+{
+  "locale": "zh",
+  "name": "中文",
+  "direction": "ltr",
+  "number": {"decimal": ".", "group": ",", "min_grouping": 1},
+  "messages": {
+    "distance": "{n, plural, other {#米}}",
+    "distance_ahead": "{n, plural, other {#米}}",
+    "width": "{w}米",
+    "clause.depart": "从{origin}出发",
+    "clause.depart_plain": "开始步行",
+    "clause.turn": "{maneuver, select, slight_left {向左前方走} left {左转} slight_right {向右前方走} right {右转} u_turn {掉头} other {直行}}",
+    "clause.turn_after": "经过{landmark}后{turn}",
+    "clause.turn_before": "在到达{landmark}之前{turn}",
+    "clause.door": "穿过门",
+    "clause.door_narrow": "穿过窄门（净宽{width}）",
+    "clause.caution": "注意：前方{ahead}处有{hazard}",
+    "clause.transition": "{connector, select, elevator {乘电梯} stairs {走楼梯} escalator {乘自动扶梯} other {经由连接通道}}{direction, select, up {上行} down {下行} other {}}至{floor}层",
+    "clause.arrive": "到达{destination}",
+    "clause.arrive_side": "到达{destination}，目的地在您的{side, select, left {左侧} right {右侧} other {正前方}}",
+    "landmark.sign_text": "“{text}”标志",
+    "landmark.sign_category": "{category}标志",
+    "landmark.sign": "标志",
+    "landmark.door": "门",
+    "sentence.continue": "{clause}，然后继续前行{distance}。",
+    "sentence.plain": "{clause}。"
+  },
+  "place_phrases": {
+    "entrance": "入口", "exit": "出口", "emergency_exit": "紧急出口",
+    "restroom": "洗手间", "accessible_restroom": "无障碍洗手间", "elevator": "电梯",
+    "stairs": "楼梯", "escalator": "自动扶梯", "ramp": "坡道", "door": "门",
+    "room": "房间", "corridor": "走廊", "information": "问询处",
+    "reception": "前台", "seating": "休息区", "water_fountain": "饮水机",
+    "fire_extinguisher": "灭火器", "first_aid": "急救箱", "landmark": "地标",
+    "other": "目的地"
+  },
+  "sign_categories": {
+    "exit": "出口", "emergency_exit": "紧急出口", "entrance": "入口", "restroom": "洗手间",
+    "accessible_restroom": "无障碍洗手间", "elevator": "电梯", "stairs": "楼梯",
+    "escalator": "自动扶梯", "ramp": "坡道", "information": "问询", "first_aid": "急救",
+    "fire_extinguisher": "灭火器", "directional": "指示", "informational": "信息"
+  },
+  "hazards": {
+    "step": "台阶", "stairs": "楼梯", "ramp": "坡道", "level_change": "地面高差",
+    "drop_off": "落差边缘", "low_headroom": "低矮净空", "protruding_object": "突出物",
+    "other": "障碍物"
+  }
+}
