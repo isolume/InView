@@ -285,6 +285,7 @@ private struct MapReviewDetailsView: View {
     @State private var saveError: String?
     @State private var isSaving = false
     @State private var shownEvidence: ShownEvidence?
+    @State private var showsRawReview = false
 
     var body: some View {
         NavigationStack {
@@ -310,6 +311,34 @@ private struct MapReviewDetailsView: View {
                             .padding(.vertical, 6)
                     } footer: {
                         Text("Tap the plan to name a destination or add an elevator or ramp the camera missed.")
+                    }
+                    if let raw = controller.rawSnapshot {
+                        Section("Capture evidence") {
+                            Button { showsRawReview = true } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                                        .font(.title3)
+                                        .foregroundStyle(.cyan)
+                                        .frame(width: 34, height: 34)
+                                        .background(.cyan.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Review LiDAR evidence").font(.body.weight(.medium))
+                                        Text("\(raw.frames.count) depth views · \(raw.colorKeyframes.count) color keyframes · \(raw.meshes.count) mesh anchors")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens raw depth, smoothed depth, color point, and mesh views")
+                        } footer: {
+                            Text("This is source evidence for inspection. The RoomPlan map remains the navigation map.")
+                        }
                     }
                     if !controller.unconfirmed.isEmpty {
                         Section {
@@ -453,6 +482,11 @@ private struct MapReviewDetailsView: View {
                 EvidenceSheet(title: shown.title, evidence: shown.evidence)
             }
             .sheet(isPresented: $isShowingSettings) { BackendSettingsView() }
+            .fullScreenCover(isPresented: $showsRawReview) {
+                if let raw = controller.rawSnapshot {
+                    RawLidarReviewView(snapshot: raw)
+                }
+            }
         }
     }
 

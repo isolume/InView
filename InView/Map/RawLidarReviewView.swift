@@ -29,7 +29,7 @@ struct RawLidarReviewView: View {
     @State private var mode: Mode = .raw
     @State private var scene: SCNScene?
     @State private var sceneCache: [Mode: SCNScene] = [:]
-    @State private var isLoading = false
+    @State private var loadingMode: Mode?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -40,8 +40,8 @@ struct RawLidarReviewView: View {
                 Color.black.ignoresSafeArea()
             }
 
-            if isLoading || scene == nil {
-                ProgressView("Loading LiDAR…")
+            if loadingMode == mode || scene == nil {
+                ProgressView("Preparing LiDAR evidence…")
                     .tint(.white)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18)
@@ -53,8 +53,10 @@ struct RawLidarReviewView: View {
             HStack(spacing: 12) {
                 Menu {
                     Picker("LiDAR view", selection: $mode) {
-                        ForEach(Mode.allCases) { mode in
-                            Label(mode.rawValue, systemImage: mode.symbol).tag(mode)
+                        ForEach(Mode.allCases) { candidate in
+                            Label(candidate.rawValue, systemImage: candidate.symbol)
+                                .tag(candidate)
+                                .disabled(!isAvailable(candidate))
                         }
                     }
                 } label: {
@@ -64,6 +66,7 @@ struct RawLidarReviewView: View {
                         .padding(.vertical, 9)
                         .background(.thinMaterial, in: Capsule())
                 }
+                .accessibilityHint("Choose raw depth, smoothed depth, color points, or AR mesh")
                 Spacer()
                 Button("Done") { dismiss() }
                     .buttonStyle(.borderedProminent)
@@ -74,20 +77,52 @@ struct RawLidarReviewView: View {
             .padding(.bottom, 10)
             .background(.ultraThinMaterial)
         }
+        .safeAreaInset(edge: .bottom) {
+            evidenceSummary
+        }
         .task(id: mode) {
             if let cached = sceneCache[mode] {
                 scene = cached
+                loadingMode = nil
                 return
             }
-            isLoading = true
             let requestedMode = mode
+            loadingMode = requestedMode
+            defer {
+                if loadingMode == requestedMode { loadingMode = nil }
+            }
             let built = await Task.detached(priority: .userInitiated) {
                 RawLidarSceneBuilder.makeScene(snapshot: snapshot, mode: requestedMode)
             }.value
             guard !Task.isCancelled, mode == requestedMode else { return }
             sceneCache[requestedMode] = built
             scene = built
-            isLoading = false
+        }
+    }
+
+    private var evidenceSummary: some View {
+        HStack(spacing: 14) {
+            Label("\(snapshot.frames.count) depth views", systemImage: "viewfinder")
+            Label("\(snapshot.colorKeyframes.count) color", systemImage: "camera.fill")
+            Label("\(snapshot.meshes.count) mesh", systemImage: "triangle")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.white)
+        .lineLimit(1)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("LiDAR evidence: \(snapshot.frames.count) depth views, \(snapshot.colorKeyframes.count) color keyframes, \(snapshot.meshes.count) mesh anchors")
+    }
+
+    private func isAvailable(_ mode: Mode) -> Bool {
+        switch mode {
+        case .raw: !snapshot.depthBuffers.isEmpty
+        case .smoothed: snapshot.depthBuffers.contains { $0.smoothedDepth != nil }
+        case .color: !snapshot.colorKeyframes.isEmpty
+        case .mesh: !snapshot.meshes.isEmpty
         }
     }
 }
