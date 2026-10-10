@@ -11,6 +11,8 @@ shared ARKit frame (meters, Y up; the floor map is the X/Z plane, +Z down the im
 | Signs & text | RGB keyframes + depth samples under each detection | exit (red/green) and accessibility (blue) plate candidates, MSER text lines, 3D position; text via Tesseract only if installed |
 
 Results are screening candidates, **not** verified accessible routes or ADA certification.
+The pipeline is a set of auto-discovered stages exchanging named products; see
+[PIPELINE.md](PIPELINE.md) for the architecture, contract, and rules for adding stages.
 
 ## Run
 
@@ -24,6 +26,7 @@ uv sync --python 3.12
 .venv/bin/python -m inview_worker process --all [--force] # every unprocessed (or every) scan
 .venv/bin/python -m inview_worker watch --interval 15     # poll for new uploads
 .venv/bin/python -m pytest -q
+scripts/e2e.sh 3790                                       # throwaway backend + every stage, then a report
 ```
 
 `INVIEW_BACKEND_URL` defaults to `http://127.0.0.1:3000`; the token comes from `INVIEW_API_TOKEN`

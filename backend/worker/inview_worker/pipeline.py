@@ -1,20 +1,16 @@
 """Gather scan evidence from the backend, run the OpenCV passes, and publish one analysis."""
 from __future__ import annotations
 
-import base64
-from datetime import datetime, timezone
-from typing import Callable
+import logging
 
-import cv2
 import numpy as np
 
-from . import __version__, doors, floor_map, signs
-from .client import Backend
+from .client import Backend, BackendError
+from .core import ScanContext, Stage, registry, runner
 from .geometry import matrix
 from .inputs import Box, Frame, ScanInputs, Surface
 
-NOTICE = ("Automated OpenCV screening of measured evidence. Floor maps, sign/text candidates, and "
-          "clearance checks are NOT verified accessible routes or ADA certification; review before use.")
+log = logging.getLogger(__name__)
 
 
 def _stack(rows: list, columns: int) -> np.ndarray:
@@ -63,51 +59,40 @@ def gather(backend: Backend, scan_id: str) -> ScanInputs:
     return inputs
 
 
-def analyze(inputs: ScanInputs, read_image: Callable[[str], np.ndarray | None]) -> dict:
-    fm = floor_map.build(inputs)
-    door_results = doors.check(inputs, fm)
-    sign_results, keyframes = signs.analyze(inputs.frames, read_image)
-    notices = [NOTICE]
-    if fm is None:
-        notices.append("No floor map: the scan has no usable floor, mesh, depth, or camera evidence.")
-    if not keyframes:
-        notices.append("No RGB keyframes were available, so signs and text were not analysed.")
-    floor_result = None
-    if fm is not None:
-        floor_result = dict(fm.result)
-        floor_result["image_png_base64"] = base64.b64encode(floor_map.render(fm, door_results)).decode()
-    return {
-        "schema_version": 1,
-        "scan_id": inputs.scan_id,
-        "frame": "shared_arkit_session",
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "worker": {"name": "inview-worker", "version": __version__, "opencv": cv2.__version__},
-        "sources": inputs.sources,
-        "floor_map": floor_result,
-        "doors": door_results,
-        "signs": sign_results,
-        "summary": {
-            "walkable_area_m2": floor_result["walkable_area_m2"] if floor_result else None,
-            "narrow_passages": len(floor_result["narrow_passages"]) if floor_result else 0,
-            "doors_checked": len(door_results),
-            "doors_below_min_width": sum(not d["meets_clear_width"] for d in door_results),
-            "sign_candidates": sum(s["kind"] != "text_region" for s in sign_results),
-            "text_regions": sum(s["kind"] == "text_region" for s in sign_results),
-            "keyframes_examined": keyframes,
-        },
-        "notices": notices,
-    }
+class BackendSource:
+    """Package manifest and files of one scan, read through the authenticated API (cached)."""
+
+    def __init__(self, backend: Backend, scan_id: str):
+        self.backend, self.base = backend, f"/scans/{Backend.segment(scan_id)}"
+        self._assets: dict[str, bytes | None] = {}
+
+    def manifest(self) -> dict | None:
+        return self.backend.optional_json(f"{self.base}/manifest")
+
+    def asset(self, name: str) -> bytes | None:
+        if name not in self._assets:
+            try:
+                self._assets[name] = self.backend.get_bytes(f"{self.base}/assets/{Backend.segment(name)}")
+            except BackendError as error:
+                if error.status != 404:
+                    raise
+                self._assets[name] = None
+        return self._assets[name]
+
+
+def analyze(ctx: ScanContext, stages: list[Stage] | None = None) -> dict:
+    """Run every registered stage (or `stages`) and return the analysis document."""
+    return runner.run(ctx, stages)
 
 
 def process(backend: Backend, scan_id: str, publish: bool = True) -> dict:
-    inputs = gather(backend, scan_id)
-    base = f"/scans/{Backend.segment(scan_id)}"
-
-    def read_image(name: str) -> np.ndarray | None:
-        data = np.frombuffer(backend.get_bytes(f"{base}/color/{Backend.segment(name)}"), np.uint8)
-        return cv2.imdecode(data, cv2.IMREAD_COLOR)
-
-    result = analyze(inputs, read_image)
+    ctx = ScanContext(scan_id, gather(backend, scan_id), BackendSource(backend, scan_id))
+    result = analyze(ctx)
     if publish:
-        backend.put_json(f"{base}/analysis", result)
+        backend.put_json(f"/scans/{Backend.segment(scan_id)}/analysis", result)
+        for publish_product in registry.publishers():
+            try:
+                publish_product(backend, scan_id, result, ctx.products)
+            except Exception as error:  # noqa: BLE001 - a publisher must not lose the stored analysis
+                log.error("publisher %s failed: %s", publish_product.__qualname__, error)
     return result

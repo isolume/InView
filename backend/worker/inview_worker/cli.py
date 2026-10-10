@@ -3,6 +3,7 @@
     inview-worker process <scan-id> [--out analysis.json] [--no-publish]
     inview-worker process --all [--force]
     inview-worker watch [--interval 15]
+    inview-worker report analysis.json [...]
 
 Configuration: INVIEW_BACKEND_URL (default http://127.0.0.1:3000) and INVIEW_API_TOKEN, or the
 token file at backend/.secrets/api-token. The token is never printed.
@@ -11,12 +12,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
 from pathlib import Path
 
 from .client import Backend, BackendError
+from .contracts import RESERVED_KEYS
 from .pipeline import process
 
 DEFAULT_TOKEN_FILE = Path(__file__).resolve().parents[2] / ".secrets" / "api-token"
@@ -31,10 +34,28 @@ def backend_from(args) -> Backend:
 
 
 def summarize(result: dict) -> str:
-    s = result["summary"]
-    return (f"{result['scan_id']}: walkable {s['walkable_area_m2']} m², {s['narrow_passages']} narrow passages, "
-            f"{s['doors_checked']} doors ({s['doors_below_min_width']} below minimum), "
-            f"{s['sign_candidates']} sign + {s['text_regions']} text candidates from {s['keyframes_examined']} keyframes")
+    stages = result.get("stages", {})
+    states = {state: sum(s["status"] == state for s in stages.values()) for state in ("ok", "skipped", "failed")}
+    products = [key for key in result if key not in RESERVED_KEYS]
+    return (f"{result['scan_id']}: {states['ok']} stages ok, {states['skipped']} skipped, {states['failed']} failed; "
+            f"products: {', '.join(sorted(products)) or 'none'}")
+
+
+def report(paths: list[str]) -> int:
+    """Human-readable stage/product table for saved analysis files."""
+    for path in paths:
+        result = json.loads(Path(path).read_text())
+        print(f"== {result['scan_id']} ({path})")
+        for name, stage in sorted(result.get("stages", {}).items()):
+            detail = stage.get("error") or ", ".join(stage.get("missing", []) or stage.get("provided", []))
+            print(f"  {stage['status']:<8} {name:<16} {stage.get('seconds', '')!s:<7} {detail}")
+        for key in sorted(k for k in result if k not in RESERVED_KEYS):
+            value = result[key]
+            size = len(value) if isinstance(value, (list, dict)) else 1
+            print(f"  product  {key:<16} {type(value).__name__}[{size}]")
+        for notice in result.get("notices", [])[1:]:
+            print(f"  notice   {notice}")
+    return 0
 
 
 def pending(backend: Backend, force: bool) -> list[str]:
@@ -67,7 +88,12 @@ def main(argv: list[str] | None = None) -> int:
     one.add_argument("--out", help="also write the analysis JSON to this file")
     watch = commands.add_parser("watch", help="poll for new scans and analyse them")
     watch.add_argument("--interval", type=float, default=15)
+    show = commands.add_parser("report", help="print stage/product tables for saved analysis JSON files")
+    show.add_argument("paths", nargs="+")
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    if args.command == "report":
+        return report(args.paths)
     backend = backend_from(args)
 
     if args.command == "process":

@@ -51,6 +51,20 @@ enum CaptureStore {
         }
     }
 
+    /// Writes an extra evidence file (e.g. `camera-track.json`, `text-observations.json`) into the
+    /// capture directory. Every staged file is archived and inventoried in `package-manifest.json`
+    /// automatically, so new evidence never requires changes to the archive code.
+    static func stageSidecar(_ data: Data, named filename: String, id: String) throws {
+        let reserved: Set<String> = ["capture.json", "package-manifest.json", "raw-snapshot.json"]
+        guard !filename.isEmpty, filename.count <= 64, !filename.hasPrefix("."), !reserved.contains(filename),
+              filename.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "-_.".contains($0)) }) else {
+            throw CaptureValidationError.invalid("The capture sidecar name is invalid.")
+        }
+        let directory = try directory(for: id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: directory.appending(path: filename), options: .atomic)
+    }
+
     private static func rawDepthFilename(_ id: String) -> String { "\(id).depth-f32le" }
     private static func confidenceFilename(_ id: String) -> String { "\(id).confidence-u8" }
     private static func smoothedDepthFilename(_ id: String) -> String { "\(id).smoothed-depth-f32le" }
@@ -248,6 +262,10 @@ enum CaptureStore {
         if filename.hasSuffix(".mesh-faces") { return "mesh_indices" }
         if filename.hasSuffix(".mesh-normals") { return "mesh_normals" }
         if filename.hasSuffix(".mesh-classification-u8") { return "mesh_classification" }
+        if filename == "camera-track.json" { return "camera_track" }
+        if filename == "text-observations.json" { return "text_observations" }
+        if filename == "semantics.json" { return "capture_semantics" }
+        if filename.hasSuffix(".ocr.jpg") { return "ocr_still" }
         return "opaque_sidecar"
     }
 

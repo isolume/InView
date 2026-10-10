@@ -5,7 +5,7 @@ description = "OpenCV processing for InView scans: floor maps, sign/text candida
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2,<3",
-    "opencv-python-headless>=4.10,<5",
+    "opencv-contrib-python-headless>=4.10,<5",  # ximgproc thinning, dnn text models
 ]
 
 [project.scripts]

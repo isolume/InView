@@ -213,3 +213,54 @@ pub async fn put_analysis(
         serde_json::json!({"scan_id": scan_id, "stored": true}),
     ))
 }
+
+/// Parsed `package-manifest.json` for workers that need calibration, environment samples, or the
+/// sidecar inventory. JSON-only uploads have no manifest.
+pub async fn manifest(
+    State(state): State<AppState>,
+    Path(scan_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let scan = state.scans.get(&scan_id).await.ok_or_else(missing)?;
+    let manifest = scan.package_manifest.clone().ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "manifest_not_found",
+            "This scan was uploaded without a package manifest.",
+        )
+    })?;
+    Ok(Json(manifest))
+}
+
+/// Any immutable file from the scan package (RoomPlan original, sidecars, keyframes).
+pub async fn asset(
+    State(state): State<AppState>,
+    Path((scan_id, filename)): Path<(String, String)>,
+) -> Result<impl axum::response::IntoResponse, ApiError> {
+    let scan = state.scans.get(&scan_id).await.ok_or_else(missing)?;
+    let bytes = scan
+        .package_assets
+        .as_ref()
+        .and_then(|assets| assets.get(&filename))
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::NOT_FOUND,
+                "asset_not_found",
+                "This scan package has no such file.",
+            )
+        })?;
+    let content_type = match filename.rsplit_once('.').map(|(_, ext)| ext) {
+        Some("json") => "application/json",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("heic") => "image/heic",
+        _ => "application/octet-stream",
+    };
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, content_type),
+            (axum::http::header::CACHE_CONTROL, "private, no-store"),
+            (axum::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
+        Bytes::copy_from_slice(bytes),
+    ))
+}

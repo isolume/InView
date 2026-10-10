@@ -655,9 +655,9 @@ async function loadAnalysis(id, generation) {
     return;
   }
   if (generation !== state.generation) return;
-  const summary = analysis.summary || {};
+  const summary = analysis.summary || {}, floor = summary.floor_map || {}, doors = summary.doors || {}, signs = summary.signs || {};
   $('analysisCaption').textContent = `${analysis.worker?.name || 'worker'} ${analysis.worker?.version || ''} · OpenCV ${analysis.worker?.opencv || '?'} · ${new Date(analysis.generated_at).toLocaleString()}`;
-  const stats = [['WALKABLE', summary.walkable_area_m2 == null ? '—' : `${summary.walkable_area_m2} m²`], ['NARROW PASSAGES', summary.narrow_passages ?? 0], ['DOORS BELOW MINIMUM', `${summary.doors_below_min_width ?? 0} / ${summary.doors_checked ?? 0}`], ['SIGN + TEXT CANDIDATES', `${summary.sign_candidates ?? 0} + ${summary.text_regions ?? 0}`]];
+  const stats = [['WALKABLE', floor.walkable_area_m2 == null ? '—' : `${floor.walkable_area_m2} m²`], ['NARROW PASSAGES', floor.narrow_passages ?? 0], ['DOORS BELOW MINIMUM', `${doors.below_min_width ?? 0} / ${doors.checked ?? 0}`], ['SIGN + TEXT CANDIDATES', `${signs.sign_candidates ?? 0} + ${signs.text_regions ?? 0}`]];
   $('analysisStats').replaceChildren(...stats.map(([label, value]) => {
     const card = document.createElement('div'); card.className = 'stat';
     const name = document.createElement('span'); name.className = 'stat-label'; name.textContent = label;
@@ -686,6 +686,13 @@ function drawAnalysis(analysis) {
     context.imageSmoothingEnabled = false;
     context.drawImage(image, ox, oy, image.width * scale, image.height * scale);
     const { origin_xz_m: [x0, z0], resolution_m: resolution } = map.grid;
+    const toCanvas = ([x, z]) => [ox + (x - x0) / resolution * scale, oy + (z - z0) / resolution * scale];
+    context.lineCap = 'round';
+    for (const door of analysis.doors || []) {
+      const [[ax, ay], [bx, by]] = door.span_xz_m.map(toCanvas);
+      context.beginPath(); context.moveTo(ax, ay); context.lineTo(bx, by);
+      context.lineWidth = Math.max(3, 0.08 / resolution * scale); context.strokeStyle = door.meets_clear_width ? '#3caa46' : '#f58c1e'; context.stroke();
+    }
     for (const sign of analysis.signs || []) {
       if (!sign.position_m) continue;
       const x = ox + (sign.position_m[0] - x0) / resolution * scale, y = oy + (sign.position_m[2] - z0) / resolution * scale;

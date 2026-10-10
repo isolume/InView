@@ -8,6 +8,7 @@ import pytest
 from inview_worker import doors, floor_map, signs
 from inview_worker.geometry import jpeg_to_sensor_uv
 from inview_worker.inputs import Box, Frame, ScanInputs, Surface
+from inview_worker.core import MemorySource, ScanContext
 from inview_worker.pipeline import analyze
 
 
@@ -135,20 +136,27 @@ def test_detection_is_placed_with_depth_samples_under_its_box():
     assert position[1] == pytest.approx(expected_v, abs=0.02)
 
 
+class ImageSource(MemorySource):
+    def __init__(self, image):
+        super().__init__(None, {"f.color.jpg": cv2.imencode(".png", image)[1].tobytes()})
+
+
 def test_analysis_document_is_complete_and_publishable():
     inputs = room()
     u, v = np.meshgrid(np.linspace(0, 1, 40), np.linspace(0, 1, 40))
     inputs.frames = [Frame("f", np.column_stack((u.ravel(), np.full(u.size, 1.5), v.ravel(), u.ravel(), v.ravel())), "f.color.jpg")]
-    result = analyze(inputs, lambda name: exit_sign_image())
+    result = analyze(ScanContext("room", inputs, ImageSource(exit_sign_image())))
     assert result["schema_version"] == 1 and result["frame"] == "shared_arkit_session"
-    assert result["summary"]["doors_checked"] == 1
-    assert result["summary"]["sign_candidates"] >= 1 and result["summary"]["keyframes_examined"] == 1
+    assert {"floor_map", "doors", "signs"} <= set(result["stages"]) and all(
+        result["stages"][name]["status"] == "ok" for name in ("floor_map", "doors", "signs"))
+    assert result["summary"]["doors"]["checked"] == 1
+    assert result["summary"]["signs"]["sign_candidates"] >= 1 and result["summary"]["signs"]["keyframes_examined"] == 1
     png = base64.b64decode(result["floor_map"]["image_png_base64"])
     image = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_UNCHANGED)
     assert image.shape[2] == 4 and image.shape[:2] == (result["floor_map"]["grid"]["height"], result["floor_map"]["grid"]["width"])
 
 
 def test_no_evidence_yields_no_floor_map():
-    result = analyze(ScanInputs("empty"), lambda name: None)
-    assert result["floor_map"] is None and result["doors"] == [] and result["signs"] == []
+    result = analyze(ScanContext("empty", ScanInputs("empty")))
+    assert "floor_map" not in result and result["doors"] == [] and result["signs"] == []
     assert any("No floor map" in n for n in result["notices"])

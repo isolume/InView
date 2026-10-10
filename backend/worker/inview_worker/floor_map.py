@@ -216,19 +216,14 @@ def build(inputs: ScanInputs, resolution: float = 0.05) -> FloorMap | None:
     return FloorMap(grid, floor_y, floor_source, floor, obstacle, walked, walkable, narrow, result)
 
 
-def render(floor_map: FloorMap, doors: list[dict]) -> bytes:
-    """Transparent-background PNG for review overlays. Not a navigation product."""
+def render(floor_map: FloorMap) -> bytes:
+    """Transparent-background PNG of the rasters. Viewers draw doors, places and routes on top."""
     image = np.zeros((floor_map.grid.height, floor_map.grid.width, 4), np.uint8)
     image[floor_map.floor > 0] = (214, 214, 210, 255)
     image[floor_map.walkable > 0] = (246, 246, 244, 255)
     image[floor_map.walked > 0] = (240, 220, 196, 255)
     image[floor_map.obstacle > 0] = (70, 64, 60, 255)
     image[cv2.dilate(floor_map.narrow, np.ones((3, 3), np.uint8)) > 0] = (40, 60, 225, 255)
-    grid = floor_map.grid
-    for door in doors:
-        a, b = grid.int_cells(np.array(door["span_xz_m"]))
-        color = (60, 170, 70, 255) if door["meets_clear_width"] else (30, 140, 245, 255)
-        cv2.line(image, tuple(map(int, a)), tuple(map(int, b)), color, max(2, int(0.08 / grid.resolution)))
     ok, png = cv2.imencode(".png", image)
     if not ok:
         raise RuntimeError("Could not encode the floor map image")

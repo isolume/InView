@@ -84,6 +84,8 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/scans/{scan_id}/preview", get(scan_api::preview))
         .route("/scans/{scan_id}/camera-track", get(scan_api::camera_track))
+        .route("/scans/{scan_id}/manifest", get(scan_api::manifest))
+        .route("/scans/{scan_id}/assets/{filename}", get(scan_api::asset))
         .route(
             "/scans/{scan_id}/analysis",
             get(scan_api::analysis)

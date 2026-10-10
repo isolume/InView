@@ -211,6 +211,15 @@ async fn full_walk_sidecar_package_round_trips() {
     assert_eq!(mesh["vertexCount"], ANCHORS * 3);
     assert_eq!(mesh["meshes"][299]["vertices"][1], json!([300., 0., 0.]));
 
+    let (status, manifest) = call(&router, "/scans/walk-1/manifest", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(manifest["observations"].as_array().unwrap().len(), FRAMES);
+    let (status, roomplan) =
+        call(&router, "/scans/walk-1/assets/roomplan.json", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(roomplan, json!([]));
+    let (status, _) = call(&router, "/scans/walk-1/assets/missing.bin", "GET", vec![]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
     let response = router
         .clone()
         .oneshot(
