@@ -194,6 +194,7 @@ struct MapReviewView: View {
     let onClose: () -> Void
     @State private var pendingPoint: SIMD2<Float>?
     @State private var saveError: String?
+    @State private var isSaving = false
     @State private var shownEvidence: ShownEvidence?
 
     var body: some View {
@@ -300,7 +301,10 @@ struct MapReviewView: View {
                     Button("Discard", role: .destructive, action: onClose)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save)
+                    Button(action: save) {
+                        if isSaving { ProgressView() } else { Text("Save") }
+                    }
+                    .disabled(isSaving)
                 }
             }
             .confirmationDialog("Add accessible point", isPresented: isAddingPoint) {
@@ -337,11 +341,16 @@ struct MapReviewView: View {
     }
 
     private func save() {
-        do {
-            try controller.save()
-            onClose()
-        } catch {
-            saveError = error.localizedDescription
+        guard !isSaving else { return }
+        isSaving = true
+        Task {
+            do {
+                try await controller.save()
+                onClose()
+            } catch {
+                saveError = error.localizedDescription
+            }
+            isSaving = false
         }
     }
 

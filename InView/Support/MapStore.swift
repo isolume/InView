@@ -37,17 +37,34 @@ enum MapStore {
         return try? decoder.decode(AccessibilityReport.self, from: data)
     }
 
-    static func save(_ map: VenueMap, report: AccessibilityReport, rooms: [CapturedRoom], worldMap: ARWorldMap, startView: Data?) throws {
-        let archivedWorldMap = try NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: true)
+    /// Everything one save writes, moved as one value into the writing task.
+    private struct Payload: @unchecked Sendable {
+        let map: VenueMap
+        let report: AccessibilityReport
+        let rooms: [CapturedRoom]
+        let worldMap: ARWorldMap
+        let startView: Data?
+    }
+
+    /// Archives the world map (several megabytes, slow) and writes everything, off the calling thread.
+    static func save(_ map: VenueMap, report: AccessibilityReport, rooms: [CapturedRoom], worldMap: ARWorldMap, startView: Data?) async throws {
+        let payload = Payload(map: map, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
+        try await Task.detached(priority: .userInitiated) { try write(payload) }.value
+    }
+
+    private static func write(_ payload: Payload) throws {
+        let started = Date.now
+        let archivedWorldMap = try NSKeyedArchiver.archivedData(withRootObject: payload.worldMap, requiringSecureCoding: true)
         try archivedWorldMap.write(to: worldMapURL, options: .atomic)
-        try encoder.encode(map).write(to: mapURL, options: .atomic)
-        try encoder.encode(report).write(to: reportURL, options: .atomic)
-        try encoder.encode(rooms).write(to: roomsURL, options: .atomic)
-        if let startView {
+        try encoder.encode(payload.map).write(to: mapURL, options: .atomic)
+        try encoder.encode(payload.report).write(to: reportURL, options: .atomic)
+        try encoder.encode(payload.rooms).write(to: roomsURL, options: .atomic)
+        if let startView = payload.startView {
             try startView.write(to: startViewURL, options: .atomic)
         } else {
             try? FileManager.default.removeItem(at: startViewURL)
         }
+        Log.scan.info("saved map in \(String(format: "%.2f", Date.now.timeIntervalSince(started)), privacy: .public) s · world map \(archivedWorldMap.count / 1024) KB")
     }
 
     private static let encoder: JSONEncoder = {

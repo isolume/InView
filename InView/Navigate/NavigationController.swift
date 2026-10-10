@@ -10,6 +10,8 @@ import UIKit
 @MainActor
 final class NavigationController: ObservableObject {
     enum Phase: Equatable {
+        /// Reading the saved map and world map, and building the routing grids, off the main thread.
+        case loading
         case noMap
         case locating
         case ready
@@ -19,7 +21,7 @@ final class NavigationController: ObservableObject {
         case noRoute
     }
 
-    @Published private(set) var phase: Phase
+    @Published private(set) var phase: Phase = .loading
     /// Set once relocalization has taken long enough that the rider should see the fallback.
     @Published private(set) var isRelocalizationSlow = false
     @Published private(set) var route: Route?
@@ -27,7 +29,8 @@ final class NavigationController: ObservableObject {
     @Published private(set) var caption: String?
 
     let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
-    let startView = MapStore.loadStartView()
+    /// The camera view where the scan started, shown while relocalizing.
+    @Published private(set) var startView: UIImage?
 
     private static let rerouteInterval: TimeInterval = 1
     /// Reading the depth map is the costliest thing a tick does; a chair in the way can wait a second.
@@ -35,9 +38,9 @@ final class NavigationController: ObservableObject {
     private static let arrivalDistance: Float = 1.2
     private static let slowRelocalization: TimeInterval = 15
 
-    private let map: VenueMap?
-    private let worldMap: ARWorldMap?
-    private let planner: RoutePlanner?
+    private var map: VenueMap?
+    private var worldMap: ARWorldMap?
+    private var planner: RoutePlanner?
     private let voice = VoiceGuide()
     private let narrator = Narrator()
     private let obstacles = ObstacleTracker()
@@ -48,15 +51,52 @@ final class NavigationController: ObservableObject {
     private var pendingReason: Narrator.Reason?
     private var lastRouted = Date.distantPast
     private var lastObstacleCheck = Date.distantPast
+    /// Between start() and stop(); a load that finishes after stop() doesn't start the session.
+    private var isActive = false
 
-    init(map: VenueMap? = MapStore.load(), worldMap: ARWorldMap? = MapStore.loadWorldMap()) {
-        self.map = map
-        self.worldMap = worldMap
-        planner = map.map(RoutePlanner.init)
-        phase = map == nil || worldMap == nil ? .noMap : .locating
+    /// Everything read from disk, moved as one value from the loading task.
+    private struct Loaded: @unchecked Sendable {
+        let map: VenueMap?
+        let worldMap: ARWorldMap?
+        let planner: RoutePlanner?
+        let startView: UIImage?
     }
 
+    /// Loads the map off the main thread, then starts relocalizing. Unarchiving the world map and building
+    /// three routing grids used to block the UI for the first seconds of every session.
     func start() {
+        guard !isActive else { return }
+        isActive = true
+        guard phase == .loading else {
+            begin()
+            return
+        }
+        Task { [weak self] in
+            let started = Date.now
+            let loaded = await Task.detached(priority: .userInitiated) {
+                let map = MapStore.load()
+                return Loaded(map: map, worldMap: MapStore.loadWorldMap(), planner: map.map(RoutePlanner.init), startView: MapStore.loadStartView())
+            }.value
+            guard let self else { return }
+            Log.navigation.info("map loaded in \(String(format: "%.2f", Date.now.timeIntervalSince(started)), privacy: .public) s · \(loaded.map?.footprints.count ?? 0) footprints, \(loaded.map?.points.count ?? 0) points, world map \(loaded.worldMap == nil ? "missing" : "present", privacy: .public)")
+            map = loaded.map
+            worldMap = loaded.worldMap
+            planner = loaded.planner
+            startView = loaded.startView
+            phase = map == nil || worldMap == nil ? .noMap : .locating
+            if isActive { begin() }
+        }
+    }
+
+    func stop() {
+        isActive = false
+        timer?.invalidate()
+        timer = nil
+        voice.deactivate()
+        arView.session.pause()
+    }
+
+    private func begin() {
         guard phase == .locating, timer == nil, let worldMap else { return }
         run(initialWorldMap: worldMap)
         locatingSince = .now
@@ -64,13 +104,6 @@ final class NavigationController: ObservableObject {
             MainActor.assumeIsolated { self?.tick() }
         }
         voice.activate()
-    }
-
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-        voice.deactivate()
-        arView.session.pause()
     }
 
     /// Fallback when relocalization stalls: restart tracking here and treat this spot as where

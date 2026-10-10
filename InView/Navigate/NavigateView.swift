@@ -61,6 +61,8 @@ struct NavigateView: View {
         switch controller.phase {
         case .noMap:
             EmptyView()
+        case .loading:
+            ProgressView("Loading map…")
         case .locating:
             LocatingPanel(
                 startView: controller.startView,

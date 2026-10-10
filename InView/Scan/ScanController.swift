@@ -124,10 +124,11 @@ final class ScanController: ObservableObject {
         unconfirmed.removeAll { $0.id == sighting.id }
     }
 
-    func save() throws {
+    /// Writes the map; the world map archive runs off the main thread.
+    func save() async throws {
         guard let draft, let worldMap else { return }
         let report = report ?? AccessibilityReport(map: draft)
-        try MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
+        try await MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
     }
 
     private func endSection(thenFinish finish: Bool) {
