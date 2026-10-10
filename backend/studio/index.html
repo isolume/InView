@@ -46,14 +46,57 @@
           <div class="scene-bottom"><span id="sceneCaption">Measured geometry · Not a verified route</span><span class="scene-hint">DRAG TO ORBIT <i>·</i> SCROLL TO ZOOM</span></div>
         </section>
 
-        <div class="view-toolbar"><div class="segmented" role="group" aria-label="Scene view"><button type="button" class="segment selected" data-mode="room" aria-pressed="true">Room</button><button type="button" class="segment" data-mode="depth" aria-pressed="false">Depth points</button><button type="button" class="segment" data-mode="mesh" aria-pressed="false">LiDAR mesh</button></div><label class="path-control"><input id="pathToggle" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span>Phone path</label></div>
+        <div class="view-toolbar"><div class="segmented" role="group" aria-label="Scene view"><button type="button" class="segment selected" data-mode="room" aria-pressed="true">Room</button><button type="button" class="segment" data-mode="depth" aria-pressed="false">Depth points</button><button type="button" class="segment" data-mode="mesh" aria-pressed="false">LiDAR mesh</button></div><div class="toolbar-switches"><label class="path-control"><input id="navToggle" type="checkbox" checked aria-describedby="navToggleHint"><span class="switch-track" aria-hidden="true"></span>Navigation overlay</label><span class="sr-only" id="navToggleHint">Shows the nav graph, hazards, places, signs and the selected route in the 3D view. Map layer toggles below also apply.</span><label class="path-control"><input id="pathToggle" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span>Phone path</label></div></div>
         <div class="native-controls" id="nativeControls" hidden><span class="eyebrow">LIDAR SOURCE</span><div class="segmented" role="group" aria-label="Native depth appearance"><button type="button" class="segment selected" data-native="smoothed" aria-pressed="true">Smoothed</button><button type="button" class="segment" data-native="raw" aria-pressed="false">Raw depth</button><button type="button" class="segment" data-native="color" aria-pressed="false">True color</button></div><span class="native-info" id="nativeInfo">Original iPhone depth buffers</span></div>
         <div class="native-controls" id="meshControls" hidden><span class="eyebrow">MESH APPEARANCE</span><div class="segmented" role="group" aria-label="LiDAR mesh appearance"><button type="button" class="segment selected" data-mesh="original" aria-pressed="true">Original</button><button type="button" class="segment" data-mesh="smooth" aria-pressed="false">Smoothed</button><button type="button" class="segment" data-mesh="color" aria-pressed="false">Image-colored</button></div><span class="native-info" id="meshInfo">Captured ARKit triangles</span></div>
         <div class="view-feedback" id="viewFeedback" role="status" aria-live="polite">Source captures are immutable. What you see here is a review preview, not a navigation clearance assessment.</div>
 
         <section class="details" aria-labelledby="detailsHeading"><div class="section-header"><div><span class="eyebrow">A CLOSER LOOK</span><h2 id="detailsHeading">Inside the capture</h2></div><span class="section-caption" id="captureID">Select a scan to see its details</span></div><div class="stats"><div class="stat"><span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m12 2 9 5-9 5-9-5 9-5Zm-9 5v10l9 5 9-5V7M12 12v10"/></svg></span><span class="stat-label">MESH ANCHORS</span><strong id="meshStat">—</strong><small>Spatial surfaces</small></div><div class="stat"><span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="12" r="3"/></svg></span><span class="stat-label">DEPTH FRAMES</span><strong id="frameStat">—</strong><small>Camera observations</small></div><div class="stat"><span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m4 17 5-5 4 4 6-7M4 5v14h16"/></svg></span><span class="stat-label">SCENE ELEMENTS</span><strong id="objectStat">—</strong><small>Objects + surfaces</small></div></div></section>
 
-        <section class="analysis" aria-labelledby="analysisHeading"><div class="section-header"><div><span class="eyebrow">OPENCV ANALYSIS</span><h2 id="analysisHeading">Floor, doors, and signs</h2></div><span class="section-caption" id="analysisCaption">Select a scan to see its processed evidence</span></div><div class="analysis-body" id="analysisBody" hidden><figure class="analysis-map"><canvas id="analysisCanvas" width="720" height="720" role="img" aria-label="Top-down floor map: walkable floor, obstacles, narrow passages in red, doors in green or orange, signs as blue markers"></canvas><figcaption>Top-down X/Z · light: walkable · dark: obstacle · red: under 0.915 m · green/orange door: passes/fails · blue: sign or text</figcaption></figure><div class="analysis-findings"><div class="stats analysis-stats" id="analysisStats"></div><h3>Findings</h3><ul class="finding-list" id="analysisFindings"></ul><p class="caution" id="analysisNotice"></p></div></div><p class="analysis-empty" id="analysisEmpty">Run <code>inview-worker</code> to process this scan.</p></section>
+        <section class="analysis" aria-labelledby="analysisHeading">
+          <div class="section-header"><div><span class="eyebrow">OPENCV NAVIGATION ANALYSIS</span><h2 id="analysisHeading">Find the way through</h2></div><span class="section-caption" id="analysisCaption">Select a scan to see its processed evidence</span></div>
+          <ul class="stage-chips" id="stageChips" aria-label="Pipeline stages" hidden></ul>
+          <div class="analysis-body" id="analysisBody" hidden>
+            <div class="analysis-map-column">
+              <fieldset class="layer-toggles" id="layerToggles"><legend class="sr-only">Map layers</legend></fieldset>
+              <figure class="analysis-map"><canvas id="analysisCanvas" width="720" height="720" role="img" aria-label="Top-down navigation map"></canvas>
+                <figcaption class="map-legend"><span class="legend-title">Top-down X/Z · +Z down</span>
+                  <span class="legend-item"><i class="lg lg-edge-ok" aria-hidden="true"></i>Clear ≥ 0.915 m</span>
+                  <span class="legend-item"><i class="lg lg-edge-tight" aria-hidden="true"></i>0.815–0.915 m</span>
+                  <span class="legend-item"><i class="lg lg-edge-narrow" aria-hidden="true"></i>&lt; 0.815 m</span>
+                  <span class="legend-item"><i class="lg lg-edge-unknown" aria-hidden="true"></i>Width unknown · dashed: not step-free · dotted slate: closed</span>
+                  <span class="legend-item"><i class="lg lg-door-pass" aria-hidden="true"></i>Door passes ✓</span>
+                  <span class="legend-item"><i class="lg lg-door-fail" aria-hidden="true"></i>Door fails ✕</span>
+                  <span class="legend-item"><i class="lg lg-barrier" aria-hidden="true"></i>Barrier</span>
+                  <span class="legend-item"><i class="lg lg-warning" aria-hidden="true"></i>Warning</span>
+                  <span class="legend-item"><i class="lg lg-sign" aria-hidden="true"></i>Sign / text</span>
+                  <span class="legend-item"><i class="lg lg-place" aria-hidden="true"></i>Place</span>
+                  <span class="legend-item"><i class="lg lg-route" aria-hidden="true"></i>Selected route</span>
+                </figcaption>
+              </figure>
+            </div>
+            <div class="analysis-findings">
+              <div class="stats analysis-stats" id="analysisStats"></div>
+              <section class="route-explorer" id="routeExplorer" aria-labelledby="routeHeading" hidden>
+                <div class="route-head"><h3 id="routeHeading">Route explorer</h3><span class="number-pill" id="routeCount">0</span></div>
+                <div class="route-controls" id="routeControls">
+                  <label class="field" for="routeProfile"><span>Profile</span><select id="routeProfile"></select></label>
+                  <label class="field" for="routeLanguage"><span>Language</span><select id="routeLanguage"></select></label>
+                </div>
+                <ul class="route-list" id="routeList" aria-label="Routes for the selected profile"></ul>
+                <p class="route-empty" id="routeEmpty">No routes in this analysis yet.</p>
+                <div class="route-detail" id="routeDetail" hidden>
+                  <p class="route-summary" id="routeSummary" aria-live="polite"></p>
+                  <ol class="route-steps" id="routeSteps" aria-label="Turn-by-turn steps"></ol>
+                </div>
+              </section>
+              <h3>Findings</h3>
+              <ul class="finding-list" id="analysisFindings"></ul>
+              <p class="caution" id="analysisNotice"></p>
+            </div>
+          </div>
+          <p class="analysis-empty" id="analysisEmpty">Run <code>inview-worker</code> to process this scan.</p>
+        </section>
         <section class="building" aria-labelledby="buildingHeading"><div class="building-intro"><span class="eyebrow">THE BIGGER PICTURE</span><h2 id="buildingHeading">One building. A shared frame.</h2><p>Measured landmarks bring separate scans together. Each alignment is recorded as a version, never silently moved.</p><span class="caution">Alignment is provisional · Accessible routes require independent review</span></div><div class="building-card"><div class="building-card-header"><span class="map-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></svg></span><span>BUILDING MAP</span></div><label for="buildingSelect" class="sr-only">Choose a building</label><select id="buildingSelect"><option value="">No building selected</option></select><div class="building-status" id="buildingStatus" role="status">Select a capture to begin a building reference.</div><figure class="building-overview" id="buildingOverview" hidden><canvas id="overviewCanvas" width="636" height="400" role="img" aria-label="Top-down preview of aligned camera paths and sampled LiDAR surfaces"></canvas><figcaption id="overviewCaption">Top-down X/Z · Observations, not walkable space</figcaption></figure><div class="building-actions"><button type="button" class="secondary-button" id="createBuilding" disabled>New building</button><button type="button" class="primary-button" id="alignScan" disabled>Align capture <span aria-hidden="true">↗</span></button></div></div></section>
         <footer>InView Studio <span aria-hidden="true">·</span> See the space. Respect the evidence.</footer>
       </main>
