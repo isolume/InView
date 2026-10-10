@@ -2,8 +2,8 @@ import ARKit
 import AccessCore
 import Combine
 
-/// Samples camera frames during a scan, asks Gemini for elevators and ramps, pins each one in 3D
-/// by casting a ray onto the scanned surfaces, and measures ramp slopes from the LiDAR surface.
+/// Samples camera frames during a scan, asks a vision model for elevators, ramps and stairs, pins each
+/// one in 3D by casting a ray onto the scanned surfaces, and measures ramp slopes from the LiDAR surface.
 @MainActor
 final class AccessibilityDetector: ObservableObject {
     /// An access point seen during the scan, in ARKit world coordinates.
@@ -23,7 +23,18 @@ final class AccessibilityDetector: ObservableObject {
         }
     }
 
+    /// Stairs seen during the scan: where the bottom step is, and which way they lead.
+    struct StairsSighting: Identifiable {
+        let id = UUID()
+        var name: String
+        var position: SIMD3<Float>
+        /// Horizontal direction (x, z) from the bottom step up the stairs, as seen from the camera.
+        var facing: SIMD2<Float>
+        var count = 1
+    }
+
     @Published private(set) var sightings: [Sighting] = []
+    @Published private(set) var stairs: [StairsSighting] = []
     @Published private(set) var framesAnalyzed = 0
     @Published private(set) var lastError: String?
 
@@ -34,11 +45,13 @@ final class AccessibilityDetector: ObservableObject {
     private static let minimumConfidence: Float = 0.6
     /// Sightings of the same kind closer than this are treated as the same place.
     private static let mergeDistance: Float = 2
+    /// Stairs the camera spots are drawn this size, starting at the bottom step: (width, depth).
+    private static let spottedStairsSize = SIMD2<Float>(1.2, 1.5)
     /// Slope samples form a grid this wide around the surface point, in normalized image units.
     private static let slopeSampleSpan: CGFloat = 0.08
     private static let slopeSampleSteps = 7
 
-    private let client = GeminiVisionClient()
+    private let client = VisionProvider.makeDetector()
     private weak var session: ARSession?
     private var timer: Timer?
     private var requestsInFlight = 0
@@ -60,15 +73,35 @@ final class AccessibilityDetector: ObservableObject {
         timer = nil
     }
 
-    /// Pins an access point where the center of the screen meets the scene. The fallback when the model misses one.
-    /// For ramps, aim at the middle of the ramp so its slope can be measured too.
-    func addManual(_ kind: AccessPoint.Kind) {
+    /// Pins whatever is in the center of the screen. The fallback when the model misses something.
+    /// For ramps, aim at the middle of the ramp so its slope can be measured too; for stairs, at the bottom step.
+    func addManual(_ kind: VisionDetection.Kind) {
         guard let session, let frame = session.currentFrame else { return }
         let camera = CameraSnapshot(frame.camera)
         let center = CGPoint(x: 0.5, y: 0.5)
-        let slope = kind == .ramp ? measureSlope(around: center, camera: camera, in: session) : nil
-        let count = sightings.filter { $0.kind == kind }.count
-        record(kind, name: "\(kind.title) \(count + 1)", at: locate(center, camera: camera, in: session), confidence: 1, source: .manual, slope: slope)
+        let position = locate(center, camera: camera, in: session)
+        guard let pointKind = kind.accessPointKind else {
+            recordStairs(name: "Stairs \(stairs.count + 1)", at: position, seenFrom: camera)
+            return
+        }
+        let slope = pointKind == .ramp ? measureSlope(around: center, camera: camera, in: session) : nil
+        let count = sightings.filter { $0.kind == pointKind }.count
+        record(pointKind, name: "\(pointKind.title) \(count + 1)", at: position, confidence: 1, source: .manual, slope: slope)
+    }
+
+    /// Footprints for the stairs the camera spotted, extending away from the bottom step.
+    func stairsFootprints() -> [Footprint] {
+        stairs.map { sighting in
+            let size = Self.spottedStairsSize
+            let bottom = SIMD2(sighting.position.x, sighting.position.z)
+            // The footprint's y axis runs up the stairs.
+            return Footprint(
+                kind: .stairs,
+                center: bottom + sighting.facing * size.y / 2,
+                size: size,
+                yaw: atan2(-sighting.facing.x, sighting.facing.y)
+            )
+        }
     }
 
     func accessPoints() -> [AccessPoint] {
@@ -96,18 +129,32 @@ final class AccessibilityDetector: ObservableObject {
         }
     }
 
-    private func handle(_ detections: [GeminiVisionClient.Detection], camera: CameraSnapshot) {
+    private func handle(_ detections: [VisionDetection], camera: CameraSnapshot) {
         framesAnalyzed += 1
         lastError = nil
         guard let session else { return }
         for detection in detections where detection.confidence >= Self.minimumConfidence {
-            guard let target = detection.target else { continue }
-            let position = locate(FrameEncoder.capturedImagePoint(fromPortrait: target), camera: camera, in: session)
-            var slope: Float?
-            if detection.kind == .ramp, let surface = detection.surface {
-                slope = measureSlope(around: FrameEncoder.capturedImagePoint(fromPortrait: surface), camera: camera, in: session)
+            let position = locate(FrameEncoder.capturedImagePoint(fromPortrait: detection.target), camera: camera, in: session)
+            guard let kind = detection.kind.accessPointKind else {
+                recordStairs(name: detection.name, at: position, seenFrom: camera)
+                continue
             }
-            record(detection.kind, name: detection.name, at: position, confidence: detection.confidence, source: .detected, slope: slope)
+            var slope: Float?
+            if kind == .ramp {
+                slope = measureSlope(around: FrameEncoder.capturedImagePoint(fromPortrait: detection.surface), camera: camera, in: session)
+            }
+            record(kind, name: detection.name, at: position, confidence: detection.confidence, source: .detected, slope: slope)
+        }
+    }
+
+    private func recordStairs(name: String, at position: SIMD3<Float>, seenFrom camera: CameraSnapshot) {
+        let offset = SIMD2(position.x, position.z) - SIMD2(camera.transform.translation.x, camera.transform.translation.z)
+        let facing = simd_length(offset) > 0.1 ? simd_normalize(offset) : SIMD2<Float>(0, -1)
+        let floor = SIMD2(position.x, position.z)
+        if let match = stairs.firstIndex(where: { simd_distance(SIMD2($0.position.x, $0.position.z), floor) < Self.mergeDistance }) {
+            stairs[match].count += 1
+        } else {
+            stairs.append(StairsSighting(name: name, position: position, facing: facing))
         }
     }
 

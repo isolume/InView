@@ -2,8 +2,8 @@ import AccessCore
 import RealityKit
 import UIKit
 
-/// Draws the route as chevrons on the floor, a floating label over every access point, and a red
-/// marker on anything the camera found in the way.
+/// Draws the route as chevrons on the floor, a floating label over every access point, red zones over
+/// stairs, and a red marker on anything the camera found in the way.
 /// Everything hangs off one anchor at the world origin, which after relocalization is where the scan started,
 /// so it is laid out directly in the saved map's coordinates.
 @MainActor
@@ -16,6 +16,7 @@ final class PathRenderer {
     private let anchor: AnchorEntity
     private let routeRoot = Entity()
     private let obstacleRoot = Entity()
+    private var stairsMarkers: [StairsMarker] = []
     private let chevron: ModelEntity
     private let obstacleMarker: ModelEntity
     private var markers: [UUID: PointMarker] = [:]
@@ -32,6 +33,11 @@ final class PathRenderer {
         for point in map.points {
             let marker = PointMarker(point: point, floorY: floorY)
             markers[point.id] = marker
+            anchor.addChild(marker.entity)
+        }
+        for stairs in map.footprints where stairs.kind == .stairs {
+            let marker = StairsMarker(stairs: stairs, floorY: floorY)
+            stairsMarkers.append(marker)
             anchor.addChild(marker.entity)
         }
         scene.addAnchor(anchor)
@@ -89,6 +95,7 @@ final class PathRenderer {
         let shift = y - floorY
         floorY = y
         for marker in markers.values { marker.entity.position.y += shift }
+        for marker in stairsMarkers { marker.entity.position.y += shift }
         for child in Array(routeRoot.children) + Array(obstacleRoot.children) { child.position.y += shift }
     }
 
@@ -133,9 +140,7 @@ private final class PointMarker {
     let entity = Entity()
     private let point: AccessPoint
     private let head: ModelEntity
-    private let text = ModelEntity()
-    private let plate = ModelEntity()
-    private var currentLabel = ""
+    private let label = BillboardLabel()
 
     init(point: AccessPoint, floorY: Float) {
         self.point = point
@@ -145,16 +150,11 @@ private final class PointMarker {
         pole.position.y = 0.65
         head = ModelEntity(mesh: .generateSphere(radius: 0.07), materials: [UnlitMaterial(color: .systemBlue)])
         head.position.y = 1.35
-
-        let label = Entity()
-        label.position.y = 1.6
-        label.components.set(BillboardComponent())
-        label.addChild(plate)
-        label.addChild(text)
+        label.entity.position.y = 1.6
 
         entity.addChild(pole)
         entity.addChild(head)
-        entity.addChild(label)
+        entity.addChild(label.entity)
         show(.idle)
     }
 
@@ -182,21 +182,27 @@ private final class PointMarker {
 
     private func setLabel(_ string: String, accent: UIColor, background: UIColor) {
         head.model?.materials = [UnlitMaterial(color: accent)]
-        guard string != currentLabel else {
-            plate.model?.materials = [UnlitMaterial(color: background)]
-            return
-        }
-        currentLabel = string
-        let mesh = MeshResource.generateText(
-            string,
-            extrusionDepth: 0.002,
-            font: .systemFont(ofSize: 0.1, weight: .semibold),
-            alignment: .center
-        )
-        text.model = ModelComponent(mesh: mesh, materials: [UnlitMaterial(color: .white)])
-        let bounds = mesh.bounds
-        text.position = SIMD3(-bounds.center.x, -bounds.center.y, 0.005)
-        let backing = MeshResource.generatePlane(width: bounds.extents.x + 0.1, height: bounds.extents.y + 0.06, cornerRadius: 0.03)
-        plate.model = ModelComponent(mesh: backing, materials: [UnlitMaterial(color: background)])
+        label.set(string, background: background)
+    }
+}
+
+/// A translucent red zone over stairs, with a floating warning, so riders see them from across the room.
+@MainActor
+private final class StairsMarker {
+    let entity = Entity()
+
+    init(stairs: Footprint, floorY: Float) {
+        entity.position = SIMD3(stairs.center.x, floorY + 0.02, stairs.center.y)
+        entity.orientation = simd_quatf(angle: -stairs.yaw, axis: [0, 1, 0])
+
+        var material = UnlitMaterial(color: .systemRed)
+        material.blending = .transparent(opacity: 0.35)
+        let zone = ModelEntity(mesh: .generatePlane(width: stairs.size.x, depth: stairs.size.y, cornerRadius: 0.05), materials: [material])
+        entity.addChild(zone)
+
+        let label = BillboardLabel()
+        label.set("Stairs", background: .systemRed)
+        label.entity.position.y = 1.2
+        entity.addChild(label.entity)
     }
 }

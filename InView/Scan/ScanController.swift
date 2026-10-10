@@ -138,7 +138,7 @@ final class ScanController: ObservableObject {
         }
         self.worldMap = worldMap
         session.pause()
-        draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints())
+        draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints(), spottedStairs: detector.stairsFootprints())
         phase = .review
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
