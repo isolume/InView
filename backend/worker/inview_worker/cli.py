@@ -4,6 +4,7 @@
     inview-worker process --all [--force]
     inview-worker watch [--interval 15]
     inview-worker report analysis.json [...]
+    inview-worker evaluate [--seed N] [--scenarios K] [--out report.json] [--keep DIR]
 
 Configuration: INVIEW_BACKEND_URL (default http://127.0.0.1:3000) and INVIEW_API_TOKEN, or the
 token file at backend/.secrets/api-token. The token is never printed.
@@ -58,6 +59,17 @@ def report(paths: list[str]) -> int:
     return 0
 
 
+def evaluate(args) -> int:
+    """Score every stage offline against synthetic buildings with ground truth (no backend)."""
+    from . import evaluate as harness  # deferred: generating buildings is only needed here
+
+    result = harness.run(args.seed, args.scenarios, args.max_observations, args.keep)
+    if args.out:
+        Path(args.out).write_text(json.dumps(result, indent=2))
+    print(harness.table(result))
+    return 0
+
+
 def pending(backend: Backend, force: bool) -> list[str]:
     ids = [scan["id"] for scan in backend.get_json("/scans")]
     return ids if force else [i for i in ids if backend.optional_json(f"/scans/{Backend.segment(i)}/analysis") is None]
@@ -90,10 +102,20 @@ def main(argv: list[str] | None = None) -> int:
     watch.add_argument("--interval", type=float, default=15)
     show = commands.add_parser("report", help="print stage/product tables for saved analysis JSON files")
     show.add_argument("paths", nargs="+")
+    score = commands.add_parser("evaluate", help="run every stage on synthetic buildings and score it against ground truth")
+    score.add_argument("--seed", type=int, default=0, help="first building seed (scenario i uses seed + i)")
+    score.add_argument("--scenarios", type=int, default=3)
+    score.add_argument("--max-observations", type=int, default=32, help="depth/RGB observations per building")
+    score.add_argument("--out", help="write the full JSON report to this file")
+    score.add_argument("--keep", help="also save each package, ground truth and analysis in this directory")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     if args.command == "report":
         return report(args.paths)
+    if args.command == "evaluate":
+        if args.scenarios < 1:
+            parser.error("--scenarios must be at least 1")
+        return evaluate(args)
     backend = backend_from(args)
 
     if args.command == "process":
