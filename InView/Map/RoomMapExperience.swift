@@ -11,6 +11,7 @@ struct RoomMapExperience: View {
     var primaryAction: (() -> Void)? = nil
     var secondaryTitle: String? = nil
     var reviewDestination: AnyView? = nil
+    var streamEvidenceID: String? = nil
     var currentMapPosition: (() -> SIMD2<Float>?)? = nil
     var onPlaceBuilding: ((BuildingMapReference) throws -> Void)? = nil
     var error: Binding<String?> = .constant(nil)
@@ -18,6 +19,7 @@ struct RoomMapExperience: View {
     @State private var topDown = false
     @State private var resetID = 0
     @State private var showsReview = false
+    @State private var showsScanData = false
     @State private var showsSheet = false
     @State private var presentation = MapPresentation.indoor
     @State private var showsPlacement = false
@@ -45,6 +47,7 @@ struct RoomMapExperience: View {
                 }
                 MapToolbarItems(presentation: $presentation, topDown: $topDown,
                                 canPlaceBuilding: map != nil && onPlaceBuilding != nil,
+                                onShowScanData: streamEvidenceID == nil ? nil : { showsScanData = true },
                                 onRecenter: { resetID += 1 }, onPlaceBuilding: { showsPlacement = true })
             }
             .sheet(isPresented: $showsSheet) {
@@ -73,6 +76,9 @@ struct RoomMapExperience: View {
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
                 .fullScreenCover(isPresented: $showsReview) { reviewDestination }
+                .fullScreenCover(isPresented: $showsScanData) {
+                    if let streamEvidenceID { RawLidarReviewView(scanID: streamEvidenceID) }
+                }
                 .fullScreenCover(isPresented: $showsPlacement) {
                     if let map, let onPlaceBuilding {
                         BuildingPlacementView(map: map, currentMapPosition: currentMapPosition) { reference in

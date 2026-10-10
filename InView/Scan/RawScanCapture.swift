@@ -69,6 +69,7 @@ final class RawScanCapture {
     private var skippedOversizeSamples = 0
     private var depthEnabled = false
     private let budget = DepthKeyframeBudget()
+    private let retainsDepthKeyframes: Bool
     private let observedSurfaces = ObservedSurfaceCapture()
     private var smallObstacles = DepthObstacleAccumulator()
     private var lastObstacleTimestamp: TimeInterval?
@@ -76,6 +77,13 @@ final class RawScanCapture {
     var floorY: Float?
     var hasObservedFloor: Bool { observedSurfaces.snapshot().contains { $0.kind == .floor } }
     private let pollingInterval: TimeInterval = 0.75
+
+    /// Continuous capture already archives synchronized depth in its stream. Keep one
+    /// fallback observation here, alongside compact measured coverage, instead of copying
+    /// and exporting a second depth history when the volunteer finishes.
+    init(retainsDepthKeyframes: Bool = true) {
+        self.retainsDepthKeyframes = retainsDepthKeyframes
+    }
     private let depthInterval: TimeInterval = 2
 
     /// Call before constructing RoomCaptureView with the custom session. RoomPlan preserves
@@ -153,11 +161,13 @@ final class RawScanCapture {
                 "scene_depth_requested": .bool(depthEnabled),
                 "mesh_anchor_count": .number(0),
                 "depth_keyframe_count": .number(Double(frames.count)),
-                "maximum_depth_keyframes": .number(Double(budget.maximumFrames)),
+                "maximum_depth_keyframes": .number(Double(retainsDepthKeyframes ? budget.maximumFrames : 1)),
                 "maximum_retained_depth_bytes": .number(Double(budget.maximumRetainedBytes)),
                 "maximum_native_depth_frame_bytes": .number(Double(budget.maximumNativeFrameBytes)),
                 "depth_keyframe_minimum_interval_seconds": .number(depthInterval),
-                "depth_selection": .string("tracking_normal; at_least_2_seconds; translation_0.2m_or_rotation_15deg_or_10_seconds; latest_complete_keyframes_within_memory_budget"),
+                "depth_selection": .string(retainsDepthKeyframes
+                    ? "tracking_normal; at_least_2_seconds; translation_0.2m_or_rotation_15deg_or_10_seconds; latest_complete_keyframes_within_memory_budget"
+                    : "first_complete_fallback_keyframe; synchronized_depth_history_in_stream_archive"),
                 "evicted_depth_keyframes": .number(Double(evictedDepthFrames)),
                 "skipped_busy_depth_samples": .number(Double(skippedBusySamples)),
                 "skipped_oversize_depth_samples": .number(Double(skippedOversizeSamples)),
@@ -180,7 +190,7 @@ final class RawScanCapture {
         observedSurfaces.update(frame: frame, floorY: floorY)
         let camera = frame.camera.transform.columns.3
         let measuredFloor = observedSurfaces.floorElevation(near: SIMD3(camera.x, camera.y, camera.z)) ?? floorY
-        let keepArchive = shouldKeepDepth(frame)
+        let keepArchive = retainsDepthKeyframes ? shouldKeepDepth(frame) : frames.isEmpty
         let measureObstacles = measuredFloor != nil
             && (lastObstacleTimestamp.map { frame.timestamp - $0 >= obstacleInterval } ?? true)
         guard keepArchive || measureObstacles, let depth = frame.sceneDepth else { return }

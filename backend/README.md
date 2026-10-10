@@ -36,19 +36,43 @@ without rewriting the entire service.
 | GET | `/scans/{scan_id}/scene` | Derive a scene using default options |
 | POST | `/scans/{scan_id}/process` | Derive a scene with explicit options |
 | GET | `/scans/{scan_id}/preview` | Open a local development preview |
+| POST | `/streams` | Create or resume a durable continuous capture |
+| GET | `/streams/{id}` | Read the acknowledged upload prefix |
+| PUT | `/streams/{id}/chunks/{sequence}` | Durably append one calibrated RGB/depth observation |
+| POST | `/streams/{id}/finish` | Seal exactly the complete acknowledged stream |
+| GET | `/streams/{id}/result` | Build compact measured geometry and its matching scene |
+| GET | `/streams/{id}/scene` | Build the continuous stream's scene |
 
 ### Run locally
 
 From this folder, using current stable Rust:
 
 ```sh
-cargo run
+cargo run --release
 ```
 
 The default address is `127.0.0.1:3000`. `INVIEW_BIND` overrides it, for example
-`INVIEW_BIND=0.0.0.0:3000 cargo run` for a phone on the same trusted development
+`INVIEW_BIND=0.0.0.0:3000 cargo run --release` for a phone on the same trusted development
 network. There is no authentication yet; the service is for local development.
 `RUST_LOG=inview_backend=debug,tower_http=debug` enables request logging.
+`INVIEW_STREAM_DIR` selects durable stream storage (default `data/streams` relative
+to this working directory). Keep one backend process per directory. See
+[SCANS.md](SCANS.md#continuous-capture-prototype) for the wire contract, reconstruction
+method and bounds. Existing scan and graph stores remain in memory.
+
+For local furniture recognition, install the separate inference runtime once:
+
+```sh
+bash recognition/setup.sh
+INVIEW_BIND=0.0.0.0:3000 cargo run --release
+```
+
+Setup downloads public dependencies and pretrained weights into an isolated,
+ignored directory. The backend discovers that runtime automatically and keeps one
+local model worker loaded while samples arrive. Camera images never leave this
+server for recognition. `INVIEW_RECOGNITION=off` runs geometry without recognition;
+`INVIEW_RECOGNITION_DEVICE` selects an inference device (default `cpu`). See
+[SCANS.md](SCANS.md#server-furniture-recognition) for behavior and limitations.
 
 In another terminal, also from this folder:
 
@@ -140,7 +164,9 @@ coordinate conventions, supported processing, and the remaining iPhone adapter.
 Data disappears on restart. There is no deployment or external service integration.
 Geometry validation cannot prove wall clearance, scan alignment, connector identity,
 or real-world accessibility; map review must establish those properties. The scan
-prototype uses supplied object labels, not automatic furniture recognition. It retains
+`/scans` prototype uses supplied object labels. Continuous `/streams` scans can use
+the separate local furniture recognizer; uncertain results retain measured shapes.
+The `/scans` store retains
 original capture JSON in memory, including unknown fields; large binary assets are
 references only. Route output
 is planning geometry, not live AR guidance. The draft has no graph revision handling

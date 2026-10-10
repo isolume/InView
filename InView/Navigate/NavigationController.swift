@@ -34,6 +34,7 @@ final class NavigationController: ObservableObject {
     @Published private(set) var startView: UIImage?
     /// Directions need the scan's AR map to find the rider; a map without one can still be explored.
     @Published private(set) var canGuide = false
+    @Published private(set) var unavailableReason: String?
 
     let isDemo: Bool
     lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -115,14 +116,17 @@ final class NavigationController: ObservableObject {
             worldMap = loaded.worldMap
             planner = loaded.planner
             startView = loaded.startView
-            canGuide = worldMap != nil
+            canGuide = map != nil && worldMap != nil && map?.requiresOptimizedLocalization != true
+            unavailableReason = map?.requiresOptimizedLocalization == true
+                ? "This map needs positioning setup before navigation. You can still view the saved model."
+                : worldMap == nil ? "Directions need the AR map saved with a scan on an iPhone with LiDAR." : nil
             phase = map == nil ? .noMap : .browsing
         }
     }
 
     /// Turns the camera on and finds the rider in the scanned space; then routes, when `thenRoute`.
     func beginGuidance(thenRoute: Bool) {
-        guard !isDemo, isActive, let worldMap, phase == .browsing else { return }
+        guard !isDemo, isActive, canGuide, map?.requiresOptimizedLocalization != true, let worldMap, phase == .browsing else { return }
         routesWhenLocated = thenRoute
         isRelocalizationSlow = false
         phase = .locating
@@ -141,6 +145,7 @@ final class NavigationController: ObservableObject {
         startView = nil
         renderer = nil
         canGuide = false
+        unavailableReason = nil
         route = nil
         selectedDestination = nil
         caption = nil
@@ -208,10 +213,12 @@ final class NavigationController: ObservableObject {
         return SIMD2(translation.x, translation.z)
     }
 
-    func startFromScanOrigin() {
-        guard phase == .locating else { return }
-        run(initialWorldMap: nil)
-        didLocate()
+    /// Retry with the saved coordinate system; routing waits for actual relocalization.
+    func retryLocalization() {
+        guard phase == .locating, let worldMap else { return }
+        isRelocalizationSlow = false
+        locatingSince = .now
+        run(initialWorldMap: worldMap)
     }
 
     func navigateToNearest() {

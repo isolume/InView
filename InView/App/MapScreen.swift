@@ -176,11 +176,13 @@ struct MapScreen: View {
     private func arOverlay(bottomInset: CGFloat) -> some View {
         if controller.isDemo || !controller.canGuide {
             ContentUnavailableView {
-                Label(controller.isDemo ? "AR uses your camera" : "AR needs this scan's AR map", systemImage: "camera")
+                Label(controller.isDemo ? "AR uses your camera"
+                      : controller.map?.requiresOptimizedLocalization == true ? "Positioning setup needed"
+                      : "AR needs this scan's AR map", systemImage: "camera")
             } description: {
                 Text(controller.isDemo
                      ? "Navigate a saved scan on your iPhone to see the route around you."
-                     : "Scan this floor again on an iPhone with LiDAR to get directions around you.")
+                     : controller.unavailableReason ?? "Scan this floor again on an iPhone with LiDAR to get directions around you.")
             }
             .padding(.bottom, bottomInset)
             .background(PlanInk.paper)
@@ -326,14 +328,18 @@ struct MapScreen: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.glassProminent).controlSize(.large)
-            .disabled(!controller.isDemo && (!controller.canGuide || controller.phase == .loading))
+            .disabled(!controller.isDemo && (controller.map?.requiresOptimizedLocalization == true || !controller.canGuide || controller.phase == .loading))
             if !controller.isDemo, !controller.canGuide, controller.phase == .browsing {
-                Text("This map can be explored but not navigated: directions need the AR map saved with a scan on an iPhone with LiDAR.")
+                if controller.map?.requiresOptimizedLocalization == true {
+                    Label("Positioning setup needed", systemImage: "location.slash")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.color(for: .warning))
+                }
+                Text(controller.unavailableReason ?? "Directions need the AR map saved with a scan on an iPhone with LiDAR.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         case .locating:
             LocatingPanel(startView: controller.startView, isSlow: controller.isRelocalizationSlow,
-                          onStartHere: controller.startFromScanOrigin)
+                          onRetry: controller.retryLocalization)
             Button("Cancel", role: .cancel) { controller.endGuidance(); mode = .map }
                 .buttonStyle(.glass).controlSize(.large).frame(maxWidth: .infinity)
         case .routing:
@@ -705,7 +711,7 @@ private struct SheetRowLabel: View {
 private struct LocatingPanel: View {
     let startView: UIImage?
     let isSlow: Bool
-    let onStartHere: () -> Void
+    let onRetry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -725,7 +731,7 @@ private struct LocatingPanel: View {
             }
             if isSlow {
                 Text("Stand where the scan started, facing the way the photo does.").font(.footnote)
-                Button("Start from here", systemImage: "figure.stand", action: onStartHere).buttonStyle(.glass)
+                Button("Try again", systemImage: "arrow.clockwise", action: onRetry).buttonStyle(.glass)
             }
         }
     }

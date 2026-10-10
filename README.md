@@ -127,7 +127,15 @@ fresh scan on the next one. Each floor keeps its own map, reference photo,
 localization data and matching capture; the saved-floor menu on Home chooses
 which floor to view and navigate.
 
-Use **Next section** while scanning to capture connected rooms and hallways in the
+The `streaming` branch defaults to continuous scanning without RoomPlan sections.
+It saves synchronized camera/depth samples and uploads them in the background.
+Set a scan-processing server to build the full model; **Saved scans** resumes
+retained uploads after an app restart. Backend loop closure and pose optimization
+correct the model and review measurements. Materially corrected maps need new
+positioning support before live AR navigation. See
+[continuous scanning](docs/continuous-scanning.md) for setup, limits, and validation.
+
+With **Continuous scanning** turned off in settings, use **Next section** to capture connected rooms and hallways in the
 same session, then **Finish** to process the combined scan. **Review points** lets
 a volunteer name destinations anywhere on the map. Navigation offers those
 places alongside elevators and ramps. Overlapping sections use each component's
@@ -140,7 +148,8 @@ require additional work and device verification. Automatic floor suggestions
 and scan recovery after stairs or elevator travel still need a physical-device
 check; sensor estimates do not determine a building's actual floor numbering.
 
-Each capture is archived under Documents/Captures with native RoomPlan JSON,
+Continuous captures retain camera/depth chunks under Documents/Captures; the
+RoomPlan path archives native RoomPlan JSON,
 its portable upload, and the local or server-derived scene. When configured,
 vision detection sends selected camera frames to the chosen provider; outdoor
 maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
@@ -162,7 +171,7 @@ maps use Mapbox. See [backend/SCANS.md](backend/SCANS.md) for the scan format.
    - Turn on **Needs staff** for anything someone has to operate.
    - Flip the map between Plan and 3D, and open the full report.
    - **Save**.
-5. **Navigate.** Stand near the table and look around until the app recognizes the space. If it hasn't after 15 s, stand on the scan start spot, face the way the photo does, and tap **Start from here**. Then:
+5. **Navigate.** Stand near the table and look around until the app recognizes the space. If it hasn't after 15 s, stand on the scan start spot, face the way the photo does, and tap **Try again**. Routing stays unavailable until the app recognizes the saved space. Then:
    - Tap **Take me to the nearest accessible point**.
    - Put a chair in the path: it gets a red marker, and the route and voice go around it.
 

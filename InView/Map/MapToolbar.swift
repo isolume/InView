@@ -10,12 +10,17 @@ struct MapToolbarItems: ToolbarContent {
     var canPlaceBuilding = true
     /// Shows the photoreal splat instead of the model; offered only when there is one.
     var photoreal: Binding<Bool>? = nil
+    var onShowScanData: (() -> Void)? = nil
     let onRecenter: () -> Void
     let onPlaceBuilding: () -> Void
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             Menu {
+                if let onShowScanData {
+                    Button("Scan data", systemImage: "point.3.connected.trianglepath.dotted", action: onShowScanData)
+                    Divider()
+                }
                 Picker("Map appearance", selection: $presentation) {
                     ForEach(MapPresentation.allCases) { option in
                         Text(option.title).tag(option).disabled(option != .indoor && !canPlaceBuilding)
