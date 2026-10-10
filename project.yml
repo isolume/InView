@@ -30,6 +30,10 @@ targets:
         OPENAIAPIKey: $(OPENAI_API_KEY)
         OPENAIModel: $(OPENAI_MODEL)
         OPENAIReasoningEffort: $(OPENAI_REASONING_EFFORT)
+        InViewBackendURL: $(INVIEW_BACKEND_URL)
+        NSLocalNetworkUsageDescription: AccessNav connects to your room processing server to build the 3D view of your scan.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         MARKETING_VERSION: "0.1.0"

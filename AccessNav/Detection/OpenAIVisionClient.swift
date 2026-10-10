@@ -113,7 +113,7 @@ struct OpenAIVisionClient {
                     "additionalProperties": false,
                     "required": ["kind", "confidence", "x", "y", "description"],
                     "properties": [
-                        "kind": ["type": "string", "enum": AccessPoint.Kind.allCases.map(\.rawValue)],
+                        "kind": ["type": "string", "enum": [AccessPoint.Kind.elevator, .ramp].map(\.rawValue)],
                         "confidence": ["type": "number"],
                         "x": ["type": "number"],
                         "y": ["type": "number"],

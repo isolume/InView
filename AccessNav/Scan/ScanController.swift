@@ -13,6 +13,7 @@ final class ScanController: ObservableObject {
         case scanning
         case processing
         case savingWorldMap
+        case processingScene
         case review
     }
 
@@ -20,11 +21,20 @@ final class ScanController: ObservableObject {
     @Published private(set) var sectionCount = 0
     @Published private(set) var errorMessage: String?
     @Published private(set) var draft: VenueMap?
+    @Published private(set) var scene: ProcessedScene?
+    @Published private(set) var sceneError: String?
+    @Published private(set) var isProcessingScene = false
 
     let session = ARSession()
     let detector = AccessibilityDetector()
+    private let rawCapture = RawScanCapture()
+    private let scanID = UUID()
+    private var captureBundle: CaptureBundle?
+    private var sceneTask: Task<Void, Never>?
+    var canRetryScene: Bool { captureBundle != nil }
 
     private(set) lazy var captureView: RoomCaptureView = {
+        rawCapture.prepare(session: session)
         let view = RoomCaptureView(frame: .zero, arSession: session)
         view.delegate = captureDelegate
         return view
@@ -50,6 +60,7 @@ final class ScanController: ObservableObject {
         guard phase == .scanning, !hasStarted else { return }
         hasStarted = true
         captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
+        rawCapture.start(session: session)
         detector.start(session: session)
         startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.captureStartView() }
@@ -74,14 +85,16 @@ final class ScanController: ObservableObject {
         startViewTimer?.invalidate()
         startViewTimer = nil
         detector.pause()
+        rawCapture.stop()
+        sceneTask?.cancel()
         if phase == .scanning { captureView.captureSession.stop() }
         if phase != .unsupported { session.pause() }
     }
 
-    func addPoint(_ kind: AccessPoint.Kind, at floorPoint: SIMD2<Float>) {
+    func addPoint(_ kind: AccessPoint.Kind, at floorPoint: SIMD2<Float>, name: String? = nil) {
         guard let floorY = draft?.floorY else { return }
         let position = SIMD3(floorPoint.x, floorY, floorPoint.y)
-        draft?.points.append(AccessPoint(kind: kind, position: position, source: .manual, confidence: 1))
+        draft?.points.append(AccessPoint(kind: kind, name: name, position: position, source: .manual, confidence: 1))
     }
 
     func removePoints(at offsets: IndexSet) {
@@ -91,6 +104,13 @@ final class ScanController: ObservableObject {
     func save() throws {
         guard let draft, let worldMap else { return }
         try MapStore.save(draft, rooms: rooms, worldMap: worldMap, startView: startView)
+        if let captureBundle { try CaptureStore.select(captureBundle) }
+        else { CaptureStore.clearSelection() }
+    }
+
+    func retryScene() {
+        guard !isProcessingScene, let captureBundle else { return }
+        processScene(captureBundle)
     }
 
     private func endSection(thenFinish finish: Bool) {
@@ -98,6 +118,7 @@ final class ScanController: ObservableObject {
         finishAfterProcessing = finish
         phase = .processing
         detector.pause()
+        rawCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
         captureView.captureSession.stop(pauseARSession: false)
     }
@@ -112,6 +133,7 @@ final class ScanController: ObservableObject {
             phase = .scanning
             captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
             detector.resume()
+            rawCapture.resume()
         }
     }
 
@@ -122,10 +144,46 @@ final class ScanController: ObservableObject {
             return
         }
         self.worldMap = worldMap
+        rawCapture.stop()
         session.pause()
         draft = MapBuilder.build(rooms: rooms, points: detector.accessPoints())
-        phase = .review
+        do {
+            let snapshot = rawCapture.snapshot()
+            let rawData = try ScanExporter.rawSnapshotData(snapshot)
+            let roomData = try ScanExporter.nativeRoomPlanData(rooms: rooms)
+            try CaptureStore.stageOriginals(id: scanID.uuidString, rawData: rawData, roomPlanData: roomData)
+            let bundle = try ScanExporter.bundle(rooms: rooms, raw: snapshot, scanID: scanID, mapID: scanID)
+            try CaptureStore.stage(bundle, rawData: rawData, roomPlanData: roomData)
+            captureBundle = bundle
+            phase = .processingScene
+            processScene(bundle)
+        } catch {
+            sceneError = error.localizedDescription
+            phase = .review
+        }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func processScene(_ bundle: CaptureBundle) {
+        sceneError = nil
+        guard let url = AppConfig.backendURL else {
+            sceneError = "Set your room processing server in Settings to build the 3D view. The scan is saved on this device."
+            phase = .review
+            return
+        }
+        isProcessingScene = true
+        sceneTask = Task { [weak self] in
+            defer { self?.isProcessingScene = false }
+            do {
+                let result = try await BackendClient(baseURL: url).uploadAndProcess(bundle)
+                try Task.checkCancellation()
+                try CaptureStore.saveScene(result, for: bundle)
+                self?.scene = result
+            } catch {
+                if !Task.isCancelled { self?.sceneError = error.localizedDescription }
+            }
+            if !Task.isCancelled { self?.phase = .review }
+        }
     }
 
     private func captureStartView() {

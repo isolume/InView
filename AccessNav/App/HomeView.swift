@@ -5,12 +5,14 @@ struct HomeView: View {
     private enum Mode: String, Identifiable {
         case scan
         case navigate
+        case demo
 
         var id: String { rawValue }
     }
 
     @State private var savedMap = MapStore.load()
     @State private var mode: Mode?
+    @State private var isShowingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -18,15 +20,15 @@ struct HomeView: View {
                 VStack(spacing: 16) {
                     ModeCard(
                         title: "Navigate",
-                        subtitle: "Find the nearest elevator or ramp",
+                        subtitle: "Find your way through the building",
                         systemImage: "figure.roll",
                         tint: .blue
                     ) { mode = .navigate }
                     .disabled(savedMap == nil)
 
                     ModeCard(
-                        title: "Map a space",
-                        subtitle: "Volunteers: scan a floor and tag elevators and ramps",
+                        title: "Map a building",
+                        subtitle: "Scan connected rooms and add destinations",
                         systemImage: "viewfinder",
                         tint: .indigo
                     ) { mode = .scan }
@@ -39,17 +41,29 @@ struct HomeView: View {
                             .foregroundStyle(.secondary)
                             .padding(.top, 8)
                     }
+
+                    Button("Try navigation demo") { mode = .demo }
+                        .font(.subheadline)
+                        .padding(.top, 4)
                 }
                 .padding()
             }
             .navigationTitle("AccessNav")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { isShowingSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Scan processing settings")
+                }
+            }
         }
         .fullScreenCover(item: $mode, onDismiss: { savedMap = MapStore.load() }) { mode in
             switch mode {
             case .scan: ScanView()
             case .navigate: NavigateView()
+            case .demo: NavigateView(isDemo: true)
             }
         }
+        .sheet(isPresented: $isShowingSettings) { BackendSettingsView() }
     }
 }
 
@@ -94,6 +108,12 @@ private struct SavedMapCard: View {
                 Spacer()
                 ShareLink(item: MapStore.mapURL) {
                     Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .font(.subheadline)
+            }
+            if let captureURL = CaptureStore.savedBundleURL {
+                ShareLink(item: captureURL) {
+                    Label("Export scan", systemImage: "cube.transparent")
                 }
                 .font(.subheadline)
             }

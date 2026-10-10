@@ -33,9 +33,14 @@ public final class RoutePlanner: Sendable {
         grids = Self.clearances.map { OccupancyGrid(map: map, clearance: $0) }
     }
 
-    /// The route to whichever access point is shortest to roll to, which is not always the closest in a straight line.
+    /// The route to whichever elevator or ramp is shortest to roll to.
     public func nearestRoute(from start: SIMD2<Float>) -> Route? {
-        bestRoute(from: start, among: map.points)
+        bestRoute(from: start, among: map.points.filter { $0.kind == .elevator || $0.kind == .ramp })
+    }
+
+    /// Routes to the selected point, including a named destination in another room.
+    public func route(from start: SIMD2<Float>, to destination: AccessPoint) -> Route? {
+        bestRoute(from: start, among: [destination])
     }
 
     /// Recomputes a route to the same destination from the user's new position.

@@ -31,9 +31,9 @@ private func room(_ extra: [Footprint] = [], points: [AccessPoint]) -> VenueMap 
 private let divider = wall(from: [0, -3], to: [0, 3])
 
 /// Where the route crosses x = 0, as a z coordinate.
-private func crossing(of route: Route) -> Float? {
-    for (a, b) in zip(route.waypoints, route.waypoints.dropFirst()) where (a.x < 0) != (b.x < 0) {
-        let t = -a.x / (b.x - a.x)
+private func crossing(of route: Route, at x: Float = 0) -> Float? {
+    for (a, b) in zip(route.waypoints, route.waypoints.dropFirst()) where (a.x < x) != (b.x < x) {
+        let t = (x - a.x) / (b.x - a.x)
         return a.y + (b.y - a.y) * t
     }
     return nil
@@ -83,4 +83,51 @@ private func crossing(of route: Route) -> Float? {
     let second = try #require(planner.reroute(first, from: [0, 1]))
     #expect(second.destination.id == first.destination.id)
     #expect(second.length < first.length)
+}
+
+@Test func routesToASelectedRoomThroughItsHallwayInsteadOfTheNearestElevator() throws {
+    let start = SIMD2<Float>(-3, -1.4)
+    let kitchen = AccessPoint(kind: .destination, name: "Kitchen", position: [3, 0, -1.4], source: .manual, confidence: 1)
+    let desk = AccessPoint(kind: .destination, name: "Desk", position: [-2.8, 0, -1.3], source: .manual, confidence: 1)
+    let elevator = point(.elevator, -3, -2)
+    // Two rooms connect to a central hallway through doors at opposite ends.
+    let map = room([
+        wall(from: [-1, -3], to: [-1, 3]),
+        wall(from: [1, -3], to: [1, 3]),
+        Footprint(kind: .door, center: [-1, 1.7], size: [1.1, 0.15], yaw: .pi / 2),
+        Footprint(kind: .door, center: [1, -1.7], size: [1.1, 0.15], yaw: .pi / 2),
+    ], points: [desk, kitchen, elevator])
+    let planner = RoutePlanner(map: map)
+
+    let nearest = try #require(planner.nearestRoute(from: start))
+    #expect(nearest.destination.id == elevator.id)
+    let selected = try #require(planner.route(from: start, to: kitchen))
+    #expect(selected.destination.id == kitchen.id)
+    #expect(selected.destination.title == "Kitchen")
+    #expect(selected.length > nearest.length + 5)
+    #expect(!selected.isNarrow)
+    #expect(abs(try #require(crossing(of: selected, at: -1)) - 1.7) < 0.45)
+    #expect(abs(try #require(crossing(of: selected, at: 1)) + 1.7) < 0.45)
+
+    let grid = planner.grids[selected.level]
+    // Inspect every segment so an apparent cross-room route cannot cut through a divider.
+    for (a, b) in zip(selected.waypoints, selected.waypoints.dropFirst()) {
+        let steps = max(1, Int((simd_distance(a, b) / (grid.cellSize / 4)).rounded(.up)))
+        for step in 0...steps {
+            let position = a + (b - a) * (Float(step) / Float(steps))
+            let index = try #require(grid.index(containing: position))
+            #expect(!grid.isBlocked(index))
+        }
+    }
+
+    let updated = try #require(planner.reroute(selected, from: [0, 0]))
+    #expect(updated.destination.id == kitchen.id)
+    #expect(updated.length < selected.length)
+}
+
+@Test func selectedDestinationRemainsUnreachableWhenRoomsHaveNoPassage() {
+    let destination = AccessPoint(kind: .destination, name: "Kitchen", position: [3, 0, 0], source: .manual, confidence: 1)
+    let planner = RoutePlanner(map: room([divider], points: [destination]))
+    #expect(planner.route(from: [-3, 0], to: destination) == nil)
+    #expect(planner.nearestRoute(from: [-3, 0]) == nil)
 }

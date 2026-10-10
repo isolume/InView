@@ -8,4 +8,8 @@ OPENAI_API_KEY =
 OPENAI_MODEL = gpt-6.1-sol
 OPENAI_REASONING_EFFORT = low
 
+// Optional room processing server. The app also lets you set this address in Settings.
+// In xcconfig URLs, write http:/$()/host:3000 to avoid // being parsed as a comment.
+INVIEW_BACKEND_URL =
+
 #include? "Secrets.xcconfig"

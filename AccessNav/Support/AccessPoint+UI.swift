@@ -6,6 +6,7 @@ extension AccessPoint.Kind {
         switch self {
         case .elevator: "arrow.up.arrow.down.square.fill"
         case .ramp: "figure.roll"
+        case .destination: "mappin"
         }
     }
 
@@ -13,6 +14,7 @@ extension AccessPoint.Kind {
         switch self {
         case .elevator: .blue
         case .ramp: .teal
+        case .destination: .blue
         }
     }
 }

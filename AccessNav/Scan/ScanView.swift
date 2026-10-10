@@ -11,7 +11,7 @@ struct ScanView: View {
             switch controller.phase {
             case .unsupported:
                 UnsupportedDeviceView(onClose: close)
-            case .scanning, .processing, .savingWorldMap:
+            case .scanning, .processing, .savingWorldMap, .processingScene:
                 captureScreen
             case .review:
                 MapReviewView(controller: controller, onClose: close)
@@ -44,6 +44,10 @@ struct ScanView: View {
                         .background(.regularMaterial, in: Capsule())
                 case .savingWorldMap:
                     worldMapPanel
+                case .processingScene:
+                    ProgressView("Building map…")
+                        .padding()
+                        .background(.regularMaterial, in: Capsule())
                 default:
                     scanControls
                 }
@@ -71,7 +75,7 @@ struct ScanView: View {
     private var scanControls: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                ForEach(AccessPoint.Kind.allCases, id: \.self) { kind in
+                ForEach([AccessPoint.Kind.elevator, .ramp], id: \.self) { kind in
                     Button {
                         controller.detector.addManual(kind)
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -84,7 +88,7 @@ struct ScanView: View {
                 }
             }
             HStack(spacing: 12) {
-                Button("Add section", action: controller.addSection)
+                Button("Next room", action: controller.addSection)
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
                 Button("Finish", action: controller.finish)
@@ -137,28 +141,82 @@ private struct DetectionStatus: View {
 struct MapReviewView: View {
     @ObservedObject var controller: ScanController
     let onClose: () -> Void
-    @State private var pendingPoint: SIMD2<Float>?
     @State private var saveError: String?
+
+    var body: some View {
+        Group {
+            if let scene = controller.scene {
+                RoomMapExperience(scene: scene, map: controller.draft, title: "Review map", onClose: onClose,
+                                  primaryTitle: "Save map", primaryAction: save,
+                                  secondaryTitle: "Review points",
+                                  reviewDestination: AnyView(RoomReviewSheet(controller: controller, onSaved: onClose)),
+                                  error: $saveError)
+            } else {
+                MapReviewDetailsView(controller: controller, onClose: onClose)
+            }
+        }
+    }
+
+    private func save() {
+        do {
+            try controller.save()
+            onClose()
+        } catch { saveError = error.localizedDescription }
+    }
+}
+
+private struct RoomReviewSheet: View {
+    @ObservedObject var controller: ScanController
+    let onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        MapReviewDetailsView(controller: controller, onClose: { dismiss() }, isDetailSheet: true, onSaved: onSaved)
+    }
+}
+
+private struct MapReviewDetailsView: View {
+    @ObservedObject var controller: ScanController
+    let onClose: () -> Void
+    var isDetailSheet = false
+    var onSaved: (() -> Void)? = nil
+    @State private var pendingPoint: SIMD2<Float>?
+    @State private var pendingDestinationPoint: SIMD2<Float>?
+    @State private var destinationName = ""
+    @State private var saveError: String?
+    @State private var isShowingSettings = false
 
     var body: some View {
         NavigationStack {
             List {
                 if let draft = controller.draft {
+                    if controller.isProcessingScene {
+                        Section { ProgressView("Building map…") }
+                    } else if let error = controller.sceneError {
+                        Section {
+                            Text(error).font(.subheadline).foregroundStyle(.secondary)
+                            HStack {
+                                Button("Settings") { isShowingSettings = true }
+                                Spacer()
+                                if controller.canRetryScene { Button("Try again", action: controller.retryScene) }
+                            }
+                        }
+                    }
                     Section {
                         MapPreviewView(map: draft) { pendingPoint = $0 }
                             .frame(height: 320)
                             .listRowInsets(EdgeInsets())
                     } footer: {
-                        Text("Tap the map to add an elevator or ramp the camera missed. Green doors are wide enough for a wheelchair; orange ones are not.")
+                        Text("Tap the map to name a destination or add an elevator or ramp. Green doors are wide enough for a wheelchair; orange ones are not.")
                     }
-                    Section("Accessible points") {
+                    Section("Destinations") {
                         if draft.points.isEmpty {
                             Text("None yet").foregroundStyle(.secondary)
                         }
                         ForEach(draft.points) { point in
                             Label {
                                 VStack(alignment: .leading) {
-                                    Text(point.kind.title)
+                                    Text(point.title)
                                     Text(point.source == .manual ? "Added by hand" : "Detected, \(Int(point.confidence * 100))% sure")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -175,31 +233,53 @@ struct MapReviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Discard", role: .destructive, action: onClose)
+                    Button(isDetailSheet ? "Done" : "Discard", action: onClose)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         do {
                             try controller.save()
                             onClose()
+                            onSaved?()
                         } catch {
                             saveError = error.localizedDescription
                         }
                     }
+                    .disabled(controller.isProcessingScene)
                 }
             }
-            .confirmationDialog("Add accessible point", isPresented: isAddingPoint) {
+            .confirmationDialog("Add destination", isPresented: isAddingPoint) {
                 ForEach(AccessPoint.Kind.allCases, id: \.self) { kind in
                     Button(kind.title) {
-                        if let pendingPoint { controller.addPoint(kind, at: pendingPoint) }
+                        if let pendingPoint {
+                            if kind == .destination {
+                                pendingDestinationPoint = pendingPoint
+                                destinationName = ""
+                            } else { controller.addPoint(kind, at: pendingPoint) }
+                        }
                     }
                 }
+            }
+            .alert("Name destination", isPresented: Binding(
+                get: { pendingDestinationPoint != nil },
+                set: { if !$0 { pendingDestinationPoint = nil } }
+            )) {
+                TextField("Room or place name", text: $destinationName)
+                Button("Cancel", role: .cancel) { pendingDestinationPoint = nil }
+                Button("Add") {
+                    if let point = pendingDestinationPoint {
+                        controller.addPoint(.destination, at: point, name: destinationName.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                    pendingDestinationPoint = nil
+                }
+                .disabled(destinationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .alert("Couldn't save the map", isPresented: isShowingSaveError) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(saveError ?? "")
             }
+            .sheet(isPresented: $isShowingSettings) { BackendSettingsView() }
         }
     }
 

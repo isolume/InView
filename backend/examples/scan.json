@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "id": "demo-room",
+  "map_id": "demo-room-map",
+  "floor_id": "ground",
+  "coordinates": {
+    "units": "meters",
+    "up_axis": "y",
+    "handedness": "right"
+  },
+  "metadata": {
+    "synthetic": true,
+    "description": "A synthetic six-by-five-meter room; no phone scan or image assets are included."
+  },
+  "surfaces": [
+    {
+      "id": "floor",
+      "kind": "floor",
+      "map_from_surface": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "dimensions_m": [6, 0, 5]
+    },
+    {
+      "id": "back-wall",
+      "kind": "wall",
+      "map_from_surface": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.4, 2.5, 1],
+      "dimensions_m": [6, 2.8, 0]
+    },
+    {
+      "id": "left-wall",
+      "kind": "wall",
+      "map_from_surface": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -3, 1.4, 0, 1],
+      "dimensions_m": [0, 2.8, 5]
+    }
+  ],
+  "objects": [
+    {
+      "id": "chair-001",
+      "category": "chair",
+      "confidence": "high",
+      "map_from_object": [0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1.6, 0.45, 0.8, 1],
+      "dimensions_m": [0.55, 0.9, 0.6]
+    },
+    {
+      "id": "sofa-001",
+      "category": "sofa",
+      "confidence": "medium",
+      "map_from_object": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.6, 0.5, 1.5, 1],
+      "dimensions_m": [2.2, 1, 0.9]
+    },
+    {
+      "id": "table-001",
+      "category": "table",
+      "confidence": "high",
+      "map_from_object": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0.375, 0.1, 1],
+      "dimensions_m": [1.2, 0.75, 0.8]
+    },
+    {
+      "id": "unknown-001",
+      "category": "unrecognized_fixture",
+      "confidence": "high",
+      "map_from_object": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.1, 0.325, -1.7, 1],
+      "dimensions_m": [0.6, 0.65, 0.5],
+      "provider_attributes": { "note": "Retain fields outside the current projection." }
+    }
+  ],
+  "meshes": [
+    {
+      "id": "raw-obstacle-001",
+      "map_from_anchor": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.1, 0, -1.7, 1],
+      "vertices": [[-0.25, 0, -0.2], [0.25, 0, -0.2], [0, 0.5, 0.2]],
+      "triangles": [[0, 1, 2]],
+      "classifications": ["unknown"]
+    }
+  ],
+  "frames": [
+    {
+      "id": "depth-frame-001",
+      "timestamp_seconds": 0.25,
+      "pixel_orientation": "sensor_native",
+      "map_from_camera": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.4, 1.8, 1],
+      "camera": { "image_width": 6, "image_height": 4, "fx": 4, "fy": 4, "cx": 2, "cy": 1 },
+      "depth": {
+        "width": 3,
+        "height": 2,
+        "values_m": [null, 2, 0, 1.5, 2, 2.5],
+        "confidence": [2, 2, 1, 0, 1, 2]
+      }
+    }
+  ]
+}
