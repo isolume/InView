@@ -370,3 +370,78 @@ def test_sign_names_come_only_from_text_naming_its_category():
                 "position_m": [0, 1.5, 0], "confidence": 0.8}])
     (place,) = places.build(scene)[0]
     assert place["name"] == "Elevator" and place["names"]["en"] == "Elevator"
+
+
+# --- malformed upstream products: drop the bad component, keep every valid place -------------
+
+NAN, INF = float("nan"), float("inf")
+
+
+def _signature(result):
+    places_list = result[0] if isinstance(result, tuple) else result
+    return sorted((p["category"], p.get("name"), tuple(p["position_m"])) for p in places_list)
+
+
+def _with_garbage(scene: places.Scene) -> places.Scene:
+    bad = copy.deepcopy(scene)
+    bad.rooms += [
+        {"id": "odd", "label": "kitchen", "polygon_xz_m": [[0, 0], [1, 0], [1]]},          # odd-length polygon
+        {"id": "nan-room", "label": "office", "polygon_xz_m": [[NAN, 0], [1, 0], [1, 1]]},
+        {"id": "text-room", "label": "lab", "polygon_xz_m": "not a polygon"},
+        {"id": "bad-floor", "label": "store", "polygon_xz_m": square(20, 20, 22, 22), "floor_y_m": "high"},
+    ]
+    bad.regions += [
+        {"id": "nan-region", "kind": "room", "polygon_xz_m": [[0, 0], [1, 0]], "centroid_xz_m": [NAN, INF]},
+        {"id": "short-centroid", "kind": "corridor", "polygon_xz_m": [], "centroid_xz_m": [1]},
+    ]
+    bad.doors += [
+        {"id": "bad-span", "kind": "door", "center_xz_m": [30, 30], "span_xz_m": [[1, 2, 3]]},
+        {"id": "nan-span", "kind": "door", "span_xz_m": [[NAN, 0], [1, 0]]},
+        {"id": "no-geometry", "kind": "door"},
+        {"id": "inf-center", "kind": "door", "center_xz_m": [INF, 0]},
+    ]
+    bad.objects += [
+        {"id": "nan-toilet", "category": "toilet", "center_m": [NAN, 0, 0]},
+        {"id": "short-toilet", "category": "toilet", "center_m": [1, 2]},
+        {"id": "odd-chair", "category": "chair", "center_m": [40, 0.4, 40], "footprint_xz_m": [[0, 0], [1]]},
+    ]
+    bad.texts += [text("t-nan", "Exit", NAN, 1.5, 0), {"id": "t-str", "text": "Lift", "position_m": "here",
+                                                      "confidence": "high"}]
+    bad.signs += [{"id": "s-nan", "category": "exit", "position_m": [0, INF, 0], "score": NAN}]
+    bad.hazards += [{"id": "h-bad", "kind": "ramp", "position_m": [None, 0, 0]}]
+    bad.outlines += [[[0, 0], [1, 1], [2]]]
+    return bad
+
+
+def test_malformed_components_are_skipped_without_losing_valid_places():
+    clean = places.build(building())
+    noisy = places.build(_with_garbage(building()))
+    garbage_names = {"kitchen", "office", "lab"}
+    survivors = [p for p in _signature(noisy) if p[1] not in garbage_names]
+    # The one well-formed extra room (finite polygon, unreadable floor height) is still a place,
+    # placed at the scene floor height instead of failing.
+    store = [p for p in survivors if p[1] == "store"]
+    assert len(store) == 1 and store[0][2][1] == 0.0
+    # A chair with a valid centre but a malformed footprint keeps a default footprint (seating).
+    chair = [p for p in survivors if p[2] == (40.0, 0.4, 40.0)]
+    assert [p[0] for p in chair] == ["seating"]
+    assert [p for p in survivors if p not in store + chair] == _signature(clean)
+
+
+@pytest.mark.parametrize("polygon", [[[0, 0], [1, 0], [1]], [[0, 0, 0]], [[NAN, 1], [2, 2], [3, 0]], "x", None, []])
+def test_contour_rejects_malformed_polygons(polygon):
+    assert places._contour(polygon) is None
+    assert places.polygon_centroid(polygon) is None
+
+
+def test_stage_survives_malformed_products(synthetic_ctx):
+    from inview_worker.core import Product
+    synthetic_ctx.products[ProductName.FLOOR_MAP] = Product({"floor_height_m": NAN, "outlines": [{"polygon_xz_m": [[1]]}, 7]})
+    synthetic_ctx.products[ProductName.DOORS] = Product([{"id": "d", "span_xz_m": [[0, 0], [NAN, 1]]}, "junk", None])
+    synthetic_ctx.products[ProductName.ROOMPLAN] = Product({"rooms": [None, {"id": "r", "polygon_xz_m": [[0, 1, 2]]}],
+                                                            "objects": [{"id": "o", "center_m": [INF, 0, 0]}, 3]})
+    synthetic_ctx.products[ProductName.REGIONS] = Product("not a list")
+    synthetic_ctx.products[ProductName.SIGNS] = Product([{"kind": "exit_sign_candidate", "position_m": [0, 2, -2],
+                                                          "score": "n/a"}])
+    result = PlacesStage().run(synthetic_ctx)
+    assert any(p["category"] in ("exit", "emergency_exit") for p in result.products[ProductName.PLACES].json)

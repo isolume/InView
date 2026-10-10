@@ -124,9 +124,47 @@ class _Area:
 
 # --- geometry helpers -------------------------------------------------------------------------
 
+def _finite_array(value: Any, columns: int | None = None) -> np.ndarray | None:
+    """Float array from untrusted product JSON, or None when it is not numeric, not finite, or (with
+    `columns`) not a whole number of rows. Upstream products may be malformed or partial; one bad
+    component must never take the whole stage down."""
+    if value is None:
+        return None
+    try:
+        array = np.asarray(value, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if array.size == 0 or not np.isfinite(array).all():
+        return None
+    if columns is None:
+        return array.reshape(-1)
+    return array.reshape(-1, columns) if array.size % columns == 0 else None
+
+
+def _number(value: Any, default: float) -> float:
+    """Finite float or `default` (None, strings, NaN, inf, and booleans all fall back)."""
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    return number if np.isfinite(number) else default
+
+
+def _xz(value: Any, from_xyz: bool = False) -> np.ndarray | None:
+    """[x, z] from an `[x, z]` or (with `from_xyz`) `[x, y, z]` position; None when malformed."""
+    values = _finite_array(value)
+    if values is None:
+        return None
+    if from_xyz:
+        return values[[0, 2]] if len(values) >= 3 else None
+    return values[:2] if len(values) >= 2 else None
+
+
 def _contour(polygon: Iterable) -> np.ndarray | None:
-    points = np.asarray(polygon, dtype=np.float32).reshape(-1, 2)
-    return points.reshape(-1, 1, 2) if len(points) >= 3 else None
+    points = _finite_array(polygon, 2)
+    return points.astype(np.float32).reshape(-1, 1, 2) if points is not None and len(points) >= 3 else None
 
 
 def polygon_centroid(polygon: Iterable) -> np.ndarray | None:
@@ -167,8 +205,8 @@ def cluster_footprints(footprints: list[np.ndarray], gap_m: float, resolution: f
 def _xyz(position: Any) -> np.ndarray | None:
     if position is None:
         return None
-    values = np.asarray(position, dtype=np.float64).reshape(-1)
-    return values[:3] if len(values) >= 3 and np.isfinite(values[:3]).all() else None
+    values = _finite_array(position)
+    return values[:3] if values is not None and len(values) >= 3 else None
 
 
 def _language(tag: Any) -> str | None:
@@ -188,15 +226,23 @@ def _doors(scene: Scene) -> list[_Door]:
     for index, door in enumerate(scene.doors):
         door_id = str(door.get("id", index))
         span = door.get("span_xz_m")
-        if door.get("center_xz_m") is not None:
-            center = np.asarray(door["center_xz_m"], dtype=np.float64)[:2]
-        elif door.get("center_m") is not None:
-            center = np.asarray(door["center_m"], dtype=np.float64)[[0, 2]]
-        else:
-            continue
-        span_array = np.asarray(span, dtype=np.float64).reshape(2, 2) if span is not None else None
+        center = _xz(door.get("center_xz_m"))
+        if center is None:
+            center = _xz(door.get("center_m"), from_xyz=True)
+        span_array = _finite_array(span, 2)
+        if span_array is not None and span_array.shape != (2, 2):
+            span_array = None  # A malformed span is dropped; the door keeps its centre.
+        if center is None:
+            if span_array is None:
+                continue
+            center = span_array.mean(axis=0)
         doors.append(_Door(door_id, center, span_array, str(door.get("kind", "door"))))
     return doors
+
+
+def _region_centroid(region: dict) -> np.ndarray | None:
+    centroid = _xz(region.get("centroid_xz_m"))
+    return centroid if centroid is not None else polygon_centroid(region.get("polygon_xz_m") or [])
 
 
 def _room_label(label: Any) -> str | None:
@@ -216,13 +262,12 @@ def _areas(scene: Scene) -> tuple[list[_Area], dict[str, str]]:
         if contour is None:
             continue
         areas.append(_Area(f"room:{room.get('id', index)}", contour, centroid,
-                           float(room.get("floor_y_m", scene.floor_y)), None))
+                           _number(room.get("floor_y_m"), scene.floor_y), None))
     roomplan_areas = list(areas)
     for index, region in enumerate(scene.regions):
         region_id = str(region.get("id", index))
         polygon = region.get("polygon_xz_m") or []
-        centroid = (np.asarray(region["centroid_xz_m"], dtype=np.float64) if region.get("centroid_xz_m") is not None
-                    else polygon_centroid(polygon))
+        centroid = _region_centroid(region)
         if centroid is None:
             continue
         owner = next((a for a in roomplan_areas if _signed_distance(a.contour, centroid) >= 0), None)
@@ -253,10 +298,10 @@ def object_candidates(scene: Scene) -> list[Candidate]:
     out: list[Candidate] = []
 
     def footprint(item: dict) -> np.ndarray:
-        points = np.asarray(item.get("footprint_xz_m") or [], dtype=np.float64).reshape(-1, 2)
-        if len(points) >= 3:
+        points = _finite_array(item.get("footprint_xz_m"), 2)
+        if points is not None and len(points) >= 3:
             return points
-        center = np.asarray(item["center_m"], dtype=np.float64)[[0, 2]]
+        center = _xyz(item.get("center_m"))[[0, 2]]  # Members are pre-filtered on a valid centre.
         return center + np.array([[-0.2, -0.2], [0.2, -0.2], [0.2, 0.2], [-0.2, 0.2]])
 
     def grouped(categories: set[str], anchors: set[str], gap: float) -> list[list[dict]]:
@@ -312,7 +357,7 @@ def area_candidates(scene: Scene, region_keys: dict[str, str]) -> list[Candidate
         explicit = label if label and category == "room" else None
         key = f"room:{room.get('id', index)}"
         owners[key] = (category, explicit)
-        out.append(Candidate(category, np.array([centroid[0], float(room.get("floor_y_m", scene.floor_y)), centroid[1]]),
+        out.append(Candidate(category, np.array([centroid[0], _number(room.get("floor_y_m"), scene.floor_y), centroid[1]]),
                              0.7 if label else 0.45, (f"roomplan:{key}",), RANK_ANCHOR,
                              {"en": explicit} if explicit else {}, explicit, NAME_LABEL if explicit else 0, key=key))
     for index, region in enumerate(scene.regions):
@@ -320,8 +365,7 @@ def area_candidates(scene: Scene, region_keys: dict[str, str]) -> list[Candidate
         if kind not in ("room", "corridor"):
             continue
         region_id = str(region.get("id", index))
-        centroid = (np.asarray(region["centroid_xz_m"], dtype=np.float64) if region.get("centroid_xz_m") is not None
-                    else polygon_centroid(region.get("polygon_xz_m") or []))
+        centroid = _region_centroid(region)
         if centroid is None:
             continue
         key = region_keys.get(region_id)
@@ -468,7 +512,7 @@ def sign_candidates(scene: Scene, doors: list[_Door], areas: list[_Area]) -> tup
         linked = [texts[str(i)] for i in sign.get("text_ids") or [] if str(i) in texts]
         if "kind" in sign and "category" not in sign:  # earlier candidate shape
             text = sign.get("text") or ""
-            score = float(sign.get("score") or 0.5)
+            score = _number(sign.get("score"), 0.5)
             if position is None:
                 continue
             if _directional(text):
@@ -488,10 +532,10 @@ def sign_candidates(scene: Scene, doors: list[_Door], areas: list[_Area]) -> tup
             continue
         if position is None:
             continue
-        confidence = float(sign.get("confidence") or sign.get("score") or 0.7)
+        confidence = _number(sign.get("confidence"), _number(sign.get("score"), 0.7))
         category = _pictogram_category(sign.get("category"), sign.get("pictograms") or [])
         names: dict[str, str] = {}
-        for text in sorted(linked, key=lambda t: float(t.get("confidence") or 0)):
+        for text in sorted(linked, key=lambda t: _number(t.get("confidence"), 0.0)):
             body = " ".join(str(text.get("text", "")).split())
             matches = load().match(body)
             tag = _language(text.get("language")) or (matches[0].language if matches else None)
@@ -503,7 +547,7 @@ def sign_candidates(scene: Scene, doors: list[_Door], areas: list[_Area]) -> tup
             # Room plates and generic signs: let their text decide (room number, lexicon).
             for text in linked:
                 out.extend(_text_candidates(str(text.get("text", "")), text.get("language"), position,
-                                            confidence * float(text.get("confidence") or 1.0),
+                                            confidence * _number(text.get("confidence"), 1.0),
                                             source + (f"text:{text.get('id')}",), doors, areas, scene.floor_y))
             continue
         if category not in valid:
@@ -526,7 +570,7 @@ def text_candidates(scene: Scene, used: set[str], doors: list[_Door], areas: lis
         if position is None:
             unplaced += 1
             continue
-        confidence = float(item.get("confidence") if item.get("confidence") is not None else 0.5)
+        confidence = _number(item.get("confidence"), 0.5)
         out.extend(_text_candidates(text, item.get("language"), position, confidence, (f"text:{text_id}",),
                                     doors, areas, scene.floor_y))
     return out, unplaced
