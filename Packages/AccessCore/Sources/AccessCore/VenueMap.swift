@@ -14,6 +14,22 @@ public struct Footprint: Codable, Hashable, Sendable {
         var isPassage: Bool { self == .door || self == .opening }
     }
 
+    /// Rough furniture type, so maps can draw a table as a table rather than a box.
+    public enum Furniture: String, Codable, CaseIterable, Sendable {
+        case table
+        case chair
+        case sofa
+        case bed
+        case storage
+        /// Fridges, stoves, ovens, dishwashers, washers.
+        case appliance
+        case sink
+        case toilet
+        case bathtub
+        case television
+        case fireplace
+    }
+
     public var kind: Kind
     /// Center on the floor, as (x, z).
     public var center: SIMD2<Float>
@@ -21,27 +37,52 @@ public struct Footprint: Codable, Hashable, Sendable {
     public var size: SIMD2<Float>
     /// Angle from +x to the footprint's x axis, turning toward +z.
     public var yaw: Float
+    /// What an obstacle is, when known.
+    public var furniture: Furniture?
+    /// Height of the underside above the map origin, and the object's own height, when known.
+    public var bottom: Float?
+    public var height: Float?
 
-    public init(kind: Kind, center: SIMD2<Float>, size: SIMD2<Float>, yaw: Float) {
+    public init(
+        kind: Kind,
+        center: SIMD2<Float>,
+        size: SIMD2<Float>,
+        yaw: Float,
+        furniture: Furniture? = nil,
+        bottom: Float? = nil,
+        height: Float? = nil
+    ) {
         self.kind = kind
         self.center = center
         self.size = size
         self.yaw = yaw
+        self.furniture = furniture
+        self.bottom = bottom
+        self.height = height
     }
 
     /// Projects a 3D box (RoomPlan surface or object) onto the floor.
     /// - Parameters:
-    ///   - transform: The box's pose in map coordinates.
-    ///   - width: Extent along the box's local x axis.
-    ///   - depth: Extent along the box's local z axis.
-    public init(kind: Kind, transform: simd_float4x4, width: Float, depth: Float) {
+    ///   - transform: The box's pose in map coordinates, centered on the box.
+    ///   - dimensions: The box's extent along its local x, y and z axes.
+    ///   - depth: Overrides the z extent, for surfaces RoomPlan reports as flat.
+    public init(kind: Kind, transform: simd_float4x4, dimensions: SIMD3<Float>, depth: Float? = nil, furniture: Furniture? = nil) {
         let axis = SIMD2(transform.columns.0.x, transform.columns.0.z)
         self.init(
             kind: kind,
             center: SIMD2(transform.columns.3.x, transform.columns.3.z),
-            size: SIMD2(width, depth),
-            yaw: simd_length(axis) > 1e-4 ? atan2(axis.y, axis.x) : 0
+            size: SIMD2(dimensions.x, depth ?? dimensions.z),
+            yaw: simd_length(axis) > 1e-4 ? atan2(axis.y, axis.x) : 0,
+            furniture: furniture,
+            bottom: transform.columns.3.y - dimensions.y / 2,
+            height: dimensions.y
         )
+    }
+
+    /// Maps a point in the footprint's own axes (x along `size.x`, y along `size.y`) onto the floor.
+    public func floorPoint(local point: SIMD2<Float>) -> SIMD2<Float> {
+        let c = cos(yaw), s = sin(yaw)
+        return center + SIMD2(c, s) * point.x + SIMD2(-s, c) * point.y
     }
 
     /// Expresses a floor point in this footprint's own axes.

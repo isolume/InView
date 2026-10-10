@@ -42,3 +42,16 @@ import Testing
     #expect(decoded.slopeDegrees == nil)
     #expect(!decoded.requiresAssistance)
 }
+
+@Test func footprintLocalAxesRoundTrip() {
+    let table = Footprint(kind: .obstacle, center: [1, -2], size: [1.6, 0.8], yaw: 0.7, furniture: .table)
+    let local = SIMD2<Float>(0.5, -0.3)
+    #expect(simd_distance(table.local(table.floorPoint(local: local)), local) < 1e-5)
+}
+
+@Test func readsFootprintsSavedWithoutFurniture() throws {
+    let json = #"{"kind":"obstacle","center":[1,2],"size":[0.5,0.5],"yaw":0}"#
+    let decoded = try JSONDecoder().decode(Footprint.self, from: Data(json.utf8))
+    #expect(decoded.furniture == nil)
+    #expect(decoded.height == nil)
+}
