@@ -313,29 +313,10 @@ private struct MapReviewDetailsView: View {
                         Text("Tap the plan to name a destination or add an elevator or ramp the camera missed.")
                     }
                     if let raw = controller.rawSnapshot {
-                        Section("Capture evidence") {
-                            Button { showsRawReview = true } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                                        .font(.title3)
-                                        .foregroundStyle(.cyan)
-                                        .frame(width: 34, height: 34)
-                                        .background(.cyan.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Review LiDAR evidence").font(.body.weight(.medium))
-                                        Text("\(raw.frames.count) depth views · \(raw.colorKeyframes.count) color keyframes · \(raw.meshes.count) mesh anchors")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Opens raw depth, smoothed depth, color point, and mesh views")
+                        Section {
+                            CaptureEvidenceRow(snapshot: raw) { showsRawReview = true }
+                        } header: {
+                            Text("Capture evidence")
                         } footer: {
                             Text("This is source evidence for inspection. The RoomPlan map remains the navigation map.")
                         }
@@ -534,6 +515,40 @@ private struct MapReviewDetailsView: View {
 
     private var isShowingSaveError: Binding<Bool> {
         Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })
+    }
+}
+
+private struct CaptureEvidenceRow: View {
+    let snapshot: RawScanSnapshot
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.title3)
+                    .foregroundStyle(.cyan)
+                    .frame(width: 34, height: 34)
+                    .background(.cyan.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Review LiDAR evidence").font(.body.weight(.medium))
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens raw depth, smoothed depth, color point, and mesh views")
+    }
+
+    private var summary: String {
+        "\(snapshot.frames.count) depth views · \(snapshot.colorKeyframes.count) color keyframes · \(snapshot.meshes.count) mesh anchors"
     }
 }
 

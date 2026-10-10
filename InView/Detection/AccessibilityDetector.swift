@@ -116,9 +116,9 @@ final class AccessibilityDetector: ObservableObject {
     /// Stairs are a costly false alarm (they block routes), so the model must be surer.
     private static let minimumStairsConfidence: Float = 0.8
     /// A single sighting this sure counts as confirmed (for ramps and stairs, once LiDAR agrees too).
-    static let highConfidence: Float = 0.85
+    nonisolated static let highConfidence: Float = 0.85
     /// Ramps and stairs LiDAR could never check confirm after this many sightings.
-    static let unverifiedFrames = 4
+    nonisolated static let unverifiedFrames = 4
     /// Ramps are steeper than about 1:20; anything flatter is just floor. Much steeper is stairs or furniture.
     private static let plausibleRampSlope: ClosedRange<Float> = 1.5...15
     /// Stairs the camera spots are drawn this size, starting at the bottom step: (width, depth).
@@ -294,7 +294,7 @@ final class AccessibilityDetector: ObservableObject {
         Task { [weak self] in
             defer { self?.requestsInFlight -= 1 }
             do {
-                guard let encoded = await Task.detached(priority: .utility) { FrameEncoder.encode(snapshot) }.value else { return }
+                guard let encoded = await Task.detached(priority: .utility, operation: { FrameEncoder.encode(snapshot) }).value else { return }
                 let started = Date.now
                 let detections = try await client.detect(jpeg: encoded.jpeg)
                 await self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, preview: encoded.preview)
