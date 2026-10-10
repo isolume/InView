@@ -53,7 +53,7 @@ public enum LocalSceneBuilder {
             try Task.checkCancellation()
             return SceneMesh(sourceID: mesh.id,
                       vertices: try mesh.vertices.map { try mapPoint($0, using: mesh.mapFromAnchor) },
-                      triangles: mesh.triangles, classifications: mesh.classifications)
+                      triangles: mesh.triangles, classifications: mesh.classifications, colors: mesh.colors)
         }
         var totalSamples = 0
         for frame in capture.frames where includeDepthPoints {

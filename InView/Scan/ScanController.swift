@@ -10,7 +10,7 @@ import SwiftUI
 @MainActor
 final class ScanController: ObservableObject {
     enum SceneStage: Equatable {
-        case preparing, uploading, reconstructing, saving
+        case preparing, coloring, uploading, reconstructing, saving
     }
     enum Phase: Equatable {
         case unsupported
@@ -39,6 +39,10 @@ final class ScanController: ObservableObject {
     @Published private(set) var sceneStage: SceneStage = .preparing
     @Published private(set) var scanNotice: String?
     @Published private(set) var trackingNotice: String?
+    /// Asks the volunteer to tilt up when the area around them has no captured ceiling yet.
+    @Published private(set) var ceilingNotice: String?
+    /// Measured from ARKit's labeled mesh when a continuous scan finishes.
+    @Published private(set) var ceiling: CeilingMeasurement?
     @Published private(set) var captureView: RoomCaptureView?
     @Published private(set) var streamingView: ARView?
     @Published private(set) var streamStatus: StreamingCaptureStatus?
@@ -96,6 +100,7 @@ final class ScanController: ObservableObject {
         guard isContinuous else { return "Building map…" }
         switch sceneStage {
         case .preparing: return "Preparing scan…"
+        case .coloring: return "Coloring 3D model…"
         case .uploading:
             guard let streamStatus, streamStatus.captured > 0 else { return "Uploading scan…" }
             if streamStatus.pending == 0 { return "Finishing upload…" }
@@ -205,7 +210,7 @@ final class ScanController: ObservableObject {
     private var reportTask: Task<Void, Never>?
 
     init() {
-        rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
+        rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous, reconstructsMesh: isContinuous)
         let supported = isContinuous
             ? ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
             : RoomCaptureSession.isSupported
@@ -235,6 +240,10 @@ final class ScanController: ObservableObject {
         hasStarted = true
         isActive = true
         if isContinuous {
+            rawCapture.onCeilingHint = { [weak self] shown in
+                let notice = shown ? "Tilt the phone up now and then to capture the ceiling." : nil
+                if self?.ceilingNotice != notice { self?.ceilingNotice = notice }
+            }
             rawCapture.prepare(session: session)
             let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
             view.session = session
@@ -651,6 +660,8 @@ final class ScanController: ObservableObject {
         self.worldMap = worldMap
         startViewTimer?.invalidate()
         startViewTimer = nil
+        // The latest mesh, after ARKit's own corrections, before the session stops.
+        rawCapture.captureReconstructedMesh(from: session)
         session.pause()
         captureView?.delegate = nil
         captureView?.captureSession.delegate = nil
@@ -692,14 +703,49 @@ final class ScanController: ObservableObject {
                     self.contextTracker.stop()
                     self.trackRecorder.stop()
                 }
-                let raw = await self.rawCapture.finishSnapshot()
-                self.splatCapture.finish(meshes: raw.meshes)
+                let captured = await self.rawCapture.finishSnapshot()
+                var raw = try await ScanWork.run { try RawScanCapture.reconstruct(captured) }
                 try Task.checkCancellation()
-                self.draft = try await ScanWork.run {
-                    MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
-                                     observed: raw.observedFootprints ?? [])
+                let welded = raw
+                let built = try await ScanWork.run {
+                    let map = MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
+                                               observed: welded.observedFootprints ?? [])
+                    return (map, welded.meshes.first.flatMap { CeilingMeasurement.measure($0, floorY: map.floorY) })
                 }
+                self.draft = built.0
+                self.ceiling = built.1
+                if let ceiling = built.1, case .object(var metadata) = raw.metadata {
+                    metadata["ceiling_height_m"] = .number(Double(ceiling.heightM))
+                    metadata["ceiling_elevation"] = .number(Double(ceiling.elevation))
+                    metadata["ceiling_area_m2"] = .number(Double(ceiling.areaM2))
+                    metadata["ceiling_floor_coverage"] = ceiling.floorCoverage.map { .number(Double($0)) } ?? .null
+                    raw.metadata = .object(metadata)
+                }
+                Log.scan.notice("ceiling: \(built.1.map { String(format: "%.2f m high over %.1f m²", $0.heightM, $0.areaM2) } ?? "not captured", privacy: .public)")
                 if let streamingCapture { await self.attachStreamEvidence(to: streamingCapture, rooms: rooms) }
+                if self.isContinuous, let mesh = raw.meshes.first {
+                    self.sceneStage = .coloring
+                    let id = scanID.uuidString
+                    do {
+                        if let colored = try await ScanWork.run({ try MeshColorizer.color(mesh, scanID: id) }) {
+                            raw.meshes = [colored.mesh]
+                            if case .object(var metadata) = raw.metadata {
+                                metadata["mesh_color_photos"] = .number(Double(colored.photos))
+                                metadata["mesh_color_coverage"] = .number(Double(colored.coverage))
+                                raw.metadata = .object(metadata)
+                            }
+                            Log.scan.notice("colored the mesh from \(colored.photos) photos; \(Int(colored.coverage * 100))% of vertices seen")
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        // The plain model still saves; color is a finish, not a requirement.
+                        Log.scan.error("couldn't color the mesh: \(error.localizedDescription, privacy: .public)")
+                    }
+                    self.sceneStage = .preparing
+                }
+                // The mesh, colored when it could be, also seeds the splat's starting point cloud.
+                self.splatCapture.finish(meshes: raw.meshes)
                 let payload = ExportPayload(rooms: rooms, recovered: recovered, raw: raw, scanID: scanID, floor: floor)
                 let prepared = try await ScanWork.run {
                     let rawData = try ScanExporter.rawSnapshotData(payload.raw)
@@ -756,7 +802,9 @@ final class ScanController: ObservableObject {
                 session.pause()
                 session = ARSession()
                 detector = AccessibilityDetector()
-                rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous)
+                rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous, reconstructsMesh: isContinuous)
+                ceilingNotice = nil
+                ceiling = nil
                 scanID = UUID()
                 // The next floor is its own scan, so its splat photos belong in its own folder.
                 splatCapture = SplatCapture(scanID: scanID)

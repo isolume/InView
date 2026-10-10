@@ -100,22 +100,31 @@ final class SplatCapture {
         }
     }
 
+    /// A starting point for training: where the LiDAR mesh is, and its color in the photos.
+    struct Seed: Sendable {
+        let position: SIMD3<Float>
+        /// Packed 0xRRGGBB; mid gray where the mesh has no colors.
+        let color: UInt32
+    }
+
     /// LiDAR mesh vertices in map coordinates, thinned evenly to at most `maximumPoints`.
-    private static func points(from meshes: [CaptureMesh]) -> [SIMD3<Float>] {
+    private static func points(from meshes: [CaptureMesh]) -> [Seed] {
         let total = meshes.reduce(0) { $0 + $1.vertices.count }
         guard total > 0 else { return [] }
         let step = max(1, (total + maximumPoints - 1) / maximumPoints)
-        var points: [SIMD3<Float>] = []
+        var points: [Seed] = []
         var index = 0
         for mesh in meshes where mesh.mapFromAnchor.count == 16 {
             let m = mesh.mapFromAnchor
-            for vertex in mesh.vertices where vertex.count == 3 {
+            let colors = mesh.colors.flatMap { $0.count == mesh.vertices.count ? $0 : nil }
+            for (vertexIndex, vertex) in mesh.vertices.enumerated() where vertex.count == 3 {
                 defer { index += 1 }
                 guard index.isMultiple(of: step) else { continue }
-                points.append(SIMD3(
+                points.append(Seed(position: SIMD3(
                     m[0] * vertex[0] + m[4] * vertex[1] + m[8] * vertex[2] + m[12],
                     m[1] * vertex[0] + m[5] * vertex[1] + m[9] * vertex[2] + m[13],
-                    m[2] * vertex[0] + m[6] * vertex[1] + m[10] * vertex[2] + m[14]))
+                    m[2] * vertex[0] + m[6] * vertex[1] + m[10] * vertex[2] + m[14]),
+                    color: colors?[vertexIndex] ?? 0x808080))
             }
         }
         return points
@@ -182,17 +191,20 @@ private final class PhotoWriter: @unchecked Sendable {
         }
     }
 
-    func finish(transforms: SplatCapture.Transforms, points: [SIMD3<Float>], in directory: URL) {
+    func finish(transforms: SplatCapture.Transforms, points: [SplatCapture.Seed], in directory: URL) {
         queue.async {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try? encoder.encode(transforms).write(to: directory.appending(path: "transforms.json"), options: .atomic)
             guard !points.isEmpty else { return }
-            // An ASCII PLY of gray points: the LiDAR geometry the splat starts from.
+            // An ASCII PLY of the LiDAR geometry the splat starts from, in the photos' colors.
             var ply = "ply\nformat ascii 1.0\nelement vertex \(points.count)\n"
             ply += "property float x\nproperty float y\nproperty float z\n"
             ply += "property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n"
-            for point in points { ply += "\(point.x) \(point.y) \(point.z) 128 128 128\n" }
+            for point in points {
+                let p = point.position, c = point.color
+                ply += "\(p.x) \(p.y) \(p.z) \(c >> 16 & 0xFF) \(c >> 8 & 0xFF) \(c & 0xFF)\n"
+            }
             try? Data(ply.utf8).write(to: directory.appending(path: "sparse_pc.ply"), options: .atomic)
         }
     }

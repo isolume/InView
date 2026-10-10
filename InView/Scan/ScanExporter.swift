@@ -15,7 +15,11 @@ enum ScanExporter {
     }
 
     static func rawSnapshotData(_ snapshot: RawScanSnapshot) throws -> Data {
-        try JSONEncoder().encode(snapshot)
+        // The welded display mesh is derived from the native mesh buffers and saved in the
+        // capture bundle; the raw archive keeps only the originals.
+        var originals = snapshot
+        originals.meshes = []
+        return try JSONEncoder().encode(originals)
     }
 
     static func bundle(

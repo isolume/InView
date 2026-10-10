@@ -15,7 +15,8 @@ struct RawScanSnapshot: Codable, Sendable {
     var observedFootprints: [Footprint]? = nil
 }
 
-/// Kept for decoding earlier raw archives; live navigation scans no longer copy mesh buffers.
+/// ARKit's reconstructed mesh, one anchor's native buffers copied once when a continuous scan
+/// finishes. Earlier raw archives also used this shape.
 struct RawMeshBuffers: Codable, Sendable {
     var id: String
     var mapFromAnchor: [Float]
@@ -70,6 +71,15 @@ final class RawScanCapture {
     private var depthEnabled = false
     private let budget = DepthKeyframeBudget()
     private let retainsDepthKeyframes: Bool
+    private let reconstructsMesh: Bool
+    private var meshEnabled = false
+    private var meshBuffers: [RawMeshBuffers] = []
+    private var meshReadFailures = 0
+    private var ceilingHint = CeilingCaptureHint()
+    private var lastCeilingCheck: TimeInterval?
+    private let ceilingCheckInterval: TimeInterval = 1.5
+    /// Whether to ask the volunteer to tilt up; continuous scans only.
+    var onCeilingHint: ((Bool) -> Void)?
     private let observedSurfaces = ObservedSurfaceCapture()
     private var smallObstacles = DepthObstacleAccumulator()
     private var lastObstacleTimestamp: TimeInterval?
@@ -81,8 +91,11 @@ final class RawScanCapture {
     /// Continuous capture already archives synchronized depth in its stream. Keep one
     /// fallback observation here, alongside compact measured coverage, instead of copying
     /// and exporting a second depth history when the volunteer finishes.
-    init(retainsDepthKeyframes: Bool = true) {
+    /// - Parameter reconstructsMesh: Continuous scans have no RoomPlan, so ARKit's classified mesh
+    ///   is their model of walls, furniture and the ceiling. It's copied once, when the scan finishes.
+    init(retainsDepthKeyframes: Bool = true, reconstructsMesh: Bool = false) {
         self.retainsDepthKeyframes = retainsDepthKeyframes
+        self.reconstructsMesh = reconstructsMesh
     }
     private let depthInterval: TimeInterval = 2
 
@@ -99,6 +112,15 @@ final class RawScanCapture {
         // Requesting a second raw mesh reconstruction alongside RoomPlan makes work grow with
         // the mapped area. Its structured walls, floors and objects already drive our maps.
         // Preserve any reconstruction setting owned by the supplied session, but add none.
+        // Without RoomPlan, ARKit's own fused mesh is what captures walls and ceilings.
+        if reconstructsMesh {
+            if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) {
+                configuration.sceneReconstruction = .meshWithClassification
+            } else if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+                configuration.sceneReconstruction = .mesh
+            }
+        }
+        meshEnabled = reconstructsMesh && !configuration.sceneReconstruction.isEmpty
         configuration.planeDetection.formUnion([.horizontal, .vertical])
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             configuration.frameSemantics.insert(.sceneDepth)
@@ -114,6 +136,9 @@ final class RawScanCapture {
 
     func resume() {
         guard timer == nil, session != nil else { return }
+        // Time spent paused isn't time spent scanning without the ceiling.
+        ceilingHint = CeilingCaptureHint()
+        lastCeilingCheck = nil
         sample()
         timer = Timer.scheduledTimer(withTimeInterval: pollingInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.sample() }
@@ -123,6 +148,7 @@ final class RawScanCapture {
     func pause() {
         timer?.invalidate()
         timer = nil
+        onCeilingHint?(false)
         generation += 1
         worker?.cancel()
         // Keep the worker slot occupied until it releases its immutable snapshot. A quick
@@ -153,13 +179,15 @@ final class RawScanCapture {
 
     func snapshot() -> RawScanSnapshot {
         RawScanSnapshot(
-            meshes: [], frames: frames, meshBuffers: [], depthBuffers: depthBuffers,
+            meshes: [], frames: frames, meshBuffers: meshBuffers, depthBuffers: depthBuffers,
             metadata: .object([
-                "status": .string("bounded_depth_keyframes_and_observed_geometry"),
-                "mesh_requested": .bool(false),
-                "mesh_omission_reason": .string("roomplan_structured_geometry_is_navigation_source"),
+                "status": .string(meshEnabled ? "bounded_depth_keyframes_observed_geometry_and_final_mesh_snapshot"
+                                              : "bounded_depth_keyframes_and_observed_geometry"),
+                "mesh_requested": .bool(meshEnabled),
+                "mesh_omission_reason": meshEnabled ? .null : .string("roomplan_structured_geometry_is_navigation_source"),
+                "mesh_selection": meshEnabled ? .string("one_snapshot_when_the_scan_finishes") : .null,
                 "scene_depth_requested": .bool(depthEnabled),
-                "mesh_anchor_count": .number(0),
+                "mesh_anchor_count": .number(Double(meshBuffers.count)),
                 "depth_keyframe_count": .number(Double(frames.count)),
                 "maximum_depth_keyframes": .number(Double(retainsDepthKeyframes ? budget.maximumFrames : 1)),
                 "maximum_retained_depth_bytes": .number(Double(budget.maximumRetainedBytes)),
@@ -171,7 +199,7 @@ final class RawScanCapture {
                 "evicted_depth_keyframes": .number(Double(evictedDepthFrames)),
                 "skipped_busy_depth_samples": .number(Double(skippedBusySamples)),
                 "skipped_oversize_depth_samples": .number(Double(skippedOversizeSamples)),
-                "mesh_read_failures": .number(0),
+                "mesh_read_failures": .number(Double(meshReadFailures)),
                 "depth_read_failures": .number(Double(depthReadFailures)),
                 "small_obstacle_interval_seconds": .number(obstacleInterval),
                 "small_obstacle_retained_cells": .number(Double(smallObstacles.retainedCellCount)),
@@ -188,6 +216,7 @@ final class RawScanCapture {
     private func sample() {
         guard let frame = session?.currentFrame, case .normal = frame.camera.trackingState else { return }
         observedSurfaces.update(frame: frame, floorY: floorY)
+        updateCeilingHint(frame)
         let camera = frame.camera.transform.columns.3
         let measuredFloor = observedSurfaces.floorElevation(near: SIMD3(camera.x, camera.y, camera.z)) ?? floorY
         let keepArchive = retainsDepthKeyframes ? shouldKeepDepth(frame) : frames.isEmpty
@@ -270,6 +299,180 @@ final class RawScanCapture {
         let cameraDirection = SIMD3(camera.columns.2.x, camera.columns.2.y, camera.columns.2.z)
         return simd_distance(cameraPosition, position) >= 0.2
             || simd_dot(cameraDirection, direction) < cos(Float.pi / 12) || elapsed >= 10
+    }
+
+    /// Copies ARKit's mesh as it stands, once. Only native bytes are copied here; decoding and
+    /// welding happen later off the main actor (`reconstruct`).
+    func captureReconstructedMesh(from session: ARSession) {
+        guard meshEnabled, let frame = session.currentFrame else { return }
+        var copied: [RawMeshBuffers] = []
+        for anchor in frame.anchors.compactMap({ $0 as? ARMeshAnchor }) {
+            if let buffers = Self.copyMesh(anchor) { copied.append(buffers) } else { meshReadFailures += 1 }
+        }
+        meshBuffers = copied
+        Log.scan.notice("copied \(copied.count) reconstructed mesh anchors; \(self.meshReadFailures) unreadable")
+    }
+
+    private static func copyMesh(_ anchor: ARMeshAnchor) -> RawMeshBuffers? {
+        let geometry = anchor.geometry
+        let vertices = geometry.vertices, normals = geometry.normals, faces = geometry.faces
+        guard vertices.format == .float3, vertices.count > 0, vertices.stride >= 12,
+              vertices.offset + (vertices.count - 1) * vertices.stride + 12 <= vertices.buffer.length,
+              normals.format == .float3, normals.count == vertices.count, normals.stride >= 12,
+              normals.offset + (normals.count - 1) * normals.stride + 12 <= normals.buffer.length,
+              faces.primitiveType == .triangle, faces.indexCountPerPrimitive == 3, faces.count > 0,
+              faces.bytesPerIndex == 2 || faces.bytesPerIndex == 4,
+              faces.count * 3 * faces.bytesPerIndex <= faces.buffer.length else { return nil }
+        // Labels are optional: a device without classification still yields the mesh.
+        let classes = geometry.classification.flatMap { classes -> ARGeometrySource? in
+            classes.format == .uchar && classes.count == faces.count
+                && classes.offset + (classes.count - 1) * classes.stride + 1 <= classes.buffer.length ? classes : nil
+        }
+        return RawMeshBuffers(
+            id: anchor.identifier.uuidString, mapFromAnchor: ScanExporter.matrix(anchor.transform),
+            vertices: Data(bytes: vertices.buffer.contents(), count: vertices.buffer.length),
+            vertexOffset: vertices.offset, vertexStride: vertices.stride, vertexFormat: vertices.format.rawValue,
+            vertexCount: vertices.count,
+            faces: Data(bytes: faces.buffer.contents(), count: faces.buffer.length),
+            bytesPerIndex: faces.bytesPerIndex, faceCount: faces.count, indicesPerFace: faces.indexCountPerPrimitive,
+            normals: Data(bytes: normals.buffer.contents(), count: normals.buffer.length),
+            normalOffset: normals.offset, normalStride: normals.stride, normalFormat: normals.format.rawValue,
+            classification: classes.map { Data(bytes: $0.buffer.contents(), count: $0.buffer.length) },
+            classificationOffset: classes?.offset, classificationStride: classes?.stride
+        )
+    }
+
+    /// Decodes the copied mesh and welds it into one labeled display mesh in map coordinates.
+    nonisolated static func reconstruct(_ snapshot: RawScanSnapshot) throws -> RawScanSnapshot {
+        guard !snapshot.meshBuffers.isEmpty else { return snapshot }
+        var anchors: [ReconstructedMeshAnchor] = []
+        var unreadable = 0
+        for buffers in snapshot.meshBuffers {
+            try Task.checkCancellation()
+            if let anchor = decodeMesh(buffers) { anchors.append(anchor) } else { unreadable += 1 }
+        }
+        var result = snapshot
+        guard let compacted = try ReconstructedMesh.compact(anchors) else { return result }
+        result.meshes = [compacted.mesh]
+        if case .object(var metadata) = result.metadata {
+            metadata["mesh_source_triangle_count"] = .number(Double(compacted.sourceTriangleCount))
+            metadata["mesh_display_triangle_count"] = .number(Double(compacted.mesh.triangles.count))
+            metadata["mesh_weld_cell_m"] = .number(Double(compacted.cellSize))
+            metadata["mesh_classified"] = .bool(compacted.mesh.classifications != nil)
+            metadata["mesh_undecodable_anchors"] = .number(Double(unreadable))
+            result.metadata = .object(metadata)
+        }
+        return result
+    }
+
+    private nonisolated static func decodeMesh(_ raw: RawMeshBuffers) -> ReconstructedMeshAnchor? {
+        let float3 = MTLVertexFormat.float3.rawValue
+        guard raw.mapFromAnchor.count == 16, raw.vertexFormat == float3, raw.normalFormat == float3,
+              raw.vertexCount > 0, raw.vertexStride >= 12, raw.normalStride >= 12,
+              raw.vertexOffset + (raw.vertexCount - 1) * raw.vertexStride + 12 <= raw.vertices.count,
+              raw.normalOffset + (raw.vertexCount - 1) * raw.normalStride + 12 <= raw.normals.count,
+              raw.indicesPerFace == 3, raw.bytesPerIndex == 2 || raw.bytesPerIndex == 4,
+              raw.faceCount * 3 * raw.bytesPerIndex <= raw.faces.count else { return nil }
+        func vectors(_ data: Data, offset: Int, stride: Int) -> [SIMD3<Float>] {
+            data.withUnsafeBytes { bytes in
+                (0..<raw.vertexCount).map { index in
+                    let base = offset + index * stride
+                    return SIMD3(bytes.loadUnaligned(fromByteOffset: base, as: Float.self),
+                                 bytes.loadUnaligned(fromByteOffset: base + 4, as: Float.self),
+                                 bytes.loadUnaligned(fromByteOffset: base + 8, as: Float.self))
+                }
+            }
+        }
+        let faces: [SIMD3<UInt32>] = raw.faces.withUnsafeBytes { bytes in
+            (0..<raw.faceCount).map { face in
+                let corner = { (index: Int) -> UInt32 in
+                    let offset = (face * 3 + index) * raw.bytesPerIndex
+                    return raw.bytesPerIndex == 2
+                        ? UInt32(bytes.loadUnaligned(fromByteOffset: offset, as: UInt16.self))
+                        : bytes.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
+                }
+                return SIMD3(corner(0), corner(1), corner(2))
+            }
+        }
+        var labels: [String]?
+        if let classes = raw.classification, let offset = raw.classificationOffset, let stride = raw.classificationStride,
+           offset + (raw.faceCount - 1) * stride + 1 <= classes.count {
+            labels = classes.withUnsafeBytes { bytes in
+                (0..<raw.faceCount).map { label(bytes.load(fromByteOffset: offset + $0 * stride, as: UInt8.self)) }
+            }
+        }
+        let m = raw.mapFromAnchor
+        return ReconstructedMeshAnchor(
+            mapFromAnchor: simd_float4x4(SIMD4(m[0], m[1], m[2], m[3]), SIMD4(m[4], m[5], m[6], m[7]),
+                                         SIMD4(m[8], m[9], m[10], m[11]), SIMD4(m[12], m[13], m[14], m[15])),
+            vertices: vectors(raw.vertices, offset: raw.vertexOffset, stride: raw.vertexStride),
+            normals: vectors(raw.normals, offset: raw.normalOffset, stride: raw.normalStride),
+            faces: faces, labels: labels)
+    }
+
+    private nonisolated static func label(_ value: UInt8) -> String {
+        switch ARMeshClassification(rawValue: Int(value)) {
+        case .wall: "wall"
+        case .floor: ReconstructedMesh.floor
+        case .ceiling: ReconstructedMesh.ceiling
+        case .table: "table"
+        case .seat: "seat"
+        case .window: "window"
+        case .door: "door"
+        default: ReconstructedMesh.unlabeled
+        }
+    }
+
+    /// A phone held level sees the ceiling only at the frame's edge. Every 1.5 s, look in the
+    /// mesh anchors around the volunteer for ceiling faces above them.
+    private func updateCeilingHint(_ frame: ARFrame) {
+        guard meshEnabled, let onCeilingHint,
+              lastCeilingCheck.map({ frame.timestamp - $0 >= ceilingCheckInterval }) ?? true else { return }
+        lastCeilingCheck = frame.timestamp
+        let camera = frame.camera.transform
+        let position = SIMD3(camera.columns.3.x, camera.columns.3.y, camera.columns.3.z)
+        // ARKit cameras look along -z; more than 35° above level counts as looking up.
+        let lookingUp = -camera.columns.2.y > sin(Float.pi * 35 / 180)
+        let shown = ceilingHint.update(time: frame.timestamp, position: position, lookingUp: lookingUp,
+                                       ceilingNearby: Self.ceilingNearby(frame, camera: position))
+        onCeilingHint(shown)
+    }
+
+    /// Whether ARKit has ceiling faces within 2 m (in plan) above the camera. Reads the
+    /// labels of at most 24 nearby anchors, and a vertex only for faces labeled ceiling.
+    private static func ceilingNearby(_ frame: ARFrame, camera: SIMD3<Float>) -> Bool {
+        let reach: Float = 2
+        func plan(_ point: SIMD4<Float>) -> Float { simd_distance(SIMD2(point.x, point.z), SIMD2(camera.x, camera.z)) }
+        let nearby = frame.anchors.compactMap { $0 as? ARMeshAnchor }
+            .map { (anchor: $0, distance: plan($0.transform.columns.3)) }
+            .filter { $0.distance < 6 }
+            .sorted { $0.distance < $1.distance }
+            .prefix(24)
+        let ceiling = UInt8(ARMeshClassification.ceiling.rawValue)
+        for (anchor, _) in nearby {
+            let geometry = anchor.geometry
+            let vertices = geometry.vertices, faces = geometry.faces
+            guard let classes = geometry.classification, classes.format == .uchar, classes.count == faces.count,
+                  classes.count > 0, classes.offset + (classes.count - 1) * classes.stride + 1 <= classes.buffer.length,
+                  vertices.format == .float3, vertices.count > 0,
+                  vertices.offset + (vertices.count - 1) * vertices.stride + 12 <= vertices.buffer.length,
+                  faces.indexCountPerPrimitive == 3, faces.bytesPerIndex == 2 || faces.bytesPerIndex == 4,
+                  faces.count * 3 * faces.bytesPerIndex <= faces.buffer.length else { continue }
+            let labels = classes.buffer.contents(), corners = faces.buffer.contents(), points = vertices.buffer.contents()
+            for face in 0..<classes.count where labels.load(fromByteOffset: classes.offset + face * classes.stride, as: UInt8.self) == ceiling {
+                let index = faces.bytesPerIndex == 2
+                    ? Int(corners.loadUnaligned(fromByteOffset: face * 3 * 2, as: UInt16.self))
+                    : Int(corners.loadUnaligned(fromByteOffset: face * 3 * 4, as: UInt32.self))
+                guard index < vertices.count else { continue }
+                let base = vertices.offset + index * vertices.stride
+                let local = SIMD4(points.loadUnaligned(fromByteOffset: base, as: Float.self),
+                                  points.loadUnaligned(fromByteOffset: base + 4, as: Float.self),
+                                  points.loadUnaligned(fromByteOffset: base + 8, as: Float.self), 1)
+                let world = anchor.transform * local
+                if world.y > camera.y + 0.3, plan(world) <= reach { return true }
+            }
+        }
+        return false
     }
 
     /// Copy only bounded native bytes while the buffers are locked. All pixel iteration and
