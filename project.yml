@@ -1,0 +1,40 @@
+name: AccessNav
+options:
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+packages:
+  AccessCore:
+    path: Packages/AccessCore
+targets:
+  AccessNav:
+    type: application
+    platform: iOS
+    sources:
+      - path: AccessNav
+    dependencies:
+      - package: AccessCore
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
+    info:
+      path: AccessNav/Info.plist
+      properties:
+        CFBundleDisplayName: AccessNav
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities: [arkit]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSCameraUsageDescription: AccessNav uses the camera and LiDAR to map buildings and guide you to accessible entrances, elevators and ramps.
+        OPENAIAPIKey: $(OPENAI_API_KEY)
+        OPENAIModel: $(OPENAI_MODEL)
+        OPENAIReasoningEffort: $(OPENAI_REASONING_EFFORT)
+    settings:
+      base:
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+    scheme: {}

@@ -1,0 +1,11 @@
+// Shared build settings. Personal values (API key, signing team) go in Secrets.xcconfig,
+// which git ignores. Copy Secrets.example.xcconfig to get started.
+
+PRODUCT_BUNDLE_IDENTIFIER = com.vedanta.accessnav
+DEVELOPMENT_TEAM =
+
+OPENAI_API_KEY =
+OPENAI_MODEL = gpt-6.1-sol
+OPENAI_REASONING_EFFORT = low
+
+#include? "Secrets.xcconfig"
