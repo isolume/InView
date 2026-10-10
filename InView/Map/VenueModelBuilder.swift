@@ -130,16 +130,19 @@ enum VenueModelBuilder {
     private static func marker(for point: AccessPoint, floorY: Float) -> Entity {
         let entity = Entity()
         entity.position = SIMD3(point.position.x, floorY, point.position.z)
-        let color: UIColor = point.kind == .elevator ? UIColor(Theme.accent) : point.isTooSteep ? .systemOrange : .systemTeal
+        let color: UIColor = point.isTooSteep ? .systemOrange : point.kind.uiTint
         let material = SimpleMaterial(color: color, roughness: 0.4, isMetallic: false)
         switch point.kind {
         case .elevator:
             entity.addChild(box(0.9, 2.1, 0.15, material, cornerRadius: 0.04))
         case .ramp:
             entity.addChild(ModelEntity(mesh: wedge(width: 1.0, length: 1.6, slopeDegrees: point.slopeDegrees ?? 4), materials: [material]))
+        case .destination:
+            entity.addChild(box(0.06, 1.2, 0.06, material))
+            entity.addChild(box(0.45, 0.28, 0.04, material, at: SIMD3(0.225, 0.9, 0)))
         }
         let label = BillboardLabel(fontSize: 0.16)
-        label.set(point.name, background: color)
+        label.set(point.title, background: color)
         label.entity.position.y = 2.5
         entity.addChild(label.entity)
         return entity

@@ -14,4 +14,11 @@ OPENAI_REASONING_EFFORT = low
 GEMINI_API_KEY =
 GEMINI_MODEL = gemini-3.8-flash
 
+// Optional scan processing server; blank keeps processing on the device.
+// Write URLs as http:/$()/host:3000 so xcconfig does not treat // as a comment.
+INVIEW_BACKEND_URL =
+
+// Public token for surrounding maps and placement. Override in Secrets.xcconfig.
+MAPBOX_ACCESS_TOKEN =
+
 #include? "Secrets.xcconfig"

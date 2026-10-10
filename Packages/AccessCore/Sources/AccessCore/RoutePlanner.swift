@@ -52,10 +52,18 @@ public final class RoutePlanner: Sendable {
     /// The route to whichever usable access point is shortest to roll to, which is not always the
     /// closest in a straight line. Too-steep ramps are only considered when nothing else is reachable.
     public func nearestRoute(from start: SIMD2<Float>, conditions: RouteConditions = RouteConditions()) -> Route? {
-        let available = map.points.filter { !conditions.unavailable.contains($0.id) }
+        let available = map.points.filter {
+            ($0.kind == .elevator || $0.kind == .ramp) && !conditions.unavailable.contains($0.id)
+        }
         let grids = grids(avoiding: conditions.obstacles)
         return bestRoute(from: start, among: available.filter { !$0.isTooSteep }, grids: grids)
             ?? bestRoute(from: start, among: available.filter(\.isTooSteep), grids: grids)
+    }
+
+    /// Routes to a selected point, including a named room, while respecting live conditions.
+    public func route(from start: SIMD2<Float>, to destination: AccessPoint, conditions: RouteConditions = RouteConditions()) -> Route? {
+        guard !conditions.unavailable.contains(destination.id) else { return nil }
+        return bestRoute(from: start, among: [destination], grids: grids(avoiding: conditions.obstacles))
     }
 
     /// Recomputes a route from the user's new position. Keeps the destination when it is still usable

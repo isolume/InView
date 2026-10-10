@@ -6,11 +6,13 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case elevator
         case ramp
+        case destination
 
         public var title: String {
             switch self {
             case .elevator: "Elevator"
             case .ramp: "Ramp"
+            case .destination: "Destination"
             }
         }
     }
@@ -59,6 +61,11 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var floorPoint: SIMD2<Float> { SIMD2(position.x, position.z) }
+
+    public var title: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? kind.title : trimmed
+    }
 
     /// Ramps steeper than the ADA limit are only routed to when nothing else is reachable.
     public var isTooSteep: Bool {

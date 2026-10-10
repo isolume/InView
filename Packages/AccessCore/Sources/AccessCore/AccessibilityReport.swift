@@ -63,7 +63,7 @@ public struct AccessibilityReport: Codable, Sendable {
         }
 
         let stairs = map.footprints.filter { $0.kind == .stairs }
-        let stepFree = map.points.filter { $0.kind == .elevator || !$0.isTooSteep }
+        let stepFree = map.points.filter { $0.kind == .elevator || ($0.kind == .ramp && !$0.isTooSteep) }
         if !stairs.isEmpty {
             findings.append(stepFree.isEmpty
                 ? Finding(severity: .barrier, title: "Stairs with no step-free alternative", detail: "No elevator or usable ramp was found on this floor.")
@@ -79,8 +79,7 @@ public struct AccessibilityReport: Codable, Sendable {
 
         // Every access point should be reachable step-free from where the scan began (usually the entrance).
         for point in map.points {
-            let others = RouteConditions(unavailable: Set(map.points.map(\.id)).subtracting([point.id]))
-            guard let route = planner.nearestRoute(from: .zero, conditions: others) else {
+            guard let route = planner.route(from: .zero, to: point) else {
                 findings.append(Finding(severity: .barrier, title: "\(point.name) can't be reached", detail: "No step-free path from the entrance with enough room for a wheelchair."))
                 continue
             }

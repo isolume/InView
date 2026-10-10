@@ -6,6 +6,9 @@ options:
 packages:
   AccessCore:
     path: Packages/AccessCore
+  MapboxMaps:
+    url: https://github.com/mapbox/mapbox-maps-ios.git
+    exactVersion: 11.32.0
 targets:
   InView:
     type: application
@@ -14,6 +17,7 @@ targets:
       - path: InView
     dependencies:
       - package: AccessCore
+      - package: MapboxMaps
     configFiles:
       Debug: Config/App.xcconfig
       Release: Config/App.xcconfig
@@ -33,6 +37,12 @@ targets:
         OPENAIReasoningEffort: $(OPENAI_REASONING_EFFORT)
         GeminiAPIKey: $(GEMINI_API_KEY)
         GeminiModel: $(GEMINI_MODEL)
+        InViewBackendURL: $(INVIEW_BACKEND_URL)
+        MBXAccessToken: $(MAPBOX_ACCESS_TOKEN)
+        NSLocationWhenInUseUsageDescription: InView uses your location to place a scanned building on the map.
+        NSLocalNetworkUsageDescription: InView connects to your optional processing server to build the 3D view of your scan.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         MARKETING_VERSION: "0.1.0"

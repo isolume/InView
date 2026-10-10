@@ -5,6 +5,10 @@ import SwiftUI
 /// Top-down drawing of a venue map. Tapping reports the venue floor point under the finger.
 struct MapPreviewView: View {
     let map: VenueMap
+    var route: Route? = nil
+    var userPosition: SIMD2<Float>? = nil
+    var userHeading: Float = 0
+    var showsScanStart = true
     var onTap: ((SIMD2<Float>) -> Void)?
 
     var body: some View {
@@ -18,6 +22,7 @@ struct MapPreviewView: View {
         }
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
         .accessibilityLabel("Floor plan with \(map.points.count) accessible points")
+        .accessibilityValue(route.map { "Route to \($0.destination.title), \(Int($0.length.rounded())) meters" } ?? "")
     }
 
     private func draw(in context: inout GraphicsContext, projection: MapProjection) {
@@ -37,9 +42,30 @@ struct MapPreviewView: View {
             FloorPlanSymbol(footprint: footprint, projection: projection).drawDoor(in: &context)
         }
 
-        let start = projection.screenPoint(.zero)
-        context.fill(Path(ellipseIn: CGRect(x: start.x - 5, y: start.y - 5, width: 10, height: 10)), with: .color(.primary))
-        context.draw(Text("Scan start").font(.caption2), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
+        if showsScanStart {
+            let start = projection.screenPoint(.zero)
+            context.fill(Path(ellipseIn: CGRect(x: start.x - 5, y: start.y - 5, width: 10, height: 10)), with: .color(.primary))
+            context.draw(Text("Scan start").font(.caption2), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
+        }
+        if let route, route.waypoints.count > 1 {
+            let path = Path { $0.addLines(route.waypoints.map(projection.screenPoint)) }
+            context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+            context.stroke(path, with: .color(.blue), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+        }
+        if let userPosition {
+            let center = projection.screenPoint(userPosition)
+            let cone = Path { path in
+                path.move(to: center)
+                for index in 0...20 {
+                    let angle = CGFloat(userHeading) - .pi / 6 + CGFloat(index) * .pi / 60
+                    path.addLine(to: CGPoint(x: center.x + sin(angle) * 30, y: center.y - cos(angle) * 30))
+                }
+                path.closeSubpath()
+            }
+            context.fill(cone, with: .color(.blue.opacity(0.15)))
+            context.fill(Path(ellipseIn: CGRect(x: center.x - 9, y: center.y - 9, width: 18, height: 18)), with: .color(.white))
+            context.fill(Path(ellipseIn: CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12)), with: .color(.blue))
+        }
 
         for point in map.points {
             let center = projection.screenPoint(point.floorPoint)
@@ -50,7 +76,7 @@ struct MapPreviewView: View {
             var symbol = context.resolve(Image(systemName: point.kind.symbolName))
             symbol.shading = .color(.white)
             context.draw(symbol, in: disc.insetBy(dx: 6, dy: 6))
-            context.draw(Text(point.name).font(.caption2.weight(.semibold)), at: CGPoint(x: center.x, y: disc.maxY + 3), anchor: .top)
+            context.draw(Text(point.title).font(.caption2.weight(.semibold)), at: CGPoint(x: center.x, y: disc.maxY + 3), anchor: .top)
         }
     }
 }
