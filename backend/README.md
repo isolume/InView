@@ -6,9 +6,10 @@ of any future app or map-processing workspace.
 
 ## My part
 
-Accept reviewed navigation graphs, reload them, and select routes between named
-nodes. Scan processing, AR alignment, live progress, and rendering stay with their
-respective owners in the team plan.
+Accept reviewed navigation graphs and select routes between named nodes. The scan
+prototype also accepts portable capture bundles and derives clean model placements,
+map-space meshes, and sampled depth points. iPhone capture, AR alignment, live
+progress, and production rendering stay with their owners in the team plan.
 
 ## What I researched
 
@@ -29,6 +30,12 @@ without rewriting the entire service.
 | PUT | `/graphs/{graph_id}` | Validate and replace a complete graph |
 | GET | `/graphs/{graph_id}` | Reload the graph |
 | POST | `/graphs/{graph_id}/routes` | Select a route between node IDs |
+| POST | `/scans` | Validate and retain a new capture bundle |
+| GET | `/scans` | List capture summaries |
+| GET | `/scans/{scan_id}` | Retrieve the original capture JSON |
+| GET | `/scans/{scan_id}/scene` | Derive a scene using default options |
+| POST | `/scans/{scan_id}/process` | Derive a scene with explicit options |
+| GET | `/scans/{scan_id}/preview` | Open a local development preview |
 
 ### Run locally
 
@@ -57,6 +64,29 @@ curl -X POST http://127.0.0.1:3000/graphs/demo-building/routes \
 The synthetic example takes Elevator A to Room 204 in an estimated 34 seconds.
 Its shorter stair connection is excluded by the example's step-free requirement.
 It contains no real building or verified accessibility measurements.
+
+### Try the scan prototype
+
+```sh
+curl -X POST http://127.0.0.1:3000/scans \
+  -H 'Content-Type: application/json' --data-binary @examples/demo-living-room.json
+curl http://127.0.0.1:3000/scans/demo-room/scene
+```
+
+Open [the local navigation preview](http://127.0.0.1:3000/scans/demo-room/preview)
+to see the synthetic room as navigation scenery, with a position marker, meeting-room destination,
+and a demo route computed by the iOS route planner. Furniture has no labels or
+selection controls. Synthetic route metadata is ignored for real scans.
+This dependency-free canvas viewer is a development aid; the iPhone app owns
+the native map and AR navigation views.
+
+The iOS app now uploads its RoomPlan capture and opens the returned scene in a
+native navigation map. Version 3 processing emits shaped furniture meshes with
+normals and materials; the existing cuboid parts remain a fallback. See the root
+README for local iPhone networking and the offline in-app demo.
+
+[Scan format and processing notes](SCANS.md) describe the portable capture draft,
+coordinate conventions, supported processing, and the remaining iPhone adapter.
 
 ### Draft graph and routing conventions
 
@@ -93,29 +123,32 @@ It contains no real building or verified accessibility measurements.
 
 ## What I need from the team
 
-- Map creation: a small real graph, coordinate metadata, and reviewed connector
-  landings/served floors. Match these draft fields together before app integration.
+- Map creation: a real scan bundle and graph, coordinate metadata, and reviewed
+  connector landings/served floors. Match these draft fields together before app integration.
 - Navigation: agree on route properties and where maneuvers/progress are produced.
 - Data: choose persistence and scan-asset storage when the capture format is known.
 
 ## My build order
 
-1. Local graph upload/reload and route selection (this scaffold).
-2. Exercise one real scan graph with the iOS app and revise the draft contract.
-3. Add persistence, scan-bundle references, and shared maneuver output as needed.
+1. Local graph storage/routing and portable scan ingestion/scene processing (this scaffold).
+2. Exercise a real capture and graph with the iOS app and revise both draft contracts.
+3. Add persistent capture/assets, better reconstruction, and shared maneuver output as needed.
 4. Add authentication, availability updates, and integrations once their scope is clear.
 
 ## Risks I see
 
 Data disappears on restart. There is no deployment or external service integration.
 Geometry validation cannot prove wall clearance, scan alignment, connector identity,
-or real-world accessibility; map review must establish those properties. Route output
+or real-world accessibility; map review must establish those properties. The scan
+prototype uses supplied object labels, not automatic furniture recognition. It retains
+original capture JSON in memory, including unknown fields; large binary assets are
+references only. Route output
 is planning geometry, not live AR guidance. The draft has no graph revision handling
 for active journeys, positioning, speech, turn instructions, or rerouting sessions.
 
 ## Open questions
 
-- What does the first real `graph.json` export look like?
+- What do the first real capture bundle and `graph.json` exports look like?
 - Does route selection stay in Rust, move to the proposed Python pipeline, or run on device?
 - Which accessibility properties can the team verify for the demo?
 - What belongs in Tiger Data, and where should scan bundles live?

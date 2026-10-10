@@ -69,10 +69,55 @@ extension OccupancyGrid {
     }
 
     func lineOfSight(_ a: SIMD2<Float>, _ b: SIMD2<Float>) -> Bool {
-        let steps = max(1, Int((simd_distance(a, b) / (cellSize / 2)).rounded(.up)))
-        for step in 0...steps {
-            let point = simd_mix(a, b, SIMD2(repeating: Float(step) / Float(steps)))
-            guard let index = index(containing: point), !blocked[index] else { return false }
+        let localA = (a - origin) / cellSize
+        let localB = (b - origin) / cellSize
+        guard localA.x >= 0, localA.y >= 0, localA.x < Float(width), localA.y < Float(height),
+              localB.x >= 0, localB.y >= 0, localB.x < Float(width), localB.y < Float(height),
+              let start = index(containing: a), let end = index(containing: b),
+              !blocked[start], !blocked[end] else { return false }
+        let dx = Double(localB.x) - Double(localA.x)
+        let dy = Double(localB.y) - Double(localA.y)
+        let stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0
+        let stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0
+        var x = start % width, y = start / width
+        let endX = end % width, endY = end / width
+        let deltaX = stepX == 0 ? Double.infinity : abs(1 / dx)
+        let deltaY = stepY == 0 ? Double.infinity : abs(1 / dy)
+        var nextX = stepX == 0 ? Double.infinity
+            : (Double(x + (stepX > 0 ? 1 : 0)) - Double(localA.x)) / dx
+        var nextY = stepY == 0 ? Double.infinity
+            : (Double(y + (stepY > 0 ? 1 : 0)) - Double(localA.y)) / dy
+
+        func cellIsFree(_ x: Int, _ y: Int) -> Bool {
+            x >= 0 && y >= 0 && x < width && y < height && !blocked[y * width + x]
+        }
+        let followsVerticalEdge = stepX == 0 && localA.x == localA.x.rounded(.down)
+        let followsHorizontalEdge = stepY == 0 && localA.y == localA.y.rounded(.down)
+        func isFree(_ x: Int, _ y: Int) -> Bool {
+            cellIsFree(x, y)
+                && (!followsVerticalEdge || cellIsFree(x - 1, y))
+                && (!followsHorizontalEdge || cellIsFree(x, y - 1))
+        }
+        guard isFree(x, y) else { return false }
+
+        // Visit every cell crossed by the segment. Fixed-distance samples can miss a
+        // short crossing near a blocked corner and erase a necessary path waypoint.
+        while x != endX || y != endY {
+            if abs(nextX - nextY) <= 1e-10 {
+                // Touching a corner must obey the same rule as a diagonal search step.
+                guard isFree(x + stepX, y), isFree(x, y + stepY) else { return false }
+                x += stepX
+                y += stepY
+                nextX += deltaX
+                nextY += deltaY
+            } else if nextX < nextY {
+                x += stepX
+                nextX += deltaX
+            } else {
+                y += stepY
+                nextY += deltaY
+            }
+            guard isFree(x, y) else { return false }
         }
         return true
     }
