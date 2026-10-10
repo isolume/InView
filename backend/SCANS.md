@@ -281,3 +281,93 @@ RoomPlan ≈ 5 ≈ 211 MiB, inside the 256 MiB package limit (4096 entries, 64 M
 
 `NSMotionUsageDescription` is declared in `project.yml` (the capture context already uses
 `CMAltimeter`).
+
+## Capture format changes: on-device OCR and capture semantics
+
+Both files below are **additive, optional** sidecars inside `.inviewscan.tar`, written with
+`CaptureStore.stageSidecar` before the archive is built and inventoried in `package-manifest.json`
+(roles `text_observations` and `capture_semantics`). Older packages lack them; readers must treat a
+missing file, a missing optional key, or an unknown key as "no evidence", never as an error. Both
+use `schema_version: 1`; a breaking change bumps it. JSON keys are sorted; `null` values are omitted.
+The Swift models are `TextObservationsDocument` and `CaptureSemantics` in `Packages/AccessCore`.
+
+### `text-observations.json` (on-device OCR)
+
+Apple Vision `VNRecognizeTextRequest` (`.accurate`, language correction, automatic language
+detection) runs off the main thread when the capture is finalized, overlapping the local scene
+build. It reads high-resolution `<frame-id>.ocr.jpg` stills already in the capture directory first,
+then the `<frame-id>.color.jpg` keyframes, bounded to 48 images and 12 s. Lines under 0.3 confidence
+or under ~1.5% of the image height are dropped. Any failure skips the file or an image; the capture
+continues. An empty `observations` list means OCR ran and found nothing.
+
+```json
+{"schema_version": 1, "engine": "apple_vision", "observations": [
+  {"frame_id": "depth-3", "image_asset": "depth-3.color.jpg", "image_size_px": [480, 640],
+   "image_orientation": "upright_rotated_right_from_sensor",
+   "text": "EXIT", "confidence": 1.0, "bbox_norm": [0.25, 0.25, 0.5, 0.25],
+   "bbox_sensor_norm": [0.25, 0.25, 0.25, 0.5], "languages": ["en"]}]}
+```
+
+- `frame_id` is the depth observation (`package-manifest.json` `observations[].id`) whose pose and
+  intrinsics describe the image. `image_asset` is the package file that was read.
+- `image_size_px` is `[width, height]` of that **upright** JPEG (the sensor image rotated right).
+- `bbox_norm` is `[x, y, w, h]`, normalized to the upright JPEG with a **top-left origin, y down**
+  (converted from Vision's bottom-left origin and clipped to `[0, 1]`). Pixel box =
+  `bbox_norm * [w, h, w, h]`. Manifest intrinsics describe the landscape sensor image, not the
+  JPEG, so never unproject `bbox_norm` directly.
+- `image_orientation` (required) names the transform from the calibrated sensor-native image to
+  the OCR'd image. iPhone keyframes and stills are always `upright_rotated_right_from_sensor`
+  (rotated 90° clockwise): upright pixel `(px, py)` of a `W×H` image is sensor-normalized
+  `(u, v) = (py / H, 1 − px / W)` (`geometry.jpeg_to_sensor_uv`). Consumers must reject
+  orientations they do not know.
+- `bbox_sensor_norm` is the same box already in the sensor-native image (`[u, v, w, h]`, top-left
+  origin, normalized): `[y, 1 − x − w, h, w]` of `bbox_norm`. It can be unprojected with the frame's
+  intrinsics directly.
+- `languages` are BCP 47 guesses from `NLLanguageRecognizer` (most likely first, each ≥ 0.2
+  probability), empty for text with fewer than three letters (room numbers, arrows). Vision reports
+  no per-line language.
+- Observations are sorted by image, then top-to-bottom, left-to-right. The same sign is usually
+  read in several frames; deduplication and triangulation are the backend's job.
+
+### `semantics.json` (reviewed capture semantics)
+
+Written before every archive is built (so upload retries carry the current review state) and again
+when the volunteer saves the map.
+
+```json
+{"schema_version": 1, "coordinate_frame": "shared_arkit_session", "floor_y": -1.2,
+ "geographic_reference": {"latitude": 33.75, "longitude": -84.39, "heading_degrees": 12,
+                          "horizontal_accuracy_m": 5},
+ "access_points": [{"id": "UUID", "kind": "ramp", "name": "South ramp", "position": [1, -1.2, 2],
+                    "source": "detected", "confidence": 0.8, "slope_degrees": 6,
+                    "requires_assistance": false}],
+ "stairs_footprints": [{"source": "roomplan", "center_xz": [2, 1], "size_m": [1, 3], "yaw_radians": 0,
+                        "corners_xz": [[2.5, 2.5], "..."], "bottom_y": -1.2, "height_m": 0.8}],
+ "roomplan": {"rooms": [{"id": "UUID", "story": 0,
+   "sections": [{"label": "kitchen", "center": [1, -1.2, 1], "story": 0}],
+   "surfaces": [{"id": "UUID", "kind": "door", "is_open": true, "confidence": "high", "story": 0,
+                 "parent_id": "UUID", "map_from_surface": ["16 floats"], "dimensions_m": [0.9, 2, 0],
+                 "polygon_corners_m": [["x", "y", "z"]]}]}]},
+ "capture": {"app_version": "0.1.0", "app_build": "1", "device_model": "iPhone16,1",
+             "system_name": "iOS", "system_version": "18.2", "floor_id": "ground"}}
+```
+
+- **Frame:** every position, transform and corner is in the shared ARKit session frame of
+  `capture.json` (meters, right-handed, +Y up). `*_xz` are floor-plane `[x, z]` pairs.
+  `map_from_surface` is column-major like `capture.json`. `floor_y` is the map's floor height.
+- `geographic_reference` (omitted when unknown) places the **scan origin**, not the phone: heading
+  is clockwise from true north to local −Z (`BuildingMapReference`). It is the app's filtered GPS fix
+  (≤ 20 m, heading accuracy ≤ 20°) or the volunteer's manual placement.
+- `access_points` are the map's confirmed elevator/ramp/destination points (repeat-sighted
+  detections, volunteer-kept sightings, and manual pins); unconfirmed sightings are excluded.
+  `slope_degrees` is the LiDAR-measured ramp incline when known.
+- `stairs_footprints`: `source` is `detected` for vision-model stairs RoomPlan missed, else
+  `roomplan`.
+- `roomplan.rooms` has one entry per RoomPlan section in scan order, with the fields the portable
+  `capture.json` projection drops: `sections` (RoomPlan room-type labels `livingRoom`, `bedroom`,
+  `bathroom`, `kitchen`, `diningRoom`, `unidentified`), `story`, door `is_open`, `parent_id` (the wall
+  a door/window/opening is cut into), `confidence`, and `polygon_corners_m` — RoomPlan's
+  surface-local polygon corners **transformed into the session frame** (may be empty for plain
+  rectangles). Adjacent sections can repeat a surface `id`; the later section is the latest
+  measurement.
+- `capture` is provenance: app version/build, hardware identifier, OS, and the capture's `floor_id`.

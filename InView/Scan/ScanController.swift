@@ -187,8 +187,11 @@ final class ScanController: ObservableObject {
         // Build against the exact saved draft, even if its debounced review report is still pending.
         let report = await Task.detached(priority: .userInitiated) { AccessibilityReport(map: draft) }.value
         try await MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView)
-        if let captureBundle { try CaptureStore.select(captureBundle) }
-        else { CaptureStore.clearSelection() }
+        if let captureBundle {
+            // Re-export with the reviewed points so a later upload of this capture carries them.
+            await stageSemantics(for: captureBundle)
+            try CaptureStore.select(captureBundle)
+        } else { CaptureStore.clearSelection() }
     }
 
     func retryScene() {
@@ -323,7 +326,7 @@ final class ScanController: ObservableObject {
         sceneTask = Task { [weak self] in
             defer { self?.isProcessingScene = false }
             do {
-                let prepared = try await Task.detached(priority: .userInitiated) {
+                let export = Task.detached(priority: .userInitiated) {
                     let rawData = try ScanExporter.rawSnapshotData(payload.raw)
                     let roomData = try ScanExporter.nativeRoomPlanData(rooms: payload.rooms)
                     // Originals survive even if their portable export is too large or unsupported.
@@ -336,9 +339,18 @@ final class ScanController: ObservableObject {
                     try CaptureStore.stageWorldMap(payload.worldMap, id: payload.scanID.uuidString)
                     try CaptureStore.stageColorKeyframes(payload.raw.colorKeyframes, id: payload.scanID.uuidString)
                     try CaptureStore.stageNativeLidarAssets(payload.raw, id: payload.scanID.uuidString)
+                    // High-res OCR stills must be in the capture folder before on-device OCR lists it.
                     try CaptureStore.stageCoverageAssets(payload.raw, id: payload.scanID.uuidString)
-                    return (bundle, try LocalSceneBuilder.make(from: bundle))
-                }.value
+                    // On-device OCR is bounded and optional; it overlaps the local scene build.
+                    async let text: Void = SemanticExport.stageTextObservations(
+                        keyframes: payload.raw.colorKeyframes, captureID: payload.scanID.uuidString
+                    )
+                    let local = try LocalSceneBuilder.make(from: bundle)
+                    await text
+                    return (bundle, local)
+                }
+                // Detached work doesn't inherit cancellation; forward it so leaving the scan stops OCR.
+                let prepared = try await withTaskCancellationHandler { try await export.value } onCancel: { export.cancel() }
                 try Task.checkCancellation()
                 guard let self else { return }
                 self.captureBundle = prepared.0
@@ -368,6 +380,8 @@ final class ScanController: ObservableObject {
 
     private func makeScene(_ bundle: CaptureBundle, backendURL: URL?) async throws -> ProcessedScene {
         let result: ProcessedScene
+        // Sidecars must be staged before the archive is built; the draft may have changed since the last upload.
+        await stageSemantics(for: bundle)
         if let backendURL {
             let client = BackendClient(baseURL: backendURL, accessToken: AppConfig.backendToken)
             if let archiveURL = try? CaptureStore.makeArchive(for: bundle.id) {
@@ -430,6 +444,20 @@ final class ScanController: ObservableObject {
         for point in added { MapBuilder.add(point, to: &map) }
         draft = map
         Log.scan.info("merged \(added.count) detected places from the navigation analysis")
+    }
+
+    /// Writes `semantics.json` from the current draft and RoomPlan sections. Optional evidence: a
+    /// failure is logged and never blocks the scene or the save.
+    private func stageSemantics(for bundle: CaptureBundle) async {
+        let map = draft, rooms = rooms, captureID = bundle.id
+        let capture = SemanticExport.captureInfo(floorID: bundle.floorID)
+        do {
+            try await Task.detached(priority: .utility) {
+                try SemanticExport.stageSemantics(map: map, rooms: rooms, capture: capture, captureID: captureID)
+            }.value
+        } catch {
+            Log.scan.error("couldn't stage capture semantics: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Recomputes the report a moment after the draft stops changing; it runs route searches, so keep it off the main thread.
