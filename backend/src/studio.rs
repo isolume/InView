@@ -30,6 +30,22 @@ pub async fn asset(Path(name): Path<String>) -> impl IntoResponse {
             "text/javascript; charset=utf-8",
             include_bytes!("../studio/studio.js"),
         ),
+        "nav-model.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("../studio/nav-model.js"),
+        ),
+        "nav-map.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("../studio/nav-map.js"),
+        ),
+        "nav-scene.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("../studio/nav-scene.js"),
+        ),
+        "nav-viewer.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("../studio/nav-viewer.js"),
+        ),
         "three.module.js" => (
             "text/javascript; charset=utf-8",
             include_bytes!("../studio/vendor/three.module.js"),

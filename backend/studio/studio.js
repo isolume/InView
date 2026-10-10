@@ -1,19 +1,22 @@
 import * as THREE from './three.module.js';
 import { OrbitControls } from './OrbitControls.js';
+import { createNavOverlay, disposeChildren } from './nav-scene.js';
+import { createNavViewer } from './nav-viewer.js';
 
 const $ = (id) => document.getElementById(id);
 const state = { scans: [], selected: null, original: null, scene: null, buildings: [], building: null, buildingsAvailable: true, mode: 'room', nativeMode: 'smoothed', nativeUnavailable: false, nativePreview: null, nativeMesh: null, nativeEpoch: 0, meshMode: 'original', meshEpoch: 0, generation: 0 };
 const sceneCanvas = $('sceneCanvas');
 let renderer, camera, controls, display;
 const content = new THREE.Group();
-const group = { room: new THREE.Group(), depth: new THREE.Group(), mesh: new THREE.Group(), path: new THREE.Group() };
+const group = { room: new THREE.Group(), depth: new THREE.Group(), mesh: new THREE.Group(), path: new THREE.Group(), nav: new THREE.Group() };
 const grid = new THREE.GridHelper(20, 40, 0x6a8d9c, 0x314957);
 grid.material.transparent = true;
 grid.material.opacity = 0.23;
 grid.visible = false;
 const world = new THREE.Scene();
 world.background = new THREE.Color('#101923');
-world.add(grid, content, group.path);
+// The navigation overlay sits outside `content` so it never changes the camera framing bounds.
+world.add(grid, content, group.path, group.nav);
 content.add(group.room, group.depth, group.mesh);
 world.add(new THREE.HemisphereLight(0xffffff, 0x7894aa, 1.25));
 const sun = new THREE.DirectionalLight(0xffffff, 1.35);
@@ -118,6 +121,10 @@ $('lockButton').addEventListener('click', () => { sessionStorage.removeItem(toke
 $('resetView').addEventListener('click', () => resetCamera());
 sceneCanvas.addEventListener('keydown', (event) => { if (event.key.toLowerCase() === 'r') { resetCamera(); event.preventDefault(); } });
 $('pathToggle').addEventListener('change', () => { group.path.visible = $('pathToggle').checked; });
+const navOverlay = createNavOverlay(group.nav);
+const navViewer = createNavViewer({ overlay: navOverlay, onLayersChange: (layers) => navOverlay.setVisibility($('navToggle').checked, layers) });
+$('navToggle').addEventListener('change', () => navOverlay.setVisibility($('navToggle').checked, navViewer.layers()));
+navOverlay.setVisibility($('navToggle').checked, navViewer.layers());
 
 function scanLabel(scan) { return scan.id.replace(/[-_]/g, ' ').trim() || 'Untitled capture'; }
 function renderLibrary() {
@@ -139,12 +146,7 @@ function renderLibrary() {
   }
 }
 function formatCount(number) { return new Intl.NumberFormat().format(number || 0); }
-function clearGroup(parent) {
-  for (const child of [...parent.children]) {
-    child.traverse((node) => { node.geometry?.dispose(); const materials = node.material ? [].concat(node.material) : []; for (const material of materials) material.dispose(); });
-    parent.remove(child);
-  }
-}
+const clearGroup = disposeChildren;
 function transform(values) { return new THREE.Matrix4().fromArray(values); }
 function color(value, fallback) {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
@@ -646,6 +648,7 @@ $('alignForm').addEventListener('submit', async (event) => {
 
 async function loadAnalysis(id, generation) {
   $('analysisBody').hidden = true; $('analysisEmpty').hidden = false;
+  navViewer.clear();
   $('analysisCaption').textContent = 'Checking for processed evidence…';
   let analysis;
   try { analysis = await api(`/scans/${encodeURIComponent(id)}/analysis`); }
@@ -655,53 +658,15 @@ async function loadAnalysis(id, generation) {
     return;
   }
   if (generation !== state.generation) return;
-  const summary = analysis.summary || {}, floor = summary.floor_map || {}, doors = summary.doors || {}, signs = summary.signs || {};
-  $('analysisCaption').textContent = `${analysis.worker?.name || 'worker'} ${analysis.worker?.version || ''} · OpenCV ${analysis.worker?.opencv || '?'} · ${new Date(analysis.generated_at).toLocaleString()}`;
-  const stats = [['WALKABLE', floor.walkable_area_m2 == null ? '—' : `${floor.walkable_area_m2} m²`], ['NARROW PASSAGES', floor.narrow_passages ?? 0], ['DOORS BELOW MINIMUM', `${doors.below_min_width ?? 0} / ${doors.checked ?? 0}`], ['SIGN + TEXT CANDIDATES', `${signs.sign_candidates ?? 0} + ${signs.text_regions ?? 0}`]];
-  $('analysisStats').replaceChildren(...stats.map(([label, value]) => {
-    const card = document.createElement('div'); card.className = 'stat';
-    const name = document.createElement('span'); name.className = 'stat-label'; name.textContent = label;
-    const number = document.createElement('strong'); number.textContent = String(value);
-    card.append(name, number); return card;
-  }));
-  const findings = [];
-  for (const door of analysis.doors || []) findings.push([!door.meets_clear_width || door.issues.length, `${door.kind} ${door.meets_clear_width ? 'passes' : 'fails'}: clear width ${door.measured_clear_width_m ?? door.nominal_width_m} m (min ${door.required_min_clear_width_m} m)${door.issues.length ? ' · ' + door.issues.join(', ') : ''}`]);
-  for (const passage of analysis.floor_map?.narrow_passages || []) findings.push([true, `Narrow passage ${passage.min_clear_width_m} m wide near (${passage.center_xz_m.join(', ')})`]);
-  for (const sign of analysis.signs || []) findings.push([false, `${sign.kind.replaceAll('_', ' ')}${sign.text ? ` “${sign.text}”` : ''}${sign.position_m ? ` at (${sign.position_m.join(', ')}) m` : ' (no depth position)'} · seen ${sign.observation_count}×`]);
-  $('analysisFindings').replaceChildren(...(findings.length ? findings : [[false, 'No findings.']]).map(([fail, text]) => {
-    const item = document.createElement('li'); if (fail) item.className = 'fail'; item.textContent = text; return item;
-  }));
-  $('analysisNotice').textContent = (analysis.notices || [])[0] || '';
+  const generated = new Date(analysis?.generated_at);
+  $('analysisCaption').textContent = `${analysis.worker?.name || 'worker'} ${analysis.worker?.version || ''} · OpenCV ${analysis.worker?.opencv || '?'}${Number.isNaN(generated.getTime()) ? '' : ` · ${generated.toLocaleString()}`}`;
   $('analysisEmpty').hidden = true; $('analysisBody').hidden = false;
-  drawAnalysis(analysis);
-}
-function drawAnalysis(analysis) {
-  const canvas = $('analysisCanvas'), context = canvas.getContext('2d'), map = analysis.floor_map;
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  if (!map) { context.fillStyle = '#8a8a92'; context.font = '14px -apple-system, sans-serif'; context.fillText('No floor map for this scan.', 24, 40); return; }
-  const image = new Image();
-  image.onload = () => {
-    const scale = Math.min(canvas.width / image.width, canvas.height / image.height);
-    const ox = (canvas.width - image.width * scale) / 2, oy = (canvas.height - image.height * scale) / 2;
-    context.imageSmoothingEnabled = false;
-    context.drawImage(image, ox, oy, image.width * scale, image.height * scale);
-    const { origin_xz_m: [x0, z0], resolution_m: resolution } = map.grid;
-    const toCanvas = ([x, z]) => [ox + (x - x0) / resolution * scale, oy + (z - z0) / resolution * scale];
-    context.lineCap = 'round';
-    for (const door of analysis.doors || []) {
-      const [[ax, ay], [bx, by]] = door.span_xz_m.map(toCanvas);
-      context.beginPath(); context.moveTo(ax, ay); context.lineTo(bx, by);
-      context.lineWidth = Math.max(3, 0.08 / resolution * scale); context.strokeStyle = door.meets_clear_width ? '#3caa46' : '#f58c1e'; context.stroke();
-    }
-    for (const sign of analysis.signs || []) {
-      if (!sign.position_m) continue;
-      const x = ox + (sign.position_m[0] - x0) / resolution * scale, y = oy + (sign.position_m[2] - z0) / resolution * scale;
-      context.beginPath(); context.arc(x, y, 6, 0, Math.PI * 2);
-      context.fillStyle = sign.kind === 'text_region' ? '#5b8def' : '#0071e3'; context.fill();
-      context.lineWidth = 2; context.strokeStyle = '#fff'; context.stroke();
-    }
-  };
-  image.src = `data:image/png;base64,${map.image_png_base64}`;
+  try { navViewer.show(analysis); }
+  catch (error) {
+    // A malformed product must not take the rest of the studio down with it.
+    $('analysisBody').hidden = true; $('analysisEmpty').hidden = false;
+    $('analysisCaption').textContent = `This analysis could not be displayed: ${error.message}`;
+  }
 }
 
 refresh().catch(showError);
