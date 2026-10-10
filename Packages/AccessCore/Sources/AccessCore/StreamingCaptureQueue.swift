@@ -117,14 +117,16 @@ public actor StreamingCaptureQueue {
 
     @discardableResult
     public func append(frame: CaptureDepthFrame, colorJPEG: Data,
-                       surfaces: [CaptureSurface] = [], objects: [CaptureObject] = []) async throws -> StreamingCaptureStatus {
+                       surfaces: [CaptureSurface] = [], objects: [CaptureObject] = [],
+                       environment: CaptureEnvironmentSample? = nil,
+                       poses: [StreamPose] = []) async throws -> StreamingCaptureStatus {
         guard !state.captureClosed else { throw StreamingCaptureError.captureClosed }
         guard captured < limits.maximumFrames else { throw StreamingCaptureError.captureLimit }
         guard lastTimestamp == nil || frame.timestampSeconds > lastTimestamp! else {
             throw StreamingCaptureError.invalidChunk
         }
         let chunk = StreamChunk(sequence: captured, frame: frame, colorJPEG: colorJPEG,
-                                surfaces: surfaces, objects: objects)
+                                surfaces: surfaces, objects: objects, environment: environment, poses: poses)
         let data = try chunk.encoded()
         guard data.count <= limits.maximumSavedBytes - min(capturedBytes, limits.maximumSavedBytes) else {
             throw StreamingCaptureError.captureLimit
@@ -144,6 +146,27 @@ public actor StreamingCaptureQueue {
     public func snapshot() -> StreamingCaptureStatus {
         StreamingCaptureStatus(captured: captured, uploaded: state.uploaded,
                                lastError: lastError, finished: state.finished)
+    }
+
+    /// Saves a whole-capture file (RoomPlan export, semantics, OCR text, movement track) with the
+    /// scan. It is uploaded before the scan is finished, and again if finishing is retried.
+    public func attach(_ data: Data, named name: String) throws {
+        guard StreamAttachment.allowedNames.contains(name), data.count <= StreamAttachment.maximumBytes,
+              (try? JSONSerialization.jsonObject(with: data)) != nil else {
+            throw StreamingCaptureError.invalidChunk
+        }
+        let directory = root.appendingPathComponent("attachments", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+        } catch { throw StreamingCaptureError.storageFailure }
+    }
+
+    private func savedAttachments() -> [(name: String, data: Data)] {
+        let directory = root.appendingPathComponent("attachments", isDirectory: true)
+        return StreamAttachment.allowedNames.sorted().compactMap { name in
+            (try? Data(contentsOf: directory.appendingPathComponent(name))).map { (name, $0) }
+        }
     }
 
     /// Durably end capture without requiring a connection or starting an upload.
@@ -319,6 +342,11 @@ public actor StreamingCaptureQueue {
         do {
             try await synchronize()
             let backend = try client()
+            // Attachments are idempotent PUTs; an older server without the route skips them.
+            for attachment in savedAttachments() {
+                do { try await backend.putAttachment(attachment.data, named: attachment.name, manifest: manifest) }
+                catch let error as BackendClientError where error.isArchiveEndpointUnavailable { break }
+            }
             let summary: StreamSummary
             do { summary = try await backend.finish(manifest, chunkCount: captured) }
             catch let error as BackendClientError where error.isMissingStream {

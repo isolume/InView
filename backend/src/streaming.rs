@@ -68,7 +68,39 @@ pub struct StreamChunk {
     pub surfaces: Vec<CapturedSurface>,
     #[serde(default)]
     pub objects: Vec<DetectedObject>,
+    /// Coarse geographic/building context at this frame (GPS, heading, barometer), with the
+    /// iPhone's `CaptureEnvironmentSample` keys. ARKit stays the only room-precision frame.
+    #[serde(default)]
+    pub environment: Option<Value>,
+    /// Dense camera poses recorded since the previous chunk (movement between keyframes).
+    #[serde(default)]
+    pub poses: Vec<StreamPose>,
 }
+
+/// One camera pose of the dense movement track, in the shared ARKit session frame.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct StreamPose {
+    /// ARKit uptime seconds (the clock of `frame.timestamp_seconds`).
+    pub t: f64,
+    /// Column-major map_from_camera.
+    pub m: Transform,
+    #[serde(default)]
+    pub tracking: Option<String>,
+    #[serde(default)]
+    pub mapping: Option<String>,
+}
+
+/// Whole-capture files a client may attach to a stream before or after finishing it.
+pub const STREAM_ASSETS: [&str; 4] = [
+    "roomplan.json",
+    "semantics.json",
+    "text-observations.json",
+    "camera-track.json",
+];
+pub const MAX_ASSET_BYTES: usize = 16 * 1024 * 1024;
+const MAX_POSES_PER_CHUNK: usize = 600;
+const MAX_ENVIRONMENT_KEYS: usize = 32;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct StreamSummary {
@@ -442,6 +474,72 @@ impl StreamStore {
         Ok(self.recognition_summary(summary))
     }
 
+    /// Stores a whole-capture attachment (`STREAM_ASSETS`) for a known stream. Re-sending
+    /// replaces it; the per-frame observations themselves remain immutable.
+    pub fn put_asset(&self, id: &str, name: &str, bytes: &[u8]) -> Result<(), StreamError> {
+        check_id(id)?;
+        if !STREAM_ASSETS.contains(&name) {
+            return Err(StreamError::Invalid(format!(
+                "Stream attachments are limited to {}.",
+                STREAM_ASSETS.join(", ")
+            )));
+        }
+        if bytes.len() > MAX_ASSET_BYTES {
+            return Err(StreamError::Limit(
+                "Stream attachments must be at most 16 MiB.".into(),
+            ));
+        }
+        serde_json::from_slice::<Value>(bytes).map_err(invalid_json)?;
+        if !self.inner.records.lock().unwrap().contains_key(id) {
+            return Err(StreamError::Missing);
+        }
+        let dir = self.inner.root.join(id).join("assets");
+        if fs::symlink_metadata(&dir).is_err() {
+            fs::create_dir(&dir)?;
+        }
+        ensure_directory(&dir)?; // Refuses a symlink in place of the directory.
+        atomic_write(&dir.join(name), bytes)
+    }
+
+    /// Attachments present for a stream, keyed by name.
+    pub fn assets(&self, id: &str) -> Result<BTreeMap<String, Vec<u8>>, StreamError> {
+        check_id(id)?;
+        let dir = self.inner.root.join(id).join("assets");
+        let mut found = BTreeMap::new();
+        for name in STREAM_ASSETS {
+            let path = dir.join(name);
+            if path.is_file() {
+                found.insert(name.to_owned(), read_bytes(&path, MAX_ASSET_BYTES)?);
+            }
+        }
+        Ok(found)
+    }
+
+    /// Visits every accepted chunk of a finished stream in sequence order.
+    pub fn for_each_chunk(
+        &self,
+        id: &str,
+        mut visit: impl FnMut(usize, StreamChunk) -> Result<(), StreamError>,
+    ) -> Result<(StreamManifest, usize), StreamError> {
+        check_id(id)?;
+        let (manifest, count) = {
+            let records = self.inner.records.lock().unwrap();
+            let record = records.get(id).ok_or(StreamError::Missing)?;
+            if !record.finished {
+                return Err(StreamError::Unfinished);
+            }
+            (record.manifest.clone(), record.count)
+        };
+        for sequence in 0..count {
+            let chunk: StreamChunk = read_json(
+                &self.inner.root.join(id).join(chunk_name(sequence)),
+                MAX_CHUNK_BYTES,
+            )?;
+            visit(sequence, chunk)?;
+        }
+        Ok((manifest, count))
+    }
+
     pub fn reconstruct(&self, id: &str) -> Result<StreamResult, StreamError> {
         self.build_reconstruction(id)
     }
@@ -811,6 +909,7 @@ fn parse_chunk(original: &Value, manifest: &StreamManifest) -> Result<StreamChun
         surfaces: chunk.surfaces.clone(),
     };
     probe.validate().map_err(StreamError::Invalid)?;
+    validate_context(&chunk)?;
     if chunk.color_jpeg.len() > MAX_JPEG_BYTES.div_ceil(3) * 4 {
         return Err(StreamError::Limit(
             "Frame JPEG must be at most 512 KiB.".into(),
@@ -843,6 +942,44 @@ fn parse_chunk(original: &Value, manifest: &StreamManifest) -> Result<StreamChun
         StreamError::Invalid("color_jpeg contains invalid or incomplete image data.".into())
     })?;
     Ok(chunk)
+}
+
+/// Environment samples hold only finite numbers (or nulls); poses are rigid, finite, bounded.
+fn validate_context(chunk: &StreamChunk) -> Result<(), StreamError> {
+    if let Some(environment) = &chunk.environment {
+        let fields = environment
+            .as_object()
+            .ok_or_else(|| StreamError::Invalid("environment must be an object.".into()))?;
+        let numeric = |value: &Value| value.is_null() || value.as_f64().is_some_and(f64::is_finite);
+        if fields.len() > MAX_ENVIRONMENT_KEYS
+            || fields
+                .iter()
+                .any(|(key, value)| key.len() > 64 || !numeric(value))
+        {
+            return Err(StreamError::Invalid(
+                "environment must contain at most 32 finite numeric fields.".into(),
+            ));
+        }
+    }
+    if chunk.poses.len() > MAX_POSES_PER_CHUNK {
+        return Err(StreamError::Limit(
+            "Too many movement poses in one chunk.".into(),
+        ));
+    }
+    for pose in &chunk.poses {
+        let short = |label: &Option<String>| label.as_ref().is_none_or(|v| v.len() <= 64);
+        if !pose.t.is_finite()
+            || pose.t < 0.0
+            || pose.m.validate().is_err()
+            || !short(&pose.tracking)
+            || !short(&pose.mapping)
+        {
+            return Err(StreamError::Invalid(
+                "Movement poses need finite times and rigid transforms.".into(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn invalid_json(error: serde_json::Error) -> StreamError {

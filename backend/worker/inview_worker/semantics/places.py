@@ -87,6 +87,9 @@ class Scene:
     signs: list[dict] = field(default_factory=list)
     texts: list[dict] = field(default_factory=list)
     hazards: list[dict] = field(default_factory=list)
+    # Volunteer-confirmed points from the phone's `semantics.json` (manual pins and repeat-sighted
+    # elevator/ramp detections): {id, kind: elevator|ramp|destination, name, position, source, confidence}.
+    access_points: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -592,6 +595,27 @@ def hazard_candidates(scene: Scene) -> list[Candidate]:
     return out
 
 
+PHONE_KINDS = {"elevator": "elevator", "ramp": "ramp"}
+
+
+def phone_candidates(scene: Scene) -> list[Candidate]:
+    """Places the volunteer confirmed on the phone. A named destination keeps its name; its category
+    comes from the name (e.g. "Restroom", "Reception") or falls back to a landmark."""
+    out = []
+    for index, point in enumerate(scene.access_points):
+        position = _xyz(point.get("position"))
+        if position is None:
+            continue
+        kind = point.get("kind")
+        name = point.get("name") if isinstance(point.get("name"), str) and point.get("name").strip() else None
+        category = PHONE_KINDS.get(kind) or _label_category(name, PlaceCategory.LANDMARK.value)[0]
+        manual = point.get("source") == "manual"
+        confidence = 0.9 if manual else min(max(_number(point.get("confidence"), 0.75), 0.0), 1.0)
+        out.append(Candidate(category, position, confidence, (f"phone:{point.get('id', index)}",), RANK_ANCHOR,
+                             {}, name.strip() if name else None, NAME_LABEL if name else 0))
+    return out
+
+
 # --- fusion -----------------------------------------------------------------------------------
 
 @dataclass
@@ -702,7 +726,8 @@ def build(scene: Scene) -> tuple[list[dict], dict]:
     signs, used, directional = sign_candidates(scene, doors, areas)
     texts, unplaced = text_candidates(scene, used, doors, areas)
     groups = {"roomplan": object_candidates(scene), "areas": area_candidates(scene, region_keys),
-              "doors": entrances, "signs": signs, "text": texts, "hazards": hazard_candidates(scene)}
+              "doors": entrances, "signs": signs, "text": texts, "hazards": hazard_candidates(scene),
+              "phone": phone_candidates(scene)}
     candidates = [c for group in groups.values() for c in group if c.confidence >= MIN_CONFIDENCE]
     # A door claimed by an elevator/stairs/restroom/room sign leads there, not outside.
     claimed = {c.key for c in candidates if c.key and c.key.startswith("door:") and c.category in CLAIMS_DOOR}

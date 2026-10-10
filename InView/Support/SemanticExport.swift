@@ -81,8 +81,14 @@ enum SemanticExport {
 
     static func stageSemantics(map: VenueMap?, rooms: [CapturedRoom], capture: CaptureSemantics.CaptureInfo,
                                captureID: String) throws {
-        let semantics = CaptureSemantics(map: map, rooms: self.rooms(rooms), capture: capture)
-        try CaptureStore.stageSidecar(semantics.encoded(), named: CaptureSemantics.filename, id: captureID)
+        try CaptureStore.stageSidecar(semanticsData(map: map, rooms: rooms, capture: capture),
+                                      named: CaptureSemantics.filename, id: captureID)
+    }
+
+    /// `semantics.json` bytes: geographic reference, confirmed access points, stairs and RoomPlan
+    /// section labels, door states and polygons, all in the shared ARKit session frame.
+    static func semanticsData(map: VenueMap?, rooms: [CapturedRoom], capture: CaptureSemantics.CaptureInfo) throws -> Data {
+        try CaptureSemantics(map: map, rooms: self.rooms(rooms), capture: capture).encoded()
     }
 
     /// Reads text in the keyframes and any high-resolution OCR stills already staged for the capture.

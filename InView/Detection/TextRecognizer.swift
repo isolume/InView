@@ -15,6 +15,7 @@ enum TextRecognizer {
         /// The encoded bytes, or nil to read `url` lazily.
         var jpeg: Data?
         var url: URL?
+        var sensorNative = false
     }
 
     struct Limits: Sendable {
@@ -28,6 +29,9 @@ enum TextRecognizer {
         var frameID: String
         var filename: String
         var jpeg: Data
+        /// Streamed keyframes are encoded sensor-native (landscape). Vision reads them rotated
+        /// upright and reports boxes in that upright image, the package's keyframe convention.
+        var sensorNative = false
     }
 
     /// High-resolution stills (`<frame-id>.ocr.jpg`) come first: they were taken for reading text.
@@ -43,7 +47,9 @@ enum TextRecognizer {
                 .map { Image(frameID: String($0.dropLast(suffix.count)), asset: $0, jpeg: nil,
                              url: captureDirectory.appending(path: $0)) }
         }
-        let colors = keyframes.map { Image(frameID: $0.frameID, asset: $0.filename, jpeg: $0.jpeg, url: nil) }
+        let colors = keyframes.map {
+            Image(frameID: $0.frameID, asset: $0.filename, jpeg: $0.jpeg, url: nil, sensorNative: $0.sensorNative)
+        }
         return stills + colors
     }
 
@@ -72,8 +78,10 @@ enum TextRecognizer {
         request.automaticallyDetectsLanguage = true
         // Skip text too small to be a readable sign at keyframe resolution.
         request.minimumTextHeight = 0.015
-        // Capture images are encoded upright, so Vision sees them as the volunteer did.
-        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
+        // Keyframes and stills are upright; streamed frames are sensor-native and rotated right.
+        // With `.right`, Vision's normalized boxes refer to the upright image (width and height swap).
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: image.sensorNative ? .right : .up)
+        let (uprightWidth, uprightHeight) = image.sensorNative ? (cgImage.height, cgImage.width) : (cgImage.width, cgImage.height)
         // A single slow request must not outlive the budget: cancel it from outside when time runs out.
         // (Task cancellation is checked between images.)
         let watchdog = DispatchWorkItem { request.cancel() }
@@ -89,7 +97,7 @@ enum TextRecognizer {
             guard let candidate = result.topCandidates(1).first else { return nil }
             let box = result.boundingBox
             return CaptureTextObservation.make(
-                frameID: image.frameID, imageAsset: image.asset, imageWidth: cgImage.width, imageHeight: cgImage.height,
+                frameID: image.frameID, imageAsset: image.asset, imageWidth: uprightWidth, imageHeight: uprightHeight,
                 text: candidate.string, confidence: candidate.confidence,
                 visionBox: (x: box.origin.x, y: box.origin.y, width: box.width, height: box.height),
                 languages: languages(of: candidate.string)

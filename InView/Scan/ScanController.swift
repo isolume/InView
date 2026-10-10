@@ -72,6 +72,10 @@ final class ScanController: ObservableObject {
     /// Detected place IDs already offered once, so a point the volunteer deleted is not re-added.
     private var mergedDetectionIDs: Set<UUID> = []
     private var streamingCapture: StreamingScanCapture?
+    /// GPS, heading and barometer context attached to every streamed keyframe.
+    private let contextTracker = CaptureContextTracker()
+    /// Dense (≈10 Hz) camera movement between streamed keyframes.
+    private let trackRecorder = CameraTrackRecorder()
     var streamEvidenceID: String? { streamingCapture?.queue.manifest.id }
     private var streamStartTask: Task<Void, Never>?
     private var streamStatusTimer: Timer?
@@ -369,6 +373,8 @@ final class ScanController: ObservableObject {
     func stop() {
         isActive = false
         analysisTask?.cancel()
+        contextTracker.stop()
+        trackRecorder.stop()
         elevationMonitor.stop()
         floorSwitchTask?.cancel()
         floorSwitchTask = nil
@@ -683,6 +689,8 @@ final class ScanController: ObservableObject {
                 guard let self else { return }
                 if let streamingCapture {
                     self.streamStatus = try await streamingCapture.finishCapture()
+                    self.contextTracker.stop()
+                    self.trackRecorder.stop()
                 }
                 let raw = await self.rawCapture.finishSnapshot()
                 self.splatCapture.finish(meshes: raw.meshes)
@@ -691,6 +699,7 @@ final class ScanController: ObservableObject {
                     MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
                                      observed: raw.observedFootprints ?? [])
                 }
+                if let streamingCapture { await self.attachStreamEvidence(to: streamingCapture, rooms: rooms) }
                 let payload = ExportPayload(rooms: rooms, recovered: recovered, raw: raw, scanID: scanID, floor: floor)
                 let prepared = try await ScanWork.run {
                     let rawData = try ScanExporter.rawSnapshotData(payload.raw)
@@ -837,6 +846,12 @@ final class ScanController: ObservableObject {
                 applyStreamResult(output)
                 streamAlignmentApplied = true
             }
+            // The backend packages the finished stream as a scan and analyses it in the background.
+            if let backendURL, !Task.isCancelled {
+                fetchDetectedPlaces(scanID: streamingCapture.queue.manifest.id,
+                                    client: BackendClient(baseURL: backendURL, accessToken: AppConfig.backendToken),
+                                    delays: [5, 15, 30, 60, 120, 240])
+            }
             return output.scene
         } else if isContinuous, backendURL != nil {
             throw CaptureValidationError.invalid("The scan upload isn't ready. The captured samples are saved on this phone.")
@@ -862,10 +877,10 @@ final class ScanController: ObservableObject {
 
     /// The worker analyses an upload asynchronously (seconds to minutes), so poll a few times with
     /// backoff while the volunteer reviews, then merge its places into the draft's points.
-    private func fetchDetectedPlaces(scanID: String, client: BackendClient) {
+    private func fetchDetectedPlaces(scanID: String, client: BackendClient, delays: [Int] = [0, 5, 15, 30, 60]) {
         analysisTask?.cancel()
         analysisTask = Task { [weak self] in
-            for delay in [0, 5, 15, 30, 60] {
+            for delay in delays {
                 if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
                 guard !Task.isCancelled else { return }
                 do {
@@ -898,6 +913,27 @@ final class ScanController: ObservableObject {
         for point in added { MapBuilder.add(point, to: &map) }
         draft = map
         Log.scan.info("merged \(added.count) detected places from the navigation analysis")
+    }
+
+    /// Whole-capture evidence for the backend pipeline, attached before the stream is finished:
+    /// navigation semantics (geo reference, confirmed access points, RoomPlan labels and door states),
+    /// on-device OCR of streamed keyframes, and the native RoomPlan export. Each is optional; a
+    /// failure is logged and never blocks the scan.
+    private func attachStreamEvidence(to capture: StreamingScanCapture, rooms: [CapturedRoom]) async {
+        let queue = capture.queue, map = draft, sources = capture.textSources
+        let info = SemanticExport.captureInfo(floorID: queue.manifest.floorID)
+        do {
+            let files = try await ScanWork.run(priority: .utility) { () -> [(String, Data)] in
+                var files = [(CaptureSemantics.filename, try SemanticExport.semanticsData(map: map, rooms: rooms, capture: info))]
+                if !rooms.isEmpty { files.append(("roomplan.json", try ScanExporter.nativeRoomPlanData(rooms: rooms))) }
+                let text = TextRecognizer.recognize(TextRecognizer.images(keyframes: sources, captureDirectory: nil))
+                files.append((TextObservationsDocument.filename, try text.encoded()))
+                return files
+            }
+            for (name, data) in files { try await queue.attach(data, named: name) }
+        } catch {
+            Log.scan.error("couldn't attach scan evidence: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func applyStreamResult(_ result: StreamResult) {
@@ -1065,6 +1101,10 @@ final class ScanController: ObservableObject {
                     self?.errorMessage = message
                     self?.pauseContinuousCapture()
                 }
+                capture.environment = { [weak self] in self?.contextTracker.sample() }
+                capture.movement = { [weak self] after in self?.trackRecorder.poses(after: after) ?? [] }
+                self.contextTracker.start()
+                self.trackRecorder.start(session: self.session)
                 self.streamingCapture = capture
                 self.streamStatus = await queue.snapshot()
                 capture.start(session: self.session)

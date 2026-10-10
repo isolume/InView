@@ -14,6 +14,15 @@ final class StreamingScanCapture {
     var onTrackingHint: ((String?) -> Void)?
     var onCoverage: ((DepthScanCoverageSnapshot) -> Void)?
     var measurements: (() -> [Footprint])?
+    /// Geographic/building context (GPS, heading, barometer) for the frame being captured.
+    var environment: (() -> CaptureEnvironmentSample?)?
+    /// Dense movement poses recorded after the given ARKit time, up to now.
+    var movement: ((TimeInterval?) -> [StreamPose])?
+    /// Evenly spread streamed keyframes kept for on-device OCR when the scan finishes.
+    private(set) var textSources: [TextRecognizer.Source] = []
+    private var textSourceSkip = 1
+    private var sentMovementThrough: TimeInterval?
+    private let maximumTextSources = 48
     private let coverage = SavedScanCoverage()
     private weak var session: ARSession?
     private var timer: Timer?
@@ -82,6 +91,8 @@ final class StreamingScanCapture {
         let objects = geometry.objects.filter { savedObjects[$0.id] != $0 }
         lastTimestamp = frame.timestamp
         lastPose = frame.camera.transform
+        let environment = environment?()
+        let poses = Array((movement?(sentMovementThrough) ?? []).suffix(StreamChunk.maximumPoses))
         let queue = queue
         let coverage = coverage
         worker = Task { [weak self] in
@@ -90,7 +101,10 @@ final class StreamingScanCapture {
                     try Self.encode(copied, pixels: pixels)
                 }.value
                 let status = try await queue.append(frame: encoded.frame, colorJPEG: encoded.jpeg,
-                                                    surfaces: surfaces, objects: objects)
+                                                    surfaces: surfaces, objects: objects,
+                                                    environment: environment, poses: poses)
+                if let last = poses.last?.t { self?.sentMovementThrough = last }
+                self?.keepTextSource(frameID: encoded.frame.id, sequence: status.captured - 1, jpeg: encoded.jpeg)
                 // Green means durably captured on this phone, independent of upload progress.
                 let capturedCoverage = await coverage.record(encoded.frame)
                 for surface in surfaces { self?.savedSurfaces[surface.id] = surface }
@@ -102,6 +116,19 @@ final class StreamingScanCapture {
                 self?.onError?("Couldn't save the scan. \(error.localizedDescription)")
             }
             self?.worker = nil
+        }
+    }
+
+    /// Keeps every `textSourceSkip`-th keyframe; when full, thins to every other one and doubles the
+    /// stride, so the selection stays spread over the whole walk. Names match the backend package
+    /// (`s<sequence>.color.jpg`), where the keyframe is stored upright.
+    private func keepTextSource(frameID: String, sequence: Int, jpeg: Data) {
+        guard sequence % textSourceSkip == 0 else { return }
+        textSources.append(TextRecognizer.Source(frameID: frameID, filename: String(format: "s%05d.color.jpg", sequence),
+                                                 jpeg: jpeg, sensorNative: true))
+        if textSources.count > maximumTextSources {
+            textSources = textSources.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
+            textSourceSkip *= 2
         }
     }
 

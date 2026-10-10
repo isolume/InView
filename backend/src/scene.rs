@@ -138,15 +138,13 @@ fn process_geometry(
         .map(|object| {
             let category = object.category.trim().to_ascii_lowercase();
             let model_key = if object.confidence >= options.minimum_object_confidence {
-                photo_model_key(&category, object.dimensions_m).unwrap_or_else(|| {
-                    match category.as_str() {
-                        "storage" | "cabinet" => "storage_v2",
-                        "bed" => "bed_v2",
-                        "sink" => "sink_v2",
-                        "plant" => "plant_v2",
-                        "rug" => "rug_v2",
-                        _ => "bounds_v1",
-                    }
+                photo_model_key(&category, object.dimensions_m).unwrap_or(match category.as_str() {
+                    "storage" | "cabinet" => "storage_v2",
+                    "bed" => "bed_v2",
+                    "sink" => "sink_v2",
+                    "plant" => "plant_v2",
+                    "rug" => "rug_v2",
+                    _ => "bounds_v1",
                 })
             } else {
                 "bounds_v1"
