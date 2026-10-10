@@ -73,6 +73,10 @@ public struct AccessibilityReport: Codable, Sendable {
             findings.append(Finding(severity: .warning, title: "No elevator mapped", detail: "Other floors may be unreachable by wheelchair."))
         }
 
+        for point in map.points where point.requiresAssistance {
+            findings.append(Finding(severity: .warning, title: "\(point.name) needs staff to operate", detail: "Wheelchair users can't use it on their own. InView can text building staff to arrange help."))
+        }
+
         // Every access point should be reachable step-free from where the scan began (usually the entrance).
         for point in map.points {
             let others = RouteConditions(unavailable: Set(map.points.map(\.id)).subtracting([point.id]))

@@ -27,3 +27,18 @@ import Testing
     #expect(report.score <= 40)
     #expect(report.findings.first?.severity == .barrier)
 }
+
+@Test func notesPointsThatNeedStaff() {
+    var elevator = point(.elevator, -2, 1)
+    elevator.requiresAssistance = true
+    let report = AccessibilityReport(map: room(points: [elevator]))
+    #expect(report.findings.contains { $0.severity == .warning && $0.title == "Elevator needs staff to operate" })
+}
+
+@Test func readsMapsSavedBeforeNewerFields() throws {
+    let json = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","kind":"ramp","position":[1,0,2],"source":"manual","confidence":1}"#
+    let decoded = try JSONDecoder().decode(AccessPoint.self, from: Data(json.utf8))
+    #expect(decoded.name == "Ramp")
+    #expect(decoded.slopeDegrees == nil)
+    #expect(!decoded.requiresAssistance)
+}

@@ -35,6 +35,8 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
     public var confidence: Float
     /// Measured ramp incline in degrees, from the LiDAR surface under it.
     public var slopeDegrees: Float?
+    /// A staff member has to operate it or help through it, e.g. an attendant-run lift.
+    public var requiresAssistance: Bool
 
     public init(
         id: UUID = UUID(),
@@ -43,7 +45,8 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
         position: SIMD3<Float>,
         source: Source,
         confidence: Float,
-        slopeDegrees: Float? = nil
+        slopeDegrees: Float? = nil,
+        requiresAssistance: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -52,6 +55,7 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
         self.source = source
         self.confidence = confidence
         self.slopeDegrees = slopeDegrees
+        self.requiresAssistance = requiresAssistance
     }
 
     public var floorPoint: SIMD2<Float> { SIMD2(position.x, position.z) }
@@ -63,7 +67,7 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, name, position, source, confidence, slopeDegrees
+        case id, kind, name, position, source, confidence, slopeDegrees, requiresAssistance
     }
 
     public init(from decoder: any Decoder) throws {
@@ -72,12 +76,13 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
         self.init(
             id: try container.decode(UUID.self, forKey: .id),
             kind: kind,
-            // Maps saved before points had names fall back to the kind.
+            // Older maps may lack newer fields; fall back to defaults.
             name: try container.decodeIfPresent(String.self, forKey: .name),
             position: try container.decode(SIMD3<Float>.self, forKey: .position),
             source: try container.decode(Source.self, forKey: .source),
             confidence: try container.decode(Float.self, forKey: .confidence),
-            slopeDegrees: try container.decodeIfPresent(Float.self, forKey: .slopeDegrees)
+            slopeDegrees: try container.decodeIfPresent(Float.self, forKey: .slopeDegrees),
+            requiresAssistance: try container.decodeIfPresent(Bool.self, forKey: .requiresAssistance) ?? false
         )
     }
 }
