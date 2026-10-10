@@ -176,3 +176,28 @@ Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/vi
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).
 The adapter builds against the iOS SDK; physical capture and relocalization still
 need verification on the actual LiDAR device before expanding recognition or storage.
+
+## RoomPlan semantics read by the worker
+
+The `roomplan` pipeline stage (`worker/inview_worker/stages/roomplan.py`, helpers in
+`worker/inview_worker/roomplan/`) reads Apple's native export instead of only the portable records.
+Source order: the package's `roomplan.json` (the iPhone's verbatim `JSONEncoder().encode([CapturedRoom])`),
+then `capture.json`'s `roomplan_original`, then the portable `surfaces`/`objects` (rectangles only, no
+labels or door state). An empty array (`[]`) counts as absent. Accepted shapes: `[CapturedRoom]`, one
+`CapturedRoom`, or a `CapturedStructure` (`rooms` plus merged top-level components).
+
+Fields read, per `CapturedRoom`: `identifier`, `story`, `version`, `walls`, `doors`, `windows`,
+`openings`, `floors`, `objects`, `sections`. Per surface: `identifier`, `category` (including
+`door.isOpen`), `dimensions`, `transform`, `polygonCorners` (surface-local, floors only),
+`confidence`, `story`, `parentIdentifier`, `completedEdges`, `curve`. Per object: `identifier`,
+`category`, `dimensions`, `transform`, `attributes`, `confidence`, `story`, `parentIdentifier`.
+Per section: `label`, `center`, `story`. Unknown or missing keys are tolerated. Malformed components
+are counted and skipped. Both Swift Codable spellings are accepted: enums as `{"case": {payload}}` or
+bare strings, and `simd_float4x4` as four column arrays or 16 column-major numbers.
+
+Derived product: room polygons in X/Z from the floor corners, or the floor rectangle, or the wall hull
+for iOS 16. Each room gets a section label when a section center falls inside its polygon. Doors keep
+their open/closed state from the latest section and record which rooms they `connect`. Also derived:
+openings, windows with sill height, walls, objects with their attributes and room, and stories. Labels
+and states are RoomPlan's own estimates, not verified accessibility data. The iPhone needs no format
+change. `roomplan.json` already carries everything above.
