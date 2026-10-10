@@ -1,6 +1,6 @@
 # AccessNav
 
-Volunteers scan a floor once with a LiDAR iPhone; the app spots elevators and ramps with a vision model. After that, anyone in a wheelchair can open the app, point it at the check-in sign, and follow AR arrows along a step-free route to the nearest accessible point.
+Volunteers scan a floor once with a LiDAR iPhone; the app spots elevators and ramps with a vision model. After that, anyone in a wheelchair can open the app, which relocalizes into the saved AR map, and follow AR arrows along a step-free route to the nearest accessible point.
 
 ## Setup
 
@@ -23,15 +23,17 @@ Re-run `xcodegen` after adding or removing files.
 
 ## Demo checklist
 
-1. Print `print/check-in-marker.pdf` at 100% scale and check that the pattern is **18 cm** wide.
-2. Tape it to the demo table, flat or upright. **Don't move it after scanning**, because the whole map is stored relative to it.
-3. **Map a space**: walk the route from the table to the elevator and ramp, holding the phone upright.
+1. **Start the scan at the demo table.** Hold still for a second, facing the way the rider will start. That spot is the map's origin, and the app saves a photo of it.
+2. **Map a space**: before walking off, slowly pan around the table area so it's well covered. Then walk to the elevator and ramp, holding the phone upright.
    - Pins appear as the model spots things.
    - Use **Pin elevator / Pin ramp** to mark whatever is in the center of the screen.
-   - Use **Add section** when RoomPlan struggles with a big area.
-4. **Finish**, then walk back and point the camera at the marker to check in.
-5. Review the map, tap it to add any missed points, and **Save**.
-6. **Navigate**: point the camera at the marker, then tap **Take me to the nearest accessible point**.
+   - Use **Add section** when RoomPlan struggles with a big area. Keep each section under about 5 minutes.
+3. **Finish**. The app saves the AR map (ARWorldMap); if that fails, move around a little and tap **Try again**.
+4. Review the map, tap it to add any missed points, and **Save**.
+5. **Navigate**: stand near the table and slowly look around until the app recognizes the space. Then tap **Take me to the nearest accessible point**.
+   - If it hasn't recognized the space after 15 s, stand exactly on the scan start spot, face the way the photo does, and tap **Start from here**.
+
+Relocalization works best when the lighting matches the scan and the area has texture: posters, furniture, signage. Blank walls are hard to recognize. Rescan close to demo time if the room has changed a lot.
 
 ## How it works
 
@@ -39,7 +41,7 @@ Re-run `xcodegen` after adding or removing files.
 | --- | --- |
 | RoomPlan scan → 2D footprints (walls, doors, furniture, stairs) | `AccessNav/Scan/MapBuilder.swift` |
 | Vision detection + 3D placement by raycast | `AccessNav/Detection/` |
-| Marker → gravity-aligned venue frame | `Packages/AccessCore/.../VenueFrame.swift` |
+| ARWorldMap save and relocalization | `AccessNav/Scan/ScanController.swift`, `AccessNav/Navigate/NavigationController.swift` |
 | Wheelchair routing: occupancy grid with clearance, ADA door widths, A* | `Packages/AccessCore/.../OccupancyGrid.swift`, `RoutePlanner.swift` |
 | AR chevrons and destination labels | `AccessNav/Navigate/PathRenderer.swift` |
 
@@ -49,10 +51,4 @@ Routes keep 45 cm clearance from obstacles (90 cm passages). In tight spaces the
 
 ```sh
 cd Packages/AccessCore && swift test
-```
-
-## Regenerating the marker
-
-```sh
-swift scripts/make-marker.swift AccessNav/Resources/marker.png print/check-in-marker.pdf
 ```
