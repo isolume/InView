@@ -29,6 +29,11 @@ struct ScanView: View {
     private var captureScreen: some View {
         ZStack {
             ViewContainer(view: controller.captureView).ignoresSafeArea()
+            if controller.phase == .scanning {
+                Crosshair()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
+            }
             VStack(spacing: 12) {
                 HStack(alignment: .top) {
                     CloseButton(action: close)
@@ -38,10 +43,13 @@ struct ScanView: View {
                 Spacer()
                 switch controller.phase {
                 case .processing:
-                    Label("Processing section…", systemImage: "hourglass")
-                        .font(.headline)
-                        .padding()
-                        .background(.regularMaterial, in: Capsule())
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Processing section…").font(.headline)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(.regularMaterial, in: Capsule())
                 case .savingWorldMap:
                     worldMapPanel
                 default:
@@ -65,39 +73,63 @@ struct ScanView: View {
         }
         .padding()
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
     private var scanControls: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                ForEach(AccessPoint.Kind.allCases, id: \.self) { kind in
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Mark what's in the middle of the screen")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                ForEach(VisionDetection.Kind.allCases, id: \.self) { kind in
                     Button {
                         controller.detector.addManual(kind)
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     } label: {
-                        Label("Pin \(kind.title.lowercased())", systemImage: kind.symbolName)
-                            .frame(maxWidth: .infinity)
+                        VStack(spacing: 6) {
+                            Image(systemName: kind.symbolName).font(.title3.weight(.semibold))
+                            Text(kind.title).font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(kind.tint)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .background(kind.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(PressableStyle())
+                    .accessibilityLabel("Mark \(kind.title.lowercased())")
                     .accessibilityHint("Marks the spot in the center of the screen")
                 }
             }
-            HStack(spacing: 12) {
-                Button("Add section", action: controller.addSection)
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-                Button("Finish", action: controller.finish)
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 10) {
+                Button(action: controller.addSection) {
+                    Label("Add section", systemImage: "plus.square.on.square").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                Button(action: controller.finish) {
+                    Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
             }
             .controlSize(.large)
             if let error = controller.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
         }
-        .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(18)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+}
+
+/// Small crosshair in the middle of the camera view, where the mark buttons pin things.
+private struct Crosshair: View {
+    var body: some View {
+        ZStack {
+            Circle().stroke(.white, lineWidth: 2).frame(width: 26, height: 26)
+            Circle().fill(.white).frame(width: 4, height: 4)
+        }
+        .shadow(color: .black.opacity(0.4), radius: 2)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -107,28 +139,43 @@ private struct DetectionStatus: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            Text(statusLine)
-                .font(.caption.weight(.semibold))
-                .lineLimit(2)
-                .multilineTextAlignment(.trailing)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(detector.lastError == nil && detector.isEnabled ? Color.green : Color.orange)
+                    .frame(width: 7, height: 7)
+                Text(statusLine)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+            }
             ForEach(detector.sightings) { sighting in
-                Label("\(sighting.kind.title) ×\(sighting.count)", systemImage: sighting.kind.symbolName)
-                    .font(.caption.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(sighting.kind.tint, in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
+                chip(sighting.name, count: sighting.count, symbol: sighting.kind.symbolName, tint: sighting.kind.tint)
+            }
+            ForEach(detector.stairs) { stairs in
+                chip(stairs.name, count: stairs.count, symbol: "figure.stairs", tint: Theme.stairs)
             }
         }
-        .animation(.spring, value: detector.sightings.count)
+        .animation(.spring, value: detector.sightings.count + detector.stairs.count)
         .padding(10)
-        .frame(maxWidth: 220, alignment: .trailing)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(maxWidth: 230, alignment: .trailing)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func chip(_ name: String, count: Int, symbol: String, tint: Color) -> some View {
+        Label(count > 1 ? "\(name) ×\(count)" : name, systemImage: symbol)
+            .font(.caption.bold())
+            .lineLimit(1)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(tint, in: Capsule())
+            .transition(.scale.combined(with: .opacity))
     }
 
     private var statusLine: String {
-        if !detector.isEnabled { return "Vision off: set OPENAI_API_KEY" }
+        if !detector.isEnabled {
+            return AppConfig.visionProvider == .openai ? "Vision off: set OPENAI_API_KEY" : "Vision off: set GEMINI_API_KEY"
+        }
         if let error = detector.lastError { return error }
         return "Section \(section) · \(detector.framesAnalyzed) frames checked"
     }
@@ -145,11 +192,10 @@ struct MapReviewView: View {
             List {
                 if let draft = controller.draft {
                     Section {
-                        MapPreviewView(map: draft) { pendingPoint = $0 }
-                            .frame(height: 320)
-                            .listRowInsets(EdgeInsets())
+                        MapPanel(map: draft, height: 320) { pendingPoint = $0 }
+                            .padding(.vertical, 6)
                     } footer: {
-                        Text("Tap the map to add an elevator or ramp the camera missed. Green doors are wide enough for a wheelchair; orange ones are not.")
+                        Text("Tap the plan to add an elevator or ramp the camera missed.")
                     }
                     Section {
                         if draft.points.isEmpty {
@@ -166,9 +212,23 @@ struct MapReviewView: View {
                     }
                     Section("Accessibility report") {
                         if let report = controller.report {
-                            ReportView(report: report)
+                            HStack(spacing: 14) {
+                                ScoreRing(report: report, size: 56)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(report.verdict).font(.headline)
+                                    Text(report.tally).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            ForEach(report.findings.prefix(3)) { FindingRow(finding: $0) }
+                            NavigationLink("Full report") {
+                                FullReportView(map: draft, report: report)
+                            }
                         } else {
-                            ProgressView()
+                            HStack {
+                                ProgressView()
+                                Text("Checking accessibility…").foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }

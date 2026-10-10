@@ -26,13 +26,16 @@ struct NavigateView: View {
                         }
                         Spacer()
                     }
-                    if let caption = controller.caption {
+                    if controller.phase == .navigating, let route = controller.route {
+                        NextStepBanner(route: route, caption: controller.caption)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    } else if let caption = controller.caption {
                         Text(caption)
                             .font(.headline)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .padding(.vertical, 12)
+                            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .foregroundStyle(.white)
                             .transition(.opacity)
                             .id(caption)
@@ -46,6 +49,7 @@ struct NavigateView: View {
                 }
                 .padding()
                 .animation(.easeInOut(duration: 0.25), value: controller.caption)
+                .animation(.easeInOut(duration: 0.25), value: controller.phase)
             }
         }
         .onAppear { controller.start() }
@@ -73,20 +77,24 @@ struct NavigateView: View {
             }
         case .arrived:
             VStack(spacing: 12) {
-                Label("You've arrived", systemImage: "checkmark.circle.fill")
-                    .font(.title2.bold())
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 52))
                     .foregroundStyle(.green)
+                    .symbolEffect(.bounce, value: controller.phase)
+                Text("You've arrived").font(.title2.bold())
                 if let route = controller.route {
-                    Text(route.destination.name).font(.title3)
+                    Text(route.destination.name).font(.title3).foregroundStyle(.secondary)
                     if route.destination.requiresAssistance {
                         Label("Needs a staff member to operate", systemImage: "person.fill.questionmark")
                             .font(.subheadline)
                             .foregroundStyle(.orange)
                     }
                 }
-                Button("Done", action: controller.endNavigation)
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+                Button(action: controller.endNavigation) {
+                    Text("Done").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
         case .noRoute:
             VStack(spacing: 12) {
@@ -133,23 +141,76 @@ private struct LocatingPanel: View {
     }
 }
 
+/// The next turn in large type, like a turn-by-turn sign, with the last spoken line under it.
+private struct NextStepBanner: View {
+    let route: Route
+    let caption: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 14) {
+                Image(systemName: symbol)
+                    .font(.system(size: 34, weight: .bold))
+                    .frame(width: 48)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(distance).font(.system(.title, design: .rounded).weight(.bold)).monospacedDigit()
+                    Text(instruction).font(.title3.weight(.semibold))
+                }
+                Spacer(minLength: 0)
+            }
+            if let caption {
+                Text(caption).font(.subheadline).opacity(0.85).lineLimit(2)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(16)
+        .background(Theme.accent.gradient, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var symbol: String {
+        switch route.nextManeuver?.turn {
+        case .left: "arrow.turn.up.left"
+        case .right: "arrow.turn.up.right"
+        case .slightLeft: "arrow.up.left"
+        case .slightRight: "arrow.up.right"
+        case nil: "arrow.up"
+        }
+    }
+
+    private var distance: String {
+        let meters = route.nextManeuver?.distance ?? route.length
+        return "\(max(1, Int(meters.rounded()))) m"
+    }
+
+    private var instruction: String {
+        guard let turn = route.nextManeuver?.turn else { return "to \(route.destination.name)" }
+        return turn.phrase.prefix(1).uppercased() + turn.phrase.dropFirst()
+    }
+}
+
 private struct RouteCard: View {
     let route: Route
     let onEnd: () -> Void
+    /// A relaxed wheelchair pace, for the arrival estimate.
+    private static let speed: Float = 0.8
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
                 Image(systemName: route.destination.kind.symbolName)
-                    .font(.system(size: 40))
-                    .foregroundStyle(route.destination.kind.tint)
-                VStack(alignment: .leading) {
-                    Text(route.destination.name).font(.title2.bold())
-                    Text(details).font(.title3).foregroundStyle(.secondary)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 48, height: 48)
+                    .background(route.destination.kind.tint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(route.destination.name).font(.title3.bold())
+                    Text(details).font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("End", action: onEnd)
                     .buttonStyle(.bordered)
+                    .tint(.red)
                     .controlSize(.large)
             }
             if route.destination.isTooSteep {
@@ -167,7 +228,8 @@ private struct RouteCard: View {
     }
 
     private var details: String {
-        var parts = ["\(Int(route.length.rounded())) m", "step-free"]
+        let minutes = max(1, Int((route.length / Self.speed / 60).rounded(.up)))
+        var parts = ["\(minutes) min", "\(Int(route.length.rounded())) m", "step-free"]
         if let slope = route.destination.slopeDegrees {
             parts.append(String(format: "%.1f° slope", slope))
         }

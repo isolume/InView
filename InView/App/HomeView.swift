@@ -16,35 +16,58 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    ModeCard(
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Step-free routes inside buildings, mapped by volunteers.")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+
+                    ActionCard(
                         title: "Navigate",
-                        subtitle: "Find the nearest elevator or ramp",
+                        subtitle: savedMap == nil ? "Map this floor first" : "Nearest elevator or ramp, step-free",
                         systemImage: "figure.roll",
-                        tint: .blue
+                        style: .primary
                     ) { mode = .navigate }
                     .disabled(savedMap == nil)
 
-                    ModeCard(
+                    ActionCard(
                         title: "Map a space",
-                        subtitle: "Volunteers: scan a floor and tag elevators and ramps",
+                        subtitle: "Scan a floor; InView finds elevators, ramps and stairs",
                         systemImage: "viewfinder",
-                        tint: .indigo
+                        style: .secondary
                     ) { mode = .scan }
 
                     if let savedMap {
-                        SavedMapCard(map: savedMap, report: report)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("This floor").sectionHeading()
+                                Spacer()
+                                ShareLink(item: MapStore.mapURL) {
+                                    Label("Export", systemImage: "square.and.arrow.up").font(.footnote.weight(.semibold))
+                                }
+                            }
+                            VStack(alignment: .leading, spacing: 12) {
+                                MapPanel(map: savedMap, height: 260)
+                                Text(summary(of: savedMap)).font(.footnote).foregroundStyle(.secondary)
+                            }
+                            .card()
+                        }
+                        if let report {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Accessibility").sectionHeading()
+                                ReportSummaryCard(map: savedMap, report: report)
+                            }
+                        }
                     } else {
-                        Text("No map saved yet. A volunteer scans the floor first, then anyone can navigate it.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 8)
+                        EmptyFloorCard()
                     }
                 }
                 .padding()
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("InView")
         }
+        .tint(Theme.accent)
         .fullScreenCover(item: $mode, onDismiss: reload) { mode in
             switch mode {
             case .scan: ScanView()
@@ -57,13 +80,26 @@ struct HomeView: View {
         savedMap = MapStore.load()
         report = MapStore.loadReport()
     }
+
+    private func summary(of map: VenueMap) -> String {
+        let elevators = map.points.filter { $0.kind == .elevator }.count
+        let ramps = map.points.filter { $0.kind == .ramp }.count
+        let stairs = map.footprints.filter { $0.kind == .stairs }.count
+        let counts = ["\(elevators) elevator\(elevators == 1 ? "" : "s")", "\(ramps) ramp\(ramps == 1 ? "" : "s")", "\(stairs) stairs"]
+        return counts.joined(separator: " · ") + " · scanned " + map.createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
 }
 
-private struct ModeCard: View {
+private struct ActionCard: View {
+    enum Style {
+        case primary
+        case secondary
+    }
+
     let title: String
     let subtitle: String
     let systemImage: String
-    let tint: Color
+    let style: Style
     let action: () -> Void
     @Environment(\.isEnabled) private var isEnabled
 
@@ -71,61 +107,64 @@ private struct ModeCard: View {
         Button(action: action) {
             HStack(spacing: 16) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 34, weight: .semibold))
-                    .frame(width: 56)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.title2.bold())
-                    Text(subtitle).font(.subheadline).opacity(0.85)
+                    .font(.system(size: 26, weight: .semibold))
+                    .frame(width: 54, height: 54)
+                    .background(iconBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.title3.bold())
+                    Text(subtitle).font(.subheadline).opacity(0.8)
                 }
-                Spacer()
-                Image(systemName: "chevron.right").font(.headline)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.headline).opacity(0.6)
             }
-            .foregroundStyle(.white)
-            .padding(20)
-            .frame(maxWidth: .infinity, minHeight: 110)
-            .background(tint.gradient, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .opacity(isEnabled ? 1 : 0.4)
+            .foregroundStyle(style == .primary ? Color.white : Color.primary)
+            .padding(18)
+            .frame(maxWidth: .infinity, minHeight: 96)
+            .background(background, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+            .opacity(isEnabled ? 1 : 0.45)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
+    }
+
+    private var background: AnyShapeStyle {
+        style == .primary ? AnyShapeStyle(Theme.accent.gradient) : AnyShapeStyle(Color(.secondarySystemGroupedBackground))
+    }
+
+    private var iconBackground: AnyShapeStyle {
+        style == .primary ? AnyShapeStyle(.white.opacity(0.2)) : AnyShapeStyle(Theme.accent.opacity(0.12))
     }
 }
 
-private struct SavedMapCard: View {
-    let map: VenueMap
-    let report: AccessibilityReport?
+/// Shrinks a little while pressed.
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(duration: 0.25), value: configuration.isPressed)
+    }
+}
 
+private struct EmptyFloorCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Saved map").font(.headline)
-                Spacer()
-                ShareLink(item: MapStore.mapURL) {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .accessibilityLabel("Export map")
-            }
-            MapPreviewView(map: map).frame(height: 240)
-            Text(summary).font(.footnote).foregroundStyle(.secondary)
-            if let report {
-                Divider()
-                ReportView(report: report, limit: 3)
-                if report.findings.count > 3 {
-                    NavigationLink("Full report") {
-                        ScrollView { ReportView(report: report).padding() }
-                            .navigationTitle("Accessibility report")
-                    }
-                    .font(.subheadline.weight(.semibold))
-                }
+            Label("No floor mapped yet", systemImage: "map").font(.headline)
+            VStack(alignment: .leading, spacing: 8) {
+                step(1, "Start at the entrance and tap Map a space.")
+                step(2, "Walk the floor. InView pins elevators, ramps and stairs as it sees them.")
+                step(3, "Review, save, and anyone can navigate it.")
             }
         }
-        .padding()
-        .background(Color(.secondarySystemBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .card()
     }
 
-    private var summary: String {
-        let counts = AccessPoint.Kind.allCases.map { kind in
-            "\(map.points.filter { $0.kind == kind }.count) \(kind.title.lowercased())"
+    private func step(_ number: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(number)")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Theme.accent, in: Circle())
+            Text(text).font(.subheadline).foregroundStyle(.secondary)
         }
-        return counts.joined(separator: " · ") + " · scanned " + map.createdAt.formatted(date: .abbreviated, time: .shortened)
     }
 }
