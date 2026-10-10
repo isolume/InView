@@ -39,3 +39,21 @@ import Testing
     let fallback = try #require(planner.nearestRoute(from: [-2, 0], conditions: RouteConditions(unavailable: [gentle.id])))
     #expect(fallback.destination.id == steep.id)
 }
+
+@Test func snapsElevatorPinsToTheFrontOfTheNearestDoor() {
+    // A door in a wall along x at z = 0; its normal points along z.
+    let door = Footprint(kind: .door, center: [2, 0], size: [1.0, 0.15], yaw: 0)
+    let inFront = DoorSnap.snap(point(.elevator, 2.3, 0.9), to: [door], floorY: -1.3)
+    #expect(simd_distance(inFront.floorPoint, [2, 0.6]) < 1e-4)
+    #expect(inFront.position.y == -1.3)
+    let behind = DoorSnap.snap(point(.elevator, 1.8, -0.4), to: [door], floorY: 0)
+    #expect(simd_distance(behind.floorPoint, [2, -0.6]) < 1e-4)
+}
+
+@Test func leavesPinsAloneWhenNoDoorIsClose() {
+    let door = Footprint(kind: .door, center: [5, 5], size: [1.0, 0.15], yaw: 0)
+    let elevator = point(.elevator, 0, 0)
+    #expect(DoorSnap.snap(elevator, to: [door], floorY: 0).floorPoint == elevator.floorPoint)
+    let ramp = point(.ramp, 5, 5.5)
+    #expect(DoorSnap.snap(ramp, to: [door], floorY: 0).floorPoint == ramp.floorPoint)
+}

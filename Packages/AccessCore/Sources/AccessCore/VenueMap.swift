@@ -31,6 +31,8 @@ public struct Footprint: Codable, Hashable, Sendable {
     }
 
     public var kind: Kind
+    /// Set for features the camera spotted, linking them to the photo they were spotted in.
+    public var id: UUID?
     /// Center on the floor, as (x, z).
     public var center: SIMD2<Float>
     /// Extent along the footprint's own x axis, then across it.
@@ -50,9 +52,11 @@ public struct Footprint: Codable, Hashable, Sendable {
         yaw: Float,
         furniture: Furniture? = nil,
         bottom: Float? = nil,
-        height: Float? = nil
+        height: Float? = nil,
+        id: UUID? = nil
     ) {
         self.kind = kind
+        self.id = id
         self.center = center
         self.size = size
         self.yaw = yaw
