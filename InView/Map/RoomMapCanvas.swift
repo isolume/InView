@@ -1481,7 +1481,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         signedPlaces.childNodes.forEach { $0.removeFromParentNode() }
         for place in places {
             let color = UIColor(place.tint).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
-            if let room = place.room, room.count >= 3 {
+            if let (room, isMeasured) = place.area {
                 let path = UIBezierPath()
                 for (index, corner) in room.enumerated() {
                     // Drawn in local XY and laid flat: local y becomes map -z.
@@ -1492,7 +1492,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 let shape = SCNShape(path: path, extrusionDepth: 0.004)
                 let material = SCNMaterial()
                 material.lightingModel = .constant
-                material.diffuse.contents = color.withAlphaComponent(0.24)
+                material.diffuse.contents = color.withAlphaComponent(isMeasured ? 0.24 : 0.2)
                 material.isDoubleSided = true
                 material.writesToDepthBuffer = false
                 shape.materials = [material]
@@ -1505,7 +1505,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 let edge = SCNMaterial()
                 edge.lightingModel = .constant
                 edge.diffuse.contents = color.withAlphaComponent(0.85)
-                for (a, b) in zip(room, room.dropFirst() + [room[0]]) where simd_distance(a, b) > 0.05 {
+                for (a, b) in zip(room, room.dropFirst() + [room[0]]) where isMeasured && simd_distance(a, b) > 0.05 {
                     let side = SCNNode(geometry: SCNBox(width: CGFloat(simd_distance(a, b)), height: 0.02, length: 0.07, chamferRadius: 0))
                     side.geometry?.materials = [edge]
                     let middle = (a + b) / 2

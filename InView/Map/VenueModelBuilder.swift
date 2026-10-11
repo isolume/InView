@@ -42,6 +42,7 @@ enum VenueModelBuilder {
             root.addChild(entity)
         }
         for point in map.points {
+            if point.sign != nil { root.addChild(signedPlace(MapPlace(point), floorY: map.floorY)) }
             root.addChild(marker(for: point, floorY: map.floorY))
         }
         return root
@@ -207,6 +208,46 @@ enum VenueModelBuilder {
                 entity.addChild(box(leg, height, leg, material, at: position))
             }
         }
+    }
+
+    /// The doorway a sign labeled, as a tinted pane in the wall gap, and the room behind it washed in the
+    /// same color, so "Room 204" is that door and that room rather than a pin in the corridor.
+    private static func signedPlace(_ place: MapPlace, floorY: Float) -> Entity {
+        let entity = Entity()
+        let color = UIColor(place.tint).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        func tinted(_ opacity: Float) -> UnlitMaterial {
+            var material = UnlitMaterial(color: color)
+            material.blending = .transparent(opacity: .init(floatLiteral: opacity))
+            return material
+        }
+        if let (outline, isMeasured) = place.area {
+            let triangles = Polygon.triangulate(outline)
+            var indices: [UInt32] = []
+            for i in stride(from: 0, to: triangles.count, by: 3) {
+                let a = UInt32(triangles[i]), b = UInt32(triangles[i + 1]), c = UInt32(triangles[i + 2])
+                indices += [a, b, c, a, c, b]
+            }
+            var descriptor = MeshDescriptor(name: "signed-room")
+            descriptor.positions = MeshBuffers.Positions(outline.map { SIMD3($0.x, floorY + 0.012, $0.y) })
+            descriptor.primitives = .triangles(indices)
+            if !indices.isEmpty, let mesh = try? MeshResource.generate(from: [descriptor]) {
+                entity.addChild(ModelEntity(mesh: mesh, materials: [tinted(isMeasured ? 0.35 : 0.25)]))
+            }
+        }
+        if let door = place.door {
+            let width = max(0.5, door.width)
+            let doorway = Entity()
+            doorway.position = SIMD3(door.center.x, floorY, door.center.y)
+            doorway.orientation = simd_quatf(angle: -door.yaw, axis: [0, 1, 0])
+            let pane = box(width, cutawayWallHeight + 0.04, 0.05, .init())
+            pane.model?.materials = [tinted(0.55)]
+            doorway.addChild(pane)
+            let threshold = box(width + 0.1, 0.03, 0.3, .init())
+            threshold.model?.materials = [UnlitMaterial(color: color)]
+            doorway.addChild(threshold)
+            entity.addChild(doorway)
+        }
+        return entity
     }
 
     private static func marker(for point: AccessPoint, floorY: Float) -> Entity {

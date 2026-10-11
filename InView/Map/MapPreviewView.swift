@@ -120,6 +120,22 @@ struct MapPreviewView: View {
             context.stroke(outline, with: .color(PlanInk.floorEdge), lineWidth: 1)
         }
 
+        // Rooms named by a sign, tinted under everything else on the floor.
+        for place in displayedPlaces {
+            guard let area = place.area else { continue }
+            let outline = projection.path(area.outline)
+            if area.isMeasured {
+                context.fill(outline, with: .color(place.tint.opacity(0.16)))
+                context.stroke(outline, with: .color(place.tint.opacity(0.8)), lineWidth: 1.5)
+            } else if let door = place.door {
+                // A fan fading away from the doorway: the room is there, just not measured.
+                let start = projection.screenPoint(door.center)
+                let end = projection.screenPoint(area.outline[2] / 2 + area.outline[3] / 2)
+                context.fill(outline, with: .linearGradient(Gradient(colors: [place.tint.opacity(0.3), place.tint.opacity(0)]),
+                                                            startPoint: start, endPoint: end))
+            }
+        }
+
         // Furniture and stairs on the floor, walls over them, openings and windows over the walls, points on top.
         for footprint in map.footprints {
             let symbol = FloorPlanSymbol(footprint: footprint, projection: projection)
@@ -137,6 +153,14 @@ struct MapPreviewView: View {
         }
         for footprint in map.footprints where footprint.kind == .door || footprint.kind == .opening {
             FloorPlanSymbol(footprint: footprint, projection: projection).drawDoor(in: &context)
+        }
+
+        // The doorway each sign labeled, as a bright threshold across the wall gap.
+        for place in displayedPlaces {
+            guard let (a, b) = place.doorEnds else { continue }
+            let threshold = Path { $0.addLines([projection.screenPoint(a), projection.screenPoint(b)]) }
+            context.stroke(threshold, with: .color(.white), style: StrokeStyle(lineWidth: 9, lineCap: .round))
+            context.stroke(threshold, with: .color(place.tint), style: StrokeStyle(lineWidth: 5.5, lineCap: .round))
         }
 
         if showsScanStart {
