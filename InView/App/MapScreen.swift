@@ -91,8 +91,11 @@ struct MapScreen: View {
     private var title: String { isDemo ? "Navigation demo" : localFloor == nil ? StudentCenterCatalog.buildingName : MapStore.currentBuilding?.name ?? "Saved building" }
     /// A route from a chosen start is a preview; from "My location" it's the live session's route.
     private var activeRoute: Route? { previewStart != nil ? previewRoute : controller.route }
-    /// Places directions can start or end at: the measured points of the open floor, including live pins.
-    private var routablePlaces: [AccessPoint] { hasMap ? (controller.map?.points ?? []) + livePins : [] }
+    /// Model places may be endpoints where the open map has matching measured coverage.
+    private var routablePlaces: [AccessPoint] {
+        guard hasMap else { return [] }
+        return (controller.map?.points ?? []) + livePins + (modelHasMatchingMap ? registeredModelPoints : [])
+    }
     private var canUseMyLocation: Bool { isDemo || controller.canGuide }
     private var routePreference: RoutePreference {
         isDemo ? demoRoutePreference : RoutePreference(rawValue: savedRoutePreference) ?? .stepFree
@@ -107,15 +110,25 @@ struct MapScreen: View {
             && registrationMap.flatMap { StudentCenterModelAlignment.transform(for: $0, floor: selectedLevel) } != nil
     }
     private var showsModel: Bool { modelAvailable && mapStyle == .model }
+    private var modelHasMatchingMap: Bool {
+        selectedLevel == 2 && hasMap && modelAvailable
+            && controller.map.flatMap(StudentCenterLocalization.mapFromWorld) != nil
+    }
+    private var selectedDestinationIsModelPlace: Bool {
+        guard let destination = controller.selectedDestination else { return false }
+        return StudentCenterCatalog.modelLandmarks(for: selectedLevel).contains { $0.id == destination.id }
+    }
     private var registrationMap: VenueMap? {
-        let candidate = selectedLevel == 2 && hasMap ? controller.map : library.release(for: 2)?.map
-        if let candidate, StudentCenterModelAlignment.transform(for: candidate) != nil { return candidate }
-        return StudentCenterCatalog.map()
+        // The exported asset has a fixed registration. Edited place pins must not move the model.
+        StudentCenterCatalog.map()
     }
     private var modelTransform: simd_float4x4? {
         guard modelAvailable, let map = registrationMap,
               let base = StudentCenterModelAlignment.transform(for: map, floor: selectedLevel),
               let landmark = map.points.first(where: { $0.id == StudentCenterModelAlignment.firstElevatorID }) else { return nil }
+        // Floor 2 is reconstructed in the scan frame. Keep its geometry, pins,
+        // start taps and routes aligned even if an older model had saved offsets.
+        if selectedLevel == 2 { return base }
         let pivot = landmark.position
         let angle = Float(bounded(modelRotation, in: -90...90)) * .pi / 180
         let scale = Float(bounded(modelScale, in: 0.5...1.5))
@@ -136,9 +149,12 @@ struct MapScreen: View {
         return (transform * SIMD4(0, StudentCenterCatalog.modelFloorY(for: selectedLevel) ?? 0, 0, 1)).y
     }
 
-    /// These places are for browsing only and are never inserted into the measured route map.
-    private var modelPoints: [AccessPoint] {
-        guard showsModel, let transform = modelTransform else { return [] }
+    /// Floor 2 landmarks can be route destinations; they never add walkable coverage.
+    /// Floor 3 landmarks remain display-only until that floor has its own route map.
+    private var modelPoints: [AccessPoint] { showsModel ? registeredModelPoints : [] }
+
+    private var registeredModelPoints: [AccessPoint] {
+        guard modelAvailable, let transform = modelTransform else { return [] }
         return StudentCenterCatalog.modelLandmarks(for: selectedLevel).compactMap { landmark in
             if hasMap, landmark.title == "Lifts", controller.map?.points.contains(where: { $0.kind == .elevator }) == true { return nil }
             let ground = SIMD4(landmark.position.x, StudentCenterCatalog.modelFloorY(for: selectedLevel) ?? 0, landmark.position.z, 1)
@@ -234,10 +250,11 @@ struct MapScreen: View {
         .task {
             controller.start()
             if !isDemo {
-                if let release = library.release(for: 2) { openRelease(release) }
+                if let release = acceptedRelease(for: 2) { openRelease(release) }
                 await library.refresh()
                 if selectedLevel == 2, panel == .explore, query.isEmpty,
-                   let release = library.release(for: 2), release.version != displayedPublishedVersion {
+                   let release = acceptedRelease(for: 2), release.version != displayedPublishedVersion,
+                   controller.phase == .browsing || controller.phase == .loading {
                     openRelease(release)
                 }
             }
@@ -339,6 +356,7 @@ struct MapScreen: View {
                 Label(showsAR ? "Map" : "View in AR", systemImage: showsAR ? "map.fill" : "viewfinder")
                     .font(.subheadline.weight(.semibold)).padding(.horizontal, 15).frame(height: 46)
             }
+            .disabled(controller.phase == .loading)
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
             .background(.regularMaterial, in: Capsule())
@@ -375,7 +393,7 @@ struct MapScreen: View {
                             if hasScanDetail, !showsModel {
                                 Toggle("Scan detail", isOn: $showsScanDetail)
                             }
-                            if showsModel {
+                            if showsModel, selectedLevel != 2 {
                                 Button("Adjust placement", systemImage: "slider.horizontal.3") {
                                     closeDestination(); mapStyle = .model
                                     panel = .placement; detent = .height(440)
@@ -508,7 +526,7 @@ struct MapScreen: View {
                 if localFloor != nil, let building = MapStore.currentBuilding {
                     SavedMapsView(building: building.id, openFloorID: localFloor?.id, onOpenBuiltIn: nil, onOpen: selectSavedFloor)
                 } else {
-                    BuildingDetailsSheet(library: library, onShowFloor: switchFloor)
+                    BuildingDetailsSheet(library: library, releaseForFloor: acceptedRelease, onShowFloor: switchFloor)
                 }
             case .savedMaps:
                 SavedMapsView(openFloorID: localFloor?.id,
@@ -653,7 +671,7 @@ struct MapScreen: View {
                     Text(message).font(.footnote).foregroundStyle(.secondary)
                 }
                 if !showsModel {
-                    Text(library.isReviewed(floor: selectedLevel) && localFloor == nil
+                    Text(displayedPublishedVersion != nil && localFloor == nil
                          ? "Published map · Only the mapped area is shown."
                          : "Partial coverage · Scan locations haven’t been reviewed yet.")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -899,6 +917,8 @@ struct MapScreen: View {
         let route = previewStart != nil ? previewRoute : controller.phase == .ready ? controller.route : nil
         if controller.selectedDestination == nil {
             Text("Choose where you’re going, or tap a place on the map.").font(.subheadline).foregroundStyle(.secondary)
+        } else if controller.phase == .loading, routeStart == nil {
+            ProgressView("Preparing saved location data…")
         } else if routeStart == nil {
             Text("Choose a starting point: a place on this floor, or a point on the map.").font(.subheadline).foregroundStyle(.secondary)
         } else if let message = routeMessage ?? (controller.phase == .noRoute ? controller.caption : nil) {
@@ -922,7 +942,7 @@ struct MapScreen: View {
                 }
                 .accessibilityElement(children: .combine)
             }
-            if !isDemo, !library.isReviewed(floor: selectedLevel) {
+            if !isDemo, displayedPublishedVersion == nil {
                 Text("This scan hasn’t been verified for accessibility. Check that the way is clear.").font(.footnote).foregroundStyle(.secondary)
             }
             RouteStepsList(route: route)
@@ -939,6 +959,7 @@ struct MapScreen: View {
                 .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 7)
         }
         .buttonStyle(.borderedProminent).controlSize(.large)
+        .disabled(controller.phase == .loading)
     }
 
     /// A place's details before directions are asked for.
@@ -946,7 +967,9 @@ struct MapScreen: View {
         if let message = routeMessage ?? (controller.phase == .noRoute ? controller.caption : nil) {
             Label(message, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(.secondary)
         }
-        Text(controller.selectedDestination?.requiresAssistance == true ? "May need staff assistance" : "Location from the floor scan")
+        Text(controller.selectedDestination?.requiresAssistance == true ? "May need staff assistance"
+             : selectedDestinationIsModelPlace ? "Location on the 3D model. Directions cover only part of this floor."
+             : "Location from the floor scan")
             .font(.subheadline).foregroundStyle(.secondary)
         if controller.isLocated, let route = controller.route {
             Label("\(Int(route.length.rounded())) m from you", systemImage: "location.fill")
@@ -958,7 +981,9 @@ struct MapScreen: View {
         }
         .buttonStyle(.borderedProminent).controlSize(.large)
         if !canUseMyLocation {
-            Text("Live location isn’t available for this map yet. Choose a starting point instead.").font(.footnote).foregroundStyle(.secondary)
+            Text(controller.phase == .loading ? "Preparing saved location data…"
+                 : "Live location isn’t available for this map yet. Choose a starting point instead.")
+                .font(.footnote).foregroundStyle(.secondary)
         }
     }
 
@@ -967,7 +992,10 @@ struct MapScreen: View {
             ContentUnavailableView {
                 Label("Live location isn’t ready here", systemImage: "location.slash")
             } description: {
-                Text(hasMap ? "InView finds you on maps scanned with this device. Open one from Saved maps, or tap Contribute to scan this room. You can still explore and preview routes here." : hasVisualFloor ? "Live location hasn’t been added for this floor. You can still explore the 3D map." : "A floor map and a scan of the space are needed before InView can find you.")
+                Text(controller.phase == .loading ? "Preparing saved location data. Try again in a moment."
+                     : hasMap ? controller.unavailableReason ?? "Live location hasn’t been added for this map. You can still preview a route."
+                     : hasVisualFloor ? "Live location hasn’t been added for this floor. You can still explore the 3D map."
+                     : "A floor map and a scan of the space are needed before InView can find you.")
             } actions: {
                 Button("Return to map") { modal = nil }.buttonStyle(.borderedProminent)
             }
@@ -979,13 +1007,19 @@ struct MapScreen: View {
         guard hasMap else { return "No map yet" }
         if isDemo { return "Example map" }
         if localFloor != nil { return "Saved scan" }
-        return library.isReviewed(floor: selectedLevel) ? "Published map" : "Scanned area"
+        return displayedPublishedVersion != nil ? "Published map" : "Scanned area"
     }
 
     private func mapAvailable(on level: Int) -> Bool {
         if localFloor != nil { return MapStore.savedBuildings().first { $0.id == localFloor?.identity.buildingID }?.floors.contains { $0.identity.level == level } == true }
         return library.release(for: level) != nil || StudentCenterCatalog.coverage(for: level) == .scannedArea
             || StudentCenterCatalog.hasEstimatedModel(on: level)
+    }
+
+    private func acceptedRelease(for level: Int) -> BuildingMapLibrary.Release? {
+        guard let release = library.release(for: level),
+              level != 2 || StudentCenterLocalization.mapFromWorld(for: release.map) != nil else { return nil }
+        return release
     }
 
     private func switchFloor(_ level: Int) {
@@ -999,13 +1033,13 @@ struct MapScreen: View {
             if let floor = MapStore.savedBuildings().first(where: { $0.id == localFloor.identity.buildingID })?.floors.first(where: { $0.identity.level == level }) {
                 selectSavedFloor(floor)
             }
-        } else if let release = library.release(for: level) {
+        } else if let release = acceptedRelease(for: level) {
             openRelease(release)
         } else if level == 2 {
             sourceLevel = 2
             displayedPublishedVersion = nil
             let map = StudentCenterCatalog.map()
-            controller.showSharedMap(map)
+            controller.reload(map: map, usesBundledMap: true)
             sceneGeneration += 1
             scene = StudentCenterCatalog.scene()
             isPreparedScene = scene != nil
@@ -1027,13 +1061,14 @@ struct MapScreen: View {
             ?? livePins.first(where: { $0.id == place.id }) : nil
         let modeled = modelPoints.first(where: { $0.id == place.id })
         guard measured != nil || modeled != nil else { return }
-        if panel == .directions, let measured {
-            setRouteDestination(measured)
+        let destination = measured ?? (modelHasMatchingMap ? modeled : nil)
+        if panel == .directions, let destination {
+            setRouteDestination(destination)
             return
         }
         closeDestination()
-        selectedModelPlace = measured == nil ? modeled : nil
-        if let measured { controller.selectDestination(measured) }
+        selectedModelPlace = destination == nil ? modeled : nil
+        if let destination { controller.selectDestination(destination) }
         query = ""; searchFocused = false
         panel = .place; detent = .height(440)
     }
@@ -1048,10 +1083,11 @@ struct MapScreen: View {
         }
         let floors = StudentCenterCatalog.floorLevels.map { level in
             // The same map switchFloor opens for this level.
-            let map = library.release(for: level)?.map ?? (level == StudentCenterCatalog.floorLevel ? StudentCenterCatalog.map() : nil)
+            let release = acceptedRelease(for: level)
+            let map = release?.map ?? (level == StudentCenterCatalog.floorLevel ? StudentCenterCatalog.map() : nil)
             let hasModel = StudentCenterCatalog.hasEstimatedModel(on: level)
             let parts = [hasModel ? "3D model" : nil,
-                         map == nil ? nil : library.isReviewed(floor: level) ? "published floor map" : "partial floor scan"]
+                         map == nil ? nil : release != nil ? "published floor map" : "partial floor scan"]
                 .compactMap { $0 }
             return GeminiAssistantClient.Context.Floor(level: level,
                 summary: parts.isEmpty ? "no map yet" : parts.joined(separator: " and "),
@@ -1086,12 +1122,16 @@ struct MapScreen: View {
     private func revealPlace(_ id: UUID) {
         guard let point = displayPoints.first(where: { $0.id == id }) else { return }
         selectPlace(MapPlace(point))
-        // "Where's the nearest elevator?" draws the way on this map from where the camera finds the person.
-        if assistant.wantsDirections, assistant.place?.id == id, controller.canGuide,
+        // A shared map can preview directions from a chosen start without live positioning.
+        if assistant.wantsDirections, assistant.place?.id == id,
            let destination = controller.selectedDestination, destination.id == id {
-            routeStart = .myLocation
-            controller.navigate(to: destination, nearestOfKind: assistant.wantsNearest)
-            panel = .directions; detent = .height(440)
+            if controller.canGuide {
+                routeStart = .myLocation
+                controller.navigate(to: destination, nearestOfKind: assistant.wantsNearest)
+                panel = .directions; detent = .height(440)
+            } else {
+                openDirections()
+            }
         }
     }
 
@@ -1166,9 +1206,9 @@ struct MapScreen: View {
 
     private func beginChoosingStart() {
         guard hasMap, selectedModelPlace == nil else { return }
-        // Start selection and route previews use the measured geometry, including its gaps.
-        mapStyle = .scan
-        if controller.isLocated { controller.endNavigation() } else { controller.endGuidance() }
+        // The planner uses the floor's routing coverage in either visual layer.
+        if controller.isLocated { controller.endNavigation() }
+        else if controller.phase != .loading { controller.endGuidance() }
         showsAR = false
         previewRoute = nil; previewStart = nil; routeMessage = nil; routeCheck = nil
         isFindingRoute = false
@@ -1187,9 +1227,10 @@ struct MapScreen: View {
         routeCheck = nil
         let scanID = liveScanID
         let placeID = live.result(for: destination).flatMap { $0.kind == "place" ? $0.sourceID : nil }
+        let isModelDestination = selectedDestinationIsModelPlace
         Task {
             let route = await Task.detached(priority: .userInitiated) {
-                RoutePlanner(map: map).route(from: start, to: destination, conditions: preference.navigationConditions())
+                RoutePlanner(map: map).route(from: start, to: destination, conditions: preference.navigationConditions(map: map))
             }.value
             guard generation == routeGeneration else { return }
             isFindingRoute = false
@@ -1203,11 +1244,12 @@ struct MapScreen: View {
                     routeCheck = check
                 }
             }
-            routeMessage = route == nil
-                ? preference == .stepFree
+            if route == nil {
+                let message = preference == .stepFree
                     ? "No step-free route was found within the mapped area. Your route preference hasn’t been relaxed."
                     : "No route was found within this floor’s mapped area."
-                : nil
+                routeMessage = message + (isModelDestination ? " Directions cover only part of the 3D model." : "")
+            }
         }
     }
 
@@ -1247,6 +1289,7 @@ struct MapScreen: View {
     private func openSavedFloor(_ floor: SavedFloor) {
         closeDestination()
         localFloor = floor; selectedLevel = floor.identity.level; sourceLevel = floor.identity.level
+        displayedPublishedVersion = nil
         let map = MapStore.load()
         controller.reload(map: map)
         sceneGeneration += 1
@@ -1305,6 +1348,7 @@ struct MapScreen: View {
 /// The app's own building: only what's been measured, from published maps and the bundled scan.
 private struct BuildingDetailsSheet: View {
     @ObservedObject var library: BuildingMapLibrary
+    let releaseForFloor: (Int) -> BuildingMapLibrary.Release?
     let onShowFloor: (Int) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -1339,11 +1383,11 @@ private struct BuildingDetailsSheet: View {
 
     /// A published map, or the scan the app ships with for its floor.
     private func measuredMap(on level: Int) -> VenueMap? {
-        library.release(for: level)?.map ?? (level == StudentCenterCatalog.floorLevel ? StudentCenterCatalog.map() : nil)
+        releaseForFloor(level)?.map ?? (level == StudentCenterCatalog.floorLevel ? StudentCenterCatalog.map() : nil)
     }
 
     private func status(on level: Int) -> String {
-        guard let release = library.release(for: level) else { return "Scanned area" }
+        guard let release = releaseForFloor(level) else { return "Scanned area" }
         let date = Date(timeIntervalSince1970: release.publishedAt)
         return "Published map · \(date.formatted(date: .abbreviated, time: .omitted))"
     }

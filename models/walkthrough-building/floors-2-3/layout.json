@@ -774,10 +774,10 @@
   "floor_2_source": {
     "scan_id": "CA3352E3-7C9E-465C-A643-CADF1385B3C9",
     "source": "synchronized video, LiDAR and RoomPlan",
-    "reconstruction_sha256": "d37c3c8bf78d3c2c1ed23a377f0f39372f5249d7144763200f48e36013d2cd33",
+    "reconstruction_sha256": "aac5a05b6ef07e2da3459c72377bf8d87e4d0a011e626b6f0ef43399a9780925",
     "registration": "rigid lounge registration; 4.97 cm fitted endpoint RMS",
     "asset_frame": "inverse existing elevator display registration; floor 3 unchanged",
-    "floor_area_m2": 570.4336020955001,
+    "floor_area_m2": 570.466483508016,
     "routing_coverage": false,
     "geometry_manifest": "../floor-2-reconstruction/manifest.json"
   }

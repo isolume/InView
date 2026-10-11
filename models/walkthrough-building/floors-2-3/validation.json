@@ -2,7 +2,7 @@
   "native_packages": [
     {
       "file": "building.usdz",
-      "bytes": 3414028,
+      "bytes": 3413762,
       "mesh_count": 924,
       "up_axis": "Y",
       "meters_per_unit": 1,
@@ -12,7 +12,7 @@
     },
     {
       "file": "floor-2.usdz",
-      "bytes": 2721787,
+      "bytes": 2721892,
       "mesh_count": 523,
       "up_axis": "Y",
       "meters_per_unit": 1,
