@@ -110,6 +110,12 @@ struct CommunityClient {
         return try await request(registering ? "api/accounts/register" : "api/accounts/login", method: "POST", body: JSONSerialization.data(withJSONObject: body))
     }
 
+    /// Trades the ID token Auth0 issued after Universal Login for this server's own session.
+    func authenticateWithAuth0(idToken: String) async throws -> CommunityAuthentication {
+        try await request("api/accounts/auth0", method: "POST",
+                          body: JSONSerialization.data(withJSONObject: ["id_token": idToken]))
+    }
+
     func account(token: String) async throws -> CommunityAccount {
         try await request("api/accounts/me", token: token)
     }
@@ -165,6 +171,16 @@ struct CommunityClient {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw CommunityError.invalidResponse }
+        if path == "api/accounts/auth0" {
+            switch response.statusCode {
+            case 200..<300: return data
+            case 401: throw CommunityError.server("We couldn’t verify that sign-in. Please try again.")
+            case 404: throw CommunityError.server("Sign-in with Apple or email isn’t available on this server yet.")
+            case 409: throw CommunityError.server("This email already belongs to a different sign-in method.")
+            case 429: throw CommunityError.server("Too many attempts. Wait a moment and try again.")
+            default: throw CommunityError.server("Sign-in is unavailable right now. Please try again later.")
+            }
+        }
         switch response.statusCode {
         case 200..<300: return data
         case 401: throw token == nil ? CommunityError.server("The email or password is incorrect.") : CommunityError.sessionExpired

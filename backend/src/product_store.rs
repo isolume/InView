@@ -21,6 +21,8 @@ use uuid::Uuid;
 
 pub const VENUE_ID: &str = "student-center-east";
 const SESSION_SECONDS: u64 = 14 * 24 * 60 * 60;
+/// Administrators sign in again daily; their rights come from Auth0 at each sign-in.
+const ADMIN_SESSION_SECONDS: u64 = 8 * 60 * 60;
 const MAX_DATABASE_BYTES: usize = 128 * 1024 * 1024;
 static DUMMY_HASH: OnceLock<String> = OnceLock::new();
 
@@ -40,7 +42,12 @@ pub struct Account {
 #[derive(Clone, Deserialize, Serialize)]
 struct StoredAccount {
     account: Account,
-    password_hash: String,
+    /// Absent for passwordless accounts that only sign in through Auth0.
+    #[serde(default)]
+    password_hash: Option<String>,
+    /// The Auth0 subject (`apple|...`, `email|...`) linked to this account.
+    #[serde(default)]
+    auth0_sub: Option<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Session {
@@ -321,7 +328,7 @@ impl ProductStore {
                 return Err(ApiError::new(StatusCode::CONFLICT,"admin_conflict","Bootstrap email is already a contributor account. Choose a dedicated administrator email."));
             }
             let account=Account{id:Uuid::new_v4().to_string(),email:email.clone(),name:"Administrator".into(),role:Role::Admin};
-            db.accounts.insert(email,StoredAccount{account,password_hash}); Ok(())
+            db.accounts.insert(email,StoredAccount{account,password_hash:Some(password_hash),auth0_sub:None}); Ok(())
         })
     }
     pub fn register(
@@ -346,7 +353,8 @@ impl ProductStore {
                 name: name.into(),
                 role: Role::User,
             },
-            password_hash: hash_password(password)?,
+            password_hash: Some(hash_password(password)?),
+            auth0_sub: None,
         };
         self.transaction(|db| {
             if db.accounts.contains_key(&email) {
@@ -368,6 +376,15 @@ impl ProductStore {
         })
     }
     pub fn login(&self, email: &str, password: &str) -> Result<AuthResponse, ApiError> {
+        self.login_with(email, password, false)
+    }
+    /// `admin_only` is the break-glass mode used once Auth0 is the sign-in for everyone else.
+    pub fn login_with(
+        &self,
+        email: &str,
+        password: &str,
+        admin_only: bool,
+    ) -> Result<AuthResponse, ApiError> {
         let email = validate_email(email)?;
         if password.len() > 1024 {
             return Err(unauthorized());
@@ -383,20 +400,111 @@ impl ProductStore {
             .cloned();
         let hash = stored
             .as_ref()
-            .map(|s| s.password_hash.as_str())
+            .and_then(|s| s.password_hash.as_deref())
             .unwrap_or(&self.inner.dummy_hash);
         let parsed = PasswordHash::new(hash).map_err(storage_error)?;
         let verified = Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
             .is_ok();
-        let stored = stored.filter(|_| verified).ok_or_else(|| {
-            ApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "invalid_credentials",
-                "Email or password is incorrect.",
-            )
-        })?;
+        let stored = stored
+            .filter(|s| verified && s.password_hash.is_some())
+            .filter(|s| !admin_only || s.account.role == Role::Admin)
+            .ok_or_else(|| {
+                ApiError::new(
+                    StatusCode::UNAUTHORIZED,
+                    "invalid_credentials",
+                    "Email or password is incorrect.",
+                )
+            })?;
         self.transaction(|db| create_session(db, stored.account))
+    }
+    /// Signs in a verified Auth0 identity, creating or linking the account.
+    ///
+    /// Accounts are keyed by email, so only a **verified** email may link to an existing account
+    /// (keeping its id and submissions). `admin` comes from the token's claims at this sign-in and
+    /// is re-derived every time, so removing the role in Auth0 demotes on the next sign-in; the
+    /// password-bootstrapped administrator is kept as break-glass.
+    pub fn sign_in_external(
+        &self,
+        sub: &str,
+        email: &str,
+        name: Option<&str>,
+        admin: bool,
+    ) -> Result<AuthResponse, ApiError> {
+        let email = validate_email(email)?;
+        if sub.is_empty() || sub.len() > 256 {
+            return Err(unauthorized());
+        }
+        self.attempt(&format!("auth0:{sub}"), 30)?;
+        self.transaction(|db| {
+            let key = db
+                .accounts
+                .iter()
+                .find(|(_, a)| a.auth0_sub.as_deref() == Some(sub))
+                .map(|(k, _)| k.clone())
+                .or_else(|| db.accounts.contains_key(&email).then(|| email.clone()));
+            let ttl;
+            let account = if let Some(key) = key {
+                let stored = db.accounts.get_mut(&key).expect("key came from the map");
+                match stored.auth0_sub.as_deref() {
+                    Some(linked) if linked != sub => {
+                        return Err(ApiError::new(
+                            StatusCode::CONFLICT,
+                            "account_linked",
+                            "This email already belongs to a different sign-in.",
+                        ));
+                    }
+                    _ => stored.auth0_sub = Some(sub.to_owned()),
+                }
+                let bootstrap_admin =
+                    stored.account.role == Role::Admin && stored.password_hash.is_some();
+                stored.account.role = if admin || bootstrap_admin {
+                    Role::Admin
+                } else {
+                    Role::User
+                };
+                ttl = if stored.account.role == Role::Admin {
+                    ADMIN_SESSION_SECONDS
+                } else {
+                    SESSION_SECONDS
+                };
+                stored.account.clone()
+            } else {
+                if db.accounts.len() >= 10000 {
+                    return Err(ApiError::new(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "accounts_full",
+                        "New accounts are temporarily unavailable.",
+                    ));
+                }
+                let display = name
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty() && n.chars().count() <= 80)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| email.split('@').next().unwrap_or("User").to_owned());
+                let account = Account {
+                    id: Uuid::new_v4().to_string(),
+                    email: email.clone(),
+                    name: display,
+                    role: if admin { Role::Admin } else { Role::User },
+                };
+                ttl = if admin {
+                    ADMIN_SESSION_SECONDS
+                } else {
+                    SESSION_SECONDS
+                };
+                db.accounts.insert(
+                    email.clone(),
+                    StoredAccount {
+                        account: account.clone(),
+                        password_hash: None,
+                        auth0_sub: Some(sub.to_owned()),
+                    },
+                );
+                account
+            };
+            create_session_for(db, account, ttl)
+        })
     }
     fn attempt(&self, key: &str, limit: u8) -> Result<(), ApiError> {
         let mut attempts = self.inner.attempts.lock().map_err(storage_error)?;
@@ -705,10 +813,17 @@ impl ProductStore {
     }
 }
 fn create_session(db: &mut Database, account: Account) -> Result<AuthResponse, ApiError> {
+    create_session_for(db, account, SESSION_SECONDS)
+}
+fn create_session_for(
+    db: &mut Database,
+    account: Account,
+    ttl_seconds: u64,
+) -> Result<AuthResponse, ApiError> {
     let mut bytes = [0; 32];
     OsRng.fill_bytes(&mut bytes);
     let token = URL_SAFE_NO_PAD.encode(bytes);
-    let expires_at = now() + SESSION_SECONDS;
+    let expires_at = now() + ttl_seconds;
     let mut existing: Vec<_> = db
         .sessions
         .iter()

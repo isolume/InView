@@ -356,6 +356,16 @@ cargo clippy --all-targets -- -D warnings
 cargo test --test buildings -- --ignored
 ```
 
+## Auth0 sign-in
+
+Setting `INVIEW_AUTH0_DOMAIN` (with `INVIEW_AUTH0_CLIENT_ID`, optionally
+`INVIEW_AUTH0_ADMIN_CLIENT_ID`, `INVIEW_AUTH0_AUDIENCE` and `INVIEW_ADMIN_EMAILS`) makes Auth0 the
+sign-in for accounts and the admin page: passwordless Apple or email code. Clients trade the
+Auth0 ID token for the server's own session at `POST /api/accounts/auth0 {"id_token": ...}`;
+`GET /api/auth/config` publishes the public tenant values. Registration is closed and password login
+remains only for the bootstrapped administrator. Left unset, behaviour is unchanged. See
+[../docs/auth0-setup.md](../docs/auth0-setup.md).
+
 ## Accounts and reviewed maps
 
 The user-facing foundation is separate from the original reconstruction API. It

@@ -41,6 +41,20 @@ struct AccountExperienceView: View {
                     }
                     if let configurationMessage = session.configurationMessage {
                         Section { Label(configurationMessage, systemImage: "network.slash").foregroundStyle(.secondary) }
+                    } else if AppConfig.auth0 != nil {
+                        Section {
+                            Button {
+                                Task { await session.signInWithAuth0() }
+                            } label: {
+                                HStack {
+                                    Label("Continue with Apple or email", systemImage: "person.badge.key")
+                                    Spacer()
+                                    if session.isWorking { ProgressView() }
+                                }
+                            }.disabled(session.isWorking)
+                        } footer: {
+                            Text("Sign in with your Apple ID, or get a one-time code by email. There’s no password to remember.")
+                        }
                     } else {
                         Section {
                             Picker("Account", selection: $registering) {

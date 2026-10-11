@@ -1,3 +1,4 @@
+import Auth0
 import Foundation
 import Security
 import SwiftUI
@@ -43,6 +44,36 @@ final class AccountSession: ObservableObject {
             try persist(result, address: client.baseURL.absoluteString)
             account = result.account
             token = result.token
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Universal Login (Sign in with Apple or an emailed code), then this server's own session.
+    /// Auth0 credentials are not kept: the server session is what the app uses from here on.
+    func signInWithAuth0() async {
+        guard !isWorking else { return }
+        guard let settings = AppConfig.auth0 else {
+            errorMessage = "Sign-in with Apple or email isn’t set up in this build."
+            return
+        }
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+        do {
+            let client = try CommunityClient()
+            let credentials = try await Auth0
+                .webAuth(clientId: settings.clientID, domain: settings.domain)
+                .redirectURL(settings.callbackURL)
+                .scope("openid profile email")
+                // No browser cookies are kept, so signing out here really signs out and a shared
+                // phone doesn't silently reuse the previous person's Auth0 session.
+                .useEphemeralSession()
+                .start()
+            let result = try await client.authenticateWithAuth0(idToken: credentials.idToken)
+            try persist(result, address: client.baseURL.absoluteString)
+            account = result.account
+            token = result.token
+        } catch let error as WebAuthError where error == .userCancelled {
+            // Closing the sign-in sheet isn't an error.
         } catch { errorMessage = error.localizedDescription }
     }
 
