@@ -60,6 +60,7 @@ struct MapScreen: View {
     @State private var previewRoute: Route?
     @State private var previewStart: SIMD2<Float>?
     @State private var routeStart: RouteStart?
+    @State private var swapTurns = 0
     @State private var isFindingRoute = false
     @State private var routeMessage: String?
     @State private var routeCheck: ServerRouteCheck?
@@ -888,7 +889,7 @@ struct MapScreen: View {
             } else if controller.phase == .navigating, previewStart == nil, let route = controller.route {
                 RouteCard(route: route, onEnd: closeDestination)
                 if let caption = controller.caption { Text(caption).font(.subheadline).foregroundStyle(.secondary) }
-                RouteStepsList(route: route)
+                RouteStepsList(route: route, isLive: true)
             } else if controller.phase == .arrived, previewStart == nil {
                 ArrivedPanel(destination: controller.route?.destination, onDone: closeDestination)
             } else if isFindingRoute || (controller.phase == .routing && previewStart == nil) {
@@ -928,13 +929,17 @@ struct MapScreen: View {
                 }
             }
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            Button(action: swapRoute) {
+            Button { swapTurns += 1; swapRoute() } label: {
                 Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).frame(width: 40, height: 40)
+                    .rotationEffect(.degrees(Double(swapTurns) * 180))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: swapTurns)
             }
             .buttonStyle(.bordered).buttonBorderShape(.circle)
             .disabled(!canSwapRoute)
             .accessibilityLabel("Swap start and destination")
         }
+        .sensoryFeedback(.selection, trigger: controller.selectedDestination?.id)
+        .sensoryFeedback(.selection, trigger: swapTurns)
     }
 
     private func routeField(_ label: String, value: String?, symbol: String, tint: Color) -> some View {
@@ -975,8 +980,7 @@ struct MapScreen: View {
         } else if let message = routeMessage ?? (controller.phase == .noRoute ? controller.caption : nil) {
             Label(message, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(.secondary)
         } else if let route {
-            Label(route.summary, systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                .font(.headline).foregroundStyle(Color.accentColor)
+            RouteSummaryCard(route: route)
             if let warning = route.unmappedWarning {
                 Label(warning, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote).foregroundStyle(Theme.color(for: .warning))
