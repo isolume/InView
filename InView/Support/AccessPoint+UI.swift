@@ -46,3 +46,39 @@ extension AccessPoint.Kind {
         }
     }
 }
+
+extension SignReading.Category {
+    var symbolName: String {
+        switch self {
+        case .room: "door.left.hand.closed"
+        case .exit: "figure.walk.departure"
+        case .restroom: "toilet.fill"
+        case .elevator: AccessPoint.Kind.elevator.symbolName
+        case .stairs: "figure.stairs"
+        case .lobby: "sofa.fill"
+        case .office: "person.text.rectangle.fill"
+        case .other: "signpost.right.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .room: .indigo
+        case .exit: .green
+        case .restroom: .purple
+        case .elevator: Theme.accent
+        case .stairs: Theme.stairs
+        case .lobby: .orange
+        case .office: .brown
+        case .other: .gray
+        }
+    }
+
+    var uiTint: UIColor { UIColor(tint).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)) }
+}
+
+extension AccessPoint {
+    /// Sign places show what the sign named: a door, an exit, a restroom.
+    var symbolName: String { signCategory?.symbolName ?? kind.symbolName }
+    var tint: Color { signCategory?.tint ?? kind.tint }
+}

@@ -750,7 +750,7 @@ private struct PointRow: View {
                     .controlSize(.mini)
             }
         } icon: {
-            KindBadge(kind: point.kind, size: 26)
+            KindBadge(point: point, size: 26)
         }
     }
 

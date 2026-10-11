@@ -13,8 +13,8 @@ struct MapPlace: Identifiable, Equatable {
     init(_ point: AccessPoint) {
         id = point.id
         title = point.title
-        symbol = point.kind.symbolName
-        tint = point.isTooSteep ? Theme.color(for: .warning) : point.kind.tint
+        symbol = point.symbolName
+        tint = point.isTooSteep ? Theme.color(for: .warning) : point.tint
         position = point.floorPoint
     }
 

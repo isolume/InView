@@ -87,6 +87,11 @@ extension KindBadge {
         self.init(symbol: kind.symbolName, tint: kind.tint, size: size, isOnMap: isOnMap)
     }
 
+    /// A place's badge: sign places show what their sign named.
+    init(point: AccessPoint, size: CGFloat = 32, isOnMap: Bool = false) {
+        self.init(symbol: point.symbolName, tint: point.tint, size: size, isOnMap: isOnMap)
+    }
+
     init(kind: VisionDetection.Kind, size: CGFloat = 32, isOnMap: Bool = false) {
         self.init(symbol: kind.symbolName, tint: kind.tint, size: size, isOnMap: isOnMap)
     }
