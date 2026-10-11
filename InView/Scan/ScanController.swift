@@ -64,6 +64,10 @@ final class ScanController: ObservableObject {
     @Published private(set) var signObservations: [CaptureTextObservation] = []
     /// Signs the mapper pointed the reader at; they label their doors when the map is ready.
     @Published private(set) var readSigns: [SignReader.Sighting] = []
+    /// Every place sign OCR read in passing, kept for the whole scan. The capture's own list drops
+    /// observations as it trims old frames, which used to lose signs read early on.
+    private var passiveSigns: [(reading: SignReading, text: String, position: SIMD3<Float>, viewer: SIMD3<Float>?, count: Int)] = []
+    private var countedObservations: Set<String> = []
     @Published private(set) var currentFloor: ScanFloorIdentity?
     @Published private(set) var buildingName = "Building"
     @Published private(set) var isChangingFloors = false
@@ -248,10 +252,13 @@ final class ScanController: ObservableObject {
         }
         signObservations = []
         readSigns = []
+        passiveSigns = []
+        countedObservations = []
         let captureID = scanID
         rawCapture.onTextObservations = { [weak self] observations in
             guard let self, self.scanID == captureID else { return }
             self.signObservations = observations
+            self.collectPassiveSigns(observations)
         }
         captureView = makeCaptureView()
         beginSection()
@@ -622,26 +629,32 @@ final class ScanController: ObservableObject {
     /// Labels the finished map's doors from signs: every sign the mapper read, plus room, exit and
     /// restroom text the scan's keyframes read on their own when it was seen twice or sits by a door.
     /// All of them stay editable in review like any other destination.
-    private func applySigns(to map: inout VenueMap, frames: [CaptureDepthFrame]) {
+    private func collectPassiveSigns(_ observations: [CaptureTextObservation]) {
+        let viewer = session.currentFrame?.camera.transform.translation
+        for observation in observations {
+            guard countedObservations.insert(observation.frameID + "|" + observation.text).inserted,
+                  let spatial = observation.spatial, let reading = SignInterpreter.interpret([observation.text]),
+                  !reading.isDirectional, reading.category != .other else { continue }
+            if let index = passiveSigns.firstIndex(where: { $0.reading.title == reading.title && simd_distance($0.position, spatial.position) < 1 }) {
+                passiveSigns[index].count += 1
+                // The longer reading of the same plate ("204" then "204 Meeting Room") is the better one.
+                if observation.text.count > passiveSigns[index].text.count {
+                    passiveSigns[index].reading = reading; passiveSigns[index].text = observation.text
+                }
+            } else {
+                passiveSigns.append((reading, observation.text, spatial.position, viewer, 1))
+            }
+        }
+    }
+
+    private func applySigns(to map: inout VenueMap) {
         for sighting in readSigns {
             let point = SignPlaceBinder.place(for: sighting.reading, text: sighting.text, sign: sighting.position,
                                               viewer: sighting.viewer, in: map, id: sighting.id)
             map.applySign(point.withReader(sighting.check))
         }
-        let viewers = Dictionary(frames.compactMap { frame -> (String, SIMD3<Float>)? in
-            frame.mapFromCamera.count == 16 ? (frame.id, SIMD3(frame.mapFromCamera[12], frame.mapFromCamera[13], frame.mapFromCamera[14])) : nil
-        }, uniquingKeysWith: { first, _ in first })
-        var clusters: [(reading: SignReading, text: String, position: SIMD3<Float>, viewer: SIMD3<Float>?, count: Int)] = []
-        for observation in signObservations {
-            guard let spatial = observation.spatial, let reading = SignInterpreter.interpret([observation.text]),
-                  !reading.isDirectional, [.room, .exit, .restroom].contains(reading.category) else { continue }
-            if let index = clusters.firstIndex(where: { $0.reading.title == reading.title && simd_distance($0.position, spatial.position) < 0.75 }) {
-                clusters[index].count += 1
-            } else {
-                clusters.append((reading, observation.text, spatial.position, viewers[observation.frameID], 1))
-            }
-        }
-        for cluster in clusters where cluster.count >= 2 || SignPlaceBinder.door(for: cluster.position, in: map) != nil {
+        // A place sign read once is still worth a door: the interpreter already turned away posters and notices.
+        for cluster in passiveSigns {
             // An explicit reading of the same sign wins over the passive one.
             guard !readSigns.contains(where: { simd_distance($0.position, cluster.position) < 1 }) else { continue }
             map.applySign(SignPlaceBinder.place(for: cluster.reading, text: cluster.text, sign: cluster.position,
@@ -1070,7 +1083,7 @@ final class ScanController: ObservableObject {
                 // The map and display come from the same successful assembly; failures publish neither.
                 rooms = assembled.rooms
                 var reviewed = assembled.map
-                applySigns(to: &reviewed, frames: raw.frames)
+                applySigns(to: &reviewed)
                 draft = reviewed
                 walkTrace = raw.walkTrace
                 self.walkCoverage = walkCoverage
