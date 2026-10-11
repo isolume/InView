@@ -24,7 +24,9 @@ struct AssistantCard: View {
                 EmptyView()
             case .listening:
                 Text(assistant.question.isEmpty ? "Listening…" : assistant.question)
+                    .font(.title3.weight(.medium))
                     .foregroundStyle(assistant.question.isEmpty ? .secondary : .primary)
+                    .contentTransition(.opacity)
                 Button("Done", action: onListen).buttonStyle(.bordered).buttonBorderShape(.capsule)
             case .thinking:
                 question
@@ -35,6 +37,8 @@ struct AssistantCard: View {
             case .answered:
                 question
                 Text(assistant.reply)
+                    .font(.body.weight(.medium))
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 HStack(spacing: 10) {
                     if let place = assistant.place {
                         Button(action: onShowPlace) {
@@ -53,6 +57,17 @@ struct AssistantCard: View {
         }
         .padding(14)
         .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 16))
+        .intelligenceGlow(assistant.phase == .listening || assistant.phase == .thinking,
+                          in: RoundedRectangle(cornerRadius: 16))
+        .animation(.smooth, value: assistant.phase)
+        .sensoryFeedback(trigger: assistant.phase) { _, phase in
+            switch phase {
+            case .answered: .success
+            case .failed: .warning
+            case .listening: .start
+            default: nil
+            }
+        }
     }
 
     private var question: some View {

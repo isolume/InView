@@ -604,6 +604,8 @@ struct MapScreen: View {
                 }
                 .padding(.horizontal, 12).frame(height: 48)
                 .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                .intelligenceGlow(assistant.phase == .listening || assistant.phase == .thinking,
+                                  in: RoundedRectangle(cornerRadius: 12))
                 if isDemo {
                     Button { controller.stop(); dismiss() } label: {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 30)).foregroundStyle(.secondary)
