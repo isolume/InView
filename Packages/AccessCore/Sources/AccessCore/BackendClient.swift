@@ -37,7 +37,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
         switch self {
         case .invalidURL: return "Enter a backend address beginning with http:// or https://."
         case .insecureTokenTransport:
-            return "The scan server address must use https:// so the access token isn't sent in the clear."
+            return "The scan server address must use https:// unless the server is on your local network, so the access token isn't sent in the clear."
         case .invalidCapture(let message): return message
         case .connection(let stage, let code):
             switch code {
@@ -247,8 +247,7 @@ public struct BackendClient: Sendable {
               let host = components.host, !host.isEmpty,
               components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil else { throw BackendClientError.invalidURL }
-        if let accessToken, !accessToken.isEmpty, scheme != "https",
-           !["localhost", "127.0.0.1", "::1"].contains(host.lowercased()) {
+        if let accessToken, !accessToken.isEmpty, scheme != "https", !BackendTransport.isLocalNetworkHost(host) {
             throw BackendClientError.insecureTokenTransport
         }
         let safeCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_~")

@@ -535,7 +535,7 @@ struct BackendIntegrationTests {
         #expect(BackendMockProtocol.steps.isEmpty)
         #expect(BackendMockProtocol.failure == nil)
         let insecure = BackendClient(baseURL: plain.baseURL, accessToken: "private-test-token", session: session)
-        await #expect(throws: BackendClientError.invalidURL) { try await insecure.checkHealth() }
+        await #expect(throws: BackendClientError.insecureTokenTransport) { try await insecure.checkHealth() }
     }
 
     @Test func healthRejectsAnotherServiceUnavailableStatusAndMalformedResponses() async throws {
@@ -616,6 +616,6 @@ extension BackendIntegrationTests {
 
     @Test func analysisRefusesTokenOverPlainHTTPToRemoteHost() async throws {
         let client = BackendClient(baseURL: URL(string: "http://backend.invalid")!, accessToken: "secret-token")
-        await #expect(throws: BackendClientError.invalidURL) { try await client.analysis(scanID: "scan-1") }
+        await #expect(throws: BackendClientError.insecureTokenTransport) { try await client.analysis(scanID: "scan-1") }
     }
 }
