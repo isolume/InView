@@ -36,7 +36,6 @@ final class NavigationController: ObservableObject {
     @Published private(set) var heading: Float = 0
     @Published private(set) var startView: UIImage?
     /// What the camera sees while finding the rider, drawn from ARKit's own frames.
-    @Published private(set) var cameraPreview: UIImage?
     /// What would help ARKit find the rider right now, like "Move a little slower".
     @Published private(set) var locatingHint: String?
     /// Directions need the scan's AR map to find the rider; a map without one can still be explored.
@@ -60,6 +59,7 @@ final class NavigationController: ObservableObject {
         // Signs are read aloud in the same voice as the directions.
         // Not urgent: a sign glimpsed mid-route waits for the current direction to finish.
         reader.speak = { [weak self] text in self?.say(Narrator.Line(text: text, isUrgent: false)) }
+        reader.knownSigns = { [weak self] in self?.map?.signPlaces.compactMap { $0.sign?.signPosition } ?? [] }
         return reader
     }()
 
@@ -111,13 +111,11 @@ final class NavigationController: ObservableObject {
     private var hasRefreshedWorldMap = false
     private static let worldMapRefreshDelay: TimeInterval = 8
     private let relocalizer = SessionRelocalizer()
-    private var lastPreviewAt = Date.distantPast
     private var lastFrameTimestamp: TimeInterval = 0
     private var lastFrameChangeAt = Date.now
     private var lastTrackingDescription = ""
     /// A running session that delivers no new frame for this long is restarted instead of left frozen.
     private static let stallTimeout: TimeInterval = 4
-    private static let previewContext = CIContext()
     private var sessionIsRunning = false
     private var placeEditSource: MapStore.PlaceEditSource?
     private var placeEditRequest: UUID?
@@ -322,7 +320,6 @@ final class NavigationController: ObservableObject {
         pendingReason = nil
         voice.deactivate()
         if !isDemo, sessionIsRunning { arView.session.pause(); sessionIsRunning = false }
-        cameraPreview = nil
         locatingHint = nil
         renderer?.remove()
         renderer = nil
@@ -710,17 +707,12 @@ final class NavigationController: ObservableObject {
         run(initialWorldMap: worldMap)
     }
 
-    /// While the rider is being found, or has been lost, shows what the camera sees and what would help.
+    /// While the rider is being found, or has been lost, says what would help.
     private func updateLocatingFeedback(_ frame: ARFrame) {
         let unaligned = phase == .locating || !Self.isAligned(frame.camera.trackingState)
         guard unaligned else {
-            if cameraPreview != nil || locatingHint != nil { cameraPreview = nil; locatingHint = nil }
+            if locatingHint != nil { locatingHint = nil }
             return
-        }
-        // The full-screen AR view already shows the camera; the small preview is for the map.
-        if arView.window == nil, Date.now.timeIntervalSince(lastPreviewAt) >= 0.2 {
-            lastPreviewAt = .now
-            cameraPreview = Self.preview(of: frame)
         }
         let hint = Self.hint(for: frame)
         if hint != locatingHint { locatingHint = hint }
@@ -744,22 +736,6 @@ final class NavigationController: ObservableObject {
             if (frame.rawFeaturePoints?.points.count ?? 0) < 60 { return "Point at something with more detail." }
             return "Matching what the camera sees with your scan…"
         }
-    }
-
-    /// A small upright picture of the camera image, oriented like the screen.
-    private static func preview(of frame: ARFrame) -> UIImage? {
-        let scene = UIApplication.shared.connectedScenes.first { $0.activationState == .foregroundActive } as? UIWindowScene
-        let orientation: CGImagePropertyOrientation = switch scene?.effectiveGeometry.interfaceOrientation ?? .portrait {
-        case .portraitUpsideDown: .left
-        case .landscapeLeft: .down
-        case .landscapeRight: .up
-        default: .right
-        }
-        var image = CIImage(cvPixelBuffer: frame.capturedImage).oriented(orientation)
-        let scale = 320 / max(image.extent.width, image.extent.height)
-        image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        guard let cgImage = previewContext.createCGImage(image, from: image.extent.integral) else { return nil }
-        return UIImage(cgImage: cgImage)
     }
 
     private func didLocate() {

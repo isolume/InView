@@ -74,6 +74,10 @@ final class LivePlaceSearch: ObservableObject {
     }
 
     func clear() {
+        // Called on every position update when there's nothing to search; writing equal values
+        // would still redraw the whole map screen each time.
+        guard lastKey != nil || task != nil || !results.isEmpty || !pins.isEmpty || isLoading
+            || message != nil || answeredQuery != nil else { return }
         task?.cancel()
         task = nil
         lastKey = nil

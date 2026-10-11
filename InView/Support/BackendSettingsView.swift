@@ -5,6 +5,7 @@ struct BackendSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("detailedScanning") private var detailedScanning = false
     @AppStorage("recordScanVideo") private var recordScanVideo = false
+    @AppStorage("navigation.findsMeAutomatically") private var findsMeAutomatically = true
     @State private var address = AppConfig.backendAddress
     @State private var token = AppConfig.backendToken(for: AppConfig.backendAddress) ?? ""
     @State private var usesLocalBackend = AppConfig.usesLocalBackend
@@ -14,6 +15,11 @@ struct BackendSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Find me when a map opens", isOn: $findsMeAutomatically)
+                } footer: {
+                    Text("Uses the camera to show where you are on a saved map.")
+                }
                 Section {
                     Text("Maps are built on this device.")
                     Toggle("Detailed scan", isOn: $detailedScanning)

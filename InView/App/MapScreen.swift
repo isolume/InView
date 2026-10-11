@@ -22,6 +22,9 @@ struct MapScreen: View {
     }
 
     let isDemo: Bool
+    /// The bundled Student Center East maps and models. Off: the app opens on the person's own maps,
+    /// and the navigation demo is in the profile menu.
+    private static let showsCampus = false
     @StateObject private var controller: NavigationController
     @StateObject private var library = BuildingMapLibrary()
     @StateObject private var live = LivePlaceSearch()
@@ -54,7 +57,6 @@ struct MapScreen: View {
     @State private var resetID = 0
     @State private var showsAR = false
     /// The AR camera reads signs and tags the doors they label.
-    @State private var readsSigns = false
     /// What each sign tagged this session replaced, so Undo can put it back.
     @State private var replacedPlaces: [UUID: AccessPoint?] = [:]
     @State private var detent = PresentationDetent.height(240)
@@ -76,12 +78,14 @@ struct MapScreen: View {
 
     init(isDemo: Bool = false) {
         self.isDemo = isDemo
-        let map = isDemo ? NavigationDemo.map : StudentCenterCatalog.map()
-        _controller = StateObject(wrappedValue: NavigationController(isDemo: isDemo, map: map, usesBundledMap: !isDemo))
-        _scene = State(initialValue: isDemo ? NavigationDemo.scene : StudentCenterCatalog.scene())
-        _isPreparedScene = State(initialValue: !isDemo && StudentCenterCatalog.scene() != nil)
-        _sourceLevel = State(initialValue: isDemo ? 1 : 2)
-        _selectedLevel = State(initialValue: isDemo ? 1 : 2)
+        let campus = !isDemo && Self.showsCampus
+        let map = isDemo ? NavigationDemo.map : campus ? StudentCenterCatalog.map() : nil
+        _controller = StateObject(wrappedValue: NavigationController(isDemo: isDemo, map: map, usesBundledMap: campus))
+        _scene = State(initialValue: isDemo ? NavigationDemo.scene : campus ? StudentCenterCatalog.scene() : nil)
+        _isPreparedScene = State(initialValue: campus && StudentCenterCatalog.scene() != nil)
+        let level = isDemo ? 1 : campus ? 2 : MapStore.currentFloor?.identity.level ?? 1
+        _sourceLevel = State(initialValue: level)
+        _selectedLevel = State(initialValue: level)
     }
 
     private var hasMap: Bool { controller.map != nil && selectedLevel == sourceLevel }
@@ -92,7 +96,11 @@ struct MapScreen: View {
               detailScene.floorID == scene.floorID else { return false }
         return detailScene.meshes.contains { $0.sourceID == ReconstructedMesh.sourceID }
     }
-    private var title: String { isDemo ? "Navigation demo" : localFloor == nil ? StudentCenterCatalog.buildingName : MapStore.currentBuilding?.name ?? "Saved building" }
+    private var title: String {
+        if isDemo { return "Navigation demo" }
+        if localFloor != nil { return MapStore.currentBuilding?.name ?? "Saved building" }
+        return Self.showsCampus ? StudentCenterCatalog.buildingName : "No map yet"
+    }
     /// A route from a chosen start is a preview; from "My location" it's the live session's route.
     private var activeRoute: Route? { previewStart != nil ? previewRoute : controller.route }
     /// Model places may be endpoints where the open map has matching measured coverage.
@@ -110,7 +118,7 @@ struct MapScreen: View {
         })
     }
     private var modelAvailable: Bool {
-        !isDemo && localFloor == nil && StudentCenterCatalog.hasEstimatedModel(on: selectedLevel)
+        !isDemo && Self.showsCampus && localFloor == nil && StudentCenterCatalog.hasEstimatedModel(on: selectedLevel)
             && registrationMap.flatMap { StudentCenterModelAlignment.transform(for: $0, floor: selectedLevel) } != nil
     }
     private var showsModel: Bool { modelAvailable && mapStyle == .model }
@@ -247,16 +255,16 @@ struct MapScreen: View {
             if new != nil { controller.endGuidance() }
             else if findsMeAutomatically, !isDemo, controller.canGuide { controller.findRider() }
         }
-        .onChange(of: usesSidePanel) { _, side in showsMainSheet = !side && !readsSigns }
-        // The sign reader needs the whole camera; the sheet returns when it closes.
-        .onChange(of: readsSigns) { _, reading in showsMainSheet = !usesSidePanel && !reading }
-        .onChange(of: showsAR) { _, shown in if !shown { readsSigns = false } }
+        .onChange(of: usesSidePanel) { _, side in showsMainSheet = !side }
         .onChange(of: assistant.phase) { _, phase in
             if phase == .answered, assistant.place != nil { showAssistantPlace() }
         }
         .task {
             controller.start()
-            if !isDemo {
+            if !isDemo, !Self.showsCampus {
+                // Your own map, if you've made one.
+                if let floor = MapStore.currentFloor { openSavedFloor(floor) }
+            } else if !isDemo {
                 if let release = acceptedRelease(for: 2) { openRelease(release) }
                 await library.refresh()
                 if selectedLevel == 2, panel == .explore, query.isEmpty,
@@ -273,7 +281,8 @@ struct MapScreen: View {
             } else if localFloor != nil {
                 // The open saved map was deleted.
                 localFloor = nil
-                switchFloor(StudentCenterCatalog.floorLevel)
+                if Self.showsCampus { switchFloor(StudentCenterCatalog.floorLevel) }
+                else { controller.reload(map: nil); sceneGeneration += 1; scene = nil; isPreparedScene = false }
             }
         }
         .onDisappear { controller.stop(); assistant.dismiss() }
@@ -304,13 +313,11 @@ struct MapScreen: View {
         if showsAR, controller.canGuide {
             ViewContainer(view: controller.arView)
                 .overlay {
-                    // Signs are read whenever the camera is up, and tagged on their own; "Read signs"
-                    // only adds the full card and controls.
+                    // Signs are read whenever the camera is up, and tagged on their own.
                     if controller.isPositionReliable, controller.canTagSigns, !isDemo {
                         SignReaderOverlay(reader: controller.signReader, session: controller.arView.session,
                                           preview: signPreview, onAdd: tagSign, onShowOnMap: showTaggedPlace,
-                                          onUndo: untagSign, isPassive: !readsSigns,
-                                          onClose: { readsSigns = false })
+                                          onUndo: untagSign, isPassive: true, onClose: {})
                     }
                 }
                 .overlay(alignment: .top) {
@@ -319,7 +326,7 @@ struct MapScreen: View {
                             .font(.subheadline.weight(.medium))
                             .padding(12).background(.regularMaterial, in: Capsule())
                             .padding(.top, 85)
-                    } else if !readsSigns, let route = controller.route, controller.phase == .navigating {
+                    } else if let route = controller.route, controller.phase == .navigating {
                         NextStepBanner(route: route, caption: controller.caption).padding(.horizontal, 16).padding(.top, 85)
                     }
                 }
@@ -360,41 +367,37 @@ struct MapScreen: View {
         } else {
             Color(red: 0.92, green: 0.93, blue: 0.91)
                 .overlay {
-                    ContentUnavailableView("No map for Floor \(selectedLevel)", systemImage: "map",
-                        description: Text("This floor hasn’t been mapped yet."))
-                        .padding(.bottom, bottomInset).padding(.leading, leadingInset)
+                    if Self.showsCampus || localFloor != nil {
+                        ContentUnavailableView("No map for Floor \(selectedLevel)", systemImage: "map",
+                            description: Text("This floor hasn’t been mapped yet."))
+                            .padding(.bottom, bottomInset).padding(.leading, leadingInset)
+                    } else {
+                        ContentUnavailableView("Map a building", systemImage: "figure.walk.motion",
+                            description: Text("Walk a floor once with this iPhone. Its doors, stairs, elevators and signs become a map you can be guided through."))
+                            .padding(.bottom, bottomInset).padding(.leading, leadingInset)
+                    }
                 }
         }
     }
 
     private func floatingControls(leadingInset: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Button(action: enterAR) {
-                Label(showsAR ? "Map" : "View in AR", systemImage: showsAR ? "map.fill" : "viewfinder")
-                    .font(.subheadline.weight(.semibold)).padding(.horizontal, 15).frame(height: 46)
-            }
-            .disabled(controller.phase == .loading)
-            .buttonStyle(.plain)
-            .foregroundStyle(.primary)
-            .background(.regularMaterial, in: Capsule())
-            .accessibilityLabel(showsAR ? "Return to map" : "Enter AR mode")
-            if showsAR, !readsSigns, controller.canGuide, !isDemo {
-                Button { readsSigns = true } label: {
-                    Label("Read signs", systemImage: "text.viewfinder")
+            if hasVisualFloor || showsAR {
+                Button(action: enterAR) {
+                    Label(showsAR ? "Map" : "View in AR", systemImage: showsAR ? "map.fill" : "viewfinder")
                         .font(.subheadline.weight(.semibold)).padding(.horizontal, 15).frame(height: 46)
                 }
+                .disabled(controller.phase == .loading)
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
                 .background(.regularMaterial, in: Capsule())
-                .disabled(!controller.isPositionReliable)
-                .accessibilityHint("Point the camera at a room number or exit sign to label its door on the map")
+                .accessibilityLabel(showsAR ? "Return to map" : "Enter AR mode")
             }
             Spacer(minLength: 0)
-            cameraPreview
             VStack(spacing: 12) {
-                if !isDemo {
+                if !isDemo, !floorLevels.isEmpty {
                     VStack(spacing: 2) {
-                        ForEach([3, 2, 1], id: \.self) { level in
+                        ForEach(floorLevels, id: \.self) { level in
                             Button { switchFloor(level) } label: {
                                 Text("\(level)").font(.system(.body, design: .rounded).weight(.semibold))
                                     .frame(width: 44, height: 44)
@@ -466,6 +469,15 @@ struct MapScreen: View {
         .padding(.leading, leadingInset).padding(.trailing, 16).padding(.top, 10)
     }
 
+    /// The floors to pick between: the open building's saved floors, or the campus's three.
+    private var floorLevels: [Int] {
+        if Self.showsCampus, localFloor == nil { return [3, 2, 1] }
+        guard let localFloor,
+              let floors = MapStore.savedBuildings().first(where: { $0.id == localFloor.identity.buildingID })?.floors,
+              floors.count > 1 else { return [] }
+        return Array(Set(floors.map(\.identity.level))).sorted(by: >)
+    }
+
     private var locationSymbol: String {
         if controller.isLocated { return controller.isPositionReliable ? "location.fill" : "location.slash" }
         return "location"
@@ -475,32 +487,6 @@ struct MapScreen: View {
         if controller.phase == .locating { return "Finding your location. Double tap to stop." }
         if controller.isLocated { return "Your location. Double tap to fit it on the map." }
         return "Show my location"
-    }
-
-    /// While the camera looks for the person, a small preview shows what it sees; the map stays on screen.
-    @ViewBuilder private var cameraPreview: some View {
-        if !showsAR, !isDemo, controller.canGuide,
-           controller.phase == .locating || (controller.isLocated && !controller.isPositionReliable) {
-            VStack(alignment: .leading, spacing: 6) {
-                Group {
-                    if let image = controller.cameraPreview {
-                        Image(uiImage: image).resizable().scaledToFill()
-                    } else {
-                        Color.black.overlay { ProgressView().tint(.white) }
-                    }
-                }
-                .frame(height: 100).frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .accessibilityHidden(true)
-                Text(controller.locatingHint ?? (controller.phase == .locating
-                     ? "Hold up your \(UIDevice.current.model) and look around slowly"
-                     : "Position lost · Look around to reconnect"))
-                    .font(.caption.weight(.medium)).fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(7).frame(width: 150)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .accessibilityElement(children: .combine)
-        }
     }
 
     private func sidePanelWidth(_ geometry: GeometryProxy) -> CGFloat {
@@ -617,7 +603,9 @@ struct MapScreen: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.title2.bold()).lineLimit(2)
-                Text(showsModel ? "Floor \(selectedLevel)" : "Floor \(selectedLevel) · \(coverageTitle)").font(.subheadline).foregroundStyle(.secondary)
+                if hasVisualFloor {
+                    Text(showsModel ? "Floor \(selectedLevel)" : "Floor \(selectedLevel) · \(coverageTitle)").font(.subheadline).foregroundStyle(.secondary)
+                }
             }
             livePositionStatus
             ScrollView(.horizontal) {
@@ -634,13 +622,6 @@ struct MapScreen: View {
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule)
                     }
-                    if hasMap, controller.canGuide, !isDemo {
-                        Button(action: readSigns) {
-                            Label("Read a sign", systemImage: "text.viewfinder").font(.subheadline.weight(.medium))
-                        }
-                        .buttonStyle(.bordered).buttonBorderShape(.capsule)
-                        .accessibilityHint("Opens the camera to label doors from room and exit signs")
-                    }
                     if hasMap, controller.map?.signPlaces.contains(where: { $0.signCategory == .exit }) == true {
                         Button(action: showNearestExit) {
                             Label("Nearest exit", systemImage: SignReading.Category.exit.symbolName).font(.subheadline.weight(.medium))
@@ -654,7 +635,7 @@ struct MapScreen: View {
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.indigo)
                     }
-                    if !isDemo, localFloor == nil {
+                    if !isDemo, Self.showsCampus, localFloor == nil {
                         Button { modal = .buildingDirections } label: {
                             Label("Between floors", systemImage: "arrow.up.arrow.down")
                                 .font(.subheadline.weight(.medium))
@@ -718,9 +699,23 @@ struct MapScreen: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             } else {
-                Text("There’s no published map for this floor. Choose another floor to explore.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                Button("Show Floor 2") { switchFloor(2) }.buttonStyle(.borderedProminent)
+                if Self.showsCampus {
+                    Text("There’s no published map for this floor. Choose another floor to explore.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Button("Show Floor 2") { switchFloor(2) }.buttonStyle(.borderedProminent)
+                } else {
+                    HStack(spacing: 10) {
+                        Button { modal = .contribute } label: {
+                            Label("Map a building", systemImage: "viewfinder").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button { cover = .demo } label: {
+                            Label("Demo", systemImage: "play.circle")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .controlSize(.large)
+                }
             }
         }
     }
@@ -767,11 +762,9 @@ struct MapScreen: View {
                 Button("Saved maps", systemImage: "map") { modal = .savedMaps }
                 Button("My submissions", systemImage: "tray.full") { modal = .submissions }
             }
-            Button("Building details", systemImage: "building.2") { modal = .building }
+            if Self.showsCampus { Button("Building details", systemImage: "building.2") { modal = .building } }
             Button("Settings", systemImage: "gearshape") { modal = .settings }
-            #if DEBUG
             Button("Navigation demo", systemImage: "play.circle") { cover = .demo }
-            #endif
         } label: {
             Image(systemName: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
                 .font(.system(size: 30)).foregroundStyle(Color.accentColor)
@@ -781,21 +774,29 @@ struct MapScreen: View {
     }
 
     /// Finding the person, or the reminder that their position is showing and the camera is on.
+    /// One row of fixed height either way, so the sheet doesn't jump as tracking comes and goes.
     @ViewBuilder private var livePositionStatus: some View {
-        if !isDemo, controller.phase == .locating, controller.selectedDestination == nil {
-            LocatingPanel(startView: controller.startView, isSlow: controller.isRelocalizationSlow, hint: controller.locatingHint, onRetry: controller.retryLocalization)
-            Button("Stop finding my location") { controller.endGuidance() }.buttonStyle(.bordered)
-            Toggle("Find me automatically when a map opens", isOn: $findsMeAutomatically).font(.subheadline)
-        } else if controller.isLocated {
-            HStack {
-                Label(controller.isPositionReliable ? "Showing where you are" : "Reconnecting to your position",
-                      systemImage: controller.isPositionReliable ? "location.fill" : "location.slash")
-                    .font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
+        let locating = !isDemo && controller.phase == .locating && controller.selectedDestination == nil
+        if locating || controller.isLocated {
+            HStack(spacing: 10) {
+                Group {
+                    if locating { ProgressView() }
+                    else { Image(systemName: controller.isPositionReliable ? "location.fill" : "location.slash") }
+                }
+                .foregroundStyle(Color.accentColor).frame(width: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(locating ? "Finding where you are" : controller.isPositionReliable ? "Showing where you are" : "Reconnecting to your position")
+                        .font(.subheadline.weight(.semibold))
+                    Text(locating ? controller.locatingHint ?? "Look around the room you scanned" : " ")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Spacer(minLength: 8)
-                Button("Turn off") { controller.endGuidance() }
+                Button(locating ? "Stop" : "Turn off") { controller.endGuidance() }
                     .buttonStyle(.bordered).buttonBorderShape(.capsule)
-                    .accessibilityLabel("Turn off live location")
+                    .accessibilityLabel(locating ? "Stop finding my location" : "Turn off live location")
             }
+            .frame(height: 44)
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -1030,6 +1031,7 @@ struct MapScreen: View {
 
     private func mapAvailable(on level: Int) -> Bool {
         if localFloor != nil { return MapStore.savedBuildings().first { $0.id == localFloor?.identity.buildingID }?.floors.contains { $0.identity.level == level } == true }
+        guard Self.showsCampus else { return false }
         return library.release(for: level) != nil || StudentCenterCatalog.coverage(for: level) == .scannedArea
             || StudentCenterCatalog.hasEstimatedModel(on: level)
     }
@@ -1290,13 +1292,6 @@ struct MapScreen: View {
     }
 
     /// Opens the AR camera in sign-reading mode; reading starts once the person is found on the map.
-    private func readSigns() {
-        searchFocused = false
-        guard hasMap, controller.canGuide, !isDemo else { modal = .arUnavailable; return }
-        if !showsAR { enterAR() }
-        readsSigns = true
-    }
-
     /// The closest exit read from a sign: from where the person is, else the chosen start, else the scan origin.
     private func showNearestExit() {
         let from = (controller.isPositionReliable ? controller.position : nil) ?? previewStart ?? .zero
@@ -1329,7 +1324,6 @@ struct MapScreen: View {
     }
 
     private func showTaggedPlace(_ point: AccessPoint) {
-        readsSigns = false
         showsAR = false
         if let stored = controller.map?.points.first(where: { $0.id == point.id }) { selectPlace(MapPlace(stored)) }
     }
@@ -1350,6 +1344,8 @@ struct MapScreen: View {
     }
 
     private func openSavedFloor(_ floor: SavedFloor) {
+        // Saving places republishes the same floor; blanking the scene then made the map flash.
+        let isSameFloor = localFloor?.id == floor.id && scene != nil
         closeDestination()
         localFloor = floor; selectedLevel = floor.identity.level; sourceLevel = floor.identity.level
         displayedPublishedVersion = nil
@@ -1357,8 +1353,7 @@ struct MapScreen: View {
         controller.reload(map: map)
         sceneGeneration += 1
         let generation = sceneGeneration
-        scene = nil; isPreparedScene = false
-        detailScene = nil; showsScanDetail = false
+        if !isSameFloor { scene = nil; isPreparedScene = false; detailScene = nil; showsScanDetail = false }
         let captureID = MapStore.activeCaptureID
         resetID += 1
         Task {
