@@ -66,6 +66,25 @@ describe the landscape sensor image, not the JPEG.
 | `nav_graph` | navigation graph | backend `Graph` v1 JSON, `id = "<scan_id>-nav"`, bidirectional surface edges, extras only in `metadata` |
 | `routes` | routing | `{profiles, routes: [Route]}` with `instructions` per language |
 | `georef`, `geojson` | geo | `GeoReference`; GeoJSON FeatureCollection |
+| `highlights` | `stages/highlights.py` (`highlights/`) | the key aspects of the scan, ranked, and an OpenCV-annotated plan. See below |
+
+### `highlights`
+
+Reads `floor_map` (required) plus `hazards`, `doors`, `places`, `signs`, `nav_graph`, `routes` when present.
+`items` are sorted by rank: `{id, rank, kind, severity, importance, title, reason, position_xz_m,
+position_m?, geometry, refs, evidence, number?, anchor_px, callout_px?}`.
+
+- `kind`: `barrier` (hazards; unmeasured stairs places), `narrow_passage`, `door`, `access_feature`
+  (elevator, ramp, entrance, ...), `wayfinding` (signs), `route` (unreachable pairs grouped by origin, long detours).
+- `severity`: `barrier`, `warning`, `asset`, `info`. `importance` is 0..1 and is not rescaled by the
+  diversity re-ranking that stops one kind crowding out the rest.
+- Nearby readings of one squeeze merge (`evidence.merged`); a stairs/ramp *place* on a measured hazard is dropped.
+- `image`: `{png_base64, width, height, map_width_px, map_height_px, scale, resolution_m_per_px,
+  origin_xz_m, legend, axes}`. A world point (x, z) is at pixel `((x - origin_x) / resolution_m_per_px,
+  (z - origin_z) / resolution_m_per_px)`; the legend panel sits to the right of `map_width_px`.
+  Text in the picture is ASCII (OpenCV limitation); `items[*].title`/`reason` keep full Unicode.
+- Config (`ctx.config["highlights"]`): `max_items` (24), `min_importance` (0.30), `callouts` (12),
+  `kinds` (all), `include_passing_doors` (false), `width_px` (1400).
 
 `PlaceCategory` and accessibility `Thresholds` (ADA 2010 references) are defined in `contracts.py`.
 

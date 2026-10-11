@@ -36,6 +36,7 @@ class ProductName:
     ROUTES = "routes"
     GEOREF = "georef"
     GEOJSON = "geojson"
+    HIGHLIGHTS = "highlights"
 
 
 class PlaceCategory(str, Enum):
