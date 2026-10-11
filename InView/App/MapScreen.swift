@@ -560,9 +560,10 @@ struct MapScreen: View {
                     .accessibilityHint("Opens the camera to label doors from room and exit signs")
                 }
                 if hasMap, controller.map?.signPlaces.contains(where: { $0.signCategory == .exit }) == true {
-                    Button { detent = .height(440); query = "Exit" } label: {
-                        Label("Exits", systemImage: SignReading.Category.exit.symbolName).font(.subheadline.weight(.medium))
+                    Button(action: showNearestExit) {
+                        Label("Nearest exit", systemImage: SignReading.Category.exit.symbolName).font(.subheadline.weight(.medium))
                     }
+                    .accessibilityHint("Shows the closest exit read from a sign, with directions")
                     .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.green)
                 }
                 if hasMap, controller.map?.signPlaces.contains(where: { $0.signCategory == .room }) == true {
@@ -1074,6 +1075,14 @@ struct MapScreen: View {
         guard hasMap, controller.canGuide, !isDemo else { modal = .arUnavailable; return }
         if !showsAR { enterAR() }
         readsSigns = true
+    }
+
+    /// The closest exit read from a sign: from where the person is, else the chosen start, else the scan origin.
+    private func showNearestExit() {
+        let from = (controller.isPositionReliable ? controller.position : nil) ?? previewStart ?? .zero
+        guard let exit = controller.map?.signPlaces.filter({ $0.signCategory == .exit })
+            .min(by: { simd_distance($0.floorPoint, from) < simd_distance($1.floorPoint, from) }) else { return }
+        selectPlace(MapPlace(exit))
     }
 
     private func signPreview(_ sighting: SignReader.Sighting) -> AccessPoint? {
