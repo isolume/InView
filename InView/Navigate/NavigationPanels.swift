@@ -106,9 +106,47 @@ extension Route {
     }
 }
 
+/// Time to the destination in large type, when you'd arrive, the distance and the kind of route.
+struct RouteSummaryCard: View {
+    let route: Route
+
+    private var minutes: Int { max(1, Int((route.estimatedSeconds / 60).rounded(.up))) }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(minutes)").font(.system(size: 40, weight: .bold, design: .rounded)).monospacedDigit()
+                        .contentTransition(.numericText())
+                    Text(minutes == 1 ? "min" : "min").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 4) {
+                    Text("\(Int(route.length.rounded())) m ·")
+                    Text("Arrive \(Date.now.addingTimeInterval(route.estimatedSeconds), style: .time)")
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Label(route.preference.title, systemImage: route.preference == .stepFree ? "figure.roll" : "hare.fill")
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .foregroundStyle(.white)
+                .background(Theme.brandGradient, in: Capsule())
+        }
+        .padding(16)
+        .background(LinearGradient(colors: [Theme.accent.opacity(0.14), Color.indigo.opacity(0.06)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .animation(.smooth, value: minutes)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// Every turn on a route from start to arrival, like the step list in Maps.
 struct RouteStepsList: View {
     let route: Route
+    /// During live directions the first step is what to do now, so it stands out.
+    var isLive = false
 
     private struct Step: Identifiable {
         let id: Int
@@ -120,7 +158,7 @@ struct RouteStepsList: View {
 
     private var steps: [Step] {
         let turns = route.maneuvers
-        var steps = [Step(id: 0, symbol: "arrow.up", instruction: "Head toward \(route.destination.title)",
+        var steps = [Step(id: 0, symbol: "location.north.fill", instruction: "Head toward \(route.destination.title)",
                           meters: turns.first?.distance ?? route.length)]
         for (index, turn) in turns.enumerated() {
             let next = index + 1 < turns.count ? turns[index + 1].distance : route.length
@@ -128,7 +166,7 @@ struct RouteStepsList: View {
             steps.append(Step(id: index + 1, symbol: turn.turn.symbolName,
                               instruction: phrase.prefix(1).uppercased() + phrase.dropFirst(), meters: next - turn.distance))
         }
-        steps.append(Step(id: steps.count, symbol: "mappin.circle.fill",
+        steps.append(Step(id: steps.count, symbol: "mappin",
                           instruction: "Arrive at \(route.destination.title)", meters: nil))
         return steps
     }
@@ -137,22 +175,34 @@ struct RouteStepsList: View {
         let steps = steps
         VStack(alignment: .leading, spacing: 0) {
             ForEach(steps) { step in
-                HStack(spacing: 14) {
-                    Image(systemName: step.symbol).font(.title3.weight(.semibold))
-                        .foregroundStyle(Theme.accent).frame(width: 30)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(step.instruction).font(.body.weight(.medium))
-                        if let meters = step.meters {
-                            Text("\(max(1, Int(meters.rounded()))) m").font(.caption).foregroundStyle(.secondary)
+                let isFirst = step.id == steps.first?.id, isLast = step.id == steps.last?.id
+                HStack(alignment: .top, spacing: 14) {
+                    // A timeline: each step's icon, joined to the next by a line.
+                    VStack(spacing: 0) {
+                        Image(systemName: step.symbol).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background((isFirst ? Theme.routeStart : isLast ? Theme.routeEnd : Theme.accent).gradient, in: Circle())
+                        if !isLast {
+                            Capsule().fill(Theme.accent.opacity(0.22)).frame(width: 3)
+                                .frame(maxHeight: .infinity).padding(.vertical, 3)
                         }
                     }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(step.instruction).font(isLive && isFirst ? .title3.weight(.bold) : .body.weight(.medium))
+                        if let meters = step.meters {
+                            Text("\(max(1, Int(meters.rounded()))) m").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                                .contentTransition(.numericText())
+                        }
+                    }
+                    .padding(.top, 5).padding(.bottom, isLast ? 0 : 16)
                     Spacer(minLength: 0)
                 }
-                .padding(.vertical, 9)
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityElement(children: .combine)
-                if step.id != steps.last?.id { Divider().padding(.leading, 44) }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.smooth, value: steps.count)
     }
 }
 
@@ -161,17 +211,22 @@ struct ArrivedPanel: View {
     let destination: AccessPoint?
     let onDone: () -> Void
     @State private var bounce = 0
+    @State private var burst = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label {
-                Text("You’ve arrived")
-            } icon: {
-                Image(systemName: Theme.symbol(for: .good))
-                    .foregroundStyle(Theme.color(for: .good))
-                    .symbolEffect(.bounce, value: bounce)
+            HStack(spacing: 14) {
+                ZStack {
+                    if !reduceMotion { Confetti(burst: burst) }
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 46))
+                        .foregroundStyle(.white, Theme.routeStart.gradient)
+                        .symbolEffect(.bounce, value: bounce)
+                }
+                .frame(width: 56, height: 56)
+                Text("You’ve arrived").font(.panelTitle)
             }
-            .font(.panelTitle)
             Text(destination?.title ?? "Destination").foregroundStyle(.secondary)
             if destination?.requiresAssistance == true {
                 Label("Needs a staff member to operate", systemImage: Theme.Symbol.needsStaff)
@@ -182,7 +237,38 @@ struct ArrivedPanel: View {
             }
             .buttonStyle(.glassProminent).controlSize(.large)
         }
-        .onAppear { bounce += 1 }
+        .onAppear {
+            bounce += 1
+            withAnimation(.easeOut(duration: 1.1)) { burst = true }
+        }
+    }
+}
+
+/// A short burst of colored symbols from behind the arrival seal.
+private struct Confetti: View {
+    let burst: Bool
+    private static let pieces: [(symbol: String, color: Color)] = [
+        ("star.fill", .yellow), ("circle.fill", .pink), ("sparkle", .blue), ("heart.fill", .red),
+        ("star.fill", .orange), ("circle.fill", .green), ("sparkle", .purple), ("star.fill", .teal),
+        ("circle.fill", .indigo), ("sparkle", .yellow), ("heart.fill", .pink), ("star.fill", .mint),
+    ]
+
+    var body: some View {
+        ZStack {
+            ForEach(Self.pieces.indices, id: \.self) { index in
+                let angle = Double(index) / Double(Self.pieces.count) * 2 * .pi
+                let distance: CGFloat = index.isMultiple(of: 2) ? 70 : 52
+                Image(systemName: Self.pieces[index].symbol)
+                    .font(.system(size: index.isMultiple(of: 3) ? 13 : 9, weight: .bold))
+                    .foregroundStyle(Self.pieces[index].color)
+                    .offset(x: burst ? cos(angle) * distance : 0, y: burst ? sin(angle) * distance : 0)
+                    .scaleEffect(burst ? 1 : 0.2)
+                    .opacity(burst ? 0 : 1)
+                    .rotationEffect(.degrees(burst ? 180 : 0))
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -193,7 +279,7 @@ struct RouteCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                KindBadge(kind: route.destination.kind, size: 44)
+                KindBadge(point: route.destination, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(route.destination.title).font(.title3.bold())
                     Text(details).font(.subheadline).foregroundStyle(.secondary)

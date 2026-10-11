@@ -105,6 +105,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private let details = SCNNode()
     private let highlight = SCNNode()
     private let navigation = SCNNode()
+    /// Doors and rooms named by signs, tinted by what the sign said.
+    private let signedPlaces = SCNNode()
     private let illustration = SCNNode()
     private let scanOutline = SCNNode()
     private var illustrationURL: URL?
@@ -188,6 +190,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         shell.addChildNode(wallShell)
         room.addChildNode(details)
         room.addChildNode(highlight)
+        room.addChildNode(signedPlaces)
         room.addChildNode(navigation)
         room.addChildNode(illustration)
         room.addChildNode(scanOutline)
@@ -321,7 +324,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         if changed {
             needsViewportRefresh = true
             self.source = source
-            for child in room.childNodes where child !== shell && child !== details && child !== highlight && child !== navigation && child !== illustration && child !== scanOutline { child.removeFromParentNode() }
+            for child in room.childNodes where child !== shell && child !== details && child !== highlight && child !== navigation && child !== signedPlaces && child !== illustration && child !== scanOutline { child.removeFromParentNode() }
             details.childNodes.forEach { $0.removeFromParentNode() }
             detailsBuilt = false
             walls = source.surfaces.filter { $0.kind == "wall" }
@@ -1465,10 +1468,86 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             addSubview(label)
             return (place, SIMD3(place.position.x, floorY + 0.05, place.position.y), label)
         }
+        buildSignedPlaces(newPlaces, floorY: floorY)
         refreshAccessibility()
         updateMarkerPositions()
         // Pins are UIKit overlays; their new projection still needs one SceneKit frame.
         canvas.setNeedsDisplay()
+    }
+
+    /// A glowing threshold across each labeled door and a wash over the room behind it, so "Room 204"
+    /// reads as that doorway and that room rather than a pin in the corridor.
+    private func buildSignedPlaces(_ places: [MapPlace], floorY: Float) {
+        signedPlaces.childNodes.forEach { $0.removeFromParentNode() }
+        for place in places {
+            let color = UIColor(place.tint).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+            if let room = place.room, room.count >= 3 {
+                let path = UIBezierPath()
+                for (index, corner) in room.enumerated() {
+                    // Drawn in local XY and laid flat: local y becomes map -z.
+                    let point = CGPoint(x: CGFloat(corner.x), y: CGFloat(-corner.y))
+                    if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+                }
+                path.close()
+                let shape = SCNShape(path: path, extrusionDepth: 0.004)
+                let material = SCNMaterial()
+                material.lightingModel = .constant
+                material.diffuse.contents = color.withAlphaComponent(0.24)
+                material.isDoubleSided = true
+                material.writesToDepthBuffer = false
+                shape.materials = [material]
+                let fill = SCNNode(geometry: shape)
+                fill.eulerAngles.x = -.pi / 2
+                fill.simdPosition = SIMD3(0, floorY + 0.012, 0)
+                fill.renderingOrder = 5
+                signedPlaces.addChildNode(fill)
+                // A crisp edge so the room reads as one shape even under furniture.
+                let edge = SCNMaterial()
+                edge.lightingModel = .constant
+                edge.diffuse.contents = color.withAlphaComponent(0.85)
+                for (a, b) in zip(room, room.dropFirst() + [room[0]]) where simd_distance(a, b) > 0.05 {
+                    let side = SCNNode(geometry: SCNBox(width: CGFloat(simd_distance(a, b)), height: 0.02, length: 0.07, chamferRadius: 0))
+                    side.geometry?.materials = [edge]
+                    let middle = (a + b) / 2
+                    side.simdPosition = SIMD3(middle.x, floorY + 0.02, middle.y)
+                    side.simdEulerAngles = SIMD3(0, -atan2(b.y - a.y, b.x - a.x), 0)
+                    side.renderingOrder = 6
+                    signedPlaces.addChildNode(side)
+                }
+            }
+            guard let door = place.door else { continue }
+            let material = SCNMaterial()
+            material.lightingModel = .constant
+            material.diffuse.contents = color
+            material.emission.contents = color
+            let bar = SCNNode(geometry: SCNBox(width: CGFloat(max(0.5, door.width)), height: 0.05,
+                                               length: 0.28, chamferRadius: 0.025))
+            bar.geometry?.materials = [material]
+            bar.simdPosition = SIMD3(door.center.x, floorY + 0.03, door.center.y)
+            // Footprint yaw turns +x toward +z; SceneKit's y rotation turns +x toward -z.
+            bar.simdEulerAngles = SIMD3(0, -door.yaw, 0)
+            bar.renderingOrder = 6
+            let halo = SCNNode(geometry: SCNBox(width: CGFloat(max(0.5, door.width)) + 0.3, height: 0.01,
+                                                length: 0.7, chamferRadius: 0.1))
+            let glow = SCNMaterial()
+            glow.lightingModel = .constant
+            glow.diffuse.contents = color.withAlphaComponent(0.28)
+            glow.writesToDepthBuffer = false
+            halo.geometry?.materials = [glow]
+            halo.simdPosition = SIMD3(0, -0.02, 0)
+            bar.addChildNode(halo)
+            // A tinted pane filling the doorway up to the cut-down walls, visible from any angle.
+            let pane = SCNNode(geometry: SCNBox(width: CGFloat(max(0.5, door.width)), height: 0.95, length: 0.05, chamferRadius: 0.01))
+            let paneMaterial = SCNMaterial()
+            paneMaterial.lightingModel = .constant
+            paneMaterial.diffuse.contents = color.withAlphaComponent(0.55)
+            paneMaterial.isDoubleSided = true
+            pane.geometry?.materials = [paneMaterial]
+            pane.simdPosition = SIMD3(0, 0.475, 0)
+            pane.renderingOrder = 7
+            bar.addChildNode(pane)
+            signedPlaces.addChildNode(bar)
+        }
     }
 
     private func buildLabels(_ source: ProcessedScene) {

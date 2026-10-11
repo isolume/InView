@@ -53,11 +53,16 @@ struct MapScreen: View {
     @State private var topDown = false
     @State private var resetID = 0
     @State private var showsAR = false
+    /// The AR camera reads signs and tags the doors they label.
+    @State private var readsSigns = false
     @State private var detent = PresentationDetent.height(240)
     @State private var showsMainSheet = false
     @State private var previewRoute: Route?
     @State private var previewStart: SIMD2<Float>?
     @State private var routeStart: RouteStart?
+    @State private var swapTurns = 0
+    /// Shown for a moment when the camera finds the person.
+    @State private var showsFoundYou = false
     @State private var isFindingRoute = false
     @State private var routeMessage: String?
     @State private var routeCheck: ServerRouteCheck?
@@ -200,7 +205,7 @@ struct MapScreen: View {
         guard hasVisualFloor else { return [] }
         let local = (hasMap ? controller.map?.points ?? [] : []) + modelPoints
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let matched = text.isEmpty ? local : local.filter { $0.title.localizedCaseInsensitiveContains(text) || $0.kind.title.localizedCaseInsensitiveContains(text) }
+        let matched = text.isEmpty ? local : local.filter { $0.matches(query: text) }
         // The server already matched live places against names, sign text and everyday words.
         let served = liveAnswersQuery ? livePins : []
         return matched + served.filter { pin in !matched.contains { $0.id == pin.id } }
@@ -218,6 +223,13 @@ struct MapScreen: View {
                         .ignoresSafeArea()
                     floatingControls(leadingInset: usesSidePanel ? sideInset : 16)
                     if usesSidePanel { sidePanel(geometry) }
+                    if showsFoundYou {
+                        FoundYouBadge()
+                            .frame(maxWidth: .infinity)
+                            .padding(.leading, usesSidePanel ? sideInset : 0)
+                            .padding(.top, 70)
+                            .transition(.scale(scale: 0.7).combined(with: .opacity))
+                    }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -229,6 +241,13 @@ struct MapScreen: View {
             controller.setRoutePreference(routePreference)
             controller.locatesAutomatically = findsMeAutomatically && !isDemo
             showsMainSheet = !usesSidePanel
+        }
+        .onReceive(NotificationCenter.default.publisher(for: InViewIntents.nearestElevator)) { _ in
+            if InViewIntents.takeNearestElevatorRequest() { showNearestElevator() }
+        }
+        .task {
+            // Siri may have asked before the map existed.
+            if InViewIntents.takeNearestElevatorRequest() { showNearestElevator() }
         }
         .onChange(of: findsMeAutomatically) { _, automatic in
             controller.locatesAutomatically = automatic && !isDemo
@@ -243,7 +262,10 @@ struct MapScreen: View {
             if new != nil { controller.endGuidance() }
             else if findsMeAutomatically, !isDemo, controller.canGuide { controller.findRider() }
         }
-        .onChange(of: usesSidePanel) { _, side in showsMainSheet = !side }
+        .onChange(of: usesSidePanel) { _, side in showsMainSheet = !side && !readsSigns }
+        // The sign reader needs the whole camera; the sheet returns when it closes.
+        .onChange(of: readsSigns) { _, reading in showsMainSheet = !usesSidePanel && !reading }
+        .onChange(of: showsAR) { _, shown in if !shown { readsSigns = false } }
         .onChange(of: assistant.phase) { _, phase in
             if phase == .answered, assistant.place != nil { showAssistantPlace() }
         }
@@ -280,6 +302,14 @@ struct MapScreen: View {
             live.update(scanID: trigger.scanID, origin: trigger.origin, query: trigger.query,
                         existing: controller.map?.points ?? [])
         }
+        .onChange(of: controller.phase) { old, new in
+            guard old == .locating, controller.isLocated else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) { showsFoundYou = true }
+            Task {
+                try? await Task.sleep(for: .seconds(2.2))
+                withAnimation(.easeOut(duration: 0.3)) { showsFoundYou = false }
+            }
+        }
         .onChange(of: controller.phase) { _, phase in
             // Finding the person happens behind the map; AR only opens when they ask for it.
             if phase == .navigating || phase == .arrived { panel = .directions; detent = .height(440) }
@@ -296,13 +326,20 @@ struct MapScreen: View {
     @ViewBuilder private func mapSurface(bottomInset: CGFloat, leadingInset: CGFloat) -> some View {
         if showsAR, controller.canGuide {
             ViewContainer(view: controller.arView)
+                .overlay {
+                    if readsSigns, controller.isPositionReliable {
+                        SignReaderOverlay(reader: controller.signReader, session: controller.arView.session,
+                                          preview: signPreview, onAdd: tagSign, onShowOnMap: showTaggedPlace,
+                                          onClose: { readsSigns = false })
+                    }
+                }
                 .overlay(alignment: .top) {
                     if !controller.isPositionReliable, controller.phase != .locating {
                         Text("Position lost · Look around to reconnect")
                             .font(.subheadline.weight(.medium))
-                            .padding(12).background(.regularMaterial, in: Capsule())
+                            .padding(12).glassEffect(.regular, in: Capsule())
                             .padding(.top, 85)
-                    } else if let route = controller.route, controller.phase == .navigating {
+                    } else if !readsSigns, let route = controller.route, controller.phase == .navigating {
                         NextStepBanner(route: route, caption: controller.caption).padding(.horizontal, 16).padding(.top, 85)
                     }
                 }
@@ -332,7 +369,7 @@ struct MapScreen: View {
                 .overlay {
                     if showsModel, illustrationState == .loading {
                         ProgressView("Opening map…").padding(16)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
                             .padding(.bottom, bottomInset).padding(.leading, leadingInset)
                     } else if showsModel, illustrationState == .failed, !hasMap {
                         ContentUnavailableView("3D map unavailable", systemImage: "cube",
@@ -359,10 +396,22 @@ struct MapScreen: View {
             .disabled(controller.phase == .loading)
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
-            .background(.regularMaterial, in: Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
             .accessibilityLabel(showsAR ? "Return to map" : "Enter AR mode")
+            if showsAR, !readsSigns, controller.canGuide, !isDemo {
+                Button { readsSigns = true } label: {
+                    Label("Read signs", systemImage: "text.viewfinder")
+                        .font(.subheadline.weight(.semibold)).padding(.horizontal, 15).frame(height: 46)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                .background(.regularMaterial, in: Capsule())
+                .disabled(!controller.isPositionReliable)
+                .accessibilityHint("Point the camera at a room number or exit sign to label its door on the map")
+            }
             Spacer(minLength: 0)
             cameraPreview
+            GlassEffectContainer(spacing: 12) {
             VStack(spacing: 12) {
                 if !isDemo {
                     VStack(spacing: 2) {
@@ -371,15 +420,17 @@ struct MapScreen: View {
                                 Text("\(level)").font(.system(.body, design: .rounded).weight(.semibold))
                                     .frame(width: 44, height: 44)
                                     .foregroundStyle(selectedLevel == level ? Color.white : .primary)
-                                    .background(selectedLevel == level ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 12))
+                                    .background(selectedLevel == level ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Floor \(level)\(mapAvailable(on: level) ? "" : ", no map")")
                             .accessibilityAddTraits(selectedLevel == level ? .isSelected : [])
                         }
                     }
-                    .padding(4).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .padding(4).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 17))
                     .frame(width: 52)
+                    .animation(.smooth, value: selectedLevel)
+                    .sensoryFeedback(.selection, trigger: selectedLevel)
                 }
                 if hasVisualFloor, !showsAR {
                     if modelAvailable || hasScanDetail {
@@ -405,7 +456,7 @@ struct MapScreen: View {
                                 .frame(width: 52, height: 48)
                         }
                         .foregroundStyle(.primary)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 17))
                         .accessibilityLabel("Map appearance")
                     }
                     VStack(spacing: 0) {
@@ -421,7 +472,7 @@ struct MapScreen: View {
                     }
                     .foregroundStyle(.primary)
                     .frame(width: 52)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 17))
                 }
                 if !isDemo, hasMap, !showsAR {
                     Button(action: locateMe) {
@@ -429,10 +480,12 @@ struct MapScreen: View {
                             .symbolEffect(.pulse, isActive: controller.phase == .locating)
                             .frame(width: 52, height: 48)
                     }
-                    .foregroundStyle(controller.isLocated ? Color.accentColor : .primary)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .foregroundStyle(controller.isLocated ? Color.white : .primary)
+                    .glassEffect(controller.isLocated ? .regular.tint(Theme.accent).interactive() : .regular.interactive(),
+                                 in: RoundedRectangle(cornerRadius: 17))
                     .accessibilityLabel(locationLabel)
                 }
+            }
             }
         }
         .padding(.leading, leadingInset).padding(.trailing, 16).padding(.top, 10)
@@ -462,6 +515,7 @@ struct MapScreen: View {
                     }
                 }
                 .frame(height: 100).frame(maxWidth: .infinity)
+                .overlay { RadarPulse() }
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityHidden(true)
                 Text(controller.locatingHint ?? (controller.phase == .locating
@@ -470,7 +524,7 @@ struct MapScreen: View {
                     .font(.caption.weight(.medium)).fixedSize(horizontal: false, vertical: true)
             }
             .padding(7).frame(width: 150)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .accessibilityElement(children: .combine)
         }
     }
@@ -487,7 +541,7 @@ struct MapScreen: View {
         }
         .frame(width: sidePanelWidth(geometry))
         .frame(maxHeight: max(200, geometry.size.height - 20), alignment: .top)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 6)
         .padding(.leading, 16).padding(.top, 10)
@@ -508,7 +562,6 @@ struct MapScreen: View {
             .presentationDetents([.height(240), .height(440), .large], selection: $detent)
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(28)
-            .presentationBackground(.regularMaterial)
             .presentationBackgroundInteraction(.enabled(upThrough: .height(440)))
             .interactiveDismissDisabled(), when: !usesSidePanel)
     }
@@ -576,6 +629,8 @@ struct MapScreen: View {
                 }
                 .padding(.horizontal, 12).frame(height: 48)
                 .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                .intelligenceGlow(assistant.phase == .listening || assistant.phase == .thinking,
+                                  in: RoundedRectangle(cornerRadius: 12))
                 if isDemo {
                     Button { controller.stop(); dismiss() } label: {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 30)).foregroundStyle(.secondary)
@@ -597,14 +652,37 @@ struct MapScreen: View {
                     if !routablePlaces.isEmpty {
                         Button { openDirections() } label: {
                             Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill").font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(Theme.brandGradient, in: Capsule())
+                                .shadow(color: Theme.accent.opacity(0.35), radius: 8, y: 3)
                         }
-                        .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
+                        .buttonStyle(.plain)
                     }
                     if hasVisualFloor {
                         Button { detent = .height(440); query = "Elevator" } label: {
                             Label("Elevators", systemImage: "figure.roll").font(.subheadline.weight(.medium))
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule)
+                    }
+                    if hasMap, controller.canGuide, !isDemo {
+                        Button(action: readSigns) {
+                            Label("Read a sign", systemImage: "text.viewfinder").font(.subheadline.weight(.medium))
+                        }
+                        .buttonStyle(.bordered).buttonBorderShape(.capsule)
+                        .accessibilityHint("Opens the camera to label doors from room and exit signs")
+                    }
+                    if hasMap, controller.map?.signPlaces.contains(where: { $0.signCategory == .exit }) == true {
+                        Button(action: showNearestExit) {
+                            Label("Nearest exit", systemImage: SignReading.Category.exit.symbolName).font(.subheadline.weight(.medium))
+                        }
+                        .accessibilityHint("Shows the closest exit read from a sign, with directions")
+                        .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.green)
+                    }
+                    if hasMap, controller.map?.signPlaces.contains(where: { $0.signCategory == .room }) == true {
+                        Button { detent = .height(440); query = "Room" } label: {
+                            Label("Rooms", systemImage: SignReading.Category.room.symbolName).font(.subheadline.weight(.medium))
+                        }
+                        .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.indigo)
                     }
                     if modelAvailable && hasMap {
                         Button { mapStyle = showsModel ? .scan : .model } label: {
@@ -732,29 +810,30 @@ struct MapScreen: View {
 
     @ViewBuilder private var quickActionItems: some View {
         quickAction(account.isSignedIn ? "Account" : "Sign in",
-                    symbol: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle",
-                    label: account.isSignedIn ? "Your account" : "Sign in") { modal = .account }
-        quickAction("Contribute", symbol: "viewfinder", label: "Contribute a scan") { modal = .contribute }
-        quickAction("Submissions", symbol: "tray.full", label: "My submissions") { modal = .submissions }
-        quickAction("Building", symbol: "building.2", label: "Building details") { modal = .building }
-        quickAction("Saved maps", symbol: "map", label: "Saved maps") { modal = .savedMaps }
-        quickAction("Settings", symbol: "gearshape", label: "Scan settings") { modal = .settings }
+                    symbol: account.isSignedIn ? "person.crop.circle.fill" : "person.fill",
+                    color: .blue, label: account.isSignedIn ? "Your account" : "Sign in") { modal = .account }
+        quickAction("Contribute", symbol: "viewfinder", color: .green, label: "Contribute a scan") { modal = .contribute }
+        quickAction("Submissions", symbol: "tray.full.fill", color: .orange, label: "My submissions") { modal = .submissions }
+        quickAction("Building", symbol: "building.2.fill", color: .indigo, label: "Building details") { modal = .building }
+        quickAction("Saved maps", symbol: "map.fill", color: .teal, label: "Saved maps") { modal = .savedMaps }
+        quickAction("Settings", symbol: "gearshape.fill", color: .gray, label: "Scan settings") { modal = .settings }
         #if DEBUG
-        quickAction("Demo", symbol: "play.circle", label: "Navigation demo") { cover = .demo }
+        quickAction("Demo", symbol: "play.fill", color: .pink, label: "Navigation demo") { cover = .demo }
         #endif
     }
 
-    private func quickAction(_ title: String, symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { quickActionLabel(title, symbol: symbol) }
-            .buttonStyle(.plain)
+    private func quickAction(_ title: String, symbol: String, color: Color, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { quickActionLabel(title, symbol: symbol, color: color) }
+            .buttonStyle(QuickActionButtonStyle())
             .accessibilityLabel(label)
     }
 
-    private func quickActionLabel(_ title: String, symbol: String) -> some View {
+    private func quickActionLabel(_ title: String, symbol: String, color: Color) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 21, weight: .medium)).foregroundStyle(Color.accentColor)
+            Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
                 .frame(width: 50, height: 50)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .background(color.gradient, in: Circle())
+                .shadow(color: color.opacity(0.35), radius: 6, y: 3)
             Text(title).font(.caption.weight(.medium)).foregroundStyle(.primary)
                 .lineLimit(1).minimumScaleFactor(0.75)
         }
@@ -783,7 +862,7 @@ struct MapScreen: View {
 
     private func placeRow(_ point: AccessPoint) -> some View {
         HStack(spacing: 14) {
-            KindBadge(kind: point.kind, size: 36)
+            KindBadge(point: point, size: 36)
             VStack(alignment: .leading, spacing: 3) {
                 Text(point.title).font(.body.weight(.medium)).foregroundStyle(.primary)
                 if let result = live.result(for: point), livePins.contains(where: { $0.id == point.id }) {
@@ -837,7 +916,7 @@ struct MapScreen: View {
             } else if controller.phase == .navigating, previewStart == nil, let route = controller.route {
                 RouteCard(route: route, onEnd: closeDestination)
                 if let caption = controller.caption { Text(caption).font(.subheadline).foregroundStyle(.secondary) }
-                RouteStepsList(route: route)
+                RouteStepsList(route: route, isLive: true)
             } else if controller.phase == .arrived, previewStart == nil {
                 ArrivedPanel(destination: controller.route?.destination, onDone: closeDestination)
             } else if isFindingRoute || (controller.phase == .routing && previewStart == nil) {
@@ -877,13 +956,17 @@ struct MapScreen: View {
                 }
             }
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            Button(action: swapRoute) {
+            Button { swapTurns += 1; swapRoute() } label: {
                 Image(systemName: "arrow.up.arrow.down").font(.body.weight(.semibold)).frame(width: 40, height: 40)
+                    .rotationEffect(.degrees(Double(swapTurns) * 180))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: swapTurns)
             }
             .buttonStyle(.bordered).buttonBorderShape(.circle)
             .disabled(!canSwapRoute)
             .accessibilityLabel("Swap start and destination")
         }
+        .sensoryFeedback(.selection, trigger: controller.selectedDestination?.id)
+        .sensoryFeedback(.selection, trigger: swapTurns)
     }
 
     private func routeField(_ label: String, value: String?, symbol: String, tint: Color) -> some View {
@@ -924,8 +1007,7 @@ struct MapScreen: View {
         } else if let message = routeMessage ?? (controller.phase == .noRoute ? controller.caption : nil) {
             Label(message, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(.secondary)
         } else if let route {
-            Label(route.summary, systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                .font(.headline).foregroundStyle(Color.accentColor)
+            RouteSummaryCard(route: route)
             if let warning = route.unmappedWarning {
                 Label(warning, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote).foregroundStyle(Theme.color(for: .warning))
@@ -1187,6 +1269,21 @@ struct MapScreen: View {
         }
     }
 
+    /// From Siri or Shortcuts: directions to the closest elevator, from the person where InView can find them.
+    private func showNearestElevator() {
+        guard !isDemo, cover == nil, let elevator = routablePlaces.first(where: { $0.kind == .elevator }) else { return }
+        modal = nil
+        closeDestination()
+        if controller.canGuide {
+            routeStart = .myLocation
+            controller.navigate(to: elevator, nearestOfKind: true)
+            panel = .directions; detent = .height(440)
+        } else {
+            controller.selectDestination(elevator)
+            openDirections()
+        }
+    }
+
     private func startLiveDirections() {
         guard let destination = controller.selectedDestination else { return }
         if isDemo { controller.navigateToNearest() } else { controller.navigate(to: destination, nearestOfKind: false) }
@@ -1269,6 +1366,46 @@ struct MapScreen: View {
         previewRoute = nil; previewStart = nil
         showsAR = true
         controller.beginGuidance(thenRoute: controller.selectedDestination != nil)
+    }
+
+    /// Opens the AR camera in sign-reading mode; reading starts once the person is found on the map.
+    private func readSigns() {
+        searchFocused = false
+        guard hasMap, controller.canGuide, !isDemo else { modal = .arUnavailable; return }
+        if !showsAR { enterAR() }
+        readsSigns = true
+    }
+
+    /// The closest exit read from a sign: from where the person is, else the chosen start, else the scan origin.
+    private func showNearestExit() {
+        let from = (controller.isPositionReliable ? controller.position : nil) ?? previewStart ?? .zero
+        guard let exit = controller.map?.signPlaces.filter({ $0.signCategory == .exit })
+            .min(by: { simd_distance($0.floorPoint, from) < simd_distance($1.floorPoint, from) }) else { return }
+        selectPlace(MapPlace(exit))
+    }
+
+    private func signPreview(_ sighting: SignReader.Sighting) -> AccessPoint? {
+        guard let map = controller.map else { return nil }
+        let existing = map.signPlaces.first { $0.sign?.reading.title == sighting.reading.title
+            && simd_distance($0.sign?.signPosition ?? .zero, sighting.position) < 1 }
+        return SignPlaceBinder.place(for: sighting.reading, text: sighting.text, sign: sighting.position,
+                                     viewer: sighting.viewer, in: map, id: existing?.id ?? sighting.id,
+                                     confidence: sighting.check == .confirmed ? 0.95 : 0.85)
+            .withReader(sighting.check)
+    }
+
+    private func tagSign(_ point: AccessPoint) async -> String? {
+        guard controller.canTagSigns else { return nil }
+        guard let result = try? await controller.tagSign(point) else { return nil }
+        UIAccessibility.post(notification: .announcement, argument: "\(result.point.title) added to the map")
+        if !result.isNew { return "Updated the place already on this door" }
+        return result.point.sign?.door != nil ? "Door tagged · searchable and routable now" : "Pinned on the map"
+    }
+
+    private func showTaggedPlace(_ point: AccessPoint) {
+        readsSigns = false
+        showsAR = false
+        if let stored = controller.map?.points.first(where: { $0.id == point.id }) { selectPlace(MapPlace(stored)) }
     }
 
     private func closeDestination() {
@@ -1413,4 +1550,55 @@ private struct LiveSearchTrigger: Equatable {
     var origin: SIMD3<Float>
     var query: String
     var pointCount: Int
+}
+
+/// Quick actions shrink a little under the finger, like Home Screen icons.
+private struct QuickActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+/// Rings spreading from the middle of the camera preview while ARKit searches for the scanned room.
+private struct RadarPulse: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            ZStack {
+                ForEach(0..<3) { ring in
+                    let phase = (time / 2 + Double(ring) / 3).truncatingRemainder(dividingBy: 1)
+                    Circle()
+                        .stroke(Color.white.opacity(0.8 * (1 - phase)), lineWidth: 2)
+                        .frame(width: 20 + 140 * phase, height: 20 + 140 * phase)
+                }
+                Image(systemName: "location.viewfinder").font(.title3.weight(.semibold)).foregroundStyle(.white)
+                    .shadow(radius: 3)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The moment the camera recognizes the room: a green seal and "Found you".
+private struct FoundYouBadge: View {
+    @State private var bounce = 0
+
+    var body: some View {
+        Label {
+            Text("Found you").font(.headline)
+        } icon: {
+            Image(systemName: "checkmark.seal.fill").foregroundStyle(.white, Theme.routeStart)
+                .font(.title2)
+                .symbolEffect(.bounce, value: bounce)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .glassEffect(.regular, in: Capsule())
+        .onAppear { bounce += 1 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Found your location")
+    }
 }

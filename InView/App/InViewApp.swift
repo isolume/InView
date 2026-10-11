@@ -16,6 +16,10 @@ struct InViewApp: App {
                 ScanReviewFailurePreview()
             } else if ProcessInfo.processInfo.arguments.contains("--building-directions-preview") {
                 BuildingDirectionsPreview()
+            } else if ProcessInfo.processInfo.arguments.contains("--navigation-demo") {
+                MapScreen(isDemo: true)
+            } else if ProcessInfo.processInfo.arguments.contains("--sign-reader-preview") {
+                SignReaderPreview()
             } else if ProcessInfo.processInfo.arguments.contains("--final-map-preview")
                         || ProcessInfo.processInfo.arguments.contains("--scan-mesh-preview") {
                 FinalMapPreview()

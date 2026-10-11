@@ -59,7 +59,7 @@ struct KindBadge: View {
             .font(.system(size: size * Self.glyphScale, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(tint, in: Circle())
+            .background(tint.gradient, in: Circle())
             .padding(isOnMap ? Self.ringWidth : 0)
             .background(isOnMap ? Color.white : .clear, in: Circle())
             .accessibilityHidden(true)
@@ -87,6 +87,11 @@ extension KindBadge {
         self.init(symbol: kind.symbolName, tint: kind.tint, size: size, isOnMap: isOnMap)
     }
 
+    /// A place's badge: sign places show what their sign named.
+    init(point: AccessPoint, size: CGFloat = 32, isOnMap: Bool = false) {
+        self.init(symbol: point.symbolName, tint: point.tint, size: size, isOnMap: isOnMap)
+    }
+
     init(kind: VisionDetection.Kind, size: CGFloat = 32, isOnMap: Bool = false) {
         self.init(symbol: kind.symbolName, tint: kind.tint, size: size, isOnMap: isOnMap)
     }
@@ -103,5 +108,39 @@ struct CloseButton: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
             .controlSize(.large)
+    }
+}
+
+/// The assistant's glow while it listens or thinks: a slowly turning ring of color around the field or card,
+/// in the spirit of Apple Intelligence. Still when Reduce Motion is on.
+struct IntelligenceGlow<S: InsettableShape>: ViewModifier {
+    let isActive: Bool
+    let shape: S
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if isActive {
+                    TimelineView(.animation(paused: reduceMotion)) { timeline in
+                        let turn = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.5) / 3.5
+                        let gradient = AngularGradient(colors: Theme.intelligenceColors, center: .center,
+                                                       angle: .degrees(turn * 360))
+                        ZStack {
+                            shape.strokeBorder(gradient, lineWidth: 10).blur(radius: 14).opacity(0.75)
+                            shape.strokeBorder(gradient, lineWidth: 2.5)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.35), value: isActive)
+    }
+}
+
+extension View {
+    func intelligenceGlow<S: InsettableShape>(_ isActive: Bool, in shape: S) -> some View {
+        modifier(IntelligenceGlow(isActive: isActive, shape: shape))
     }
 }

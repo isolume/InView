@@ -90,7 +90,28 @@ public enum SignLocalizer {
               frame.timestampSeconds.isFinite,
               frame.mapFromCamera.count == 16, frame.mapFromCamera.allSatisfy(\.isFinite),
               observation.bboxSensorNorm.count == 4, observation.bboxSensorNorm.allSatisfy(\.isFinite) else { return nil }
-        let box = observation.bboxSensorNorm
+        guard let measured = measure(boxSensorNorm: observation.bboxSensorNorm, in: frame) else { return nil }
+        let world = measured.position, meters = measured.depthM, spread = measured.spreadM, samples = measured.sampleCount
+        let m = frame.mapFromCamera
+        let floor = floorY.flatMap { $0.isFinite ? $0 : nil }
+        let context = environment.flatMap { $0.isFinite ? $0 : nil }
+        let verticalAccuracy = context?.verticalAccuracyM.flatMap { $0 >= 0 ? $0 : nil }
+        let altitude = verticalAccuracy == nil ? nil : context?.altitudeM.map { $0 + Double(world.y - m[13]) }
+        var result = SpatialSign(meaning: meaning, x: world.x, y: world.y, z: world.z, floorID: floorID,
+                                 floorElevationM: floor, heightAboveFloorM: floor.map { world.y - $0 },
+                                 altitudeMSLM: altitude, verticalAccuracyM: verticalAccuracy, environment: context,
+                                 timestampSeconds: frame.timestampSeconds, depthM: meters,
+                                 depthSampleCount: samples, depthSpreadM: spread)
+        result.apply(reference: reference)
+        return result
+    }
+
+    /// The metric map point at the center of a sensor-native text box, from the median of the matched
+    /// LiDAR depth inside it. Nil when depth is missing, low-confidence or spans a discontinuity.
+    public static func measure(boxSensorNorm: [Double], in frame: CaptureDepthFrame)
+        -> (position: SIMD3<Float>, depthM: Float, spreadM: Float, sampleCount: Int)? {
+        let box = boxSensorNorm
+        guard box.count == 4, box.allSatisfy(\.isFinite), frame.mapFromCamera.count == 16 else { return nil }
         let u = box[0] + box[2] / 2, v = box[1] + box[3] / 2
         let depth = frame.depth, camera = frame.camera
         guard box[2] > 0, box[3] > 0, (0..<1).contains(u), (0..<1).contains(v),
@@ -126,16 +147,6 @@ public enum SignLocalizer {
                                  m[1] * point.x + m[5] * point.y + m[9] * point.z + m[13],
                                  m[2] * point.x + m[6] * point.y + m[10] * point.z + m[14])
         guard world.x.isFinite, world.y.isFinite, world.z.isFinite else { return nil }
-        let floor = floorY.flatMap { $0.isFinite ? $0 : nil }
-        let context = environment.flatMap { $0.isFinite ? $0 : nil }
-        let verticalAccuracy = context?.verticalAccuracyM.flatMap { $0 >= 0 ? $0 : nil }
-        let altitude = verticalAccuracy == nil ? nil : context?.altitudeM.map { $0 + Double(world.y - m[13]) }
-        var result = SpatialSign(meaning: meaning, x: world.x, y: world.y, z: world.z, floorID: floorID,
-                                 floorElevationM: floor, heightAboveFloorM: floor.map { world.y - $0 },
-                                 altitudeMSLM: altitude, verticalAccuracyM: verticalAccuracy, environment: context,
-                                 timestampSeconds: frame.timestampSeconds, depthM: meters,
-                                 depthSampleCount: samples.count, depthSpreadM: spread)
-        result.apply(reference: reference)
-        return result
+        return (world, meters, spread, samples.count)
     }
 }

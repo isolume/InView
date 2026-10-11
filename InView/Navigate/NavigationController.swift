@@ -48,6 +48,8 @@ final class NavigationController: ObservableObject {
 
     let isDemo: Bool
     lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+    /// Reads room, exit and restroom signs in the same relocalized session, so they land on the saved map.
+    lazy var signReader = SignReader(session: arView.session)
 
     private static let rerouteInterval: TimeInterval = 1
     /// Reading depth is the costliest tick; a newly moved chair can wait a second.
@@ -97,6 +99,7 @@ final class NavigationController: ObservableObject {
     private var hasRefreshedWorldMap = false
     private static let worldMapRefreshDelay: TimeInterval = 8
     private let relocalizer = SessionRelocalizer()
+    private let haptics = TurnHaptics()
     private var lastPreviewAt = Date.distantPast
     private var lastFrameTimestamp: TimeInterval = 0
     private var lastFrameChangeAt = Date.now
@@ -337,14 +340,28 @@ final class NavigationController: ObservableObject {
         return try await publishPlaces(edited)
     }
 
+    /// Signs can be tagged while the camera is on and the rider is found: reading a sign needs the
+    /// live session in the saved map's frame, which is what positions the door it labels.
+    var canTagSigns: Bool {
+        !isDemo && !usesBundledMap && map != nil && placeEditSource != nil && !isSavingPlaces
+    }
+
+    /// Adds a place read from a sign, or updates the one already on that door.
+    func tagSign(_ point: AccessPoint) async throws -> (point: AccessPoint, isNew: Bool) {
+        guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
+        let result = edited.applySign(point)
+        _ = try await publishPlaces(edited, whileLive: true)
+        return result
+    }
+
     func removePlace(id: UUID) async throws -> AccessibilityReport {
         guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
         edited.removePoint(id: id)
         return try await publishPlaces(edited)
     }
 
-    private func publishPlaces(_ edited: VenueMap) async throws -> AccessibilityReport {
-        guard canEditPlaces, let previous = map, let source = placeEditSource else {
+    private func publishPlaces(_ edited: VenueMap, whileLive: Bool = false) async throws -> AccessibilityReport {
+        guard whileLive ? canTagSigns : canEditPlaces, let previous = map, let source = placeEditSource else {
             throw CaptureValidationError.invalid("Places can be changed on a saved map while directions are off.")
         }
         let request = UUID()
@@ -798,6 +815,7 @@ final class NavigationController: ObservableObject {
                 ? "There's no step-free route from here right now."
                 : "There's no route through the mapped floor from here right now."
             say(Narrator.Line(text: message, isUrgent: true))
+            haptics.play(.warning)
             return
         }
         route = newRoute
@@ -805,16 +823,18 @@ final class NavigationController: ObservableObject {
             phase = .arrived
             renderer?.showArrival(at: newRoute.destination)
             say(narrator.arrival(at: newRoute.destination))
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            haptics.play(.arrival)
         } else {
             phase = .navigating
             renderer?.show(newRoute)
+            if case .obstacle = reason { haptics.play(.warning) }
             narrator.lines(for: newRoute, reason: reason).forEach(say)
         }
     }
 
     private func say(_ line: Narrator.Line) {
         caption = line.text
+        if let turn = line.turn { haptics.play(.turn(turn)) }
         voice.say(line.text, interrupting: line.isUrgent)
         if UIAccessibility.isVoiceOverRunning {
             UIAccessibility.post(notification: .announcement, argument: line.text)
