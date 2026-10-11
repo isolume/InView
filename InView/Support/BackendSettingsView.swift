@@ -3,7 +3,7 @@ import SwiftUI
 
 struct BackendSettingsView: View {
     @State private var address = AppConfig.backendAddress
-    @State private var accessToken = AppConfig.backendToken ?? ""
+    @State private var accessToken = AppConfig.enteredBackendToken ?? ""
     @State private var continuousScanning = AppConfig.continuousScanning
     @State private var connectionStatus: ConnectionStatus?
     @State private var isChecking = false
@@ -26,7 +26,8 @@ struct BackendSettingsView: View {
                         .autocorrectionDisabled()
                     if !address.isEmpty {
                         // Kept in the Keychain, never in the address; required by authenticated servers.
-                        SecureField("Access token (if required)", text: $accessToken)
+                        SecureField(AppConfig.hasBuiltInBackendToken ? "Access token (built in; enter to override)"
+                                                                       : "Access token (if required)", text: $accessToken)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                         Button("Clear server address") { address = "" }

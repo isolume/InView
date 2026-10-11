@@ -42,7 +42,14 @@ enum AppConfig {
     private static let tokenService = "org.inview.scan-backend"
     private static let tokenAccount = "api-access-token"
 
-    static var backendToken: String? {
+    /// A token entered in settings wins; otherwise the one built in from Config/Secrets.xcconfig.
+    static var backendToken: String? { keychainBackendToken ?? value(for: "InViewBackendToken") }
+
+    static var hasBuiltInBackendToken: Bool { value(for: "InViewBackendToken") != nil }
+    /// Only what was typed in settings, so the field never reveals the built-in token.
+    static var enteredBackendToken: String? { keychainBackendToken }
+
+    private static var keychainBackendToken: String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: tokenService,
