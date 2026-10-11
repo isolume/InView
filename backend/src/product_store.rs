@@ -1039,6 +1039,21 @@ pub fn validate_map(map: &Value) -> Result<(), ApiError> {
         {
             return Err(invalid());
         }
+        // A place read from a sign carries what it said and the door and room it labels.
+        if let Some(sign) = point.get("sign").filter(|v| !v.is_null()) {
+            let sign = sign.as_object().ok_or_else(invalid)?;
+            if let Some(text) = sign.get("text") {
+                check_text(Some(text.as_str().ok_or_else(invalid)?), 256, "Sign text")?;
+            }
+            if let Some(room) = sign.get("room").filter(|v| !v.is_null())
+                && !room.as_array().is_some_and(|corners| corners.len() <= 256)
+            {
+                return Err(invalid());
+            }
+            if serde_json::to_vec(sign).map_err(|_| invalid())?.len() > 16_384 {
+                return Err(invalid());
+            }
+        }
     }
     if let Some(reference) = object.get("geographicReference").filter(|v| !v.is_null()) {
         number(reference.get("latitude"), 85.)?;
