@@ -11,6 +11,8 @@ struct NavigationMapSurface: View {
     let topDown: Bool
     let resetID: Int
     let bottomInset: CGFloat
+    /// Width of a side panel covering the map's leading edge, as on iPad.
+    var leadingInset: CGFloat = 0
     var groundFloorY: Float? = nil
     var route: Route? = nil
     var userPosition: SIMD2<Float>? = nil
@@ -88,11 +90,23 @@ struct NavigationMapSurface: View {
     }
 
     @ViewBuilder private func indoor(scene: ProcessedScene?, map: VenueMap?, isRouteFloor: Bool) -> some View {
-        if let scene {
+        // 2D is the architectural floor plan of the measured map, with door swings, windows and furniture.
+        // An illustrated model has no plan, so it keeps its top-down 3D view.
+        if let map, scene == nil || (topDown && !showsIllustration) {
+            MapPreviewView(map: map, route: isRouteFloor ? route : nil,
+                           userPosition: isRouteFloor ? userPosition : nil,
+                           userHeading: isRouteFloor ? userHeading ?? 0 : 0, showsScanStart: false,
+                           places: isRouteFloor ? (places.isEmpty ? nil : places) : [],
+                           contentInsets: EdgeInsets(top: 110, leading: leadingInset, bottom: bottomInset, trailing: 72),
+                           resetID: resetID, cornerRadius: 0, showsFitButton: false,
+                           onTap: isRouteFloor ? onSelectFloorPoint : nil,
+                           onSelectPlace: isRouteFloor ? onSelectPlace : nil)
+        } else if let scene {
             RoomMapCanvas(scene: scene, selectedObjectID: .constant(nil), showsLabels: false,
                           floorFootprints: map?.footprints.filter { $0.kind == .floor } ?? [],
                           topDown: topDown, resetID: resetID, showsDetails: detailedScan,
                           viewportBottomInset: bottomInset, viewportTopInset: 110,
+                          viewportLeadingInset: leadingInset,
                           routePoints: isRouteFloor ? route?.waypoints ?? [] : [],
                           userPosition: isRouteFloor ? userPosition : nil,
                           userHeading: isRouteFloor ? userHeading : nil, floorY: map?.floorY ?? groundFloorY ?? 0,
@@ -108,11 +122,6 @@ struct NavigationMapSurface: View {
                           splatURL: isRouteFloor ? splatURL : nil,
                           splatCeiling: splatCeiling(map: map), pausesSplat: pausesSplat,
                           onSplatState: onSplatState)
-        } else if let map {
-            MapPreviewView(map: map, route: route, userPosition: userPosition,
-                           userHeading: userHeading ?? 0, showsScanStart: false)
-                .padding(.bottom, bottomInset)
-                .background(Color(.systemGroupedBackground))
         }
     }
 

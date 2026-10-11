@@ -73,13 +73,30 @@ receive scans from the phone.
 In the app's **Scan processing** settings, enter the HTTPS address and access
 token, then test and save. The token is stored in the phone's Keychain.
 
+## Continuous deployment
+
+`.github/workflows/backend-image.yml` builds `backend/Dockerfile` on every push
+to `main` that touches `backend/` and publishes
+`ghcr.io/<repo-owner>/inview-backend:latest` (plus a tag per commit SHA). On the
+instance, `inview-backend-update.timer` runs `/usr/local/sbin/inview-backend-update`
+every minute: it pulls the image named in `/etc/inview/image` and restarts the
+backend when the pulled image differs from the running one. A push therefore
+reaches the server a minute or so after the workflow finishes. Follow a deploy with:
+
+```sh
+journalctl -fu inview-backend-update -u inview-backend
+```
+
+The instance pulls anonymously, so the GHCR package must be public (package
+settings → Change visibility). For a private package, run `docker login ghcr.io`
+on the instance as root with a token that has `read:packages`.
+
 ## Update and backup
 
-Cloud-init runs only on initial boot. To update an existing instance, copy the
-new image reference into `/etc/systemd/system/inview-backend.service`, run
-`systemctl daemon-reload`, then `systemctl restart inview-backend`. Updating
-Terraform user data alone does not rerun provisioning. To rotate the token,
-update `/etc/inview/backend.env` and restart the service.
+Cloud-init runs only on initial boot. To switch images on an existing instance,
+edit `INVIEW_IMAGE` in `/etc/inview/image`; the update timer deploys it within a
+minute. Updating Terraform user data alone does not rerun provisioning. To
+rotate the token, update `/etc/inview/backend.env` and restart the service.
 
 Back up `/var/lib/inview` before replacing or destroying the instance. If a
 PostgreSQL database is configured, back it up together with the scan directory.

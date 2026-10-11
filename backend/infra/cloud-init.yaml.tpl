@@ -11,6 +11,46 @@ write_files:
     permissions: '0600'
     content: |
       INVIEW_API_TOKEN=${api_token}
+  # The image the backend runs and inview-backend-update polls. Edit this to switch images.
+  - path: /etc/inview/image
+    content: |
+      INVIEW_IMAGE=${backend_image}
+  # Pulls the image and restarts the backend when its digest changed, so pushes to main deploy.
+  - path: /usr/local/sbin/inview-backend-update
+    permissions: '0755'
+    content: |
+      #!/bin/sh
+      set -eu
+      . /etc/inview/image
+      docker pull -q "$INVIEW_IMAGE" >/dev/null
+      latest="$(docker image inspect --format '{{.Id}}' "$INVIEW_IMAGE")"
+      running="$(docker inspect --format '{{.Image}}' inview-backend 2>/dev/null || true)"
+      if [ "$latest" != "$running" ]; then
+        echo "deploying $INVIEW_IMAGE $latest"
+        systemctl restart inview-backend
+        docker image prune -f >/dev/null
+      fi
+  - path: /etc/systemd/system/inview-backend-update.service
+    content: |
+      [Unit]
+      Description=Deploy the latest InView backend image
+      After=docker.service network-online.target
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/inview-backend-update
+  - path: /etc/systemd/system/inview-backend-update.timer
+    content: |
+      [Unit]
+      Description=Poll for new InView backend images
+
+      [Timer]
+      OnBootSec=2min
+      OnUnitActiveSec=1min
+
+      [Install]
+      WantedBy=timers.target
   # Caddy serves HTTPS for backend_domain, or for <ip-with-dashes>.sslip.io when no domain was
   # given. The instance learns its own address only after boot, so the Caddyfile is written in runcmd.
   - path: /usr/local/sbin/inview-caddyfile
@@ -59,9 +99,11 @@ write_files:
       Restart=always
       RestartSec=2
       TimeoutStopSec=30
+      EnvironmentFile=/etc/inview/image
       ExecStartPre=-/usr/bin/docker stop inview-backend
       ExecStartPre=-/usr/bin/docker rm inview-backend
-      ExecStartPre=/usr/bin/docker pull ${backend_image}
+      # A registry outage should not stop restarts from using the cached image.
+      ExecStartPre=-/usr/bin/docker pull $${INVIEW_IMAGE}
       ExecStart=/usr/bin/docker run --rm --name inview-backend \
         -p 127.0.0.1:${backend_port}:3000 \
         --env-file /etc/inview/backend.env \
@@ -71,7 +113,7 @@ write_files:
         -e INVIEW_SCAN_DIR=/data/scans \
         -e INVIEW_STREAM_DIR=/data/streams \
         -e RUST_LOG=inview_backend=info,tower_http=info \
-        ${backend_image}
+        $${INVIEW_IMAGE}
       ExecStop=/usr/bin/docker stop inview-backend
 
       [Install]
@@ -84,6 +126,7 @@ runcmd:
   - systemctl daemon-reload
   - systemctl enable inview-backend.service
   - systemctl start inview-backend.service
+  - systemctl enable --now inview-backend-update.timer
   - curl -fsSL -o /usr/local/bin/caddy "https://caddyserver.com/api/download?os=linux&arch=amd64"
   - chmod 755 /usr/local/bin/caddy
   - groupadd --system caddy

@@ -19,6 +19,7 @@ struct MapScreen: View {
     @StateObject private var controller: NavigationController
     @StateObject private var library = BuildingMapLibrary()
     @StateObject private var live = LivePlaceSearch()
+    @StateObject private var assistant = VoiceAssistant()
     @ObservedObject private var account = AccountSession.shared
     @State private var scene: ProcessedScene?
     @State private var detailScene: ProcessedScene?
@@ -54,8 +55,11 @@ struct MapScreen: View {
     @State private var routeGeneration = 0
     @State private var floorError: String?
     @State private var selectedModelPlace: AccessPoint?
+    /// A place the assistant was asked to show, opened once a map style change settles.
+    @State private var pendingAssistantPlace: UUID?
     @FocusState private var searchFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     init(isDemo: Bool = false) {
         self.isDemo = isDemo
@@ -173,21 +177,30 @@ struct MapScreen: View {
         return matched + served.filter { pin in !matched.contains { $0.id == pin.id } }
     }
 
+    /// Wide windows, like a full-screen iPad, keep the panel beside the map as Maps does; narrow ones use a sheet.
+    private var usesSidePanel: Bool { sizeClass == .regular }
+
     var body: some View {
-        NavigationStack {
+        presentingModals(NavigationStack {
             GeometryReader { geometry in
-                ZStack(alignment: .top) {
-                    mapSurface(bottomInset: mapInset(geometry))
+                let sideInset = usesSidePanel ? sidePanelWidth(geometry) + 32 : 0
+                ZStack(alignment: .topLeading) {
+                    mapSurface(bottomInset: mapInset(geometry), leadingInset: sideInset)
                         .ignoresSafeArea()
-                    floatingControls
+                    floatingControls(leadingInset: usesSidePanel ? sideInset : 16)
+                    if usesSidePanel { sidePanel(geometry) }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-        }
+        }, when: usesSidePanel)
         .sheet(isPresented: $showsMainSheet) { mainSheet }
         .background(Color(.systemGroupedBackground))
         .preferredColorScheme(.light)
-        .onAppear { controller.setRoutePreference(routePreference); showsMainSheet = true }
+        .onAppear { controller.setRoutePreference(routePreference); showsMainSheet = !usesSidePanel }
+        .onChange(of: usesSidePanel) { _, side in showsMainSheet = !side }
+        .onChange(of: assistant.phase) { _, phase in
+            if phase == .answered, assistant.place != nil { showAssistantPlace() }
+        }
         .task {
             controller.start()
             if !isDemo {
@@ -202,10 +215,11 @@ struct MapScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: MapStore.selectionDidChange)) { _ in
             if cover == nil, let floor = MapStore.currentFloor { openSavedFloor(floor) }
         }
-        .onDisappear { controller.stop() }
+        .onDisappear { controller.stop(); assistant.dismiss() }
         .onChange(of: mapStyle) { _, _ in
             if selectedModelPlace != nil { closeDestination() }
             resetID += 1
+            if let id = pendingAssistantPlace { pendingAssistantPlace = nil; revealPlace(id) }
         }
         .onChange(of: routePreference) { _, _ in routePreferenceChanged() }
         .onChange(of: liveTrigger, initial: true) { _, trigger in
@@ -213,7 +227,7 @@ struct MapScreen: View {
                         existing: controller.map?.points ?? [])
         }
         .onChange(of: controller.phase) { _, phase in
-            if phase == .locating { showsAR = true; panel = .directions }
+            // Finding the person happens behind the map; AR only opens when they ask for it.
             if phase == .navigating || phase == .arrived { panel = .directions; detent = .height(440) }
         }
         .sensoryFeedback(trigger: controller.phase) { _, phase in
@@ -225,7 +239,7 @@ struct MapScreen: View {
         }
     }
 
-    @ViewBuilder private func mapSurface(bottomInset: CGFloat) -> some View {
+    @ViewBuilder private func mapSurface(bottomInset: CGFloat, leadingInset: CGFloat) -> some View {
         if showsAR, controller.canGuide {
             ViewContainer(view: controller.arView)
                 .overlay(alignment: .top) {
@@ -241,7 +255,7 @@ struct MapScreen: View {
         } else if hasVisualFloor {
             NavigationMapSurface(scene: hasMap ? scene : StudentCenterCatalog.estimatedScene(for: selectedLevel),
                 map: hasMap ? controller.map : nil, presentation: .indoor,
-                topDown: topDown, resetID: resetID, bottomInset: bottomInset,
+                topDown: topDown, resetID: resetID, bottomInset: bottomInset, leadingInset: leadingInset,
                 groundFloorY: hasMap ? controller.map?.floorY : modelFloorY,
                 route: hasMap ? activeRoute : nil,
                 userPosition: hasMap ? (controller.isPositionReliable ? controller.position : previewStart) : nil,
@@ -265,11 +279,11 @@ struct MapScreen: View {
                     if showsModel, illustrationState == .loading {
                         ProgressView("Opening map…").padding(16)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                            .padding(.bottom, bottomInset)
+                            .padding(.bottom, bottomInset).padding(.leading, leadingInset)
                     } else if showsModel, illustrationState == .failed, !hasMap {
                         ContentUnavailableView("3D map unavailable", systemImage: "cube",
                             description: Text("Choose another floor to explore."))
-                            .padding(.bottom, bottomInset)
+                            .padding(.bottom, bottomInset).padding(.leading, leadingInset)
                     }
                 }
         } else {
@@ -277,13 +291,13 @@ struct MapScreen: View {
                 .overlay {
                     ContentUnavailableView("No map for Floor \(selectedLevel)", systemImage: "map",
                         description: Text("This floor hasn’t been mapped yet."))
-                        .padding(.bottom, bottomInset)
+                        .padding(.bottom, bottomInset).padding(.leading, leadingInset)
                 }
         }
     }
 
-    private var floatingControls: some View {
-        HStack(alignment: .top) {
+    private func floatingControls(leadingInset: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: 8) {
             Button(action: enterAR) {
                 Label(showsAR ? "Map" : "View in AR", systemImage: showsAR ? "map.fill" : "viewfinder")
                     .font(.subheadline.weight(.semibold)).padding(.horizontal, 15).frame(height: 46)
@@ -292,7 +306,8 @@ struct MapScreen: View {
             .foregroundStyle(.primary)
             .background(.regularMaterial, in: Capsule())
             .accessibilityLabel(showsAR ? "Return to map" : "Enter AR mode")
-            Spacer()
+            Spacer(minLength: 0)
+            cameraPreview
             VStack(spacing: 12) {
                 if !isDemo {
                     VStack(spacing: 2) {
@@ -353,28 +368,94 @@ struct MapScreen: View {
                     .frame(width: 52)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
                 }
+                if !isDemo, hasMap, !showsAR {
+                    Button(action: locateMe) {
+                        Image(systemName: locationSymbol).font(.system(size: 19, weight: .medium))
+                            .symbolEffect(.pulse, isActive: controller.phase == .locating)
+                            .frame(width: 52, height: 48)
+                    }
+                    .foregroundStyle(controller.isLocated ? Color.accentColor : .primary)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .accessibilityLabel(locationLabel)
+                }
             }
         }
-        .padding(.horizontal, 16).padding(.top, 10)
+        .padding(.leading, leadingInset).padding(.trailing, 16).padding(.top, 10)
+    }
+
+    private var locationSymbol: String {
+        if controller.isLocated { return controller.isPositionReliable ? "location.fill" : "location.slash" }
+        return "location"
+    }
+
+    private var locationLabel: String {
+        if controller.phase == .locating { return "Finding your location. Double tap to stop." }
+        if controller.isLocated { return "Your location. Double tap to fit it on the map." }
+        return "Show my location"
+    }
+
+    /// While the camera looks for the person, a small preview shows what it sees; the map stays on screen.
+    @ViewBuilder private var cameraPreview: some View {
+        if !showsAR, !isDemo, controller.canGuide,
+           controller.phase == .locating || (controller.isLocated && !controller.isPositionReliable) {
+            VStack(alignment: .leading, spacing: 6) {
+                ViewContainer(view: controller.arView)
+                    .frame(height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+                Text(controller.phase == .locating
+                     ? "Hold up your \(UIDevice.current.model) and look around slowly"
+                     : "Position lost · Look around to reconnect")
+                    .font(.caption.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(7).frame(width: 150)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func sidePanelWidth(_ geometry: GeometryProxy) -> CGFloat {
+        min(400, max(320, geometry.size.width * 0.38))
+    }
+
+    /// The iPad panel: as tall as its content, scrolling only when it would run past the window.
+    private func sidePanel(_ geometry: GeometryProxy) -> some View {
+        ViewThatFits(in: .vertical) {
+            panelContent
+            ScrollView { panelContent }.scrollDismissesKeyboard(.interactively)
+        }
+        .frame(width: sidePanelWidth(geometry))
+        .frame(maxHeight: max(200, geometry.size.height - 20), alignment: .top)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 18, y: 6)
+        .padding(.leading, 16).padding(.top, 10)
+    }
+
+    private var panelContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if panel == .explore { explorePanel }
+            else if panel == .placement { placementPanel }
+            else { destinationPanel }
+        }
+        .padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 28)
     }
 
     private var mainSheet: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if panel == .explore { explorePanel }
-                else if panel == .placement { placementPanel }
-                else { destinationPanel }
-            }
-            .padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 28)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .presentationDetents([.height(240), .height(440), .large], selection: $detent)
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(28)
-        .presentationBackground(.regularMaterial)
-        .presentationBackgroundInteraction(.enabled(upThrough: .height(440)))
-        .interactiveDismissDisabled()
-        .sheet(item: $modal) { modal in
+        presentingModals(ScrollView { panelContent }
+            .scrollDismissesKeyboard(.interactively)
+            .presentationDetents([.height(240), .height(440), .large], selection: $detent)
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(28)
+            .presentationBackground(.regularMaterial)
+            .presentationBackgroundInteraction(.enabled(upThrough: .height(440)))
+            .interactiveDismissDisabled(), when: !usesSidePanel)
+    }
+
+    /// Sheets open from the topmost view: the search sheet on iPhone, the screen itself beside the iPad panel.
+    private func presentingModals<Content: View>(_ content: Content, when active: Bool) -> some View {
+        content
+        .sheet(item: active ? $modal : .constant(nil)) { modal in
             switch modal {
             case .account: AccountExperienceView()
             case .contribute: ContributeExperienceView()
@@ -387,13 +468,13 @@ struct MapScreen: View {
                                        buildingName: StudentCenterCatalog.buildingName)
             }
         }
-        .fullScreenCover(item: $cover, onDismiss: scanDidClose) { cover in
+        .fullScreenCover(item: active ? $cover : .constant(nil), onDismiss: scanDidClose) { cover in
             switch cover {
             case .scan: ScanView()
             case .demo: MapScreen(isDemo: true)
             }
         }
-        .alert("Couldn’t open this floor", isPresented: Binding(get: { floorError != nil }, set: { if !$0 { floorError = nil } })) {
+        .alert("Couldn’t open this floor", isPresented: Binding(get: { active && floorError != nil }, set: { if !$0 { floorError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(floorError ?? "") }
     }
@@ -403,24 +484,44 @@ struct MapScreen: View {
             HStack(spacing: 12) {
                 HStack(spacing: 9) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search this floor", text: $query)
+                    TextField(assistant.isAvailable ? "Search or ask a question" : "Search this floor", text: $query)
                         .focused($searchFocused)
                         .submitLabel(.search)
-                        .onSubmit { searchFocused = false }
+                        .onSubmit {
+                            searchFocused = false
+                            if points.isEmpty, otherFloorResults.isEmpty, !live.isLoading { askTypedQuestion() }
+                        }
                         .onChange(of: query) { _, value in if !value.isEmpty { detent = .height(440) } }
                     if !query.isEmpty {
                         Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                             .accessibilityLabel("Clear search")
+                    } else if assistant.isAvailable {
+                        Button(action: listen) {
+                            Image(systemName: assistant.phase == .listening ? "waveform" : "mic.fill")
+                                .foregroundStyle(Color.accentColor)
+                                .symbolEffect(.variableColor.iterative, isActive: assistant.phase == .listening)
+                        }
+                        .accessibilityLabel(assistant.phase == .listening ? "Finish question" : "Ask a question by voice")
                     }
                 }
                 .padding(.horizontal, 12).frame(height: 48)
                 .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-                appMenu
+                if isDemo {
+                    Button { controller.stop(); dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 30)).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Close demo")
+                }
             }
+            if assistant.phase != .idle {
+                AssistantCard(assistant: assistant, onListen: listen, onShowPlace: showAssistantPlace)
+            }
+            if !isDemo { quickActions }
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.title2.bold()).lineLimit(2)
                 Text(showsModel ? "Floor \(selectedLevel)" : "Floor \(selectedLevel) · \(coverageTitle)").font(.subheadline).foregroundStyle(.secondary)
             }
+            livePositionStatus
             HStack(spacing: 10) {
                 if hasVisualFloor {
                     Button { detent = .height(440); query = "Elevator" } label: {
@@ -450,6 +551,13 @@ struct MapScreen: View {
             if hasVisualFloor {
                 if live.isLoading, points.isEmpty {
                     ProgressView("Finding nearby places…").frame(maxWidth: .infinity)
+                } else if points.isEmpty, otherFloorResults.isEmpty, assistant.isAvailable,
+                          !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button(action: askTypedQuestion) {
+                        Label("Ask InView “\(query)”", systemImage: "waveform")
+                            .font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
                 } else if points.isEmpty, otherFloorResults.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else {
@@ -529,41 +637,84 @@ struct MapScreen: View {
         }
     }
 
-    private var appMenu: some View {
+    /// Every account and map tool as its own button: a row on iPhone, a grid in the iPad panel.
+    @ViewBuilder private var quickActions: some View {
+        if usesSidePanel {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4, alignment: .top), count: 4), spacing: 14) {
+                quickActionItems
+            }
+        } else {
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 4) { quickActionItems }
+            }
+            .scrollIndicators(.hidden).scrollClipDisabled()
+        }
+    }
+
+    @ViewBuilder private var quickActionItems: some View {
+        quickAction(account.isSignedIn ? "Account" : "Sign in",
+                    symbol: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle",
+                    label: account.isSignedIn ? "Your account" : "Sign in") { modal = .account }
+        quickAction("Contribute", symbol: "viewfinder", label: "Contribute a scan") { modal = .contribute }
+        quickAction("Submissions", symbol: "tray.full", label: "My submissions") { modal = .submissions }
+        quickAction("Building", symbol: "building.2", label: "Building details") { modal = .building }
         Menu {
-            if isDemo {
-                Button("Close demo", systemImage: "xmark") { controller.stop(); dismiss() }
-            } else {
-                Button(account.isSignedIn ? "Your account" : "Sign in", systemImage: "person.crop.circle") { modal = .account }
-                Button("Contribute a scan", systemImage: "viewfinder") { modal = .contribute }
-                Button("My submissions", systemImage: "tray") { modal = .submissions }
-                Divider()
-                Button("Building details", systemImage: "building.2") { modal = .building }
-                if localFloor != nil { Button("Student Center East", systemImage: "map") { localFloor = nil; switchFloor(2) } }
-                let buildings = MapStore.savedBuildings()
-                if !buildings.isEmpty {
-                    Menu("Saved maps", systemImage: "map") {
-                        ForEach(buildings) { building in
-                            Section(building.name) {
-                                ForEach(building.floors) { floor in
-                                    Button(floor.name) { selectSavedFloor(floor) }
-                                }
-                            }
-                        }
+            if localFloor != nil {
+                Button(StudentCenterCatalog.buildingName, systemImage: "building.2") { localFloor = nil; switchFloor(2) }
+            }
+            let buildings = MapStore.savedBuildings()
+            if buildings.isEmpty { Text("No saved maps yet. Contribute a scan to add one.") }
+            ForEach(buildings) { building in
+                Section(building.name) {
+                    ForEach(building.floors) { floor in
+                        Button(floor.name) { selectSavedFloor(floor) }
                     }
                 }
-                Button("Scan settings", systemImage: "gearshape") { modal = .settings }
-                #if DEBUG
-                Divider()
-                Button("Navigation demo", systemImage: "play") { cover = .demo }
-                #endif
             }
         } label: {
-            Image(systemName: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
-                .font(.system(size: 32, weight: .light)).foregroundStyle(Color.accentColor)
-                .frame(width: 46, height: 48)
+            quickActionLabel("Saved maps", symbol: "map")
         }
-        .accessibilityLabel("Account and menu")
+        .accessibilityLabel("Saved maps")
+        quickAction("Settings", symbol: "gearshape", label: "Scan settings") { modal = .settings }
+        #if DEBUG
+        quickAction("Demo", symbol: "play.circle", label: "Navigation demo") { cover = .demo }
+        #endif
+    }
+
+    private func quickAction(_ title: String, symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { quickActionLabel(title, symbol: symbol) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+    }
+
+    private func quickActionLabel(_ title: String, symbol: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 21, weight: .medium)).foregroundStyle(Color.accentColor)
+                .frame(width: 50, height: 50)
+                .background(Color.accentColor.opacity(0.12), in: Circle())
+            Text(title).font(.caption.weight(.medium)).foregroundStyle(.primary)
+                .lineLimit(1).minimumScaleFactor(0.75)
+        }
+        .frame(minWidth: 70).frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+    }
+
+    /// Finding the person, or the reminder that their position is showing and the camera is on.
+    @ViewBuilder private var livePositionStatus: some View {
+        if !isDemo, controller.phase == .locating, controller.selectedDestination == nil {
+            LocatingPanel(startView: controller.startView, isSlow: controller.isRelocalizationSlow, onRetry: controller.retryLocalization)
+            Button("Stop finding my location") { controller.endGuidance() }.buttonStyle(.bordered)
+        } else if controller.isLocated {
+            HStack {
+                Label(controller.isPositionReliable ? "Showing where you are" : "Reconnecting to your position",
+                      systemImage: controller.isPositionReliable ? "location.fill" : "location.slash")
+                    .font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
+                Spacer(minLength: 8)
+                Button("Turn off") { controller.endGuidance() }
+                    .buttonStyle(.bordered).buttonBorderShape(.capsule)
+                    .accessibilityLabel("Turn off live location")
+            }
+        }
     }
 
     private func placeRow(_ point: AccessPoint) -> some View {
@@ -585,6 +736,9 @@ struct MapScreen: View {
     }
 
     @ViewBuilder private var destinationPanel: some View {
+        if assistant.phase != .idle {
+            AssistantCard(assistant: assistant, onListen: listen, onShowPlace: showAssistantPlace)
+        }
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(panel == .chooseStart ? "Choose your starting point" : selectedModelPlace?.title ?? controller.selectedDestination?.title ?? "Directions")
@@ -649,6 +803,10 @@ struct MapScreen: View {
             if panel == .place {
                 Text(controller.selectedDestination?.requiresAssistance == true ? "May need staff assistance" : "Location from the floor scan")
                     .font(.subheadline).foregroundStyle(.secondary)
+                if controller.isLocated, let route = controller.route {
+                    Label("\(Int(route.length.rounded())) m from you", systemImage: "location.fill")
+                        .font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
+                }
             }
             Button {
                 if isDemo || controller.canGuide { controller.navigateToNearest(); panel = .directions }
@@ -667,9 +825,9 @@ struct MapScreen: View {
     private var arUnavailableSheet: some View {
         NavigationStack {
             ContentUnavailableView {
-                Label("AR isn’t ready for this floor", systemImage: "viewfinder")
+                Label("Live location isn’t ready here", systemImage: "location.slash")
             } description: {
-                Text(hasMap ? "The map is available, but live positioning hasn’t been added yet. Explore in 3D or preview a route on the map." : hasVisualFloor ? "Live positioning hasn’t been added for this floor. You can still explore the 3D map." : "A floor map and live positioning are needed before AR guidance is available.")
+                Text(hasMap ? "InView finds you on maps scanned with this device. Open one from Saved maps, or tap Contribute to scan this room. You can still explore and preview routes here." : hasVisualFloor ? "Live location hasn’t been added for this floor. You can still explore the 3D map." : "A floor map and a scan of the space are needed before InView can find you.")
             } actions: {
                 Button("Return to map") { modal = nil }.buttonStyle(.borderedProminent)
             }
@@ -734,6 +892,72 @@ struct MapScreen: View {
         if let measured { controller.selectDestination(measured) }
         query = ""; searchFocused = false
         panel = .place; detent = .height(440)
+    }
+
+    /// Every floor's places as the map shows them when that floor is opened.
+    private var assistantContext: GeminiAssistantClient.Context {
+        guard !isDemo, localFloor == nil else {
+            let user = controller.isPositionReliable ? controller.position.map { (floor: sourceLevel, position: $0) } : nil
+            return .init(buildingName: title, currentFloor: selectedLevel, floors: [
+                .init(level: sourceLevel, summary: coverageTitle.lowercased(), points: controller.map?.points ?? [], landmarks: [])],
+                user: user)
+        }
+        let floors = StudentCenterCatalog.floorLevels.map { level in
+            // The same map switchFloor opens for this level.
+            let map = library.release(for: level)?.map ?? (level == StudentCenterCatalog.floorLevel ? StudentCenterCatalog.map() : nil)
+            let hasModel = StudentCenterCatalog.hasEstimatedModel(on: level)
+            let parts = [hasModel ? "3D model" : nil,
+                         map == nil ? nil : library.isReviewed(floor: level) ? "published floor map" : "partial floor scan"]
+                .compactMap { $0 }
+            return GeminiAssistantClient.Context.Floor(level: level,
+                summary: parts.isEmpty ? "no map yet" : parts.joined(separator: " and "),
+                points: map?.points ?? [], landmarks: hasModel ? StudentCenterCatalog.modelLandmarks(for: level) : [])
+        }
+        return .init(buildingName: "\(title), \(StudentCenterCatalog.universityName)", currentFloor: selectedLevel, floors: floors)
+    }
+
+    private func listen() {
+        searchFocused = false
+        detent = .height(440)
+        assistant.listen(context: assistantContext)
+    }
+
+    private func askTypedQuestion() {
+        guard assistant.isAvailable, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        searchFocused = false
+        detent = .height(440)
+        assistant.ask(query, context: assistantContext)
+        query = ""
+    }
+
+    private func showAssistantPlace() {
+        guard let place = assistant.place else { return }
+        let style = mapStyle
+        if place.floor != selectedLevel { switchFloor(place.floor) }
+        if !displayPoints.contains(where: { $0.id == place.id }), modelAvailable { mapStyle = .model }
+        // A style change closes any open place as it settles, so the place opens after it.
+        if mapStyle == style { revealPlace(place.id) } else { pendingAssistantPlace = place.id }
+    }
+
+    private func revealPlace(_ id: UUID) {
+        guard let point = displayPoints.first(where: { $0.id == id }) else { return }
+        selectPlace(MapPlace(point))
+        // "Where's the nearest elevator?" draws the way on this map from where the camera finds the person.
+        if assistant.wantsDirections, assistant.place?.id == id, controller.canGuide,
+           let destination = controller.selectedDestination, destination.id == id {
+            controller.navigate(to: destination, nearestOfKind: assistant.wantsNearest)
+            panel = .directions; detent = .height(440)
+        }
+    }
+
+    private func locateMe() {
+        searchFocused = false
+        guard hasMap, controller.canGuide, !isDemo else { modal = .arUnavailable; return }
+        switch controller.phase {
+        case .browsing: controller.beginGuidance(thenRoute: false)
+        case .locating: if controller.selectedDestination == nil { controller.endGuidance() }
+        default: resetID += 1
+        }
     }
 
     private func beginChoosingStart() {
@@ -802,12 +1026,11 @@ struct MapScreen: View {
     }
 
     private func closeDestination() {
-        controller.endGuidance()
+        controller.clearDirections()
         showsAR = false; panel = .explore
         routeGeneration += 1
         previewRoute = nil; previewStart = nil; routeMessage = nil; routeCheck = nil; isFindingRoute = false
         selectedModelPlace = nil
-        controller.selectDestination(nil)
         detent = .height(240)
     }
 
@@ -868,6 +1091,7 @@ struct MapScreen: View {
     }
 
     private func mapInset(_ geometry: GeometryProxy) -> CGFloat {
+        if usesSidePanel { return geometry.safeAreaInsets.bottom + 16 }
         let height: CGFloat = detent == .height(240) ? 240 : detent == .height(440) ? 440 : geometry.size.height * 0.85
         return height + geometry.safeAreaInsets.bottom
     }

@@ -74,6 +74,8 @@ final class NavigationController: ObservableObject {
     private var lastDemoTick = Date.now
     /// Start the route as soon as the rider is found, when they asked for directions before that.
     private var routesWhenLocated = false
+    /// The next route goes to the closest place of the destination's kind, like "the nearest elevator".
+    private var prefersNearestOfKind = false
     private var sessionIsRunning = false
     private var placeEditSource: MapStore.PlaceEditSource?
     private var placeEditRequest: UUID?
@@ -210,6 +212,11 @@ final class NavigationController: ObservableObject {
         isActive = true
     }
 
+    /// The camera has found the rider in the scan and is tracking them, with or without a route.
+    var isLocated: Bool {
+        !isDemo && [.ready, .routing, .navigating, .arrived, .noRoute].contains(phase)
+    }
+
     /// Turns the camera off and returns to exploring the map.
     func endGuidance() {
         guard !isDemo, map != nil else { return }
@@ -218,6 +225,7 @@ final class NavigationController: ObservableObject {
         caption = nil
         renderer?.clearRoute()
         routesWhenLocated = false
+        prefersNearestOfKind = false
         position = nil
         isPositionReliable = false
         phase = .browsing
@@ -351,6 +359,10 @@ final class NavigationController: ObservableObject {
             beginGuidance(thenRoute: true)
             return
         }
+        if phase == .locating {
+            routesWhenLocated = true
+            return
+        }
         guard phase == .ready || phase == .noRoute || phase == .arrived,
               planner != nil, userPosition() != nil else { return }
         routingGeneration += 1
@@ -383,6 +395,26 @@ final class NavigationController: ObservableObject {
             phase = .ready
             selectDestination(selectedDestination)
         }
+    }
+
+    /// Directions to `destination`, or to the closest place of its kind. The camera only finds the rider;
+    /// the route is drawn on the map.
+    func navigate(to destination: AccessPoint, nearestOfKind: Bool) {
+        guard !isDemo else { selectDestination(destination); navigateToNearest(); return }
+        if [.routing, .navigating, .noRoute, .arrived].contains(phase) { endNavigation() }
+        selectedDestination = destination
+        prefersNearestOfKind = nearestOfKind
+        navigateToNearest()
+    }
+
+    /// Ends any route and clears the destination. Once the camera has found the rider it keeps
+    /// tracking them, so their position stays on the map.
+    func clearDirections() {
+        if isDemo { selectDestination(nil); return }
+        routesWhenLocated = false
+        prefersNearestOfKind = false
+        if [.ready, .routing, .navigating, .arrived, .noRoute].contains(phase) { endNavigation() }
+        selectedDestination = nil
     }
 
     func selectDestination(_ destination: AccessPoint?) {
@@ -528,8 +560,16 @@ final class NavigationController: ObservableObject {
         let conditions = conditions
         let fresh: Bool
         if case .started = reason { fresh = true } else { fresh = current == nil }
+        // "The nearest elevator" is decided by walking distance from where the rider actually is.
+        let kind = fresh && prefersNearestOfKind ? destination?.kind : nil
+        let candidates = kind.map { kind in planner.map.points.filter { $0.kind == kind } } ?? []
+        if fresh { prefersNearestOfKind = false }
         Task { [weak self] in
             let next = await Task.detached(priority: .userInitiated) {
+                if !candidates.isEmpty {
+                    return candidates.compactMap { planner.route(from: position, to: $0, conditions: conditions) }
+                        .min { $0.length < $1.length }
+                }
                 // A chosen destination stays chosen when a passage becomes blocked.
                 if let destination { return planner.route(from: position, to: destination, conditions: conditions) }
                 if fresh || current == nil {
@@ -538,6 +578,7 @@ final class NavigationController: ObservableObject {
                 return planner.reroute(current!, from: position, conditions: conditions)
             }.value
             guard let self, routingGeneration == generation, isActive else { return }
+            if !candidates.isEmpty, let chosen = next?.destination { selectedDestination = chosen }
             if isDemo, case .started = reason {
                 demoPath = next?.waypoints ?? []
                 demoDistance = 0
