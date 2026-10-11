@@ -89,6 +89,26 @@ struct SignPlacesTests {
         #expect(abs(point.position.z - 0.65) < 1e-3)
     }
 
+    @Test func aSignOnAWallWithoutAScannedDoorGetsADoorwayWhereItHangs() throws {
+        var map = corridor()
+        map.footprints.removeAll { $0.kind == .door }
+        let reading = try #require(SignInterpreter.interpret(["EXIT"]))
+        let point = SignPlaceBinder.place(for: reading, text: "EXIT", sign: SIMD3(-2, 0.9, 0.1),
+                                          viewer: SIMD3(-2, 0.2, 2), in: map)
+        let door = try #require(point.sign?.door)
+        #expect(simd_distance(door.center, SIMD2(-2, 0)) < 1e-4)
+        #expect(abs(sin(door.yaw)) < 1e-4)
+        #expect(abs(point.position.z - SignPlaceBinder.standOff) < 1e-4)
+
+        // No wall either: the doorway faces the reader.
+        let bare = VenueMap(floorY: -1.3, footprints: [], points: [])
+        let plate = try #require(SignInterpreter.interpret(["204"]))
+        let alone = SignPlaceBinder.place(for: plate, text: "204", sign: SIMD3(0, 0.2, 0), viewer: SIMD3(0, 0.2, 2), in: bare)
+        let facing = try #require(alone.sign?.door)
+        #expect(abs(sin(facing.yaw)) < 1e-4)
+        #expect(simd_distance(alone.position, SIMD3(0, -1.3, SignPlaceBinder.standOff)) < 1e-4)
+    }
+
     @Test func readingTheSameSignTwiceUpdatesOnePlace() throws {
         var map = corridor()
         let reading = try #require(SignInterpreter.interpret(["204"]))

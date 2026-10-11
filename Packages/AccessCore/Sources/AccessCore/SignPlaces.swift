@@ -226,8 +226,8 @@ public enum SignPlaceBinder {
         let viewerFloor = viewer.map { SIMD2($0.x, $0.z) }
         var tag = SignTag(reading: reading, text: text, signPosition: sign)
         var spot: SIMD2<Float>
-        if !reading.isDirectional, let match = door(for: sign, in: map) {
-            let door = match.footprint
+        if !reading.isDirectional, let door = door(for: sign, in: map)?.footprint
+            ?? estimatedDoor(for: sign, reading: reading, viewer: viewer, in: map) {
             let normal = SIMD2(-sin(door.yaw), cos(door.yaw))
             // Stand on the viewer's side; without a viewer, on the side the sign is on.
             let reference = viewerFloor ?? signFloor
@@ -248,6 +248,34 @@ public enum SignPlaceBinder {
                                 position: SIMD3(spot.x, map.floorY, spot.y), source: .detected, confidence: confidence)
         point.sign = tag
         return point
+    }
+
+    /// Scans often miss doors (RoomPlan reads a closed one as wall), so a sign that names a doorway
+    /// gets one where it hangs: on the nearest wall, else facing the reader. Lobby and "other" signs
+    /// name an area, not a door, and get none.
+    static func estimatedDoor(for sign: SIMD3<Float>, reading: SignReading, viewer: SIMD3<Float>?,
+                              in map: VenueMap) -> Footprint? {
+        guard reading.category != .lobby, reading.category != .other else { return nil }
+        let point = SIMD2(sign.x, sign.z)
+        let width: Float = 0.9
+        let wall = map.footprints.filter { $0.kind == .wall }.compactMap { wall -> (Footprint, SIMD2<Float>, Float)? in
+            let local = wall.local(point)
+            let pastEnd = max(0, abs(local.x) - wall.size.x / 2)
+            guard pastEnd <= 0.3, abs(local.y) <= 0.9 else { return nil }
+            return (wall, local, abs(local.y) + pastEnd)
+        }.min { $0.2 < $1.2 }
+        if let (wall, local, _) = wall {
+            // Keep the doorway on the wall even when the sign hangs near its end.
+            let room = max(0, wall.size.x / 2 - width / 2)
+            let along = min(max(local.x, -room), room)
+            return Footprint(kind: .door, center: wall.floorPoint(local: SIMD2(along, 0)),
+                             size: SIMD2(width, 0.15), yaw: wall.yaw)
+        }
+        guard let viewer else { return nil }
+        let facing = SIMD2(viewer.x, viewer.z) - point
+        guard simd_length(facing) > 0.2 else { return nil }
+        // The wall runs across the reader's line of sight.
+        return Footprint(kind: .door, center: point, size: SIMD2(width, 0.15), yaw: atan2(facing.y, facing.x) + .pi / 2)
     }
 
     /// The measured floor on the far side of a door, when it is a different floor patch from the near side.
