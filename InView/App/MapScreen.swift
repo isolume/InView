@@ -1157,6 +1157,15 @@ struct MapScreen: View {
 
     /// Every floor's places as the map shows them when that floor is opened.
     private var assistantContext: GeminiAssistantClient.Context {
+        var context = assistantMapContext
+        let evidence = controller.assistantEvidence()
+        context.keyframeJPEG = evidence.jpeg
+        context.highlights = evidence.highlights
+        context.hazards = evidence.hazards
+        return context
+    }
+
+    private var assistantMapContext: GeminiAssistantClient.Context {
         guard !isDemo, localFloor == nil else {
             let user = controller.isPositionReliable ? controller.position.map { (floor: sourceLevel, position: $0) } : nil
             return .init(buildingName: title, currentFloor: selectedLevel, floors: [

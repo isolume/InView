@@ -46,6 +46,21 @@ final class NavigationController: ObservableObject {
     @Published private(set) var isPositionReliable = false
     @Published private(set) var routePreference = RoutePreference.stepFree
 
+    /// Only an explicitly requested assistant turn exports a recent camera frame.
+    func assistantEvidence() -> (jpeg: Data?, highlights: [String], hazards: [String]) {
+        var highlights: [String] = []
+        var hazards: [String] = []
+        if let map {
+            highlights = map.points.prefix(20).map { "Saved map: \($0.title)" }
+            hazards = ScanReviewChecks(map: map).items.prefix(20).map { "Saved measurements: \($0.title). \($0.detail)" }
+        }
+        if !obstacles.obstacles.isEmpty { hazards.append("Depth tracker has detected nearby obstacles; positions may have changed.") }
+        guard !isDemo, let frame = arView.session.currentFrame,
+              ProcessInfo.processInfo.systemUptime - frame.timestamp < 2,
+              let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return (nil, highlights, hazards) }
+        return (FrameEncoder.portraitJPEG(from: snapshot, maxDimension: 768), highlights, hazards)
+    }
+
     let isDemo: Bool
     lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
     /// Reads room, exit and restroom signs in the same relocalized session, so they land on the saved map.
