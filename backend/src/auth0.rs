@@ -2,6 +2,8 @@
 //! email or Sign in with Apple), then trade the Auth0 access token for the backend's own
 //! revocable session at `POST /api/accounts/auth0`. Nothing here is on the per-request path.
 use std::{
+    future::Future,
+    pin::Pin,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -17,6 +19,9 @@ const JWKS_TTL: Duration = Duration::from_secs(600);
 /// An unknown `kid` forces at most one refresh per interval, so a bad token can't hammer Auth0.
 const FORCED_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
+/// After a failed fetch, serve from the cache (or fail fast) for this long instead of making every
+/// sign-in wait on an unreachable tenant.
+const FAILURE_BACKOFF: Duration = Duration::from_secs(15);
 const DEFAULT_NAMESPACE: &str = "https://inview.app/";
 /// A token is traded for a session right after sign-in; older ones are not accepted, which
 /// bounds how long a leaked ID or access token could be replayed.
@@ -74,12 +79,17 @@ pub enum VerifyError {
     Unavailable,
 }
 
+/// Produces the tenant's key set, or None when it can't be fetched.
+pub type Fetcher =
+    Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Option<JwkSet>> + Send>> + Send + Sync>;
+
 enum Source {
     Remote {
         url: String,
         client: reqwest::Client,
     },
     Static(JwkSet),
+    Fetch(Fetcher),
 }
 
 #[derive(Default)]
@@ -87,11 +97,32 @@ struct Cache {
     keys: Option<JwkSet>,
     fetched_at: Option<Instant>,
     forced_at: Option<Instant>,
+    /// No fetch is attempted before this instant (set after a failure).
+    retry_at: Option<Instant>,
+}
+
+/// How long keys are trusted and how often they may be refetched.
+#[derive(Clone, Copy, Debug)]
+pub struct KeyTiming {
+    pub ttl: Duration,
+    pub forced_refresh_interval: Duration,
+    pub failure_backoff: Duration,
+}
+
+impl Default for KeyTiming {
+    fn default() -> Self {
+        Self {
+            ttl: JWKS_TTL,
+            forced_refresh_interval: FORCED_REFRESH_INTERVAL,
+            failure_backoff: FAILURE_BACKOFF,
+        }
+    }
 }
 
 pub struct Auth0 {
     config: Auth0Config,
     source: Source,
+    timing: KeyTiming,
     cache: Mutex<Cache>,
 }
 
@@ -176,6 +207,7 @@ impl Auth0 {
         Self {
             config,
             source: Source::Remote { url, client },
+            timing: KeyTiming::default(),
             cache: Mutex::default(),
         }
     }
@@ -185,6 +217,18 @@ impl Auth0 {
         Self {
             config,
             source: Source::Static(keys),
+            timing: KeyTiming::default(),
+            cache: Mutex::default(),
+        }
+    }
+
+    /// A verifier whose keys come from `fetcher` with the real cache, refresh and backoff logic,
+    /// so key rotation and outages can be tested without a network.
+    pub fn with_fetcher(config: Auth0Config, fetcher: Fetcher, timing: KeyTiming) -> Self {
+        Self {
+            config,
+            source: Source::Fetch(fetcher),
+            timing,
             cache: Mutex::default(),
         }
     }
@@ -211,32 +255,46 @@ impl Auth0 {
             return Ok(keys.clone());
         }
         let mut cache = self.cache.lock().await;
-        let fresh = cache.fetched_at.is_some_and(|t| t.elapsed() < JWKS_TTL);
+        let fresh = cache
+            .fetched_at
+            .is_some_and(|t| t.elapsed() < self.timing.ttl);
         let may_force = cache
             .forced_at
-            .is_none_or(|t| t.elapsed() >= FORCED_REFRESH_INTERVAL);
+            .is_none_or(|t| t.elapsed() >= self.timing.forced_refresh_interval);
         if let (Some(keys), true) = (&cache.keys, fresh && !(force && may_force)) {
             return Ok(keys.clone());
+        }
+        // A recent failure: use what we have, or fail fast, rather than wait on the network again.
+        if cache.retry_at.is_some_and(|t| Instant::now() < t) {
+            return cache.keys.clone().ok_or(VerifyError::Unavailable);
         }
         if force {
             cache.forced_at = Some(Instant::now());
         }
-        let Source::Remote { url, client } = &self.source else {
-            unreachable!()
+        let fetched = match &self.source {
+            Source::Remote { url, client } => {
+                async {
+                    let response = client.get(url).send().await.ok()?.error_for_status().ok()?;
+                    response.json::<JwkSet>().await.ok()
+                }
+                .await
+            }
+            Source::Fetch(fetcher) => fetcher().await,
+            Source::Static(_) => unreachable!("static keys return early"),
         };
-        let fetched = async {
-            let response = client.get(url).send().await.ok()?.error_for_status().ok()?;
-            response.json::<JwkSet>().await.ok()
-        }
-        .await;
         match fetched {
-            Some(keys) => {
+            Some(keys) if !keys.keys.is_empty() => {
                 cache.keys = Some(keys.clone());
                 cache.fetched_at = Some(Instant::now());
+                cache.retry_at = None;
                 Ok(keys)
             }
-            // A stale key set beats refusing everyone while Auth0 blips.
-            None => cache.keys.clone().ok_or(VerifyError::Unavailable),
+            // A stale key set beats refusing everyone while Auth0 blips. An empty set counts as a
+            // failure too: trusting it would lock everyone out.
+            _ => {
+                cache.retry_at = Some(Instant::now() + self.timing.failure_backoff);
+                cache.keys.clone().ok_or(VerifyError::Unavailable)
+            }
         }
     }
 

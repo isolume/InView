@@ -11,7 +11,7 @@ use axum::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use inview_backend::{
     AppState, app,
-    auth0::{Auth0, Auth0Config},
+    auth0::{Auth0, Auth0Config, Fetcher, KeyTiming, VerifyError},
 };
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode, jwk::JwkSet};
 use serde_json::{Value, json};
@@ -508,4 +508,164 @@ async fn without_a_tenant_nothing_changes() {
             .unwrap()
             .contains("connect-src 'self';")
     );
+}
+
+// ---- Key set caching, rotation and outages (the remote fetch path, without a network) ----
+
+use std::sync::{
+    Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
+use std::time::Duration;
+
+/// A tenant whose key set can be swapped or taken down, counting every fetch.
+struct Tenant {
+    keys: Mutex<Option<JwkSet>>,
+    fetches: AtomicUsize,
+}
+
+fn jwks(json: &str) -> JwkSet {
+    serde_json::from_str(json).unwrap()
+}
+
+fn tenant_with(keys: &str) -> Arc<Tenant> {
+    Arc::new(Tenant {
+        keys: Mutex::new(Some(jwks(keys))),
+        fetches: AtomicUsize::new(0),
+    })
+}
+
+fn verifier(tenant: &Arc<Tenant>, timing: KeyTiming) -> Auth0 {
+    let source = tenant.clone();
+    let fetcher: Fetcher = Arc::new(move || {
+        let source = source.clone();
+        Box::pin(async move {
+            source.fetches.fetch_add(1, Ordering::SeqCst);
+            source.keys.lock().unwrap().clone()
+        })
+    });
+    Auth0::with_fetcher(config(&[]), fetcher, timing)
+}
+
+fn timing(ttl_ms: u64, forced_ms: u64, backoff_ms: u64) -> KeyTiming {
+    KeyTiming {
+        ttl: Duration::from_millis(ttl_ms),
+        forced_refresh_interval: Duration::from_millis(forced_ms),
+        failure_backoff: Duration::from_millis(backoff_ms),
+    }
+}
+
+fn token_signed_by(pem: &[u8], kid: &str) -> String {
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(kid.into());
+    let claims = claims("email|k", "k@example.test");
+    encode(&header, &claims, &EncodingKey::from_rsa_pem(pem).unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn keys_are_cached_between_sign_ins() {
+    let tenant = tenant_with(include_str!("fixtures/auth0-test-jwks.json"));
+    let auth0 = verifier(&tenant, timing(60_000, 60_000, 60_000));
+    let token = sign(&claims("email|c", "c@example.test"));
+    for _ in 0..3 {
+        auth0.verify(&token).await.unwrap();
+    }
+    assert_eq!(tenant.fetches.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn an_expired_cache_is_refetched() {
+    let tenant = tenant_with(include_str!("fixtures/auth0-test-jwks.json"));
+    let auth0 = verifier(&tenant, timing(30, 60_000, 60_000));
+    let token = sign(&claims("email|c", "c@example.test"));
+    auth0.verify(&token).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    auth0.verify(&token).await.unwrap();
+    assert_eq!(tenant.fetches.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_rotated_key_is_picked_up_and_unknown_keys_cannot_hammer_the_tenant() {
+    let tenant = tenant_with(include_str!("fixtures/auth0-test-jwks.json"));
+    let auth0 = verifier(&tenant, timing(60_000, 60_000, 60_000));
+    auth0
+        .verify(&sign(&claims("email|c", "c@example.test")))
+        .await
+        .unwrap();
+    assert_eq!(tenant.fetches.load(Ordering::SeqCst), 1);
+
+    // Auth0 rotates: the new key's id is unknown to the cache, which refetches and accepts it.
+    *tenant.keys.lock().unwrap() = Some(jwks(include_str!("fixtures/auth0-rotated-jwks.json")));
+    let rotated = token_signed_by(
+        include_bytes!("fixtures/auth0-other-key.pem"),
+        "rotated-key",
+    );
+    assert!(auth0.verify(&rotated).await.is_ok());
+    assert_eq!(tenant.fetches.load(Ordering::SeqCst), 2);
+
+    // A flood of unknown key ids is rate-limited to the interval: no further fetches.
+    let bogus = token_signed_by(key_pem(), "does-not-exist");
+    for _ in 0..20 {
+        assert_eq!(
+            auth0.verify(&bogus).await,
+            Err(VerifyError::Invalid("unknown signing key"))
+        );
+    }
+    assert_eq!(
+        tenant.fetches.load(Ordering::SeqCst),
+        2,
+        "forced refresh was rate-limited"
+    );
+}
+
+#[tokio::test]
+async fn an_outage_serves_stale_keys_and_backs_off() {
+    let tenant = tenant_with(include_str!("fixtures/auth0-test-jwks.json"));
+    let auth0 = verifier(&tenant, timing(30, 60_000, 250));
+    let token = sign(&claims("email|c", "c@example.test"));
+    auth0.verify(&token).await.unwrap();
+    assert_eq!(tenant.fetches.load(Ordering::SeqCst), 1);
+
+    // The cache expires while the tenant is unreachable: keep verifying with the stale keys.
+    *tenant.keys.lock().unwrap() = None;
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    for _ in 0..10 {
+        auth0.verify(&token).await.unwrap();
+    }
+    assert_eq!(
+        tenant.fetches.load(Ordering::SeqCst),
+        2,
+        "one failed attempt, then backoff"
+    );
+
+    // After the backoff, and once the tenant is back, keys are fetched again.
+    *tenant.keys.lock().unwrap() = Some(jwks(include_str!("fixtures/auth0-test-jwks.json")));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    auth0.verify(&token).await.unwrap();
+    assert_eq!(tenant.fetches.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn with_no_keys_the_exchange_is_unavailable_not_unauthorized() {
+    let tenant = Arc::new(Tenant {
+        keys: Mutex::new(None),
+        fetches: AtomicUsize::new(0),
+    });
+    let auth0 = verifier(&tenant, timing(60_000, 60_000, 60_000));
+    let token = sign(&claims("email|c", "c@example.test"));
+    assert_eq!(auth0.verify(&token).await, Err(VerifyError::Unavailable));
+
+    // Through HTTP that is a 503, so the app says "try again" rather than "sign-in refused".
+    let state = AppState {
+        auth0: Some(Arc::new(verifier(&tenant, timing(60_000, 60_000, 60_000)))),
+        ..AppState::default()
+    };
+    let (status, body) = exchange(&app(state), &token).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(body["error"]["code"], "auth_unavailable");
+
+    // An empty key set is an outage too, never "no key matches".
+    *tenant.keys.lock().unwrap() = Some(JwkSet { keys: vec![] });
+    let auth0 = verifier(&tenant, timing(60_000, 60_000, 60_000));
+    assert_eq!(auth0.verify(&token).await, Err(VerifyError::Unavailable));
 }
