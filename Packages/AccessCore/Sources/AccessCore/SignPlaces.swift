@@ -296,6 +296,7 @@ extension VenueMap {
     public mutating func applySign(_ point: AccessPoint) -> (point: AccessPoint, isNew: Bool) {
         func matches(_ existing: AccessPoint) -> Bool {
             guard let tag = point.sign else { return false }
+            if existing.id == point.id { return true }
             if let door = tag.door, let other = existing.sign?.door, simd_distance(door.center, other.center) < 0.35 { return true }
             let sameName = existing.title.caseInsensitiveCompare(point.title) == .orderedSame
                 || existing.sign.map { $0.reading.title.caseInsensitiveCompare(tag.reading.title) == .orderedSame } == true

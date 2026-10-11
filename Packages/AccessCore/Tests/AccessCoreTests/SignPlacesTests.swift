@@ -121,6 +121,15 @@ struct SignPlacesTests {
         #expect(map.points.count == 1)
         #expect(map.points[0].id == first.id)
         #expect(map.points[0].title == "Room 204 · Chemistry Lab")
+
+        // A lobby has no door; a renamed reading of the same sign still updates its place by id.
+        let lobby = try #require(SignInterpreter.interpret(["MAIN LOBBY"]))
+        let read = SignPlaceBinder.place(for: lobby, text: "MAIN LOBBY", sign: SIMD3(-4, 0.5, 0.05), viewer: nil, in: map)
+        #expect(map.applySign(read).isNew)
+        var renamed = read
+        renamed.name = "North lobby"
+        #expect(!map.applySign(renamed).isNew)
+        #expect(map.points.count == 2)
     }
 
     @Test func searchFindsSignPlacesByCategoryAndNumber() throws {
