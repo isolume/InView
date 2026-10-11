@@ -315,6 +315,66 @@ pub fn k_shortest(
     accepted
 }
 
+/// Graphs above this size use penalty alternatives: Yen's spur searches grow with path length × k.
+pub const YEN_MAX_NODES: usize = 1500;
+/// Cost multiplier for edges an earlier alternative already uses.
+const ALTERNATIVE_PENALTY: f64 = 1.6;
+
+/// Up to `k` distinct paths by re-searching with the edges of earlier paths made costlier
+/// (k Dijkstra runs, independent of path length). Costs are reported with the true weights.
+pub fn penalty_alternatives(
+    model: &NavModel,
+    from: usize,
+    to: usize,
+    k: usize,
+    weight: &dyn Fn(usize) -> Option<f64>,
+) -> Vec<Path> {
+    let none = HashSet::new();
+    let key = |e: usize| {
+        let edge = &model.edges[e];
+        (edge.from.min(edge.to), edge.from.max(edge.to))
+    };
+    let mut used: std::collections::HashMap<(usize, usize), u32> = std::collections::HashMap::new();
+    let mut found: Vec<Path> = Vec::new();
+    for _ in 0..k.max(1) * 2 {
+        if found.len() >= k {
+            break;
+        }
+        let penalized = |e: usize| {
+            let times = used.get(&key(e)).copied().unwrap_or(0);
+            weight(e).map(|w| w * ALTERNATIVE_PENALTY.powi(times as i32))
+        };
+        let Some(mut path) = shortest(model, from, to, &penalized, &none, &none) else {
+            break;
+        };
+        for &e in &path.edges {
+            *used.entry(key(e)).or_default() += 1;
+        }
+        if found.iter().any(|p| p.edges == path.edges) {
+            continue;
+        }
+        path.cost = path.edges.iter().filter_map(|&e| weight(e)).sum();
+        found.push(path);
+    }
+    found.sort_by(|a, b| a.cost.total_cmp(&b.cost));
+    found
+}
+
+/// Distinct candidate paths: exact Yen on ordinary graphs, penalty alternatives on huge ones.
+pub fn alternatives(
+    model: &NavModel,
+    from: usize,
+    to: usize,
+    k: usize,
+    weight: &dyn Fn(usize) -> Option<f64>,
+) -> Vec<Path> {
+    if model.nodes.len() > YEN_MAX_NODES {
+        penalty_alternatives(model, from, to, k, weight)
+    } else {
+        k_shortest(model, from, to, k, weight)
+    }
+}
+
 /// Fraction of `candidate`'s length shared with `other` (undirected edge identity).
 pub fn overlap(model: &NavModel, candidate: &Path, other: &Path) -> f64 {
     let key = |e: usize| {
@@ -404,6 +464,19 @@ mod tests {
         }
         assert!(overlap(&model, &paths[0], &paths[0]) > 0.99);
         assert!(overlap(&model, &paths[1], &paths[0]) < 1.0);
+    }
+
+    #[test]
+    fn penalty_alternatives_start_with_the_shortest_and_stay_distinct() {
+        let model = grid();
+        let weight = |e: usize| Some(model.edges[e].length_m);
+        let paths = penalty_alternatives(&model, 0, 3, 3, &weight);
+        assert_eq!(paths[0].nodes, vec![0, 1, 3]);
+        assert!((paths[0].cost - 2.0).abs() < 1e-9);
+        assert!(paths.len() >= 2);
+        for (i, a) in paths.iter().enumerate() {
+            assert!(paths[i + 1..].iter().all(|b| b.edges != a.edges));
+        }
     }
 
     #[test]

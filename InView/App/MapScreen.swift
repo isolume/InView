@@ -50,6 +50,7 @@ struct MapScreen: View {
     @State private var previewStart: SIMD2<Float>?
     @State private var isFindingRoute = false
     @State private var routeMessage: String?
+    @State private var routeCheck: ServerRouteCheck?
     @State private var routeGeneration = 0
     @State private var floorError: String?
     @State private var selectedModelPlace: AccessPoint?
@@ -626,6 +627,17 @@ struct MapScreen: View {
             Text("From your chosen starting point. Follow signs and check that the way is clear.")
                 .font(.subheadline).foregroundStyle(.secondary)
             if !library.isReviewed(floor: selectedLevel) { Text("This scan hasn’t been verified for accessibility.").font(.footnote).foregroundStyle(.secondary) }
+            if let routeCheck {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(routeCheck.headline, systemImage: routeCheck.symbol)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(routeCheck.isWarning ? Theme.color(for: .warning) : Color.primary)
+                    ForEach(routeCheck.details, id: \.self) { detail in
+                        Text(detail).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
             HStack {
                 Button("Change start") { beginChoosingStart() }.buttonStyle(.bordered)
                 Button("View in AR", action: enterAR).buttonStyle(.borderedProminent)
@@ -730,7 +742,7 @@ struct MapScreen: View {
         mapStyle = .scan
         controller.endGuidance()
         showsAR = false
-        previewRoute = nil; previewStart = nil; routeMessage = nil
+        previewRoute = nil; previewStart = nil; routeMessage = nil; routeCheck = nil
         isFindingRoute = false
         routeGeneration += 1
         panel = .chooseStart; detent = .height(440)
@@ -744,6 +756,9 @@ struct MapScreen: View {
         let preference = routePreference
         previewRoute = nil
         routeMessage = nil
+        routeCheck = nil
+        let scanID = liveScanID
+        let placeID = live.result(for: destination).flatMap { $0.kind == "place" ? $0.sourceID : nil }
         Task {
             let route = await Task.detached(priority: .userInitiated) {
                 RoutePlanner(map: map).route(from: start, to: destination, conditions: preference.conditions())
@@ -751,6 +766,15 @@ struct MapScreen: View {
             guard generation == routeGeneration else { return }
             isFindingRoute = false
             previewRoute = route
+            // The device route is shown right away; the building map's check follows when it answers.
+            if let scanID, route != nil {
+                Task {
+                    let check = await ServerRouteCheck.run(scanID: scanID, map: map, start: start, destination: destination,
+                                                           placeID: placeID, preference: preference)
+                    guard generation == routeGeneration else { return }
+                    routeCheck = check
+                }
+            }
             routeMessage = route == nil
                 ? preference == .stepFree
                     ? "No step-free route was found within the mapped area. Your route preference hasn’t been relaxed."
@@ -781,7 +805,7 @@ struct MapScreen: View {
         controller.endGuidance()
         showsAR = false; panel = .explore
         routeGeneration += 1
-        previewRoute = nil; previewStart = nil; routeMessage = nil; isFindingRoute = false
+        previewRoute = nil; previewStart = nil; routeMessage = nil; routeCheck = nil; isFindingRoute = false
         selectedModelPlace = nil
         controller.selectDestination(nil)
         detent = .height(240)

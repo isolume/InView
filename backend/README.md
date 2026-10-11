@@ -259,6 +259,31 @@ Each route has:
 
 Results are screening output from captured evidence, not certified accessible routes.
 
+#### Server routes and the app's on-device planner
+
+The app keeps its own planner: an A* search over a 10 cm occupancy grid of the floor it has
+measured, at clearances of 0.45, 0.3 and 0.15 m. Measured on the same scans, in Release builds
+on an Apple-silicon Mac:
+
+| | Device grid | Server graph |
+|---|---|---|
+| Demo room, Reception → Meeting room | 0.3 ms · 14.96 m from the real start | 1 ms over local HTTP (~500 ms via ngrok) · 16.9 m, starting 1.8 m away at the nearest node |
+| Student Center floor 2 (491×432 grid) | 16 ms to build · 3.9 ms per route · 1.7 ms reroute | n/a (no nav graph) |
+| 625-node graph · 3 floors / 1,875 · 5 floors / 10,125 | n/a (one floor only) | 2.5 ms · 4.3 ms · 20 ms (plan with alternatives) |
+
+The two divide the work as follows:
+- **Server:** topology and meaning (floors, connectors, features, accessibility verdicts,
+  alternatives).
+- **Device:** exact geometry on its own floor, live obstacles, and offline use.
+- **`RouteReconciler`** (AccessCore) redraws each server walk leg on the device's floor from
+  where the person actually stands, then compares distances (`confirmed`, `shorterOnDevice`,
+  `longerOnDevice`, `blockedOnDevice`). It reports how much of the server path lies on measured
+  free floor. It flags `deviceFoundWiderPath` when the server judged a route too narrow but the
+  device routed it with 0.9 m of clearance. It never upgrades the server's accessibility status.
+
+On graphs over 1,500 nodes, alternatives use the penalty method, because Yen's spur searches took
+1.3 s at 10k nodes.
+
 ### Nearby search ("where is McDonald's?")
 
 `POST /api/buildings/{id}/nearby` (or `POST /scans/{id}/nearby`) lists what is around a

@@ -307,7 +307,8 @@ pub fn plan(model: &NavModel, request: &RouteRequest) -> Result<RouteResponse, P
     for &profile in &request.profiles {
         let weight = |e: usize| paths::cost(model, &model.edges[e], profile, speed);
         // Search a few extra candidates: near-duplicates of kept routes are filtered out.
-        let candidates = paths::k_shortest(model, from, to, 1 + request.alternatives * 3, &weight);
+        let candidates =
+            paths::alternatives(model, from, to, 1 + request.alternatives * 3, &weight);
         if candidates.is_empty() {
             let reason = match profile {
                 Profile::Accessible if model.edges.iter().any(|e| e.kind == EdgeKind::Stairs) => {
@@ -417,4 +418,143 @@ pub fn levels_summary(model: &NavModel) -> Value {
         "georef": model.georef,
         "notices": model.notices,
     })
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+    use crate::building_nav::{NavEdge, NavNode, levels, nearby};
+    use std::time::Instant;
+
+    /// A building-scale graph: `floors` × `side`² corridor junctions 2 m apart, with an elevator
+    /// and a stair core linking every floor (Yen and nearby run over all of it).
+    fn building(floors: usize, side: usize) -> NavModel {
+        let mut model = NavModel::default();
+        let index = |f: usize, x: usize, z: usize| f * side * side + z * side + x;
+        for f in 0..floors {
+            for z in 0..side {
+                for x in 0..side {
+                    model.nodes.push(NavNode {
+                        id: format!("s:{f}-{x}-{z}"),
+                        scan_id: "s".into(),
+                        position: [2.0 * x as f64, 3.5 * f as f64, -2.0 * z as f64],
+                        level: f,
+                        kind: None,
+                        label: None,
+                    });
+                }
+            }
+        }
+        let push =
+            |model: &mut NavModel, a: usize, b: usize, kind: EdgeKind, seconds: Option<f64>| {
+                let (pa, pb) = (model.nodes[a].position, model.nodes[b].position);
+                for (suffix, from, to, p, q) in [("f", a, b, pa, pb), ("r", b, a, pb, pa)] {
+                    let id = format!("e{}{suffix}", model.edges.len() / 2);
+                    model.edges.push(NavEdge {
+                        id,
+                        from,
+                        to,
+                        points: vec![p, q],
+                        length_m: super::super::distance(p, q),
+                        kind,
+                        step_free: Some(kind != EdgeKind::Stairs),
+                        width_m: Some(1.2),
+                        slope: Some(0.0),
+                        closed: false,
+                        seconds,
+                        hazards: vec![],
+                        connector: None,
+                    });
+                }
+            };
+        for f in 0..floors {
+            for z in 0..side {
+                for x in 0..side {
+                    if x + 1 < side {
+                        push(
+                            &mut model,
+                            index(f, x, z),
+                            index(f, x + 1, z),
+                            EdgeKind::Surface,
+                            None,
+                        );
+                    }
+                    if z + 1 < side {
+                        push(
+                            &mut model,
+                            index(f, x, z),
+                            index(f, x, z + 1),
+                            EdgeKind::Surface,
+                            None,
+                        );
+                    }
+                }
+            }
+            if f + 1 < floors {
+                push(
+                    &mut model,
+                    index(f, 0, 0),
+                    index(f + 1, 0, 0),
+                    EdgeKind::Elevator,
+                    Some(24.0),
+                );
+                push(
+                    &mut model,
+                    index(f, side - 1, 0),
+                    index(f + 1, side - 1, 0),
+                    EdgeKind::Stairs,
+                    Some(12.0),
+                );
+            }
+        }
+        let heights: Vec<f64> = model.nodes.iter().map(|n| n.position[1]).collect();
+        model.levels = levels::cluster(&heights);
+        model.out = vec![Vec::new(); model.nodes.len()];
+        for (i, e) in model.edges.iter().enumerate() {
+            model.out[e.from].push(i);
+        }
+        for (i, n) in model.nodes.iter().enumerate() {
+            model.node_index.insert(n.id.clone(), i);
+        }
+        model
+    }
+
+    fn time<T>(repeats: usize, mut body: impl FnMut() -> T) -> (f64, T) {
+        let mut best = f64::INFINITY;
+        let mut out = None;
+        for _ in 0..repeats {
+            let start = Instant::now();
+            let value = body();
+            best = best.min(start.elapsed().as_secs_f64());
+            out = Some(value);
+        }
+        (best * 1000.0, out.unwrap())
+    }
+
+    #[test]
+    #[ignore = "benchmark; run with --ignored --nocapture in release"]
+    fn server_planner_timings() {
+        for (floors, side) in [(1, 6), (1, 25), (3, 25), (5, 45)] {
+            let model = building(floors, side);
+            let far = format!("s:{}-{}-{}", floors - 1, side - 1, side - 1);
+            let request: RouteRequest = serde_json::from_value(serde_json::json!({
+                "from": {"node_id": format!("s:0-{}-{}", side / 2, side - 1)}, "to": {"node_id": far},
+            }))
+            .unwrap();
+            let (plan_ms, response) = time(5, || plan(&model, &request).unwrap());
+            let near: nearby::NearbyRequest = serde_json::from_value(serde_json::json!({
+                "at": {"node_id": "s:0-0-0"}, "kinds": ["connector"], "radius_m": 5000
+            }))
+            .unwrap();
+            let (nearby_ms, _) = time(5, || nearby::nearby(&model, &near).unwrap());
+            let bytes = serde_json::to_vec(&response).unwrap().len();
+            println!(
+                "BENCH server · {floors} floor(s) × {side}² = {} nodes, {} edges · plan (fastest+accessible, alternatives) {plan_ms:.2} ms → {} routes, {:.0} KB · nearby {nearby_ms:.2} ms",
+                model.nodes.len(),
+                model.edges.len(),
+                response.routes.len(),
+                bytes as f64 / 1024.0
+            );
+        }
+    }
 }
