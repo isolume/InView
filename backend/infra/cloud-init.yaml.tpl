@@ -3,6 +3,7 @@ package_update: true
 packages:
   - docker.io
   - caddy
+  - curl
 
 write_files:
   - path: /etc/inview/backend.env
@@ -18,7 +19,9 @@ write_files:
       set -eu
       domain="${backend_domain}"
       if [ -z "$domain" ]; then
-        ip="$(curl -fsS --max-time 20 https://api.ipify.org || curl -fsS --max-time 20 https://ifconfig.me)"
+        ip="$(curl -fsS --max-time 20 https://api.ipify.org 2>/dev/null \
+          || curl -fsS --max-time 20 https://ifconfig.me 2>/dev/null \
+          || ip -4 route get 1.1.1.1 | awk '{for (i = 1; i <= NF; i++) if ($i == "src") print $(i + 1)}')"
         domain="$(printf '%s' "$ip" | tr . -).sslip.io"
       fi
       printf '%s {\n  reverse_proxy 127.0.0.1:${backend_port}\n}\n' "$domain" > /etc/caddy/Caddyfile

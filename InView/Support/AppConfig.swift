@@ -31,10 +31,16 @@ enum AppConfig {
         return token
     }
 
+    /// The build's server, unless one was typed into settings for this same build. A new build that
+    /// points somewhere else wins over an old override, so a phone never sticks to a retired server.
     static var backendAddress: String {
-        if let saved = UserDefaults.standard.string(forKey: "roomProcessingAddress") { return saved }
-        if let configured = value(for: "InViewBackendURL") { return configured }
-        return ""
+        let defaults = UserDefaults.standard
+        let builtIn = value(for: "InViewBackendURL") ?? ""
+        if let saved = defaults.string(forKey: "roomProcessingAddress"), !saved.isEmpty,
+           (defaults.string(forKey: "roomProcessingBuiltInAddress") ?? "") == builtIn {
+            return saved
+        }
+        return builtIn
     }
 
     static var backendURL: URL? { validatedBackendURL(backendAddress) }
@@ -91,7 +97,15 @@ enum AppConfig {
     }
 
     static func setBackendAddress(_ address: String) {
-        UserDefaults.standard.set(address.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "roomProcessingAddress")
+        let defaults = UserDefaults.standard
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == (value(for: "InViewBackendURL") ?? "") {
+            defaults.removeObject(forKey: "roomProcessingAddress")
+            defaults.removeObject(forKey: "roomProcessingBuiltInAddress")
+        } else {
+            defaults.set(trimmed, forKey: "roomProcessingAddress")
+            defaults.set(value(for: "InViewBackendURL") ?? "", forKey: "roomProcessingBuiltInAddress")
+        }
     }
 
     private static func value(for key: String) -> String? {
