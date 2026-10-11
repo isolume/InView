@@ -16,6 +16,9 @@ struct SignPlacesTests {
         #expect(labeled.fullTitle == "Room 204A · Chemistry Lab")
 
         #expect(SignInterpreter.interpret(["Suite 300"])?.title == "Suite 300")
+        // "Room" that names the room stays; "Room" that prefixes the number doesn't.
+        #expect(SignInterpreter.interpret(["204", "MEETING ROOM"])?.detail == "Meeting Room")
+        #expect(SignInterpreter.interpret(["ROOM 204", "CONFERENCE"])?.detail == "Conference")
         #expect(SignInterpreter.interpret(["B-204"])?.roomNumber == "B-204")
     }
 

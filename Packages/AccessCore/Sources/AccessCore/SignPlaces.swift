@@ -140,7 +140,6 @@ public enum SignInterpreter {
             .filter { word in
                 let core = word.uppercased().trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
                 return !core.isEmpty && !consumed.contains(core) && core.contains(where: \.isLetter)
-                    && !["ROOM", "RM", "SUITE", "STE"].contains(core)
             }
             .joined(separator: " ")
         let text = titleCase(remaining)
