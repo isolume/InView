@@ -76,6 +76,10 @@ enum AppConfig {
     static var geminiKey: String? { value(for: "GeminiAPIKey") }
     static var geminiModel: String { value(for: "GeminiModel") ?? "gemini-3.8-flash" }
 
+    static var elevenLabsKey: String? { value(for: "ElevenLabsAPIKey") }
+    static var elevenLabsVoiceID: String { value(for: "ElevenLabsVoiceID") ?? "21m00Tcm4TlvDq8ikWAM" }
+    static var elevenLabsModel: String { value(for: "ElevenLabsModel") ?? "eleven_turbo_v2_5" }
+
     static var mapboxAccessToken: String? {
         guard let token = value(for: "MBXAccessToken"), token.hasPrefix("pk.") else { return nil }
         return token

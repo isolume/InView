@@ -15,6 +15,71 @@ fn temporary_directory() -> PathBuf {
     std::env::temp_dir().join(format!("inview-scans-{}", uuid::Uuid::new_v4()))
 }
 
+#[tokio::test]
+async fn cancelled_requests_cannot_leave_durable_scans_or_analyses_out_of_memory() {
+    use inview_backend::store::StoredScan;
+    use std::{
+        future::Future,
+        task::{Context, Poll, Waker},
+        time::{Duration, Instant},
+    };
+
+    fn abandon_pending<F: Future>(future: F) {
+        let mut future = std::pin::pin!(future);
+        assert!(matches!(
+            future
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Pending
+        ));
+    }
+
+    let directory = temporary_directory();
+    let store = ScanStore::open(&directory).unwrap();
+    let original: Value = serde_json::from_slice(include_bytes!("../examples/scan.json")).unwrap();
+    let bundle = serde_json::from_value(original.clone()).unwrap();
+    abandon_pending(store.insert(
+        StoredScan {
+            original: original.clone(),
+            bundle,
+            package_assets: None,
+            package_manifest: None,
+        },
+        None,
+    ));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while store.get("demo-room").await.is_none() && Instant::now() < deadline {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(store.get("demo-room").await.unwrap().original, original);
+    assert_eq!(
+        ScanStore::open(&directory)
+            .unwrap()
+            .get("demo-room")
+            .await
+            .unwrap()
+            .original,
+        original
+    );
+
+    let analysis = serde_json::json!({"scan_id":"demo-room","schema_version":1});
+    abandon_pending(store.put_analysis("demo-room", analysis.clone()));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while store.analysis("demo-room").await.is_none() && Instant::now() < deadline {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(*store.analysis("demo-room").await.unwrap(), analysis);
+    assert_eq!(
+        *ScanStore::open(&directory)
+            .unwrap()
+            .analysis("demo-room")
+            .await
+            .unwrap(),
+        analysis
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
+
 fn archive(capture: &[u8]) -> Vec<u8> {
     let mut builder = tar::Builder::new(Vec::new());
     for (name, bytes) in [

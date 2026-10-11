@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
     process::{Child, Command, Stdio},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const TOKEN: &str = "executable-test-processing-token-at-least-32-characters";
@@ -56,7 +56,8 @@ fn start(directory: &Directory) -> Server {
         .spawn()
         .unwrap();
     let mut server = Server { child, address };
-    for _ in 0..100 {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
         assert!(
             server.child.try_wait().unwrap().is_none(),
             "backend exited before listening"
@@ -64,9 +65,9 @@ fn start(directory: &Directory) -> Server {
         if TcpStream::connect(address).is_ok() {
             return server;
         }
+        assert!(Instant::now() < deadline, "backend did not listen");
         thread::sleep(Duration::from_millis(25));
     }
-    panic!("backend did not listen");
 }
 
 fn request(
@@ -168,7 +169,9 @@ fn configured_executable_enforces_auth_and_reopens_all_persistent_stores() {
         .0,
         200
     );
-    assert_eq!(request(&restarted, "GET", "/scans", None, None).0, 401);
+    for path in ["/scans", "/scans/demo-room"] {
+        assert_eq!(request(&restarted, "GET", path, None, None).0, 401);
+    }
 }
 
 #[test]

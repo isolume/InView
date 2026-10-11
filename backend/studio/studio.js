@@ -7,6 +7,17 @@ const $ = (id) => document.getElementById(id);
 const state = { scans: [], selected: null, original: null, scene: null, buildings: [], building: null, buildingsAvailable: true, mode: 'room', nativeMode: 'smoothed', nativeUnavailable: false, nativePreview: null, nativeMesh: null, nativeEpoch: 0, meshMode: 'original', meshEpoch: 0, generation: 0 };
 const sceneCanvas = $('sceneCanvas');
 let renderer, camera, controls, display;
+let renderPending = false;
+function requestRender() {
+  if (renderPending || !renderer || document.hidden) return;
+  renderPending = true;
+  requestAnimationFrame(() => {
+    renderPending = false;
+    if (document.hidden) return;
+    controls.update();
+    renderer.render(world, camera);
+  });
+}
 const content = new THREE.Group();
 const group = { room: new THREE.Group(), depth: new THREE.Group(), mesh: new THREE.Group(), path: new THREE.Group(), nav: new THREE.Group() };
 const grid = new THREE.GridHelper(20, 40, 0x6a8d9c, 0x314957);
@@ -37,16 +48,18 @@ try {
   controls.minDistance = .12;
   controls.maxDistance = 160;
   controls.screenSpacePanning = true;
+  controls.addEventListener('change', requestRender);
   const resize = () => {
     const width = sceneCanvas.clientWidth, height = sceneCanvas.clientHeight;
     if (!width || !height) return;
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    requestRender();
   };
   new ResizeObserver(resize).observe(sceneCanvas);
-  const frame = () => { requestAnimationFrame(frame); if (document.hidden) return; controls.update(); renderer.render(world, camera); };
-  requestAnimationFrame(frame);
+  document.addEventListener('visibilitychange', requestRender);
+  requestRender();
 } catch (error) {
   sceneCanvas.hidden = true;
   $('viewFeedback').textContent = 'A WebGL-capable browser is needed for the 3D review. Your capture library is still available.';
@@ -120,8 +133,8 @@ $('refreshScans').addEventListener('click', () => refresh().catch(showError));
 $('lockButton').addEventListener('click', () => { sessionStorage.removeItem(tokenKey); location.reload(); });
 $('resetView').addEventListener('click', () => resetCamera());
 sceneCanvas.addEventListener('keydown', (event) => { if (event.key.toLowerCase() === 'r') { resetCamera(); event.preventDefault(); } });
-$('pathToggle').addEventListener('change', () => { group.path.visible = $('pathToggle').checked; });
-const navOverlay = createNavOverlay(group.nav);
+$('pathToggle').addEventListener('change', () => { group.path.visible = $('pathToggle').checked; requestRender(); });
+const navOverlay = createNavOverlay(group.nav, requestRender);
 const navViewer = createNavViewer({ overlay: navOverlay, onLayersChange: (layers) => navOverlay.setVisibility($('navToggle').checked, layers) });
 $('navToggle').addEventListener('change', () => navOverlay.setVisibility($('navToggle').checked, navViewer.layers()));
 navOverlay.setVisibility($('navToggle').checked, navViewer.layers());
@@ -146,7 +159,7 @@ function renderLibrary() {
   }
 }
 function formatCount(number) { return new Intl.NumberFormat().format(number || 0); }
-const clearGroup = disposeChildren;
+function clearGroup(parent) { disposeChildren(parent); requestRender(); }
 function transform(values) { return new THREE.Matrix4().fromArray(values); }
 function color(value, fallback) {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
@@ -447,6 +460,7 @@ function resetCamera() {
   camera.far = Math.max(300, extent * 90);
   camera.updateProjectionMatrix();
   controls.update();
+  requestRender();
 }
 function setMode(mode) {
   state.mode = mode;
@@ -456,6 +470,7 @@ function setMode(mode) {
     button.setAttribute('aria-pressed', String(active));
   }
   group.room.visible = mode === 'room'; group.depth.visible = mode === 'depth'; group.mesh.visible = mode === 'mesh';
+  requestRender();
   $('sceneCaption').textContent = mode === 'room' ? 'Room model · Display geometry, not surveyed clearance' : mode === 'depth' ? 'Depth sample · Confidence-filtered, not a complete scan' : 'ARKit mesh · Unverified spatial evidence';
   $('viewFeedback').textContent = mode === 'depth' ? 'Checking for native iPhone depth buffers. Portable depth remains available if the sidecar is missing.' : mode === 'mesh' ? 'ARKit mesh faces are shown as captured. This is not a verified floor plan or accessible route.' : 'Display furniture uses supplied labels. Measured obstacle bounds—not the models—must be reviewed for navigation.';
   $('nativeControls').hidden = mode !== 'depth' || !state.nativePreview;
@@ -543,7 +558,7 @@ async function selectScan(id) {
 }
 function showError(error) { notice(error?.message || 'The workspace could not be loaded.', true); $('sceneLoading').hidden = true; }
 async function refresh() {
-  const [scans, buildings] = await Promise.all([api('/scans'), api('/api/buildings').catch((error) => { if (error.status === 503) { state.buildingsAvailable = false; return []; } throw error; })]);
+  const [scans, buildings] = await Promise.all([api('/scans'), api('/api/buildings').then((buildings) => { state.buildingsAvailable = true; return buildings; }).catch((error) => { if (error.status === 503) { state.buildingsAvailable = false; return []; } throw error; })]);
   state.scans = scans; state.buildings = buildings;
   renderLibrary(); renderBuildings();
   if (state.selected && scans.some((scan) => scan.id === state.selected)) return;
@@ -580,12 +595,16 @@ async function loadOverview(building) {
 }
 function drawOverview(overview) {
   const canvas = $('overviewCanvas'), context = canvas.getContext('2d'), items = overview.observations || [];
-  const points = items.flatMap((item) => [...item.pathXZ, ...item.surfaceSamplesXZ]);
   $('buildingOverview').hidden = false;
   context.clearRect(0, 0, canvas.width, canvas.height);
-  if (!points.length) { $('overviewCaption').textContent = 'No aligned capture geometry is available on this server yet.'; return; }
-  const xs = points.map((p) => p[0]), zs = points.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs), pad = 18;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const item of items) {
+    for (const points of [item.pathXZ, item.surfaceSamplesXZ]) {
+      for (const [x, z] of points) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+    }
+  }
+  if (!Number.isFinite(minX)) { $('overviewCaption').textContent = 'No aligned capture geometry is available on this server yet.'; return; }
+  const pad = 18;
   const scale = Math.min((canvas.width - 2 * pad) / Math.max(maxX - minX, .5), (canvas.height - 2 * pad) / Math.max(maxZ - minZ, .5));
   const ox = (canvas.width - (maxX - minX) * scale) / 2, oz = (canvas.height - (maxZ - minZ) * scale) / 2;
   const at = ([x, z]) => [ox + (x - minX) * scale, oz + (z - minZ) * scale]; // +Z points down the page.

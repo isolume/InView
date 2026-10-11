@@ -2,13 +2,17 @@
 
 The first processing path uses ARKit geometry and optional RoomPlan labels together.
 It preserves the submitted capture and produces a replaceable scene description.
-The `/scans` captures remain in memory and disappear on restart, like the graph store.
+The executable persists `/scans`, analyses and graphs across restarts in
+`INVIEW_SCAN_DIR` (default `data/scans`). Isolated `AppState::default()` scan/graph
+stores stay in memory for tests and embedders.
 The continuous `/streams` path described below durably retains observations on disk.
 
 ## Continuous capture prototype
 
-The new path accepts one ARKit session without RoomPlan sections. The phone keeps
-tracking and submits selected calibrated depth/RGB keyframes in a fixed map frame.
+This retained backend path accepts one ARKit session without RoomPlan sections.
+A streaming client keeps tracking and submits selected calibrated depth/RGB keyframes
+in a fixed map frame. New scans in the current iPhone app use on-device RoomPlan;
+the app retains earlier stream archives for local review and export.
 The backend retains each observation and builds a measured triangle mesh after
 Finish. Verified revisits can correct drift through rigid registration and a
 pose graph before the depth is reintegrated. This is an initial mapping
@@ -272,7 +276,8 @@ immutable within this service instance. Use another ID for a correction or resca
 retain their existing limits. `POST /scan-packages` accepts an uncompressed `.inviewscan.tar`
 up to 256 MiB (at most 4096 entries, 64 MiB each). Every TAR entry must be a regular file at `<scan-id>/<filename>`, entry names
 must be unique, and `capture.json` must validate and name the same scan ID. Binary sidecars are
-retained immutably in the process-local scan store and are never extracted to the filesystem.
+retained immutably by the scan store; the executable persists them under its scan
+directory without extracting arbitrary archive paths.
 If present, `package-manifest.json` is parsed and validated against the capture and sidecars; it
 is retained with the package for reconstruction, OCR, and VLM workers.
 `GET /scans/{id}` returns the original JSON semantically unchanged; JSON whitespace,
@@ -366,74 +371,54 @@ into these records. Native RoomPlan JSON is archived separately in `roomplan.jso
 rather than duplicated as a large `roomplan_original` tree in every portable capture.
 The optional field remains supported when importing other providers' bundles.
 `RawScanCapture.swift` polls the same session without replacing its delegate,
-<<<<<<< HEAD
-selecting up to six calibrated depth keyframes within an 8 MiB retained-payload
-budget. It does not request or repeatedly copy a second raw mesh reconstruction;
-RoomPlan's measured surfaces and objects supply navigation geometry, supplemented
-by bounded confirmed ARKit floor and low-barrier planes. High-confidence depth
-side measurements can also produce generic small-obstacle objects, using repeated
-observations near a measured floor. Their saved, rendered and routing bounds agree;
-no furniture identity is inferred. Native depth bytes are copied before one
-background worker decodes them; busy samples are skipped.
-=======
-copies the latest classified mesh snapshot, and keeps up to 48 calibrated depth keyframes spread
-over the whole walk (see [Capture format changes](#capture-format-changes)).
-For each selected keyframe it retains original raw `sceneDepth`, confidence bytes, and,
-when ARKit provides it, original `smoothedSceneDepth` bytes as separate local native buffers.
->>>>>>> origin/feat/navigation-pipeline
-These records preserve the shared ARKit frame; no export origin reset is applied.
-Overlapping sections use the latest component with the same RoomPlan identifier.
-Recovered floor and wall extensions are retained when not wholly covered, and
-the routing map and portable scene share the same supplement selection. Long
-sections save and continue automatically without resetting the AR session.
+selecting up to six calibrated depth/RGB keyframes within an 8 MiB retained-payload
+budget. Pose-space coverage determines which frame is replaced when the budget
+fills. RoomPlan's finalized rooms are assembled by Apple's `StructureBuilder`;
+confirmed ARKit floor observations can add measured uncovered floor regions.
+Room memory, partial walls and depth obstacle evidence remain supporting originals
+rather than being reinserted into the canonical structure. A confirmed doorway
+crossing finalizes a room in the same ARKit frame; distance and elapsed time do
+not split rooms. Native depth bytes are copied before one background worker
+decodes them; busy samples are skipped. **Detailed scan**, off by default, adds
+bounded native mesh and photo detail as a separate display layer.
 
-<<<<<<< HEAD
-The app archives native RoomPlan JSON and selected depth bytes locally before upload.
-Local processing has no upload-size limit and does not project a display point cloud
-that navigation doesn't render. The network client enforces the 32 MiB limit only
-when sending a capture; an oversized upload can still use its complete local map.
-Native RoomPlan/semantic data is never silently truncated.
-=======
-The app archives native RoomPlan JSON, the portable `capture.json`, copied mesh/depth
-bytes, and `worldmap.archive` in the same `Documents/Captures/<scan-id>/` directory before
-upload. `worldmap.archive` is an Apple-only ARWorldMap relocalization asset and is referenced
-from `metadata.assets.world_map`. The current JSON upload does not send binary sidecars yet.
-If a bundle exceeds the 32 MiB limit, optional whole depth/mesh layers remain
-local and their omission is recorded in metadata. Native RoomPlan/semantic data is
-never silently truncated; if that layer alone is too large, upload reports an error.
->>>>>>> origin/feat/navigation-pipeline
-The saved active capture identifies its cached scene, so a failed new scan cannot
-replace a previously saved room view. Network failures support retry; the saved
-source can restore the backend's in-memory capture after a restart.
+The app archives native RoomPlan JSON, portable `capture.json`, selected sensor
+buffers, completed room inputs, the assembled structure and `worldmap.archive`
+in `Documents/Captures/<scan-id>/`. Finishing builds the map and scene locally;
+network availability and upload limits do not gate that work. A failed new scan
+preserves the previously saved map and original evidence.
 
-`color_asset` and other asset references are opaque strings. The native raw snapshot now retains
-bounded adaptive JPEG keyframes paired with calibrated depth-frame IDs; sidecar files use
-`<frame-id>.color.jpg` and are listed in `metadata.assets.color_keyframes`. The local LiDAR
-review can render these as colorized points. The JSON endpoint intentionally does not send
-binary sidecars. `POST /scan-packages` receives the TAR sidecars with their portable capture.
-`GET /scans/{id}/raw-preview`, `/native-mesh`, and `/color/{file}` decode them: they read the
-manifest-indexed binary sidecars (`packageFormat: "binary_sidecars"`) and fall back to the base64
-buffers in `raw-snapshot.json` for packages made before sidecars existed
-(`"legacy_raw_snapshot"`). Up to 240 depth observations and 2048 mesh anchors are previewed.
+**Find places** is an explicit review action. It refreshes semantics and on-device
+text observations, creates a new immutable upload ID with the saved capture ID in
+metadata, and sends only manifest-indexed depth/RGB and named support files
+(`roomplan.json`, `semantics.json`, `text-observations.json`, `camera-track.json`).
+The request excludes raw mesh archives, `raw-snapshot.json`, derived display scenes
+and `worldmap.archive`. Individual files are limited to 64 MiB and the TAR package
+to 256 MiB. Missing or oversized evidence fails explicitly while the complete local
+map remains usable. Suggestions require individual Keep or Drop decisions and
+never replace map geometry.
 
-The iOS capture store produces `<scan-id>.inviewscan.tar`: a sequential TAR containing that
-scan's `capture.json`, `package-manifest.json`, RoomPlan original, binary depth/confidence/mesh
-sidecars, JPEG color keyframes, derived scene when available, and `worldmap.archive`.
-`raw-snapshot.json` stays on the phone: it duplicates every sidecar as base64. Captures saved
-before sidecars existed have them written from that snapshot when the archive is built. The app
-prefers the archive endpoint and falls back to the size-bounded JSON endpoint when the backend
-lacks it (404/405) or the package exceeds the archive limit (413, or over 256 MiB locally).
+`color_asset` and other asset references are opaque strings. Current bounded
+keyframes use upright JPEGs up to 1280 px and 512 KiB, paired with calibrated depth
+frame IDs. `POST /scan-packages` receives sidecars with their portable capture.
+The backend also accepts older complete scan packages, including native mesh and
+world-map assets. `GET /scans/{id}/raw-preview`, `/native-mesh` and `/color/{file}`
+read manifest-indexed binary sidecars (`packageFormat: "binary_sidecars"`) and fall
+back to base64 `raw-snapshot.json` buffers for older packages
+(`"legacy_raw_snapshot"`). Up to 240 depth observations and 2048 mesh anchors are
+previewed. Existing stream archives remain local evidence; current scans do not
+start a stream or automatically upload one.
 
-`package-manifest.json` is the versioned AI/reconstruction handoff. It inventories every sidecar
-with path, role, media type, and byte length; declares the shared right-handed, meter, y-up ARKit
-frame; and lists each selected observation — built from the complete raw capture, so it remains
-valid when `capture.json` omits portable frames for size — with its frame ID, timestamp, `map_from_camera`, RGB
-asset (when available), camera intrinsics, raw/smoothed depth sidecar filenames, confidence sidecar,
-buffer layout, and optional coarse location context (`environment`, including the iPhone's
-`recorded_at_unix_seconds`). It also indexes each classified mesh anchor's exact vertex, index, normal, and
-classification sidecars with their native offsets, strides, formats, and anchor transform. Workers
-must use that pose/calibration metadata to align OCR/VLM image findings with RoomPlan, depth, mesh,
-and routing geometry; Wi-Fi/BLE or image pixels alone must never establish map coordinates.
+`package-manifest.json` is the versioned AI/reconstruction handoff. It inventories
+sidecars with path, role, media type and byte length, declares the shared
+right-handed, meter, y-up ARKit frame, and records selected observations with their
+frame ID, timestamp, `map_from_camera`, RGB asset/orientation, camera intrinsics,
+raw depth/confidence filenames, buffer layout and optional coarse location context.
+The observation list stays valid independently of the canonical capture's frame
+list. Older complete packages can also contain smoothed depth and classified mesh
+sidecars with native offsets, strides, formats and anchor transforms. Workers use
+this pose/calibration metadata to align OCR/VLM findings with RoomPlan, depth, mesh
+and routing geometry; Wi-Fi/BLE or image pixels alone never establish map coordinates.
 
 Apple supports a [custom ARSession with RoomPlan](https://developer.apple.com/videos/play/wwdc2023/10192/),
 and demonstrates [depth-to-point-cloud processing](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).
@@ -497,18 +482,23 @@ change. `roomplan.json` already carries everything above.
 
 ## Capture format changes
 
+The backend retains support for earlier complete capture formats below. The current
+RoomPlan app uses the bounded evidence handoff described above; it does not record
+48 depth frames, request smoothed depth or capture separate high-resolution OCR
+stills. The dense movement track remains available.
+
 All changes below are **additive and optional**: older packages (no track, no stills, 32 FIFO
 keyframes) still decode, and older backends ignore the new files and fields.
 
 ### Coverage-preserving depth keyframes (iOS)
 
-What changed: `RawScanCapture` keeps up to **48** depth keyframes (was 32) and, when over budget,
-evicts the keyframe whose removal least reduces pose-space coverage — the one with the closest
+The earlier capture exporter kept up to **48** depth keyframes (previously 32) and, when over budget,
+evicted the keyframe whose removal least reduced pose-space coverage — the one with the closest
 neighbour, measured as camera travel in metres plus 1.03 m per radian of view-direction change —
-instead of the oldest. Frames carrying an OCR still are evicted only if every frame carries one;
-colour keyframes get a 0.3 m retention bonus. `.smoothedSceneDepth` is now requested explicitly, so
-`smoothed_asset` sidecars are actually present. Metadata (`capture.json` →
-`metadata.raw_capture`) adds `depth_retention_policy: "pose_space_coverage_v1"`,
+instead of the oldest. Frames carrying an OCR still were evicted only if every frame carried one;
+colour keyframes received a 0.3 m retention bonus. That exporter requested
+`.smoothedSceneDepth` explicitly and wrote `smoothed_asset` sidecars when available. Metadata (`capture.json` →
+`metadata.raw_capture`) added `depth_retention_policy: "pose_space_coverage_v1"`,
 `smoothed_scene_depth_requested`, `ocr_still_*` counts/budget, and `camera_track_*` counts.
 
 Why: FIFO eviction silently dropped the first rooms of long walks, leaving the floor-map, door
@@ -546,9 +536,9 @@ doorway traversal and dwell detection, and they carry no tracking quality.
 
 ### OCR stills `<frame-id>.ocr.jpg` (asset role `ocr_still`)
 
-Upright portrait JPEGs at ≈1920 px long side, quality 0.85, captured when the camera is steady
-(< 0.3 rad/s and < 0.6 m/s over 0.3 s of the dense track) and has moved ≥ 1.5 m or turned ≥ 30°
-since the last still; at most 32 stills / 60 MB, with pose-space coverage replacement at the caps.
+Earlier exporters captured upright portrait JPEGs at ≈1920 px long side, quality
+0.85, when the camera was steady (< 0.3 rad/s and < 0.6 m/s over 0.3 s of the dense
+track) and had moved ≥ 1.5 m or turned ≥ 30° since the last still; at most 32 stills / 60 MB, with pose-space coverage replacement at the caps.
 Each still shares a depth keyframe (a due, steady still may add one), so its manifest observation
 adds:
 
@@ -586,8 +576,9 @@ The Swift models are `TextObservationsDocument` and `CaptureSemantics` in `Packa
 ### `text-observations.json` (on-device OCR)
 
 Apple Vision `VNRecognizeTextRequest` (`.accurate`, language correction, automatic language
-detection) runs off the main thread when the capture is finalized, overlapping the local scene
-build. It reads high-resolution `<frame-id>.ocr.jpg` stills already in the capture directory first,
+detection) runs off the main thread during the explicit **Find places** request. Earlier
+streaming captures could also stage this evidence at finalization. It reads existing
+high-resolution `<frame-id>.ocr.jpg` stills in the capture directory first,
 then the `<frame-id>.color.jpg` keyframes, bounded to 48 images and 12 s. Lines under 0.3 confidence
 or under ~1.5% of the image height are dropped. Any failure skips the file or an image; the capture
 continues. An empty `observations` list means OCR ran and found nothing.

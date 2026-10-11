@@ -218,7 +218,6 @@ pub struct StreamStore {
     recognition: Option<RecognitionService>,
     inner: Arc<Inner>,
     processing: Arc<Semaphore>,
-    pub(crate) response_requests: Arc<Semaphore>,
 }
 
 impl Default for StreamStore {
@@ -319,7 +318,6 @@ impl StreamStore {
                 temporary: false,
             }),
             processing: Arc::new(Semaphore::new(2)),
-            response_requests: Arc::new(Semaphore::new(4)),
             recognition: None,
         })
     }

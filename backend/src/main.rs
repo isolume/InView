@@ -88,6 +88,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 async fn shutdown() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(signal) => signal,
+                Err(error) => {
+                    tracing::error!(%error, "Could not listen for termination");
+                    return;
+                }
+            };
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => {
+                if let Err(error) = result { tracing::error!(%error, "Could not listen for shutdown"); }
+            }
+            _ = terminate.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
     if let Err(error) = tokio::signal::ctrl_c().await {
         tracing::error!(%error, "Could not listen for shutdown");
     }

@@ -44,7 +44,21 @@ pub async fn upload_package(
     State(state): State<AppState>,
     payload: Bytes,
 ) -> Result<(StatusCode, Json<ScanSummary>), ApiError> {
-    let package = crate::scan_package::decode(&payload).map_err(ApiError::invalid)?;
+    let permit = state.processing_permit()?;
+    let (package, archive) = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        crate::scan_package::decode(&payload).map(|package| (package, payload.to_vec()))
+    })
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "Scan package decoding task failed");
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "processing_failed",
+            "The scan package could not be decoded.",
+        )
+    })?
+    .map_err(ApiError::invalid)?;
     let scan = StoredScan {
         original: package.original,
         bundle: package.bundle,
@@ -54,7 +68,7 @@ pub async fn upload_package(
     let summary = scan.summary();
     state
         .scans
-        .insert(scan, Some(payload.to_vec()))
+        .insert(scan, Some(archive))
         .await
         .map_err(insert_error)?;
     Ok((StatusCode::CREATED, Json(summary)))
@@ -91,18 +105,22 @@ async fn build_scene(
 ) -> Result<Json<Scene>, ApiError> {
     options.validate().map_err(ApiError::invalid)?;
     let scan = state.scans.get(&id).await.ok_or_else(missing)?;
-    tokio::task::spawn_blocking(move || scene::process(&scan.bundle, options))
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Scan processing failed");
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "processing_failed",
-                "The scene could not be processed.",
-            )
-        })?
-        .map(Json)
-        .map_err(ApiError::invalid)
+    let permit = state.processing_permit()?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        scene::process(&scan.bundle, options)
+    })
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "Scan processing failed");
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "processing_failed",
+            "The scene could not be processed.",
+        )
+    })?
+    .map(Json)
+    .map_err(ApiError::invalid)
 }
 
 pub async fn preview() -> Html<&'static str> {

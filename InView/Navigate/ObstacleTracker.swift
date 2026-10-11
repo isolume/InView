@@ -5,6 +5,7 @@ import AccessCore
 /// them for a while so the route doesn't swing back the moment they leave the camera's view.
 @MainActor
 final class ObstacleTracker {
+    enum Change { case appeared, expired }
     private static let memory: TimeInterval = 20
     private static let sameObstacleDistance: Float = 0.6
     /// Use every Nth depth pixel in each direction; plenty for chair-sized things.
@@ -15,20 +16,22 @@ final class ObstacleTracker {
 
     var obstacles: [SIMD2<Float>] { tracked.map(\.position) }
 
-    /// Looks for obstacles along the route ahead. Returns true when a new one appeared.
-    func update(with frame: ARFrame, route: [SIMD2<Float>], floorY: Float) -> Bool {
-        tracked.removeAll { Date.now.timeIntervalSince($0.lastSeen) > Self.memory }
-        guard let points = Self.depthPoints(in: frame) else { return false }
-        var appeared = false
+    /// Changes include expired obstacles, so a stationary rider can regain a cleared route.
+    func update(with frame: ARFrame, route: [SIMD2<Float>], floorY: Float) -> Change? {
+        let now = Date.now
+        let previousCount = tracked.count
+        tracked.removeAll { now.timeIntervalSince($0.lastSeen) > Self.memory }
+        var change: Change? = tracked.count < previousCount ? .expired : nil
+        guard let points = Self.depthPoints(in: frame) else { return change }
         for found in ObstacleFinder.obstacles(in: points, along: route, floorY: floorY) {
             if let index = tracked.firstIndex(where: { simd_distance($0.position, found) < Self.sameObstacleDistance }) {
-                tracked[index] = (found, .now)
+                tracked[index] = (found, now)
             } else {
-                tracked.append((found, .now))
-                appeared = true
+                tracked.append((found, now))
+                change = .appeared
             }
         }
-        return appeared
+        return change
     }
 
     func reset() {

@@ -16,6 +16,43 @@ fn fixture() -> Value {
     serde_json::from_str(include_str!("../examples/scan.json")).unwrap()
 }
 
+#[tokio::test]
+async fn scan_and_native_processing_share_admission_without_blocking_reads() {
+    let state = AppState::default();
+    let router = app(state.clone());
+    assert_eq!(
+        call(&router, "POST", "/scans", Some(fixture())).await.0,
+        StatusCode::CREATED
+    );
+    let permits = state
+        .processing_requests
+        .clone()
+        .acquire_many_owned(4)
+        .await
+        .unwrap();
+    for path in [
+        "/scans/demo-room/scene",
+        "/scans/demo-room/native-mesh",
+        "/scans/demo-room/raw-preview",
+    ] {
+        let (status, error) = call(&router, "GET", path, None).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(error["error"]["code"], "processing_busy");
+    }
+    assert_eq!(
+        call(&router, "GET", "/scans/demo-room", None).await.0,
+        StatusCode::OK
+    );
+    let (status, error) = call_package(&router, Vec::new()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(error["error"]["code"], "processing_busy");
+    drop(permits);
+    assert_eq!(
+        call(&router, "GET", "/scans/demo-room/scene", None).await.0,
+        StatusCode::OK
+    );
+}
+
 fn bundle(value: Value) -> ScanBundle {
     serde_json::from_value(value).unwrap()
 }

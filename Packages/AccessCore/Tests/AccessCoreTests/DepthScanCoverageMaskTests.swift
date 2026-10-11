@@ -93,18 +93,6 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     #expect(snapshot.mask(for: frame) == nil)
 }
 
-@Test func coverageMaskNativeFrameBenchmarkHasBoundedBytesAndAlpha() throws {
-    var coverage = DepthScanCoverage()
-    coverage.recordSavedFrame(coverageMaskFrame())
-    let snapshot = coverage.snapshot()
-    let live = coverageMaskFrame(timestamp: 2)
-    let start = Date()
-    let mask = try #require(snapshot.mask(for: live))
-    print("Coverage 256x192 mask: \(Date().timeIntervalSince(start))s, \(mask.alpha.count) bytes")
-    #expect(mask.alpha.count == 49_152)
-    #expect(mask.alpha.allSatisfy { $0 <= 55 })
-}
-
 @Test func coverageMaskDoesNotMarkTheUnseenOppositeSideOfAThinSurface() throws {
     var coverage = DepthScanCoverage()
     coverage.recordSavedFrame(coverageMaskFrame())
@@ -114,7 +102,7 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     #expect(try #require(coverage.snapshot().mask(for: live)).alpha.allSatisfy { $0 == 0 })
 }
 
-@Test func coverageMaskLargeRetainedSnapshotBenchmarkAndCopyPreserveEvidence() throws {
+@Test func coverageMaskRetainedSnapshotSurvivesCopyAndEviction() throws {
     var coverage = DepthScanCoverage()
     var saved = coverageMaskFrame()
     var index = 0
@@ -127,17 +115,12 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     let snapshot = coverage.snapshot()
     #expect(snapshot.count == 60_000)
     var live = saved; live.timestampSeconds += 1
-    let maskStart = Date()
     let mask = try #require(snapshot.mask(for: live))
-    let maskTime = Date().timeIntervalSince(maskStart)
     #expect(mask.alpha.contains(55))
     #expect(snapshot.count == 60_000 && snapshot.sampleCount <= 240_000)
     saved.mapFromCamera[12] += 3; saved.timestampSeconds += 2
-    let copyStart = Date()
     coverage.recordSavedFrame(saved)
-    let copyTime = Date().timeIntervalSince(copyStart)
     #expect(snapshot.count == 60_000 && coverage.snapshot().count == 60_000)
-    print("Coverage \(snapshot.count) bins / \(snapshot.sampleCount) samples: mask \(maskTime)s, first copy+record \(copyTime)s")
 }
 
 

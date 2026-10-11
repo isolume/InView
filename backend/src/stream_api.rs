@@ -145,35 +145,37 @@ pub async fn asset(
 }
 
 /// Once a stream has a reconstruction, package it as an ordinary immutable scan so the scan
-/// store, Studio, building maps and the analysis worker can use it. Runs once per stream; a
-/// failure is logged and retried on the next result request.
+/// store, Studio, building maps and the analysis worker can use it. Existing scans are
+/// skipped; failures or busy processing slots are retried on the next result request.
 fn package_in_background(state: AppState, id: String) {
     tokio::spawn(async move {
         if state.scans.get(&id).await.is_some() {
             return;
         }
+        let Ok(permit) = state.processing_permit() else {
+            return;
+        };
         let streams = state.streams.clone();
         let stream_id = id.clone();
         let built = tokio::task::spawn_blocking(move || {
-            let result = streams.reconstruct_encoded(&stream_id, false)?;
-            crate::stream_scan::build_package(&streams, &stream_id, &result)
+            let _permit = permit;
+            let result = streams
+                .reconstruct_encoded(&stream_id, false)
+                .map_err(|error| format!("{error:?}"))?;
+            let archive = crate::stream_scan::build_package(&streams, &stream_id, &result)
+                .map_err(|error| format!("{error:?}"))?;
+            let package = crate::scan_package::decode(&archive)?;
+            Ok::<_, String>((package, archive))
         })
         .await;
-        let archive = match built {
-            Ok(Ok(archive)) => archive,
+        let (package, archive) = match built {
+            Ok(Ok(built)) => built,
             Ok(Err(error)) => {
                 tracing::warn!(stream = %id, ?error, "Could not package stream as a scan");
                 return;
             }
             Err(error) => {
                 tracing::error!(stream = %id, %error, "Stream packaging task failed");
-                return;
-            }
-        };
-        let package = match crate::scan_package::decode(&archive) {
-            Ok(package) => package,
-            Err(error) => {
-                tracing::error!(stream = %id, %error, "Packaged stream failed scan validation");
                 return;
             }
         };
@@ -209,18 +211,7 @@ async fn reconstruct(
 ) -> Result<(HeaderMap, Vec<u8>), ApiError> {
     // Two builders plus two callers sharing those builds are enough for a local phone.
     // Acquire before spawn_blocking so slow jobs cannot accumulate unlimited waiters.
-    let permit = state
-        .streams
-        .response_requests
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| {
-            ApiError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "processing_busy",
-                "Scans are already processing. Retry shortly.",
-            )
-        })?;
+    let permit = state.processing_permit()?;
     blocking(move || {
         let _permit = permit;
         let bytes = state.streams.reconstruct_encoded(&id, scene_only)?;
@@ -416,8 +407,7 @@ mod tests {
         let permits: Vec<_> = (0..4)
             .map(|_| {
                 state
-                    .streams
-                    .response_requests
+                    .processing_requests
                     .clone()
                     .try_acquire_owned()
                     .unwrap()

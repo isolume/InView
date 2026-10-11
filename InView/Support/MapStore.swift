@@ -93,6 +93,19 @@ enum MapStore {
         UIImage(contentsOfFile: startViewURL.path())
     }
 
+    /// Keep the map, relocalization archive, and start photo on the same selected floor.
+    static func loadNavigationAssets() -> (map: VenueMap?, worldMap: ARWorldMap?, startView: UIImage?) {
+        publicationLock.withLock { (load(), loadWorldMap(), loadStartView()) }
+    }
+
+    /// Editable navigation uses the same floor snapshot for geometry, place edits and AR evidence.
+    static func loadEditableNavigationAssets() -> (map: VenueMap?, worldMap: ARWorldMap?, startView: UIImage?, source: PlaceEditSource?) {
+        publicationLock.withLock {
+            let saved = loadEditableMap()
+            return (saved?.map, loadWorldMap(), loadStartView(), saved?.source)
+        }
+    }
+
     static func updateGeographicReference(_ reference: BuildingMapReference) throws {
         try reference.validate()
         _ = try republish(notifies: true) { $0.geographicReference = reference }

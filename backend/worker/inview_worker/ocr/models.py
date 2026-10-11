@@ -6,8 +6,7 @@ Files are fetched on first use from Hugging Face at a pinned commit, verified, a
 without text).
 
 Cache directory: `INVIEW_MODEL_DIR`, default `~/.cache/inview-worker/models`.
-Downloads are disabled with `INVIEW_MODEL_DOWNLOAD=0`, and by default while pytest runs (tests never
-use the network) unless `INVIEW_MODEL_DOWNLOAD=1` opts in.
+Downloads are disabled with `INVIEW_MODEL_DOWNLOAD=0`.
 """
 from __future__ import annotations
 
@@ -77,7 +76,7 @@ def downloads_enabled() -> bool:
         return False
     if flag in {"1", "true", "yes", "on"}:
         return True
-    return "PYTEST_CURRENT_TEST" not in os.environ
+    return True
 
 
 def _urllib_fetch(url: str) -> Iterator[bytes]:
@@ -114,9 +113,12 @@ class ModelStore:
         target = self.root / spec.filename
         if key in self._verified:
             return True
-        if target.is_file() and target.stat().st_size == spec.size and sha256_file(target) == spec.sha256:
-            self._verified[key] = target
-            return True
+        try:
+            if target.is_file() and target.stat().st_size == spec.size and sha256_file(target) == spec.sha256:
+                self._verified[key] = target
+                return True
+        except OSError as error:
+            log.warning("model cache %s cannot be read: %s", target, error)
         return False
 
     def path(self, key: str) -> Path | None:
@@ -146,8 +148,10 @@ class ModelStore:
                 for chunk in self.fetch(spec.url):
                     digest.update(chunk)
                     size += len(chunk)
+                    if size > spec.size:
+                        raise ValueError(f"download exceeds expected size for {spec.filename}")
                     handle.write(chunk)
-            if digest.hexdigest() != spec.sha256:
+            if size != spec.size or digest.hexdigest() != spec.sha256:
                 raise ValueError(f"checksum mismatch for {spec.filename}: {digest.hexdigest()} ({size} bytes)")
             os.replace(handle.name, self.root / spec.filename)
         except BaseException:

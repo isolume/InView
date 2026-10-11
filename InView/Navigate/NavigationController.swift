@@ -120,11 +120,11 @@ final class NavigationController: ObservableObject {
         Task { [weak self] in
             let started = Date.now
             let loaded = await Task.detached(priority: .userInitiated) {
-                let saved = bundled ? nil : MapStore.loadEditableMap()
-                let map = bundled ? StudentCenterCatalog.map() : saved?.map
-                return Loaded(map: map, worldMap: bundled ? nil : MapStore.loadWorldMap(),
-                              planner: map.map(RoutePlanner.init), startView: bundled ? nil : MapStore.loadStartView(),
-                              placeEditSource: saved?.source)
+                let assets = bundled ? nil : MapStore.loadEditableNavigationAssets()
+                let map = bundled ? StudentCenterCatalog.map() : assets?.map
+                return Loaded(map: map, worldMap: assets?.worldMap,
+                              planner: map.map(RoutePlanner.init), startView: assets?.startView,
+                              placeEditSource: assets?.source)
             }.value
             guard let self, generation == loadingGeneration else { return }
             Log.navigation.info("map loaded in \(String(format: "%.2f", Date.now.timeIntervalSince(started)), privacy: .public) s · \(loaded.map?.footprints.count ?? 0) footprints, \(loaded.map?.points.count ?? 0) points, world map \(loaded.worldMap == nil ? "missing" : "present", privacy: .public)")
@@ -478,10 +478,10 @@ final class NavigationController: ObservableObject {
         guard phase == .navigating, let route, let renderer else { return }
         if Date.now.timeIntervalSince(lastObstacleCheck) >= Self.obstacleCheckInterval {
             lastObstacleCheck = .now
-            let appeared = obstacles.update(with: frame, route: route.waypoints, floorY: renderer.floorY)
+            let change = obstacles.update(with: frame, route: route.waypoints, floorY: renderer.floorY)
             renderer.showObstacles(obstacles.obstacles)
-            if appeared {
-                requestRoute(.obstacle)
+            if let change {
+                requestRoute(change == .appeared ? .obstacle : .update)
                 return
             }
         }

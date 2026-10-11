@@ -10,7 +10,7 @@ Volunteers scan a floor with a LiDAR iPhone. A vision model (OpenAI by default, 
 
 When a floor has compatible localization data, **View in AR** recognizes the saved space and offers AR arrows and spoken, captioned directions. Shared JSON maps, including the supplied Floor 2 scan, support browsing and manually chosen route previews but have no live positioning. Routes exclude stairs, insufficient clearance and ramps whose required slope measurements are missing or too steep.
 
-RoomPlan builds and saves maps on the phone. One scan can cover connected rooms, with confirmed doorway crossings handled automatically and Apple's native structure builder assembling the result. Photon messaging and ElevenLabs voice remain separate team work; navigation currently uses the system voice. Team plans: [larp.md](larp.md) and [photon.md](photon.md).
+RoomPlan builds and saves maps on the phone. One scan can cover connected rooms, with confirmed doorway crossings handled automatically and Apple's native structure builder assembling the result. Navigation uses ElevenLabs when configured, with a system-voice fallback. Photon messaging remains separate team work. Team plans: [larp.md](larp.md) and [photon.md](photon.md).
 
 ## Setup
 
@@ -28,8 +28,10 @@ open InView.xcodeproj
 - `OPENAI_API_KEY`: elevator, ramp and stairs detection while scanning. Without it, mark things by hand.
 - `DEVELOPMENT_TEAM`: your Apple team ID, needed to run on the phone. You can also pick the team in Xcode under Signing & Capabilities.
 - `MAPBOX_ACCESS_TOKEN` (optional): a public token beginning with `pk.`, for surrounding maps and building placement. Indoor-only navigation works without it.
+- `INVIEW_BACKEND_URL` (optional): the server used by **Find places** during review. Maps are built on-device with this blank; set or clear the address in **Scanning** settings. Write URLs as `http:/$()/host:3000` in xcconfig.
 - `VISION_PROVIDER = gemini` plus `GEMINI_API_KEY` switches detection to Gemini. Nothing else changes.
 - Optional: `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `low`; one request is in flight at a time, so latency directly limits how many frames get checked), `GEMINI_MODEL` (default `gemini-3.8-flash`).
+- `ELEVENLABS_API_KEY` (optional): spoken turn-by-turn prompts use ElevenLabs when set, and the system voice otherwise. Optional: `ELEVENLABS_VOICE_ID` (default the stock "Rachel" voice) and `ELEVENLABS_MODEL` (default `eleven_turbo_v2_5`, chosen for low latency). Each line is synthesized live and given 2.5 s to return audio; a missing key, a slow network, or any error falls back to the system voice. Prompts play in order; urgent prompts cancel older speech. Synthesized lines are cached in memory, since routes repeat phrases like "Turn right now."
 
 Re-run `xcodegen` after adding or removing files. The scheme turns off Metal API Validation, because RealityKit's own shaders trip it in debug runs.
 
@@ -66,6 +68,26 @@ administrator reviews and publishes a snapshot for public directions.
 colors; **Map appearance → Scan detail** displays it alongside the structural map.
 It is off by default pending long-scan device checks. Streaming and reconstruction
 protocols are described in [backend/SCANS.md](backend/SCANS.md).
+
+To run the server for Simulator on the Mac:
+
+```sh
+cargo run --locked --manifest-path backend/Cargo.toml
+```
+
+Enter `http://127.0.0.1:3000` in **Scanning → Find places**. The default loopback
+bind allows development without a processing token. Remote binds require
+`INVIEW_API_TOKEN`; put an HTTPS reverse proxy in front and enter its HTTPS
+address and access token in the app. Authenticated clients reject remote plain
+HTTP. The processing token is stored in the phone's Keychain, separately from
+account sessions.
+
+The executable persists original scans, analyses and graphs in `INVIEW_SCAN_DIR`
+(default `data/scans`), streams in `INVIEW_STREAM_DIR` (default `data/streams`),
+and account/submission data in `INVIEW_PRODUCT_DIR` (default `data/product`).
+Building reference-frame endpoints also require PostgreSQL. See
+[backend setup](backend/README.md) and [Vultr deployment](backend/infra/README.md)
+for configuration.
 
 The app opens onto Student Center East's Floor 2 model in 3D; Floor 3 has its own
 model, while Floor 1 has no bundled map. Generated landmarks support browsing;
@@ -158,8 +180,9 @@ check; sensor estimates do not determine a building's actual floor numbering.
 Each RoomPlan room's original capture is archived before `RoomBuilder` processes
 it. Completed rooms, the assembled structure, a bounded raw depth snapshot, and
 the derived capture/scene remain under `Documents/Captures/<scan UUID>/` for
-export from **Scanning → Saved scans**. A bounded set of posed camera photos is
-saved locally for splat training. Existing stream archives retain their original camera/depth observations.
+export from **Scanning → Saved scans**. With **Detailed scan** enabled, a bounded
+set of posed camera photos is saved locally for splat training. Existing stream
+archives retain their original camera/depth observations.
 When configured, accessibility detection still sends selected camera frames to
 the chosen vision provider; outdoor maps use Mapbox.
 
@@ -188,7 +211,7 @@ Relocalization works best when the lighting matches the scan and the area has te
 
 ## Photoreal splat
 
-Every scan also saves posed camera photos for training a Gaussian splat, the
+**Detailed scan** also saves posed camera photos for training a Gaussian splat, the
 photoreal look of Apple Maps. The splat is only a visual layer: routes are still
 planned on the measured map. Its camera poses are ARKit's, so a trained splat lands
 in the map's own coordinates and the route lines up with it. Don't pass `--center`
@@ -257,7 +280,7 @@ height are left out so the floor stays visible from above.
 | Wheelchair routing: clearance grid, ADA door widths, A*, obstacles, steep-ramp fallback | `Packages/AccessCore/.../OccupancyGrid.swift`, `RoutePlanner.swift` |
 | Floor polygons: area, ear-clipping triangulation | `Packages/AccessCore/.../Polygon.swift` |
 | LiDAR obstacle detection while navigating (scene depth, every 1 s) | `InView/Navigate/ObstacleTracker.swift`, `Packages/AccessCore/.../ObstacleFinder.swift` |
-| Turn-by-turn narration (system voice, captions) | `InView/Voice/`, `Packages/AccessCore/.../Maneuver.swift` |
+| Turn-by-turn narration (ElevenLabs with system-voice fallback, captions) | `InView/Voice/`, `Packages/AccessCore/.../Maneuver.swift` |
 | Accessibility report (score logic in core; UI with stats, door-width bars, slope gauges) | `Packages/AccessCore/.../AccessibilityReport.swift`, `InView/Report/` |
 | AR chevrons, point labels, stairs tags, obstacle markers | `InView/Navigate/PathRenderer.swift` |
 | Console logging (`detection`, `scan`, `navigation` categories) | `InView/Support/Log.swift` |
