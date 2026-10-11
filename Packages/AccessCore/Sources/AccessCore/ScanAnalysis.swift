@@ -18,13 +18,15 @@ public struct ScanAnalysis: Decodable, Equatable, Sendable {
     public var hazards: [Hazard]
     public var routes: [Route]
     public var notices: [String]
+    /// The ranked key aspects and their annotated plan, when the worker produced them.
+    public var highlights: ScanHighlights?
 
     public init(scanID: String, schemaVersion: Int? = 1, generatedAt: String? = nil, places: [Place] = [],
                 doors: [Door] = [], doorSummary: DoorSummary? = nil, hazards: [Hazard] = [],
-                routes: [Route] = [], notices: [String] = []) {
+                routes: [Route] = [], notices: [String] = [], highlights: ScanHighlights? = nil) {
         self.scanID = scanID; self.schemaVersion = schemaVersion; self.generatedAt = generatedAt
         self.places = places; self.doors = doors; self.doorSummary = doorSummary; self.hazards = hazards
-        self.routes = routes; self.notices = notices
+        self.routes = routes; self.notices = notices; self.highlights = highlights
     }
 
     /// Doors the worker flagged (too narrow, low headroom, or any other screening issue).
@@ -34,7 +36,7 @@ public struct ScanAnalysis: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version", scanID = "scan_id", generatedAt = "generated_at"
-        case places, doors, hazards, routes, notices, summary
+        case places, doors, hazards, routes, notices, summary, highlights
     }
 
     private struct Summary: Decodable {
@@ -66,6 +68,7 @@ public struct ScanAnalysis: Decodable, Equatable, Sendable {
         routes = container.lossy(RoutesProduct.self, forKey: .routes)?.routes ?? []
         notices = container.lossy(LossyList<String>.self, forKey: .notices)?.elements ?? []
         doorSummary = container.lossy(Summary.self, forKey: .summary)?.doors
+        highlights = container.lossy(ScanHighlights.self, forKey: .highlights)
     }
 }
 
