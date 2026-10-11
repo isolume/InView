@@ -11,6 +11,8 @@ struct NavigationMapSurface: View {
     let topDown: Bool
     let resetID: Int
     let bottomInset: CGFloat
+    /// Width of a side panel covering the map's leading edge, as on iPad.
+    var leadingInset: CGFloat = 0
     var groundFloorY: Float? = nil
     var route: Route? = nil
     var userPosition: SIMD2<Float>? = nil
@@ -93,6 +95,7 @@ struct NavigationMapSurface: View {
                           floorFootprints: map?.footprints.filter { $0.kind == .floor } ?? [],
                           topDown: topDown, resetID: resetID, showsDetails: detailedScan,
                           viewportBottomInset: bottomInset, viewportTopInset: 110,
+                          viewportLeadingInset: leadingInset,
                           routePoints: isRouteFloor ? route?.waypoints ?? [] : [],
                           userPosition: isRouteFloor ? userPosition : nil,
                           userHeading: isRouteFloor ? userHeading : nil, floorY: map?.floorY ?? groundFloorY ?? 0,
@@ -111,7 +114,7 @@ struct NavigationMapSurface: View {
         } else if let map {
             MapPreviewView(map: map, route: route, userPosition: userPosition,
                            userHeading: userHeading ?? 0, showsScanStart: false)
-                .padding(.bottom, bottomInset)
+                .padding(.bottom, bottomInset).padding(.leading, leadingInset)
                 .background(Color(.systemGroupedBackground))
         }
     }

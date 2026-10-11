@@ -11,4 +11,6 @@ enum Log {
     static let scan = Logger(subsystem: subsystem, category: "scan")
     /// Map loading, relocalization, routing.
     static let navigation = Logger(subsystem: subsystem, category: "navigation")
+    /// Voice questions and Gemini answers.
+    static let assistant = Logger(subsystem: subsystem, category: "assistant")
 }

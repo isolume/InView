@@ -60,8 +60,8 @@ final class RoomMapRenderViewTests: XCTestCase {
     func testDiagonalDetailKeepsTheFloorFraming() throws {
         let axis = SIMD2<Float>(repeating: 1 / sqrt(2))
         let cross = SIMD2(-axis.y, axis.x)
-        let corners = [-axis * 50 - cross * 0.5, axis * 50 - cross * 0.5,
-                       axis * 50 + cross * 0.5, -axis * 50 + cross * 0.5]
+        let corners: [SIMD2<Float>] = [-axis * 50 - cross * 0.5, axis * 50 - cross * 0.5,
+                                       axis * 50 + cross * 0.5, -axis * 50 + cross * 0.5]
         let mesh = SceneMesh(sourceID: "diagonal-detail",
                              vertices: corners.map { [$0.x, 0, $0.y] },
                              triangles: [[0, 1, 2], [0, 2, 3]])
