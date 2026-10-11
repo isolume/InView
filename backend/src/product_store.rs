@@ -52,6 +52,12 @@ struct StoredAccount {
     /// default to false; restarting with matching bootstrap credentials migrates that account.
     #[serde(default)]
     bootstrap_admin: bool,
+    /// Whether other signed-in people may find this account. Off until the person turns it on.
+    #[serde(default)]
+    discoverable: bool,
+    /// A name the person chose to be found by; unique, lower case.
+    #[serde(default)]
+    handle: Option<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Session {
@@ -208,6 +214,59 @@ fn hash_password(password: &str) -> Result<String, ApiError> {
 fn digest_token(token: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(token.as_bytes()))
 }
+
+/// How a person can be found by other signed-in people. Everything is opt-in.
+#[derive(Clone, Debug, Serialize)]
+pub struct Discovery {
+    pub discoverable: bool,
+    pub handle: Option<String>,
+    /// Whether someone typing this account's email can find it: only Auth0-verified addresses that
+    /// are not Apple "Hide My Email" relays.
+    pub email_searchable: bool,
+}
+/// What a lookup reveals about another person: a display name and the handle they chose. Never an
+/// email, account id or sign-in method.
+#[derive(Clone, Debug, Serialize)]
+pub struct Person {
+    pub person_id: String,
+    pub name: String,
+    pub handle: Option<String>,
+}
+const PRIVATE_RELAY_DOMAIN: &str = "privaterelay.appleid.com";
+const LOOKUPS_PER_WINDOW: u8 = 30;
+fn email_searchable(stored: &StoredAccount) -> bool {
+    stored.auth0_sub.is_some()
+        && !stored
+            .account
+            .email
+            .ends_with(&format!("@{PRIVATE_RELAY_DOMAIN}"))
+}
+pub fn validate_handle(handle: &str) -> Result<String, ApiError> {
+    let handle = handle.trim().trim_start_matches('@').to_ascii_lowercase();
+    let valid = (3..=24).contains(&handle.len())
+        && handle.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && handle
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    if valid {
+        Ok(handle)
+    } else {
+        Err(ApiError::invalid(
+            "Use 3 to 24 letters, numbers, dots or underscores, starting with a letter or number.",
+        ))
+    }
+}
+fn person_not_found() -> ApiError {
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        "person_not_found",
+        "No one with that email or handle is available to find.",
+    )
+}
+fn person_id(account_id: &str) -> String {
+    let digest = Sha256::digest(format!("inview-person:{account_id}").as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)[..22].to_owned()
+}
 pub fn validate_email(email: &str) -> Result<String, ApiError> {
     let email = email.trim().to_ascii_lowercase();
     let parts: Vec<_> = email.split('@').collect();
@@ -347,7 +406,7 @@ impl ProductStore {
                 return Ok(());
             }
             let account = Account { id: Uuid::new_v4().to_string(), email: email.clone(), name: "Administrator".into(), role: Role::Admin };
-            db.accounts.insert(email, StoredAccount { account, password_hash: Some(password_hash), auth0_sub: None, bootstrap_admin: true });
+            db.accounts.insert(email, StoredAccount { account, password_hash: Some(password_hash), auth0_sub: None, bootstrap_admin: true, discoverable: false, handle: None });
             Ok(())
         })
     }
@@ -376,6 +435,8 @@ impl ProductStore {
             password_hash: Some(hash_password(password)?),
             auth0_sub: None,
             bootstrap_admin: false,
+            discoverable: false,
+            handle: None,
         };
         self.transaction(|db| {
             if db.accounts.contains_key(&email) {
@@ -538,6 +599,8 @@ impl ProductStore {
                         password_hash: None,
                         auth0_sub: Some(sub.to_owned()),
                         bootstrap_admin: false,
+                        discoverable: false,
+                        handle: None,
                     },
                 );
                 account
@@ -566,6 +629,95 @@ impl ProductStore {
         }
         record.1 += 1;
         Ok(())
+    }
+    fn stored_by_id<'a>(db: &'a Database, id: &str) -> Option<&'a StoredAccount> {
+        db.accounts.values().find(|a| a.account.id == id)
+    }
+    pub fn discovery(&self, account: &Account) -> Result<Discovery, ApiError> {
+        let db = self.inner.data.lock().map_err(storage_error)?;
+        let stored = Self::stored_by_id(&db, &account.id).ok_or_else(unauthorized)?;
+        Ok(Discovery {
+            discoverable: stored.discoverable,
+            handle: stored.handle.clone(),
+            email_searchable: email_searchable(stored),
+        })
+    }
+    /// `handle`: `None` leaves it as is, `Some(None)` clears it, `Some(Some(h))` sets it.
+    pub fn set_discovery(
+        &self,
+        account: &Account,
+        discoverable: Option<bool>,
+        handle: Option<Option<String>>,
+    ) -> Result<Discovery, ApiError> {
+        let handle = match handle {
+            Some(Some(raw)) => Some(Some(validate_handle(&raw)?)),
+            other => other.map(|_| None),
+        };
+        self.transaction(|db| {
+            if let Some(Some(wanted)) = &handle
+                && db
+                    .accounts
+                    .values()
+                    .any(|a| a.account.id != account.id && a.handle.as_deref() == Some(wanted))
+            {
+                return Err(ApiError::new(
+                    StatusCode::CONFLICT,
+                    "handle_taken",
+                    "That handle is already in use.",
+                ));
+            }
+            let stored = db
+                .accounts
+                .values_mut()
+                .find(|a| a.account.id == account.id)
+                .ok_or_else(unauthorized)?;
+            if let Some(value) = discoverable {
+                stored.discoverable = value;
+            }
+            if let Some(value) = handle {
+                stored.handle = value;
+            }
+            Ok(Discovery {
+                discoverable: stored.discoverable,
+                handle: stored.handle.clone(),
+                email_searchable: email_searchable(stored),
+            })
+        })
+    }
+    /// Finds one person by exact verified email or exact handle. Not-found, not-discoverable, a
+    /// relay address and yourself all look the same, and lookups are rate limited per searcher, so
+    /// the directory cannot be browsed or probed for who has an account.
+    pub fn find_person(&self, searcher: &Account, query: &str) -> Result<Person, ApiError> {
+        self.attempt(&format!("lookup:{}", searcher.id), LOOKUPS_PER_WINDOW)?;
+        let query = query.trim();
+        let db = self.inner.data.lock().map_err(storage_error)?;
+        let (found, by_email) = if query.contains('@') && !query.starts_with('@') {
+            let email = validate_email(query).map_err(|_| person_not_found())?;
+            (db.accounts.get(&email), true)
+        } else {
+            let handle = validate_handle(query).map_err(|_| person_not_found())?;
+            (
+                db.accounts
+                    .values()
+                    .find(|a| a.handle.as_deref() == Some(handle.as_str())),
+                false,
+            )
+        };
+        let stored = found
+            .filter(|a| a.discoverable && a.account.id != searcher.id)
+            .filter(|a| !by_email || email_searchable(a))
+            .ok_or_else(person_not_found)?;
+        // Passwordless email sign-in often names the account after its address; never expose that.
+        let name = Some(stored.account.name.trim())
+            .filter(|n| !n.is_empty() && !n.contains('@'))
+            .map(str::to_owned)
+            .or_else(|| stored.handle.clone())
+            .unwrap_or_else(|| "InView user".to_owned());
+        Ok(Person {
+            person_id: person_id(&stored.account.id),
+            name,
+            handle: stored.handle.clone(),
+        })
     }
     pub fn account(&self, token: &str) -> Result<Account, ApiError> {
         if token.len() != 43 {

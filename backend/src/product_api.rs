@@ -246,6 +246,69 @@ pub async fn auth_config(State(state): State<AppState>) -> Json<Value> {
         None => json!({"enabled": false}),
     })
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiscoveryRequest {
+    #[serde(default)]
+    discoverable: Option<bool>,
+    /// A new handle to be found by.
+    #[serde(default)]
+    handle: Option<String>,
+    /// Remove the handle.
+    #[serde(default)]
+    clear_handle: bool,
+}
+pub async fn discovery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<product_store::Discovery>, ApiError> {
+    let account = account(&state, &headers)?;
+    blocking(move || state.product.discovery(&account))
+        .await
+        .map(Json)
+}
+pub async fn set_discovery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<DiscoveryRequest>, JsonRejection>,
+) -> Result<Json<product_store::Discovery>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    let handle = match (request.handle, request.clear_handle) {
+        (Some(_), true) => {
+            return Err(ApiError::invalid("Send either handle or clear_handle."));
+        }
+        (Some(handle), false) => Some(Some(handle)),
+        (None, true) => Some(None),
+        (None, false) => None,
+    };
+    blocking(move || {
+        state
+            .product
+            .set_discovery(&account, request.discoverable, handle)
+    })
+    .await
+    .map(Json)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FindPersonRequest {
+    query: String,
+}
+pub async fn find_person(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<FindPersonRequest>, JsonRejection>,
+) -> Result<Json<product_store::Person>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    if request.query.len() > 254 {
+        return Err(ApiError::invalid("Enter an email address or handle."));
+    }
+    blocking(move || state.product.find_person(&account, &request.query))
+        .await
+        .map(Json)
+}
 pub async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,

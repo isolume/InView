@@ -852,3 +852,289 @@ async fn first_link_with_admin_claim_revokes_preregistered_attackers_session() {
         StatusCode::OK
     );
 }
+
+// --- finding people: opt-in, exact match -------------------------------------------------------------
+
+async fn sign_in(router: &Router, sub: &str, email: &str, name: &str) -> String {
+    let token = sign(&with(
+        claims(sub, email),
+        json!({format!("{NAMESPACE}name"): name}),
+    ));
+    let (status, body) = exchange(router, &token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["token"].as_str().unwrap().to_owned()
+}
+
+async fn find(router: &Router, bearer: &str, query: &str) -> (StatusCode, Value) {
+    let (status, _, body) = call(
+        router,
+        "POST",
+        "/api/people/find",
+        Some(bearer),
+        Some(json!({"query": query})),
+    )
+    .await;
+    (status, body)
+}
+
+async fn discover(router: &Router, bearer: &str, body: Value) -> (StatusCode, Value) {
+    let (status, _, value) = call(
+        router,
+        "PUT",
+        "/api/accounts/me/discovery",
+        Some(bearer),
+        Some(body),
+    )
+    .await;
+    (status, value)
+}
+
+#[tokio::test]
+async fn nobody_can_be_found_until_they_opt_in() {
+    let (_, router) = setup(&[]);
+    let me = sign_in(&router, "email|me", "me@example.test", "Me").await;
+    let _ = sign_in(&router, "apple|ada", "ada@example.test", "Ada Lovelace").await;
+    let (status, body) = find(&router, &me, "ada@example.test").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"]["code"], "person_not_found");
+
+    let (_, _, state) = call(
+        &router,
+        "GET",
+        "/api/accounts/me/discovery",
+        Some(&me),
+        None,
+    )
+    .await;
+    assert_eq!(state["discoverable"], false);
+}
+
+#[tokio::test]
+async fn an_opted_in_person_is_found_by_exact_email_or_handle_and_nothing_private_leaks() {
+    let (_, router) = setup(&[]);
+    let me = sign_in(&router, "email|me", "me@example.test", "Me").await;
+    let ada = sign_in(&router, "apple|ada", "ada@example.test", "Ada Lovelace").await;
+    let (status, state) = discover(
+        &router,
+        &ada,
+        json!({"discoverable": true, "handle": "@Ada.L"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{state}");
+    assert_eq!(state["handle"], "ada.l");
+    assert_eq!(state["email_searchable"], true);
+
+    for query in ["ada@example.test", " ADA@Example.test ", "ada.l", "@ada.l"] {
+        let (status, person) = find(&router, &me, query).await;
+        assert_eq!(status, StatusCode::OK, "{query}: {person}");
+        assert_eq!(person["name"], "Ada Lovelace");
+        assert_eq!(person["handle"], "ada.l");
+        assert_eq!(person["person_id"].as_str().unwrap().len(), 22);
+        let keys: Vec<_> = person.as_object().unwrap().keys().cloned().collect();
+        assert!(
+            keys.iter()
+                .all(|k| ["person_id", "name", "handle"].contains(&k.as_str())),
+            "{keys:?}"
+        );
+        assert!(!person.to_string().contains("example.test"));
+    }
+    // Exact only: no partial matches, no wildcard probing.
+    for query in ["ada", "ada@example", "ad", "*", "ada@%", "example.test"] {
+        let (status, _) = find(&router, &me, query).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{query}");
+    }
+    // Turning it off hides them again.
+    discover(&router, &ada, json!({"discoverable": false})).await;
+    assert_eq!(find(&router, &me, "ada.l").await.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn private_relay_addresses_and_address_shaped_names_are_never_exposed() {
+    let (_, router) = setup(&[]);
+    let me = sign_in(&router, "email|me", "me@example.test", "Me").await;
+    // Sign in with Apple "Hide My Email": the relay address is not searchable, only the handle is.
+    let relay = "x7k2@privaterelay.appleid.com";
+    let hidden = sign_in(&router, "apple|hidden", relay, "Hidden Person").await;
+    let (_, state) = discover(
+        &router,
+        &hidden,
+        json!({"discoverable": true, "handle": "hidden_one"}),
+    )
+    .await;
+    assert_eq!(state["email_searchable"], false);
+    assert_eq!(find(&router, &me, relay).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(find(&router, &me, "hidden_one").await.0, StatusCode::OK);
+
+    // Passwordless email accounts are often named after their address; the lookup shows the handle.
+    let named = sign_in(
+        &router,
+        "email|named",
+        "named@example.test",
+        "named@example.test",
+    )
+    .await;
+    discover(
+        &router,
+        &named,
+        json!({"discoverable": true, "handle": "named_one"}),
+    )
+    .await;
+    let (_, person) = find(&router, &me, "named@example.test").await;
+    assert_eq!(person["name"], "named_one");
+    assert!(!person.to_string().contains('@'));
+}
+
+#[tokio::test]
+async fn absent_hidden_relay_and_self_lookups_are_indistinguishable() {
+    let (_, router) = setup(&[]);
+    let me = sign_in(&router, "email|me", "me@example.test", "Me").await;
+    discover(
+        &router,
+        &me,
+        json!({"discoverable": true, "handle": "myself"}),
+    )
+    .await;
+    let _ = sign_in(&router, "apple|quiet", "quiet@example.test", "Quiet").await;
+    let mut seen = Vec::new();
+    for query in [
+        "quiet@example.test",
+        "nobody@example.test",
+        "myself",
+        "quiet",
+        "bad query!",
+    ] {
+        let (status, body) = find(&router, &me, query).await;
+        seen.push((status, body));
+    }
+    assert!(seen.windows(2).all(|w| w[0] == w[1]), "{seen:?}");
+}
+
+#[tokio::test]
+async fn handles_are_validated_unique_and_changeable() {
+    let (_, router) = setup(&[]);
+    let a = sign_in(&router, "email|a", "a@example.test", "A").await;
+    let b = sign_in(&router, "email|b", "b@example.test", "B").await;
+    for bad in [
+        "ab",
+        "has space",
+        "-lead",
+        "toolongtoolongtoolongtoolong1",
+        "emo😀ji",
+        "a@b.c",
+    ] {
+        let (status, body) = discover(&router, &a, json!({"handle": bad})).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {body}");
+    }
+    assert_eq!(
+        discover(&router, &a, json!({"handle": "Taken_1"})).await.0,
+        StatusCode::OK
+    );
+    let (status, body) = discover(&router, &b, json!({"handle": "taken_1"})).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"]["code"], "handle_taken");
+    // Re-saving your own handle is fine, and changing it frees the old one.
+    assert_eq!(
+        discover(&router, &a, json!({"handle": "taken_1"})).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        discover(&router, &a, json!({"handle": "fresh_one"}))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        discover(&router, &b, json!({"handle": "taken_1"})).await.0,
+        StatusCode::OK
+    );
+    let (status, state) = discover(&router, &b, json!({"clear_handle": true})).await;
+    assert_eq!(
+        (status, state["handle"].clone()),
+        (StatusCode::OK, Value::Null)
+    );
+    assert_eq!(
+        discover(
+            &router,
+            &b,
+            json!({"handle": "x_y_z", "clear_handle": true})
+        )
+        .await
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
+#[tokio::test]
+async fn lookup_needs_a_session_and_is_rate_limited() {
+    let (_, router) = setup(&[]);
+    let (status, _, _) = call(
+        &router,
+        "POST",
+        "/api/people/find",
+        None,
+        Some(json!({"query": "a@b.test"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _, _) = call(
+        &router,
+        "PUT",
+        "/api/accounts/me/discovery",
+        None,
+        Some(json!({"discoverable": true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let me = sign_in(&router, "email|me", "me@example.test", "Me").await;
+    let mut limited = None;
+    for i in 0..40 {
+        let (status, body) = find(&router, &me, &format!("guess{i}@example.test")).await;
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            limited = Some((i, body));
+            break;
+        }
+    }
+    let (at, body) = limited.expect("lookups are rate limited");
+    assert!((25..=35).contains(&at), "{at}");
+    assert_eq!(body["error"]["code"], "auth_rate_limited");
+}
+
+#[tokio::test]
+async fn password_accounts_are_found_by_handle_only() {
+    // A password account's email was never verified by a provider, so it is not searchable by email.
+    let router = app(AppState::default());
+    let register = |email: &'static str, name: &'static str| {
+        let router = router.clone();
+        async move {
+            let (status, _, body) = call(
+                &router,
+                "POST",
+                "/api/accounts/register",
+                None,
+                Some(json!({"email": email, "password": ADMIN_PASSWORD, "name": name})),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CREATED, "{body}");
+            body["token"].as_str().unwrap().to_owned()
+        }
+    };
+    let old = register("old@example.test", "Old Timer").await;
+    let me = register("me@example.test", "Me").await;
+    let (_, state) = discover(
+        &router,
+        &old,
+        json!({"discoverable": true, "handle": "old_timer"}),
+    )
+    .await;
+    assert_eq!(state["email_searchable"], false);
+    assert_eq!(
+        find(&router, &me, "old@example.test").await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, person) = find(&router, &me, "old_timer").await;
+    assert_eq!(
+        (status, person["name"].clone()),
+        (StatusCode::OK, json!("Old Timer"))
+    );
+}

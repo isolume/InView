@@ -224,6 +224,16 @@ pub fn app(state: AppState) -> Router {
         .route("/api/auth/config", get(product_api::auth_config))
         .route("/api/accounts/me", get(product_api::me))
         .route(
+            "/api/accounts/me/discovery",
+            get(product_api::discovery)
+                .put(product_api::set_discovery)
+                .layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
+            "/api/people/find",
+            axum::routing::post(product_api::find_person).layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
             "/api/accounts/logout",
             axum::routing::post(product_api::logout),
         )
