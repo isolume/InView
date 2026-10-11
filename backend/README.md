@@ -26,6 +26,11 @@ HTTP handlers, graph types, storage and route selection live in separate modules
 | POST | `/api/buildings/{id}/alignments` | Provisionally align an uploaded scan |
 | GET | `/api/buildings/{id}/observations` | Time-indexed, version-pinned camera positions |
 | GET | `/api/buildings/{id}/overview` | Aligned camera paths and mesh samples |
+| POST | `/api/buildings/{id}/routes` | Distinct multi-floor routes across the building's aligned scans |
+| GET | `/api/buildings/{id}/levels` | Floors and connectors for a level picker |
+| GET/POST | `/api/buildings/{id}/connectors` | Manually registered elevators, stairs, escalators and ramps |
+| POST | `/scans/{id}/routes` | The same routes within one processed scan (no database) |
+| GET | `/scans/{id}/levels` | Floors and connectors of one processed scan |
 | GET | `/scans/{id}/camera-track` | Dense movement track, with manifest/portable-frame fallback |
 | GET/PUT | `/scans/{id}/analysis` | Derived worker output; 404 until processed |
 | GET | `/graphs` | List graph summaries |
@@ -194,6 +199,63 @@ coordinate conventions, supported processing, and the current iPhone adapter.
   source evidence and require individual Keep or Drop decisions. Kept places use
   stable IDs and preserve volunteer-added points; server output never replaces
   the local map geometry.
+
+### Building routes (3D, multi-path)
+
+`POST /api/buildings/{id}/routes` (or `POST /scans/{id}/routes` for one scan) returns
+several distinct routes between two points, ready to draw floor by floor the way
+indoor maps do. The building scope composes every aligned scan's `<scan>-nav` graph
+(the published snapshot if one exists, else the worker candidate) into the reference
+scan's frame, joins overlapping scans at `scan_seam` edges, clusters floors from node
+heights (`L0` upward), and links floors with connectors. Connectors come from the
+graph's transitions, from pairing `elevator`/`stairs`/`escalator` places and `stairs`
+hazards across floors, and from `POST /api/buildings/{id}/connectors`
+(`{"id","kind":"elevator|stairs|escalator|ramp","from_m":[x,y,z],"to_m":[x,y,z],"name"?,"estimated_seconds"?}`
+in building-frame meters).
+
+```json
+{"from": {"place_id": "entrance"},
+ "to": {"position_m": [12.3, 3.5, -4.1], "level_id": "L1"},
+ "profiles": ["fastest", "accessible"], "alternatives": 2, "version": 4, "speed_mps": 1.2}
+```
+
+Each endpoint is exactly one of `place_id`, `node_id` (`<scan>:<node>`), `position_m`
+(with optional `level_id`), or `latitude`+`longitude` (with optional `level_id`; needs
+the reference scan's georef). Positions snap to the nearest graph node within 5 m on
+their floor. Profiles are `fastest`, `accessible` (step-free, ≥ 0.915 m clear, slope
+≤ 1:12) and `low_vision` (avoids hazards and narrow passages). Alternatives come from
+Yen's k-shortest paths. A path sharing at least 70% of its length with one already
+kept is dropped, a path found by several profiles carries all their `labels`, and at
+most 5 routes are returned.
+
+Each route has:
+- `accessibility.status`, one of:
+  - `not_accessible`: some edge or feature fails a criterion; `blocking` lists it;
+  - `unverified`: no failures, but something is unmeasured, such as elevator width or
+    a scan seam; `unverified` lists it;
+  - `accessible`.
+- `features`, each with:
+  - a stable `id` (`f1`…);
+  - a `type`, one of `door`, `stairs`, `elevator`, `escalator`, `ramp`,
+    `narrow_passage`, `scan_seam`, a hazard kind, `sign`, `landmark`, or
+    `destination`;
+  - `position_m`, `level_id`/`to_level_id`, `distance_along_m`, and `accessible`;
+  - `refs` back to the source place, hazard, door, sign and edge IDs.
+- `legs`: `walk` legs per floor, each with a simplified `polyline_m`, a
+  `polyline_lonlat` when georeferenced, and `bbox_m`. `connector` legs sit between
+  floors.
+- `steps`: machine-readable `maneuver` codes (`depart`, `slight_left`…`u_turn`,
+  `enter_elevator`/`exit_elevator`, `stairs_up`/`stairs_down`,
+  `escalator_up`/`escalator_down`, `ramp_up`/`ramp_down`, `pass_door`, `arrive`),
+  plus an English `instruction` anchored to nearby signs, and `feature_ids`.
+
+`unreachable` explains profiles with no route. The error codes are:
+- `endpoint_not_found` (404);
+- `no_route` (422);
+- `navigation_data_missing` (409): no processed nav graph yet;
+- `database_unavailable` (503): building scope without PostgreSQL.
+
+Results are screening output from captured evidence, not certified accessible routes.
 
 ## Operational limits
 
