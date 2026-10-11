@@ -1,0 +1,26 @@
+{
+  "boundsYUpMeters" : {
+    "max" : [
+      16.996999740600586,
+      3.6999995708465576,
+      55.890182495117188
+    ],
+    "min" : [
+      -45.033046722412109,
+      -0.18000331521034241,
+      -39.336811065673828
+    ]
+  },
+  "bytes" : 2554660,
+  "errors" : [
+
+  ],
+  "file" : "\/Users\/nerd\/src\/inview\/models\/walkthrough-building\/floor-1\/floor-1.usdz",
+  "importAndValidationSeconds" : 4.4773460626602173,
+  "nativeMeshCount" : 2194,
+  "nativeNormalCount" : 474348,
+  "nativeTriangleEquivalentCount" : 235380,
+  "nativeVertexCount" : 122076,
+  "passed" : true,
+  "sha256" : "0f259db5f5657678d2f596ce91ef6a3835280bda55dc704a49d61a191bb2dae0"
+}

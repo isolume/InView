@@ -22,6 +22,11 @@ struct NavigationMapSurface: View {
     var places: [MapPlace] = []
     var onSelectPlace: ((MapPlace) -> Void)? = nil
     var onSelectFloorPoint: ((SIMD2<Float>) -> Void)? = nil
+    var elevatedMap: ElevatedFloorMap? = nil
+    var elevatedRoute: ElevatedFloorRoute? = nil
+    var elevatedUserLocation: ElevatedFloorLocation? = nil
+    var elevatedDestination: ElevatedFloorLocation? = nil
+    var onSelectElevatedFloorPoint: ((ElevatedFloorLocation) -> Void)? = nil
     var initialYaw: Float? = nil
     var isPreparedScene = false
     var illustrationURL: URL? = nil
@@ -39,7 +44,9 @@ struct NavigationMapSurface: View {
     var body: some View {
         Group {
             if let scene = displayedScene {
-                if isPreparedScene && !detailedScan {
+                // Explicit elevation zones belong to one display floor; inferred floor clipping
+                // would otherwise remove the raised auditorium from the same map.
+                if elevatedMap != nil || (isPreparedScene && !detailedScan) {
                     surface(scene: scene, map: map, isRouteFloor: true)
                 } else {
                     FinalMapSurface(scene: scene, map: map, selectedFloorID: selectedFloorID,
@@ -92,7 +99,7 @@ struct NavigationMapSurface: View {
     @ViewBuilder private func indoor(scene: ProcessedScene?, map: VenueMap?, isRouteFloor: Bool) -> some View {
         // 2D is the architectural floor plan of the measured map, with door swings, windows and furniture.
         // An illustrated model has no plan, so it keeps its top-down 3D view.
-        if let map, scene == nil || (topDown && !showsIllustration) {
+        if let map, scene == nil || (topDown && !showsIllustration && elevatedMap == nil) {
             MapPreviewView(map: map, route: isRouteFloor ? route : nil,
                            userPosition: isRouteFloor ? userPosition : nil,
                            userHeading: isRouteFloor ? userHeading ?? 0 : 0, showsScanStart: false,
@@ -115,6 +122,11 @@ struct NavigationMapSurface: View {
                           places: isRouteFloor ? (places.isEmpty ? MapPlace.places(in: map) : places) : [],
                           onSelectPlace: isRouteFloor ? onSelectPlace : nil,
                           onSelectFloorPoint: isRouteFloor ? onSelectFloorPoint : nil,
+                          elevatedMap: isRouteFloor ? elevatedMap : nil,
+                          elevatedRoute: isRouteFloor ? elevatedRoute : nil,
+                          elevatedUserLocation: isRouteFloor ? elevatedUserLocation : nil,
+                          elevatedDestination: isRouteFloor ? elevatedDestination : nil,
+                          onSelectElevatedFloorPoint: isRouteFloor ? onSelectElevatedFloorPoint : nil,
                           initialYaw: initialYaw,
                           illustrationURL: illustrationURL, mapFromIllustration: mapFromIllustration,
                           showsIllustration: showsIllustration, showsScanOutline: showsScanOutline,

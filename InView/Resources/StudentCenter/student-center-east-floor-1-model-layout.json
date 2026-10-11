@@ -1,0 +1,75 @@
+{
+  "floor_elevations_m": {
+    "1": 0.0
+  },
+  "physical_levels_m": {
+    "main": 0.0,
+    "raised_l": 1.58,
+    "dining_terrace": 1.1
+  },
+  "labels": [
+    {
+      "floor": 1,
+      "title": "Information",
+      "position": [
+        -1.3833458921677262,
+        0.0,
+        4.46336712487034
+      ]
+    },
+    {
+      "floor": 1,
+      "title": "Food Court",
+      "position": [
+        -24.372040224599306,
+        0.0,
+        0.21579244280175036
+      ]
+    },
+    {
+      "floor": 1,
+      "title": "Atrium",
+      "position": [
+        6.765362311448152,
+        0.0,
+        33.812544943559466
+      ]
+    },
+    {
+      "floor": 1,
+      "title": "State Ballroom",
+      "position": [
+        -4.866222559770886,
+        0.0,
+        34.443691285263434
+      ]
+    },
+    {
+      "floor": 1,
+      "title": "Court Salon",
+      "position": [
+        -10.838150600044534,
+        0.0,
+        44.96109908201602
+      ]
+    },
+    {
+      "floor": 1,
+      "title": "Auditorium",
+      "position": [
+        -2.159416,
+        1.58,
+        -9.9662895
+      ]
+    },
+    {
+      "floor": 1,
+      "title": "Window Lounge",
+      "position": [
+        11.587059,
+        1.58,
+        -4.007339
+      ]
+    }
+  ]
+}

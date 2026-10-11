@@ -1,0 +1,312 @@
+{
+  "schema_version": 1,
+  "display_floor": 1,
+  "display_name": "Floor 1",
+  "units": "meters",
+  "up_axis": "y",
+  "raised_area": "Auditorium access remains part of Floor 1",
+  "connections": "Steps or elevator; no ramp between lower and raised areas",
+  "visual_completion_is_routing_coverage": false,
+  "captures": [
+    {
+      "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "folder": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC 2",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "source_files": {
+        "capture.json": {
+          "bytes": 3482608,
+          "sha256": "d6a481b1e23c6a42dbb61ac1a74a2cc9aed4e03a5b92f54eeee555c0a864e3e5"
+        },
+        "raw-snapshot.json": {
+          "bytes": 7215660,
+          "sha256": "f35d02f785e155b5c7c1a4edc8b3a1319589d7507f63c9c93c66ccb5cc7ee539"
+        },
+        "roomplan.json": {
+          "bytes": 1144932,
+          "sha256": "0e36b5d87077c275ea90c02f21512cf71bbba914fe3623f27fadfb247c00dac6"
+        },
+        "video-manifest.json": {
+          "bytes": 6929,
+          "sha256": "9c8cf0912d58ad34019232c1d54cf04f3f2526a9b7bdab64ba95c2bbd5c5e6c3"
+        },
+        "package-manifest.json": {
+          "bytes": 9363,
+          "sha256": "d9f262c05e0bb9794be331385c6ee94743c306bcabe0a7902f16a1311cc5f244"
+        },
+        "text-observations.json": {
+          "bytes": 10800,
+          "sha256": "182933efcf0ccfcc110195f3c58a150d506120fe7990772e07ff067a83862375"
+        }
+      },
+      "video_segments": 22,
+      "video_frames": 2182,
+      "recording_status": "complete",
+      "native_room_counts": {
+        "walls": 11,
+        "doors": 2,
+        "openings": 0,
+        "windows": 1,
+        "floors": 1,
+        "objects": 49
+      },
+      "compact_source": "sources/7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC.json",
+      "compact_source_sha256": "fffb3ec8eafd1ff4d1fd6b9435ee7acfcf95917400f82df732db67f4ffa9c542"
+    },
+    {
+      "capture_id": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+      "folder": "611423DC-EDB2-4FCE-91B1-F47573C20F8B 2",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "source_files": {
+        "raw-snapshot.json": {
+          "bytes": 7129789,
+          "sha256": "0dae685c31f6148d2ebd6391d1fe128bd10bfbab7216cb58917a817f61e5aca9"
+        },
+        "roomplan.json": {
+          "bytes": 555570,
+          "sha256": "bb53ba94d4fdfb9c4a8eeb2d2df3f6b49ea9818ecb776e1c6cfc600b8da4dc33"
+        },
+        "video-manifest.json": {
+          "bytes": 8107,
+          "sha256": "b9eed497c4191fa36ab60ee0c68d9253daba5f1cce9ae7b68945a4674a83133f"
+        },
+        "text-observations.json": {
+          "bytes": 114,
+          "sha256": "0499c2ce8bef9c3bac4b32c07a463a3c86beb524115003672b48534aae8b213b"
+        }
+      },
+      "video_segments": 26,
+      "video_frames": 2527,
+      "recording_status": "complete",
+      "native_room_counts": {
+        "walls": 50,
+        "doors": 6,
+        "openings": 0,
+        "windows": 1,
+        "floors": 2,
+        "objects": 23
+      },
+      "compact_source": "sources/611423DC-EDB2-4FCE-91B1-F47573C20F8B.json",
+      "compact_source_sha256": "dfdabe8d2889a371e2332c7368e43aaf90155cd610426f0e201fa0868daa9cba"
+    },
+    {
+      "capture_id": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+      "folder": "081DA781-19B1-4A3F-91BE-8DF0094E5032 2",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "source_files": {
+        "capture.json": {
+          "bytes": 3448699,
+          "sha256": "f70464dc54f892d27c8332ae1d501f249680dd4b58d4410a7d5c70d22c5a7fcc"
+        },
+        "raw-snapshot.json": {
+          "bytes": 6704447,
+          "sha256": "4a7db9034715417b6f07d4924d95c423480f0f80e8ec0c614b05068c4ec2f215"
+        },
+        "roomplan.json": {
+          "bytes": 85014,
+          "sha256": "abfadf235649df7d4733e487ce446869ee95087059d40ffed0d5e7893ee56dc8"
+        },
+        "video-manifest.json": {
+          "bytes": 1900,
+          "sha256": "bf664520bcff372b6f2a1584a1f422c9bb1466a33c730550d17f748d6085e3e0"
+        },
+        "package-manifest.json": {
+          "bytes": 9588,
+          "sha256": "96e7c0ada42c95fd50376ad16025a6ceed1a3fe45231c43d4dcf0acd7500c8f8"
+        },
+        "text-observations.json": {
+          "bytes": 485,
+          "sha256": "a4763883714da23763e2d20c128dd51d6f57b447175efcca2e4a3f93f2a47f0e"
+        }
+      },
+      "video_segments": 5,
+      "video_frames": 413,
+      "recording_status": "complete",
+      "native_room_counts": {
+        "walls": 15,
+        "doors": 4,
+        "openings": 0,
+        "windows": 5,
+        "floors": 1,
+        "objects": 3
+      },
+      "compact_source": "sources/081DA781-19B1-4A3F-91BE-8DF0094E5032.json",
+      "compact_source_sha256": "ad3468fd7854d6254ff0ca6545dc17f425b9dbb2b000289d2b98f39511066284"
+    },
+    {
+      "capture_id": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+      "folder": "785D48F6-4754-46A8-B07D-D001BCAAC621 2",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "source_files": {
+        "capture.json": {
+          "bytes": 3502165,
+          "sha256": "bdaf7d74725ec974f5672560598b17017b9f216503831394fe398611120181f5"
+        },
+        "raw-snapshot.json": {
+          "bytes": 6962934,
+          "sha256": "807a7254db90e12f8a6c664da707bb90228c0da7a1e072ea7cb44b3bc9d0dd13"
+        },
+        "roomplan.json": {
+          "bytes": 496234,
+          "sha256": "fdf1c7232910c95b53a68303716ccbde501b66f593ab45190d00297ffab451e3"
+        },
+        "video-manifest.json": {
+          "bytes": 5159,
+          "sha256": "f05bf9bbe6c4356d08c9806668ce9c70554410b3ac319bd84f3f4807151034ad"
+        },
+        "package-manifest.json": {
+          "bytes": 9026,
+          "sha256": "735ab243d7033f56af62391008ad3f20ec2f2ec396459b7f589ad5621ac621d2"
+        },
+        "text-observations.json": {
+          "bytes": 114,
+          "sha256": "57f49b563f35647265271f7787b5c4c7e4a84669c7e7eadb4e72a567a94e63dc"
+        }
+      },
+      "video_segments": 16,
+      "video_frames": 1590,
+      "recording_status": "complete",
+      "native_room_counts": {
+        "walls": 39,
+        "doors": 4,
+        "openings": 2,
+        "windows": 1,
+        "floors": 1,
+        "objects": 24
+      },
+      "compact_source": "sources/785D48F6-4754-46A8-B07D-D001BCAAC621.json",
+      "compact_source_sha256": "b21a1ca3157f65c6cf2e31b6fa88f6870d05877add59a847665a298a9173ed05"
+    },
+    {
+      "capture_id": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+      "folder": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF 2",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "source_files": {
+        "capture.json": {
+          "bytes": 3464145,
+          "sha256": "6aec3d3d4e8da2a0c33a23a71f24fff6108da7100c4164ce2ff78089b3aaa061"
+        },
+        "raw-snapshot.json": {
+          "bytes": 7293171,
+          "sha256": "dff01f1e7b047bc111cdc0ba27f2de9e295a3a1ba9306b1697a914d1f518e6dd"
+        },
+        "roomplan.json": {
+          "bytes": 769551,
+          "sha256": "e6a06412d564a00809f9fb4f4265e4217995e2ef84f7d417c50fc48198dda985"
+        },
+        "video-manifest.json": {
+          "bytes": 3676,
+          "sha256": "35a40379d6f6aca965ba347bc255234c1246a1623d12d54c76270e964fa35d84"
+        },
+        "package-manifest.json": {
+          "bytes": 10093,
+          "sha256": "98fea944d9ec93c566a4511b90fb46d4284391f9f608e41a8fe79de1da42fbd6"
+        },
+        "text-observations.json": {
+          "bytes": 2255,
+          "sha256": "c0ff432c45180fb53244bbb83b10def2d8f478cff61bc2c8c62040ed8330c37f"
+        }
+      },
+      "video_segments": 11,
+      "video_frames": 1041,
+      "recording_status": "complete",
+      "native_room_counts": {
+        "walls": 7,
+        "doors": 0,
+        "openings": 0,
+        "windows": 2,
+        "floors": 1,
+        "objects": 37
+      },
+      "compact_source": "sources/92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF.json",
+      "compact_source_sha256": "abd18ffdf3194208ba8efa19acceb8589c9225e449089c3aa3d7c338a6e14683"
+    },
+    {
+      "capture_id": "3F8FE86D-8F9E-47A8-A010-49417284BD8E",
+      "folder": "3F8FE86D-8F9E-47A8-A010-49417284BD8E 2",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "source_files": {
+        "capture.json": {
+          "bytes": 3460748,
+          "sha256": "755721fba0c51cc7be08e7a0bdd9b86de1855a487448fb236de47d647f244791"
+        },
+        "raw-snapshot.json": {
+          "bytes": 7125526,
+          "sha256": "8e826d66b11ff32873dd22ae9f3e399ca1645168087a91bde2dbe52fcd38b7f6"
+        },
+        "roomplan.json": {
+          "bytes": 58871,
+          "sha256": "7f994b9f5f11b5732bbd85f55334c5b7879e1413bea8d38cd45e7f0147ccb2ce"
+        },
+        "video-manifest.json": {
+          "bytes": 2496,
+          "sha256": "4371b22e22d068b5e3590c3b1771619c3a86fd486986382bc4983c576cdc640b"
+        },
+        "package-manifest.json": {
+          "bytes": 9005,
+          "sha256": "749601e8ac6a71a823441b020fc95c74b450a671bd55a3e85df6c885f2ff8f8a"
+        },
+        "text-observations.json": {
+          "bytes": 114,
+          "sha256": "cf93dae63398ef846b590dc1cd87c0013f6c1958871d8d4abd48e69f2053de3b"
+        }
+      },
+      "video_segments": 7,
+      "video_frames": 629,
+      "recording_status": "complete",
+      "native_room_counts": {
+        "walls": 13,
+        "doors": 1,
+        "openings": 0,
+        "windows": 0,
+        "floors": 1,
+        "objects": 3
+      },
+      "compact_source": "sources/3F8FE86D-8F9E-47A8-A010-49417284BD8E.json",
+      "compact_source_sha256": "ef06271d1012b52f33e7b5d71137ea832c62af98a5743c80ac2e83929df5ab5d"
+    },
+    {
+      "capture_id": "D598D846-F87F-491F-B446-19BA52295D4D",
+      "folder": "D598D846-F87F-491F-B446-19BA52295D4D 2",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "source_files": {
+        "capture.json": {
+          "bytes": 3471080,
+          "sha256": "f3855d50ecab3d1146e6b338e559f118a2ae5e39fd5e52b7a902a7e804b62433"
+        },
+        "raw-snapshot.json": {
+          "bytes": 7021161,
+          "sha256": "bdde1be74573268cd0bd457680f7d2e1cb2e07b9d8e7b4728a1f651e40c78340"
+        },
+        "roomplan.json": {
+          "bytes": 751989,
+          "sha256": "a5fbfbe163d7019b0870ee976d65071fcd5aca0fc407eac7d44bdeeb75895960"
+        },
+        "video-manifest.json": {
+          "bytes": 5152,
+          "sha256": "40e25161cfa25f1f8866c9f7a24b235f79e55ab88162ff71c6030310fe09721e"
+        },
+        "package-manifest.json": {
+          "bytes": 9291,
+          "sha256": "3cf909f7e8670facd450f7fb9853b8370d6a0c354c071576e46e869b42cb3a7e"
+        },
+        "text-observations.json": {
+          "bytes": 114,
+          "sha256": "ce62696bc366918fd4dcf1674b83955dbee02f43d2e22c4a1c368c87be8ce071"
+        }
+      },
+      "video_segments": 16,
+      "video_frames": 1554,
+      "recording_status": "complete",
+      "native_room_counts": {
+        "walls": 11,
+        "doors": 1,
+        "openings": 3,
+        "windows": 0,
+        "floors": 1,
+        "objects": 37
+      },
+      "compact_source": "sources/D598D846-F87F-491F-B446-19BA52295D4D.json",
+      "compact_source_sha256": "91d3995cdb1ac5d290382485d771f874e366d426f8e774080b537882fc283b95"
+    }
+  ]
+}

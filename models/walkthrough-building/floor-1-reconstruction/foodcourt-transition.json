@@ -1,0 +1,283 @@
+{
+  "captureID": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+  "id": "foodcourt-entrance-terrace-sloped-corridor",
+  "kind": "sloped-floor",
+  "vertices": [
+    [
+      -7.155,
+      -1.32,
+      7.032
+    ],
+    [
+      -5.008,
+      -1.32,
+      5.235
+    ],
+    [
+      -14.25,
+      -2.24,
+      -5.807
+    ],
+    [
+      -16.397,
+      -2.24,
+      -4.01
+    ]
+  ],
+  "triangles": [
+    [
+      0,
+      1,
+      2
+    ],
+    [
+      0,
+      2,
+      3
+    ]
+  ],
+  "width_m": 2.8,
+  "run_m": 14.4,
+  "measured_rise_m": 0.92,
+  "canonical_top_y_m": 1.1,
+  "canonical_bottom_y_m": 0,
+  "material": "tile",
+  "evidence": "Video0003@6s to0004@8s and0006@4s show continuous tiled descending corridor with handrails, no steps. Ground depth progression is smooth from-1.32 to-2.24. Sidewall and blue divider parallel boundaries projected through calibrated depth.",
+  "uncertainty_m": 0.3,
+  "confidence": "high continuous-slope classification; moderate completed end corners",
+  "route_authority": false,
+  "notes": "Separate foodcourt entrance terrace transition, not lowerlobby-to-raisedL/auditorium. No navigation permission inferred. Canonicalendheights shouldmeetcompletedfloors; sourcebottomvideo-2.24 differsfromRoomPlan-2.40 by~.16m drift.",
+  "floor_depth_samples": [
+    {
+      "xyz": [
+        -3.817,
+        -1.322,
+        5.045
+      ],
+      "depth": 1.607,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 3,
+      "pts": 4.00038,
+      "camera_xyz": [
+        -3.054,
+        0.062,
+        4.085
+      ]
+    },
+    {
+      "xyz": [
+        -4.813,
+        -1.322,
+        5.999
+      ],
+      "depth": 1.659,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 3,
+      "pts": 5.000475,
+      "camera_xyz": [
+        -4.042,
+        0.111,
+        5.001
+      ]
+    },
+    {
+      "xyz": [
+        -6.419,
+        -1.331,
+        6.25
+      ],
+      "depth": 1.721,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 3,
+      "pts": 6.00057,
+      "camera_xyz": [
+        -5.273,
+        0.118,
+        5.542
+      ]
+    },
+    {
+      "xyz": [
+        -7.649,
+        -1.384,
+        5.6
+      ],
+      "depth": 1.726,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 3,
+      "pts": 7.000665,
+      "camera_xyz": [
+        -6.305,
+        0.055,
+        5.352
+      ]
+    },
+    {
+      "xyz": [
+        -8.59,
+        -1.495,
+        4.854
+      ],
+      "depth": 1.786,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 3,
+      "pts": 8.00076,
+      "camera_xyz": [
+        -7.215,
+        0.029,
+        4.797
+      ]
+    },
+    {
+      "xyz": [
+        -9.451,
+        -1.603,
+        3.938
+      ],
+      "depth": 1.785,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 3,
+      "pts": 9.000854,
+      "camera_xyz": [
+        -8.075,
+        -0.082,
+        3.997
+      ]
+    },
+    {
+      "xyz": [
+        -10.024,
+        -1.682,
+        2.958
+      ],
+      "depth": 1.654,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 4,
+      "pts": 0,
+      "camera_xyz": [
+        -8.818,
+        -0.216,
+        3.072
+      ]
+    },
+    {
+      "xyz": [
+        -11.626,
+        -1.781,
+        1.013
+      ],
+      "depth": 1.683,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 4,
+      "pts": 2.100198,
+      "camera_xyz": [
+        -10.344,
+        -0.343,
+        1.183
+      ]
+    },
+    {
+      "xyz": [
+        -12.891,
+        -1.954,
+        -1.021
+      ],
+      "depth": 1.848,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 4,
+      "pts": 4.000378,
+      "camera_xyz": [
+        -11.453,
+        -0.421,
+        -0.712
+      ]
+    },
+    {
+      "xyz": [
+        -14.366,
+        -2.107,
+        -2.716
+      ],
+      "depth": 1.824,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 4,
+      "pts": 6.000566,
+      "camera_xyz": [
+        -12.923,
+        -0.595,
+        -2.532
+      ]
+    },
+    {
+      "xyz": [
+        -15.914,
+        -2.227,
+        -4.553
+      ],
+      "depth": 1.707,
+      "confidence": 2,
+      "pixel": [
+        480,
+        1150
+      ],
+      "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "segment": 4,
+      "pts": 8.084095,
+      "camera_xyz": [
+        -14.725,
+        -0.786,
+        -3.95
+      ]
+    }
+  ]
+}

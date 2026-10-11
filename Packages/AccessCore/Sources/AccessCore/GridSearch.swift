@@ -86,24 +86,31 @@ extension OccupancyGrid {
     }
 
     func lineOfSight(_ a: SIMD2<Float>, _ b: SIMD2<Float>) -> Bool {
-        let localA = (a - origin) / cellSize
-        let localB = (b - origin) / cellSize
-        guard localA.x >= 0, localA.y >= 0, localA.x < Float(width), localA.y < Float(height),
-              localB.x >= 0, localB.y >= 0, localB.x < Float(width), localB.y < Float(height),
+        // Promote before subtracting: Float cancellation far from the origin
+        // can reverse which cell edge a segment crosses first at a corner.
+        let gridOrigin = SIMD2<Double>(Double(origin.x), Double(origin.y))
+        let localA = (SIMD2<Double>(Double(a.x), Double(a.y)) - gridOrigin) / Double(cellSize)
+        let localB = (SIMD2<Double>(Double(b.x), Double(b.y)) - gridOrigin) / Double(cellSize)
+        guard localA.x >= 0, localA.y >= 0, localA.x < Double(width), localA.y < Double(height),
+              localB.x >= 0, localB.y >= 0, localB.x < Double(width), localB.y < Double(height),
               let start = index(containing: a), let end = index(containing: b),
               !blocked[start], !blocked[end] else { return false }
-        let dx = Double(localB.x) - Double(localA.x)
-        let dy = Double(localB.y) - Double(localA.y)
+        let dx = localB.x - localA.x
+        let dy = localB.y - localA.y
         let stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0
         let stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0
-        var x = start % width, y = start / width
-        let endX = end % width, endY = end / width
+        // Use the same precision for traversal cells and crossing times. Float cell
+        // lookup can round an endpoint up across a boundary that Double still places
+        // just below it, making visibility depend on the direction of travel. Keep
+        // the public lookup checks above as an additional conservative endpoint test.
+        var x = Int(localA.x.rounded(.down)), y = Int(localA.y.rounded(.down))
+        let endX = Int(localB.x.rounded(.down)), endY = Int(localB.y.rounded(.down))
         let deltaX = stepX == 0 ? Double.infinity : abs(1 / dx)
         let deltaY = stepY == 0 ? Double.infinity : abs(1 / dy)
         var nextX = stepX == 0 ? Double.infinity
-            : (Double(x + (stepX > 0 ? 1 : 0)) - Double(localA.x)) / dx
+            : (Double(x + (stepX > 0 ? 1 : 0)) - localA.x) / dx
         var nextY = stepY == 0 ? Double.infinity
-            : (Double(y + (stepY > 0 ? 1 : 0)) - Double(localA.y)) / dy
+            : (Double(y + (stepY > 0 ? 1 : 0)) - localA.y) / dy
 
         func cellIsFree(_ x: Int, _ y: Int) -> Bool {
             x >= 0 && y >= 0 && x < width && y < height && !blocked[y * width + x]

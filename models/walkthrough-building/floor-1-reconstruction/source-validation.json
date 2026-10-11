@@ -1,0 +1,3901 @@
+{
+  "scope": "13 user-supplied folders, read-only local audit",
+  "display_floor": "Floor 1 including raised L; preserve physical elevations; no ramp inferred from saved annotations",
+  "saved_maps": [
+    {
+      "folder": "7356DC0B-2677-47EF-871C-F96104271EE0",
+      "files": 5,
+      "total_bytes": 59297714,
+      "map_created_at": "2026-10-11T09:15:08Z",
+      "map_sha256": "e4a50b6b78149abae174ad102f5beb3336c0ba9077692821067224e83492b395",
+      "rooms_semantic_sha256": "ff4fcb0570e0f2c79f40d6d368174e7fec0cc409dded403be432386dc526f32d",
+      "rooms_geometry_metadata_sha256": "97f43450a5bacb934ea70861896929039c210a84d534d43a9e0a63841065870a",
+      "room_count": 1,
+      "surface_id_count": 64,
+      "footprints_by_kind": {
+        "floor": 2,
+        "wall": 11,
+        "door": 2,
+        "window": 1,
+        "obstacle": 41,
+        "stairs": 3
+      },
+      "map_floor_y": -2.4053695,
+      "floor_elevations_m": [
+        -2.40681,
+        -2.40537
+      ],
+      "access_points": [
+        {
+          "id": "47F403C8-A662-4DC7-9CB4-CC1F6CBBAAA9",
+          "kind": "ramp",
+          "name": "Ramp 1",
+          "position": [
+            -8.344814,
+            -1.3344004,
+            2.966687
+          ],
+          "slopeDegrees": null
+        },
+        {
+          "id": "1452792D-BC29-4DB0-A68E-01C8435D1CC9",
+          "kind": "elevator",
+          "name": "Elevator 1",
+          "position": [
+            -31.760288,
+            -1.4129987,
+            -25.609377
+          ],
+          "slopeDegrees": null
+        },
+        {
+          "id": "CEFB0531-30F9-47E2-8281-9DAC71AAB674",
+          "kind": "elevator",
+          "name": "Elevator 2",
+          "position": [
+            -33.414124,
+            -1.4131241,
+            -27.684711
+          ],
+          "slopeDegrees": null
+        }
+      ],
+      "requires_measured_floor": true,
+      "issues": [],
+      "ar_archive": {
+        "bytes": 58017965,
+        "sha256": "e8368e0ffce34915fdf58769a5570be4191e2725f22f6cd9f82afe62a44704b1",
+        "container": "binary_property_list",
+        "archiver": "NSKeyedArchiver",
+        "archive_version": 100000,
+        "root_class": "ARWorldMap",
+        "world_map_version": 3,
+        "object_count": 979,
+        "anchor_count": 137,
+        "invalid_object_references": 0,
+        "reference_origin_transform_column_major": [
+          -0.11174421012401581,
+          0.0,
+          0.9937369227409363,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          -0.9937369227409363,
+          0.0,
+          -0.1117442175745964,
+          0.0,
+          -0.06642723828554153,
+          -0.03765324875712395,
+          0.14541417360305786,
+          1.0
+        ],
+        "reference_origin_finite": true,
+        "native_ARKit_decoding": "not_verified; ARWorldMap secure decoding unsupported by iOS simulator runtime",
+        "live_relocalization": "not_tested",
+        "trackingData_bytes": 55058876,
+        "surfaceData_bytes": 2207917,
+        "structural_archive_valid": true,
+        "reference_origin_max_abs_difference_from_saved_room": 2.274093624521356e-08
+      },
+      "start_image_dimensions": [
+        540,
+        720
+      ]
+    },
+    {
+      "folder": "9BB978E5-B944-4651-BC3C-F595A21534E3",
+      "files": 5,
+      "total_bytes": 25559731,
+      "map_created_at": "2026-10-11T09:20:58Z",
+      "map_sha256": "4b5970f8ef5576516eab5c93c6192ac6aba36edd14a9043a781c212a1dd80c36",
+      "rooms_semantic_sha256": "8821c1f24d89f906e909e4ab31dd07b30784a915990e30a779374ad9d49f69fc",
+      "rooms_geometry_metadata_sha256": "d59dfeb93eb2767f61ad4b80cac33ffda7c6e87a70ab71e6810ebcdacdd40d3e",
+      "room_count": 1,
+      "surface_id_count": 28,
+      "footprints_by_kind": {
+        "floor": 1,
+        "wall": 15,
+        "door": 4,
+        "window": 5,
+        "stairs": 1
+      },
+      "map_floor_y": -1.5641118,
+      "floor_elevations_m": [
+        -1.56411
+      ],
+      "access_points": [
+        {
+          "id": "946F32B6-057F-4C38-9204-0555608F5826",
+          "kind": "elevator",
+          "name": "Elevator 1",
+          "position": [
+            6.6351194,
+            -1.5641118,
+            0.6766498
+          ],
+          "slopeDegrees": null
+        },
+        {
+          "id": "52DFC429-384A-4056-A55E-2E269717AE19",
+          "kind": "elevator",
+          "name": "Elevator 2",
+          "position": [
+            9.020729,
+            -1.5641118,
+            1.7979562
+          ],
+          "slopeDegrees": null
+        }
+      ],
+      "requires_measured_floor": true,
+      "issues": [],
+      "ar_archive": {
+        "bytes": 25406600,
+        "sha256": "8fc1783222f978982ded5410ea87400062c254aad83e71d18940d06cd2f68f6c",
+        "container": "binary_property_list",
+        "archiver": "NSKeyedArchiver",
+        "archive_version": 100000,
+        "root_class": "ARWorldMap",
+        "world_map_version": 3,
+        "object_count": 403,
+        "anchor_count": 55,
+        "invalid_object_references": 0,
+        "reference_origin_transform_column_major": [
+          0.2984551787376404,
+          0.0,
+          0.9544235467910767,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          -0.9544235467910767,
+          0.0,
+          0.2984551787376404,
+          0.0,
+          -0.05503900721669197,
+          -0.039583470672369,
+          0.09861816465854645,
+          1.0
+        ],
+        "reference_origin_finite": true,
+        "native_ARKit_decoding": "not_verified; ARWorldMap secure decoding unsupported by iOS simulator runtime",
+        "live_relocalization": "not_tested",
+        "trackingData_bytes": 24317333,
+        "surfaceData_bytes": 807521,
+        "structural_archive_valid": true,
+        "reference_origin_max_abs_difference_from_saved_room": 3.2089233492627045e-09
+      },
+      "start_image_dimensions": [
+        540,
+        720
+      ]
+    },
+    {
+      "folder": "7080F10B-FDBB-4DEF-991B-DC9939234741 2",
+      "files": 5,
+      "total_bytes": 34851998,
+      "map_created_at": "2026-10-11T09:24:04Z",
+      "map_sha256": "3b19ab1dd3cb74691c78ea79d9b23ff4647ae3cc0111d3f0151e190e11ddee03",
+      "rooms_semantic_sha256": "d89152e432bf3aa2b7a2c3f7a4a6217b977a59c8db9a4d8499e534e78541441e",
+      "rooms_geometry_metadata_sha256": "0d836e0850e08347cd698e599c8b62275d769d0d73e2257f83f3cf1e6ef33913",
+      "room_count": 1,
+      "surface_id_count": 71,
+      "footprints_by_kind": {
+        "floor": 3,
+        "wall": 39,
+        "door": 4,
+        "opening": 2,
+        "window": 1,
+        "stairs": 3,
+        "obstacle": 21
+      },
+      "map_floor_y": -2.181771,
+      "floor_elevations_m": [
+        -2.18177,
+        -2.13548,
+        -2.09508
+      ],
+      "access_points": [
+        {
+          "id": "75BB6E0D-752B-4A35-AE33-94D89384047B",
+          "kind": "ramp",
+          "name": "Ramp 1",
+          "position": [
+            7.736288,
+            -1.5083882,
+            4.4058256
+          ],
+          "slopeDegrees": 4.9507594
+        }
+      ],
+      "requires_measured_floor": true,
+      "issues": [],
+      "ar_archive": {
+        "bytes": 34271568,
+        "sha256": "542be991928bd2403248f14192b9ce05e58f5957b06db33c9eacf76946458f87",
+        "container": "binary_property_list",
+        "archiver": "NSKeyedArchiver",
+        "archive_version": 100000,
+        "root_class": "ARWorldMap",
+        "world_map_version": 3,
+        "object_count": 1082,
+        "anchor_count": 152,
+        "invalid_object_references": 0,
+        "reference_origin_transform_column_major": [
+          0.002589647890999913,
+          0.0,
+          0.9999966621398926,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          -0.9999966621398926,
+          0.0,
+          0.0025896639563143253,
+          0.0,
+          -0.07891479879617691,
+          -0.030975190922617912,
+          -0.16218097507953644,
+          1.0
+        ],
+        "reference_origin_finite": true,
+        "native_ARKit_decoding": "not_verified; ARWorldMap secure decoding unsupported by iOS simulator runtime",
+        "live_relocalization": "not_tested",
+        "trackingData_bytes": 31760829,
+        "surfaceData_bytes": 1843452,
+        "structural_archive_valid": true,
+        "reference_origin_max_abs_difference_from_saved_room": 4.920463564372923e-09
+      },
+      "start_image_dimensions": [
+        540,
+        720
+      ]
+    },
+    {
+      "folder": "C66CA4C6-EB8B-4B2F-8004-E9EC4D23986C",
+      "files": 5,
+      "total_bytes": 59068042,
+      "map_created_at": "2026-10-11T09:26:28Z",
+      "map_sha256": "a7a3a32f4b59e0adfb8b5a45d6df483d0703e721e368519659540bf8ed2eec1f",
+      "rooms_semantic_sha256": "341ba31ec10411b8ddc1f675ca39be7d44058f630421c7b6f718841a8cb29d41",
+      "rooms_geometry_metadata_sha256": "075af0bb87cdbf4917d0e7645408bda4e54884110be13ceaa1ea69ec1488f4a6",
+      "room_count": 1,
+      "surface_id_count": 47,
+      "footprints_by_kind": {
+        "floor": 3,
+        "wall": 7,
+        "window": 2,
+        "obstacle": 35,
+        "stairs": 3
+      },
+      "map_floor_y": -1.8328078,
+      "floor_elevations_m": [
+        -1.83281,
+        -1.8028
+      ],
+      "access_points": [
+        {
+          "id": "4167F91A-1C92-40FE-B53F-FD0F4FCC16A1",
+          "kind": "elevator",
+          "name": "Elevator 1",
+          "position": [
+            -12.697308,
+            -0.29616466,
+            -0.25580215
+          ],
+          "slopeDegrees": null
+        },
+        {
+          "id": "1FE7741C-E295-4612-88E8-551C086B2448",
+          "kind": "elevator",
+          "name": "Elevator 2",
+          "position": [
+            -9.947596,
+            -0.24156581,
+            0.006481983
+          ],
+          "slopeDegrees": null
+        }
+      ],
+      "requires_measured_floor": true,
+      "issues": [],
+      "ar_archive": {
+        "bytes": 58213073,
+        "sha256": "149877f23cdac96f9762c2cefa86b535f6ec8a637cfb064e85634c4311540ee0",
+        "container": "binary_property_list",
+        "archiver": "NSKeyedArchiver",
+        "archive_version": 100000,
+        "root_class": "ARWorldMap",
+        "world_map_version": 3,
+        "object_count": 754,
+        "anchor_count": 105,
+        "invalid_object_references": 0,
+        "reference_origin_transform_column_major": [
+          0.2150713950395584,
+          0.0,
+          0.97659832239151,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          -0.9765983819961548,
+          0.0,
+          0.2150713950395584,
+          0.0,
+          -0.09667396545410156,
+          -0.0195586159825325,
+          -0.019428253173828125,
+          0.9999999403953552
+        ],
+        "reference_origin_finite": true,
+        "native_ARKit_decoding": "not_verified; ARWorldMap secure decoding unsupported by iOS simulator runtime",
+        "live_relocalization": "not_tested",
+        "trackingData_bytes": 56540476,
+        "surfaceData_bytes": 1228083,
+        "structural_archive_valid": true,
+        "reference_origin_max_abs_difference_from_saved_room": 0.044621963173828126
+      },
+      "start_image_dimensions": [
+        540,
+        720
+      ]
+    },
+    {
+      "folder": "41181EA6-6082-47C5-AD36-F4986B082DFA",
+      "files": 5,
+      "total_bytes": 35603429,
+      "map_created_at": "2026-10-11T09:27:50Z",
+      "map_sha256": "cdaffbc08f4db81d834cf8ea4aab990f5b39c44c19933a5497e4ee4d2da7aced",
+      "rooms_semantic_sha256": "8f449127846b1542320da5ff7301f0c32b628d947b5713b9efd34548ad96d1c4",
+      "rooms_geometry_metadata_sha256": "f3494b693231d3ee7add20a27e9381eda466ff02429c2e857170ec3eeef50dde",
+      "room_count": 1,
+      "surface_id_count": 18,
+      "footprints_by_kind": {
+        "floor": 2,
+        "wall": 13,
+        "door": 1,
+        "obstacle": 3
+      },
+      "map_floor_y": -1.6706984,
+      "floor_elevations_m": [
+        -1.6707,
+        -1.65892
+      ],
+      "access_points": [
+        {
+          "id": "888F9431-F52A-4D4F-98C2-67E1C45A205B",
+          "kind": "ramp",
+          "name": "Ramp 1",
+          "position": [
+            -9.304439,
+            -1.4498042,
+            -7.197195
+          ],
+          "slopeDegrees": 3.8525841
+        }
+      ],
+      "requires_measured_floor": true,
+      "issues": [],
+      "ar_archive": {
+        "bytes": 35453086,
+        "sha256": "2a721fb3b1b78f71ded8404a33bcbfaa4b937399585f36dd13c31727dfae62ed",
+        "container": "binary_property_list",
+        "archiver": "NSKeyedArchiver",
+        "archive_version": 100000,
+        "root_class": "ARWorldMap",
+        "world_map_version": 3,
+        "object_count": 458,
+        "anchor_count": 63,
+        "invalid_object_references": 0,
+        "reference_origin_transform_column_major": [
+          0.03863299638032913,
+          0.0,
+          0.9992534518241882,
+          0.0,
+          0.0,
+          0.9999999403953552,
+          0.0,
+          0.0,
+          -0.9992534518241882,
+          0.0,
+          0.038633011281490326,
+          0.0,
+          0.04888473078608513,
+          -0.04473431408405304,
+          0.053051311522722244,
+          0.9999999403953552
+        ],
+        "reference_origin_finite": true,
+        "native_ARKit_decoding": "not_verified; ARWorldMap secure decoding unsupported by iOS simulator runtime",
+        "live_relocalization": "not_tested",
+        "trackingData_bytes": 34397939,
+        "surfaceData_bytes": 775129,
+        "structural_archive_valid": true,
+        "reference_origin_max_abs_difference_from_saved_room": 1.8241882449032687e-09
+      },
+      "start_image_dimensions": [
+        540,
+        720
+      ]
+    },
+    {
+      "folder": "E64A3BD9-7243-4EE9-9E33-375EDA34351E",
+      "files": 5,
+      "total_bytes": 61486249,
+      "map_created_at": "2026-10-11T09:30:45Z",
+      "map_sha256": "abc7dfb8780b65386b7402e9e2baa3ad546739aa48f86f4175c2876ccb6e504f",
+      "rooms_semantic_sha256": "5cede97b0a8c65085de6aa2ed3a5f43de71a28d2dfded97aad0f4d6e6a4adf1c",
+      "rooms_geometry_metadata_sha256": "65c914bcf25ce445f0169c2979da42d699b0f13f52e7d527926ddebfd6cb5980",
+      "room_count": 1,
+      "surface_id_count": 53,
+      "footprints_by_kind": {
+        "floor": 4,
+        "wall": 11,
+        "door": 1,
+        "opening": 3,
+        "obstacle": 36,
+        "stairs": 2
+      },
+      "map_floor_y": -1.6163831,
+      "floor_elevations_m": [
+        -1.61657,
+        -1.61638
+      ],
+      "access_points": [],
+      "requires_measured_floor": true,
+      "issues": [],
+      "ar_archive": {
+        "bytes": 60672694,
+        "sha256": "61aefce290d5d83c51a84d21f3341565b61ab60b0776a96970d1084633516d92",
+        "container": "binary_property_list",
+        "archiver": "NSKeyedArchiver",
+        "archive_version": 100000,
+        "root_class": "ARWorldMap",
+        "world_map_version": 3,
+        "object_count": 382,
+        "anchor_count": 52,
+        "invalid_object_references": 0,
+        "reference_origin_transform_column_major": [
+          0.2724388539791107,
+          0.0,
+          0.9621731042861938,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          -0.9621731042861938,
+          0.0,
+          0.2724388539791107,
+          0.0,
+          0.011968198232352734,
+          -0.11742269992828369,
+          -0.26388800144195557,
+          1.0
+        ],
+        "reference_origin_finite": true,
+        "native_ARKit_decoding": "not_verified; ARWorldMap secure decoding unsupported by iOS simulator runtime",
+        "live_relocalization": "not_tested",
+        "trackingData_bytes": 58657683,
+        "surfaceData_bytes": 1535866,
+        "structural_archive_valid": true,
+        "reference_origin_max_abs_difference_from_saved_room": 4.286193844293962e-09
+      },
+      "start_image_dimensions": [
+        540,
+        720
+      ]
+    }
+  ],
+  "captures": [
+    {
+      "folder": "611423DC-EDB2-4FCE-91B1-F47573C20F8B 2",
+      "files": 84,
+      "total_bytes": 706002186,
+      "capture_id": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "capture_schema": null,
+      "package_schema": null,
+      "video_schema": 2,
+      "video_status": "complete",
+      "room_count": 2,
+      "rooms_semantic_sha256": "f45dd023324306712d6dfa17a61a0f2e70b8d39eacb24c19e9f225f4a3e0257b",
+      "rooms_geometry_metadata_sha256": "6ebb0a35f69674418b095b4564f0376a329860ac18c7e0ae46422b4f152a033d",
+      "surface_id_count": 82,
+      "metadata_floor_level": null,
+      "metadata_floor_name": null,
+      "standard_derived_files_absent": [
+        "capture.json",
+        "package-manifest.json",
+        "camera-track.json",
+        "scene.json",
+        "semantics.json"
+      ],
+      "raw_snapshot_keyframes": {
+        "depth": 6,
+        "color": 6,
+        "poses": 2544,
+        "camera_track_keys": [
+          "poses",
+          "sample_interval_seconds",
+          "clock",
+          "unix_offset_seconds",
+          "schema_version"
+        ]
+      },
+      "missing_referenced_files": [],
+      "embedded_keyframe_copies_absent": [
+        {
+          "path": "4B077F5A-F9CC-4B0C-A4B3-E614440F50AC.depth-f32le",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 196608
+        },
+        {
+          "path": "4B077F5A-F9CC-4B0C-A4B3-E614440F50AC.confidence-u8",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 49152
+        },
+        {
+          "path": "81E7C646-EB69-46E9-A2CE-1531AE7B4B8A.depth-f32le",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 196608
+        },
+        {
+          "path": "81E7C646-EB69-46E9-A2CE-1531AE7B4B8A.confidence-u8",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 49152
+        },
+        {
+          "path": "D9EA94DA-5CEE-4D92-92B8-17479D0C02F2.depth-f32le",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 196608
+        },
+        {
+          "path": "D9EA94DA-5CEE-4D92-92B8-17479D0C02F2.confidence-u8",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 49152
+        },
+        {
+          "path": "673D2CB0-C445-4598-94FF-C478F9611AE6.depth-f32le",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 196608
+        },
+        {
+          "path": "673D2CB0-C445-4598-94FF-C478F9611AE6.confidence-u8",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 49152
+        },
+        {
+          "path": "721E96EF-B024-4F7D-9C35-056D17F29EB0.depth-f32le",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 196608
+        },
+        {
+          "path": "721E96EF-B024-4F7D-9C35-056D17F29EB0.confidence-u8",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 49152
+        },
+        {
+          "path": "F1E416FE-DC77-4100-B8BF-575713AFED92.depth-f32le",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 196608
+        },
+        {
+          "path": "F1E416FE-DC77-4100-B8BF-575713AFED92.confidence-u8",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 49152
+        },
+        {
+          "path": "4B077F5A-F9CC-4B0C-A4B3-E614440F50AC.color.jpg",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 81578
+        },
+        {
+          "path": "81E7C646-EB69-46E9-A2CE-1531AE7B4B8A.color.jpg",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 76442
+        },
+        {
+          "path": "D9EA94DA-5CEE-4D92-92B8-17479D0C02F2.color.jpg",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 136321
+        },
+        {
+          "path": "673D2CB0-C445-4598-94FF-C478F9611AE6.color.jpg",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 143331
+        },
+        {
+          "path": "721E96EF-B024-4F7D-9C35-056D17F29EB0.color.jpg",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 82948
+        },
+        {
+          "path": "F1E416FE-DC77-4100-B8BF-575713AFED92.color.jpg",
+          "recoverable_from": "raw-snapshot.json",
+          "bytes": 219145
+        }
+      ],
+      "asset_checks": [],
+      "segments": [
+        {
+          "id": "video-0000",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0001",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0002",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0003",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.083333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0004",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0005",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0006",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0007",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0008",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0009",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0010",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0011",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0012",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0013",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0014",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0015",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0016",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0017",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0018",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0019",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0020",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0021",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0022",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 98,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0023",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0024",
+          "frame_count_manifest": 90,
+          "frame_count_index": 90,
+          "frames_with_depth": 90,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.016667",
+            "nb_frames": "90",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0025",
+          "frame_count_manifest": 37,
+          "frame_count_index": 37,
+          "frames_with_depth": 37,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "3.666667",
+            "nb_frames": "37",
+            "side_data_list": [
+              {}
+            ]
+          }
+        }
+      ],
+      "issues": [],
+      "video_frames": 2527,
+      "video_depth_frames": 2525,
+      "video_depth_missing_frames": 2,
+      "video_depth_bytes_accounted": 620544000,
+      "segment_count": 26,
+      "video_skipped_samples": 11,
+      "video_duration_seconds": 262.1031474999618,
+      "capture_start_unix_seconds": 1791710131.5417495,
+      "capture_start_utc": "2026-10-11T09:15:31.541749+00:00",
+      "camera_xyz_bounds": {
+        "min": [
+          -15.381793,
+          -1.3394008,
+          -9.205968
+        ],
+        "max": [
+          13.567629,
+          0.33970195,
+          35.768726
+        ]
+      },
+      "declared_asset_hashes_checked": 0,
+      "video_integrity_scope": "manifest file sizes, every frame index/count, native depth/confidence strides and full contiguous byte accounting, video container dimensions/frame counts; no full RGB bitstream decode"
+    },
+    {
+      "folder": "081DA781-19B1-4A3F-91BE-8DF0094E5032 2",
+      "files": 43,
+      "total_bytes": 128857841,
+      "capture_id": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "capture_schema": 1,
+      "package_schema": 1,
+      "video_schema": 2,
+      "video_status": "complete",
+      "room_count": 1,
+      "rooms_semantic_sha256": "aa95c5d9cd3c9e7388f39c90af0c9155bdd7266c2eb631b62a16c4077b58abbf",
+      "rooms_geometry_metadata_sha256": "d59dfeb93eb2767f61ad4b80cac33ffda7c6e87a70ab71e6810ebcdacdd40d3e",
+      "surface_id_count": 28,
+      "metadata_floor_level": 1,
+      "metadata_floor_name": "Floor 1",
+      "standard_derived_files_absent": [],
+      "raw_snapshot_keyframes": {
+        "depth": 6,
+        "color": 6,
+        "poses": 428,
+        "camera_track_keys": [
+          "schema_version",
+          "clock",
+          "unix_offset_seconds",
+          "poses",
+          "sample_interval_seconds"
+        ]
+      },
+      "missing_referenced_files": [],
+      "embedded_keyframe_copies_absent": [],
+      "asset_checks": [
+        {
+          "path": "0902F1E5-A749-478D-9C8C-C3927C579486.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "0902F1E5-A749-478D-9C8C-C3927C579486.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "0902F1E5-A749-478D-9C8C-C3927C579486.color.jpg",
+          "exists": true,
+          "expected_bytes": 178177,
+          "actual_bytes": 178177
+        },
+        {
+          "path": "22D80411-DE14-41D9-A38F-6C037BFDC54C.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "22D80411-DE14-41D9-A38F-6C037BFDC54C.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "22D80411-DE14-41D9-A38F-6C037BFDC54C.color.jpg",
+          "exists": true,
+          "expected_bytes": 167925,
+          "actual_bytes": 167925
+        },
+        {
+          "path": "4299BB58-4A64-48E6-9C69-3834A97157B1.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "4299BB58-4A64-48E6-9C69-3834A97157B1.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "4299BB58-4A64-48E6-9C69-3834A97157B1.color.jpg",
+          "exists": true,
+          "expected_bytes": 97166,
+          "actual_bytes": 97166
+        },
+        {
+          "path": "0742316B-7318-4772-B460-F40FA620D4E3.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "0742316B-7318-4772-B460-F40FA620D4E3.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "0742316B-7318-4772-B460-F40FA620D4E3.color.jpg",
+          "exists": true,
+          "expected_bytes": 153221,
+          "actual_bytes": 153221
+        },
+        {
+          "path": "F0999755-68AB-4959-AFF8-97A83E70E255.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "F0999755-68AB-4959-AFF8-97A83E70E255.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "F0999755-68AB-4959-AFF8-97A83E70E255.color.jpg",
+          "exists": true,
+          "expected_bytes": 141350,
+          "actual_bytes": 141350
+        },
+        {
+          "path": "4DC8615A-6543-4138-94E9-F46B00CBFB66.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "4DC8615A-6543-4138-94E9-F46B00CBFB66.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "4DC8615A-6543-4138-94E9-F46B00CBFB66.color.jpg",
+          "exists": true,
+          "expected_bytes": 129620,
+          "actual_bytes": 129620
+        },
+        {
+          "path": "camera-track.json",
+          "exists": true,
+          "expected_bytes": 92561,
+          "actual_bytes": 92561
+        },
+        {
+          "path": "text-observations.json",
+          "exists": true,
+          "expected_bytes": 485,
+          "actual_bytes": 485
+        },
+        {
+          "path": "roomplan.json",
+          "exists": true,
+          "expected_bytes": 85014,
+          "actual_bytes": 85014
+        },
+        {
+          "path": "capture.json",
+          "exists": true,
+          "expected_bytes": 3448699,
+          "actual_bytes": 3448699
+        }
+      ],
+      "segments": [
+        {
+          "id": "video-0000",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0001",
+          "frame_count_manifest": 99,
+          "frame_count_index": 99,
+          "frames_with_depth": 99,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "99",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0002",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0003",
+          "frame_count_manifest": 99,
+          "frame_count_index": 99,
+          "frames_with_depth": 99,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "99",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0004",
+          "frame_count_manifest": 15,
+          "frame_count_index": 15,
+          "frames_with_depth": 15,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "1.600000",
+            "nb_frames": "15",
+            "side_data_list": [
+              {}
+            ]
+          }
+        }
+      ],
+      "issues": [],
+      "video_frames": 413,
+      "video_depth_frames": 413,
+      "video_depth_missing_frames": 0,
+      "video_depth_bytes_accounted": 101498880,
+      "segment_count": 5,
+      "video_skipped_samples": 11,
+      "video_duration_seconds": 41.4863075830508,
+      "capture_start_unix_seconds": 1791710409.8269377,
+      "capture_start_utc": "2026-10-11T09:20:09.826938+00:00",
+      "camera_xyz_bounds": {
+        "min": [
+          -2.3671308,
+          -0.043742552,
+          -10.606103
+        ],
+        "max": [
+          12.37807,
+          1.5363929,
+          -0.020593395
+        ]
+      },
+      "declared_asset_hashes_checked": 0,
+      "video_integrity_scope": "manifest file sizes, every frame index/count, native depth/confidence strides and full contiguous byte accounting, video container dimensions/frame counts; no full RGB bitstream decode"
+    },
+    {
+      "folder": "785D48F6-4754-46A8-B07D-D001BCAAC621 2",
+      "files": 76,
+      "total_bytes": 454726534,
+      "capture_id": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "capture_schema": 1,
+      "package_schema": 1,
+      "video_schema": 2,
+      "video_status": "complete",
+      "room_count": 1,
+      "rooms_semantic_sha256": "7d2c455a576240ddf5bb4cfa842c445d4678426a607a5c14a8a685307262be87",
+      "rooms_geometry_metadata_sha256": "0d836e0850e08347cd698e599c8b62275d769d0d73e2257f83f3cf1e6ef33913",
+      "surface_id_count": 71,
+      "metadata_floor_level": 1,
+      "metadata_floor_name": "Floor 1",
+      "standard_derived_files_absent": [],
+      "raw_snapshot_keyframes": {
+        "depth": 6,
+        "color": 6,
+        "poses": 1610,
+        "camera_track_keys": [
+          "clock",
+          "poses",
+          "sample_interval_seconds",
+          "unix_offset_seconds",
+          "schema_version"
+        ]
+      },
+      "missing_referenced_files": [],
+      "embedded_keyframe_copies_absent": [],
+      "asset_checks": [
+        {
+          "path": "0EF6CF37-3E33-455F-A7B4-0C9E13687DC3.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "0EF6CF37-3E33-455F-A7B4-0C9E13687DC3.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "0EF6CF37-3E33-455F-A7B4-0C9E13687DC3.color.jpg",
+          "exists": true,
+          "expected_bytes": 194458,
+          "actual_bytes": 194458
+        },
+        {
+          "path": "505502F3-C170-4BBB-A621-07C4AB532216.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "505502F3-C170-4BBB-A621-07C4AB532216.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "505502F3-C170-4BBB-A621-07C4AB532216.color.jpg",
+          "exists": true,
+          "expected_bytes": 128612,
+          "actual_bytes": 128612
+        },
+        {
+          "path": "D88C30BD-8D13-45E1-AF7F-A046D803F777.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "D88C30BD-8D13-45E1-AF7F-A046D803F777.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "D88C30BD-8D13-45E1-AF7F-A046D803F777.color.jpg",
+          "exists": true,
+          "expected_bytes": 124103,
+          "actual_bytes": 124103
+        },
+        {
+          "path": "4E64C3CE-A66A-419B-B448-E1C431803F34.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "4E64C3CE-A66A-419B-B448-E1C431803F34.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "4E64C3CE-A66A-419B-B448-E1C431803F34.color.jpg",
+          "exists": true,
+          "expected_bytes": 98994,
+          "actual_bytes": 98994
+        },
+        {
+          "path": "E80B8BC9-E892-4912-B737-E24211DC225B.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "E80B8BC9-E892-4912-B737-E24211DC225B.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "E80B8BC9-E892-4912-B737-E24211DC225B.color.jpg",
+          "exists": true,
+          "expected_bytes": 81546,
+          "actual_bytes": 81546
+        },
+        {
+          "path": "428D422B-5F1A-4775-B10A-6AD04865C1AE.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "428D422B-5F1A-4775-B10A-6AD04865C1AE.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "428D422B-5F1A-4775-B10A-6AD04865C1AE.color.jpg",
+          "exists": true,
+          "expected_bytes": 151410,
+          "actual_bytes": 151410
+        },
+        {
+          "path": "camera-track.json",
+          "exists": true,
+          "expected_bytes": 347659,
+          "actual_bytes": 347659
+        },
+        {
+          "path": "text-observations.json",
+          "exists": true,
+          "expected_bytes": 114,
+          "actual_bytes": 114
+        },
+        {
+          "path": "roomplan.json",
+          "exists": true,
+          "expected_bytes": 496234,
+          "actual_bytes": 496234
+        },
+        {
+          "path": "capture.json",
+          "exists": true,
+          "expected_bytes": 3502165,
+          "actual_bytes": 3502165
+        }
+      ],
+      "segments": [
+        {
+          "id": "video-0000",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0001",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0002",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0003",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0004",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0005",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0006",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0007",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0008",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 99,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0009",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0010",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0011",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0012",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0013",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0014",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0015",
+          "frame_count_manifest": 90,
+          "frame_count_index": 90,
+          "frames_with_depth": 90,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "8.983333",
+            "nb_frames": "90",
+            "side_data_list": [
+              {}
+            ]
+          }
+        }
+      ],
+      "issues": [],
+      "video_frames": 1590,
+      "video_depth_frames": 1589,
+      "video_depth_missing_frames": 1,
+      "video_depth_bytes_accounted": 390512640,
+      "segment_count": 16,
+      "video_skipped_samples": 18,
+      "video_duration_seconds": 158.89456108293962,
+      "capture_start_unix_seconds": 1791710477.8178148,
+      "capture_start_utc": "2026-10-11T09:21:17.817815+00:00",
+      "camera_xyz_bounds": {
+        "min": [
+          -4.964177,
+          -0.8769976,
+          -0.07147468
+        ],
+        "max": [
+          19.251257,
+          0.12661546,
+          28.829174
+        ]
+      },
+      "declared_asset_hashes_checked": 0,
+      "video_integrity_scope": "manifest file sizes, every frame index/count, native depth/confidence strides and full contiguous byte accounting, video container dimensions/frame counts; no full RGB bitstream decode"
+    },
+    {
+      "folder": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF 2",
+      "files": 61,
+      "total_bytes": 308401772,
+      "capture_id": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "capture_schema": 1,
+      "package_schema": 1,
+      "video_schema": 2,
+      "video_status": "complete",
+      "room_count": 1,
+      "rooms_semantic_sha256": "2531ff087643e3d56064f626528d02238ea657a68befdaca5f80e1e82d491ab8",
+      "rooms_geometry_metadata_sha256": "075af0bb87cdbf4917d0e7645408bda4e54884110be13ceaa1ea69ec1488f4a6",
+      "surface_id_count": 47,
+      "metadata_floor_level": 1,
+      "metadata_floor_name": "Floor 1",
+      "standard_derived_files_absent": [],
+      "raw_snapshot_keyframes": {
+        "depth": 6,
+        "color": 6,
+        "poses": 1055,
+        "camera_track_keys": [
+          "poses",
+          "schema_version",
+          "unix_offset_seconds",
+          "clock",
+          "sample_interval_seconds"
+        ]
+      },
+      "missing_referenced_files": [],
+      "embedded_keyframe_copies_absent": [],
+      "asset_checks": [
+        {
+          "path": "A5D876B4-D5CB-4813-AF54-0DDE57434DC8.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "A5D876B4-D5CB-4813-AF54-0DDE57434DC8.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "A5D876B4-D5CB-4813-AF54-0DDE57434DC8.color.jpg",
+          "exists": true,
+          "expected_bytes": 177972,
+          "actual_bytes": 177972
+        },
+        {
+          "path": "3528279B-4B35-461D-B047-8375AEC53D25.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "3528279B-4B35-461D-B047-8375AEC53D25.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "3528279B-4B35-461D-B047-8375AEC53D25.color.jpg",
+          "exists": true,
+          "expected_bytes": 160487,
+          "actual_bytes": 160487
+        },
+        {
+          "path": "BB6FB4FE-B67A-4EE9-AD58-246C821F98C0.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "BB6FB4FE-B67A-4EE9-AD58-246C821F98C0.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "BB6FB4FE-B67A-4EE9-AD58-246C821F98C0.color.jpg",
+          "exists": true,
+          "expected_bytes": 148097,
+          "actual_bytes": 148097
+        },
+        {
+          "path": "C39C00A3-24E7-4D61-9949-8C839FEC9F82.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "C39C00A3-24E7-4D61-9949-8C839FEC9F82.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "C39C00A3-24E7-4D61-9949-8C839FEC9F82.color.jpg",
+          "exists": true,
+          "expected_bytes": 194730,
+          "actual_bytes": 194730
+        },
+        {
+          "path": "B7202E74-B3E5-4816-B5F8-C4CBD6EDE3EA.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "B7202E74-B3E5-4816-B5F8-C4CBD6EDE3EA.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "B7202E74-B3E5-4816-B5F8-C4CBD6EDE3EA.color.jpg",
+          "exists": true,
+          "expected_bytes": 213336,
+          "actual_bytes": 213336
+        },
+        {
+          "path": "6AA38A63-A369-4178-8D09-48E5695CA376.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "6AA38A63-A369-4178-8D09-48E5695CA376.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "6AA38A63-A369-4178-8D09-48E5695CA376.color.jpg",
+          "exists": true,
+          "expected_bytes": 264721,
+          "actual_bytes": 264721
+        },
+        {
+          "path": "camera-track.json",
+          "exists": true,
+          "expected_bytes": 230289,
+          "actual_bytes": 230289
+        },
+        {
+          "path": "text-observations.json",
+          "exists": true,
+          "expected_bytes": 2255,
+          "actual_bytes": 2255
+        },
+        {
+          "path": "roomplan.json",
+          "exists": true,
+          "expected_bytes": 769551,
+          "actual_bytes": 769551
+        },
+        {
+          "path": "capture.json",
+          "exists": true,
+          "expected_bytes": 3464145,
+          "actual_bytes": 3464145
+        }
+      ],
+      "segments": [
+        {
+          "id": "video-0000",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0001",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0002",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0003",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.033333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0004",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0005",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0006",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0007",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0008",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0009",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0010",
+          "frame_count_manifest": 41,
+          "frame_count_index": 41,
+          "frames_with_depth": 41,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "4.100000",
+            "nb_frames": "41",
+            "side_data_list": [
+              {}
+            ]
+          }
+        }
+      ],
+      "issues": [],
+      "video_frames": 1041,
+      "video_depth_frames": 1041,
+      "video_depth_missing_frames": 0,
+      "video_depth_bytes_accounted": 255836160,
+      "segment_count": 11,
+      "video_skipped_samples": 11,
+      "video_duration_seconds": 103.99091958301142,
+      "capture_start_unix_seconds": 1791710676.3195767,
+      "capture_start_utc": "2026-10-11T09:24:36.319577+00:00",
+      "camera_xyz_bounds": {
+        "min": [
+          -21.461962,
+          -0.48362336,
+          -48.040585
+        ],
+        "max": [
+          0.033706147,
+          0.07152305,
+          0.9295275
+        ]
+      },
+      "declared_asset_hashes_checked": 0,
+      "video_integrity_scope": "manifest file sizes, every frame index/count, native depth/confidence strides and full contiguous byte accounting, video container dimensions/frame counts; no full RGB bitstream decode"
+    },
+    {
+      "folder": "3F8FE86D-8F9E-47A8-A010-49417284BD8E 2",
+      "files": 49,
+      "total_bytes": 188508472,
+      "capture_id": "3F8FE86D-8F9E-47A8-A010-49417284BD8E",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "capture_schema": 1,
+      "package_schema": 1,
+      "video_schema": 2,
+      "video_status": "complete",
+      "room_count": 1,
+      "rooms_semantic_sha256": "558e31b9eccdda2d448e4201fd62f9a28bd1287ce3cdf71996ae3b0b00fa83c8",
+      "rooms_geometry_metadata_sha256": "f3494b693231d3ee7add20a27e9381eda466ff02429c2e857170ec3eeef50dde",
+      "surface_id_count": 18,
+      "metadata_floor_level": 1,
+      "metadata_floor_name": "Floor 1",
+      "standard_derived_files_absent": [],
+      "raw_snapshot_keyframes": {
+        "depth": 6,
+        "color": 6,
+        "poses": 641,
+        "camera_track_keys": [
+          "poses",
+          "clock",
+          "schema_version",
+          "sample_interval_seconds",
+          "unix_offset_seconds"
+        ]
+      },
+      "missing_referenced_files": [],
+      "embedded_keyframe_copies_absent": [],
+      "asset_checks": [
+        {
+          "path": "927C4C92-7878-4702-BFBC-87E1A0CD4694.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "927C4C92-7878-4702-BFBC-87E1A0CD4694.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "927C4C92-7878-4702-BFBC-87E1A0CD4694.color.jpg",
+          "exists": true,
+          "expected_bytes": 197809,
+          "actual_bytes": 197809
+        },
+        {
+          "path": "AE8F2BD4-0B44-450E-A4D6-6306AE59AC80.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "AE8F2BD4-0B44-450E-A4D6-6306AE59AC80.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "AE8F2BD4-0B44-450E-A4D6-6306AE59AC80.color.jpg",
+          "exists": true,
+          "expected_bytes": 220832,
+          "actual_bytes": 220832
+        },
+        {
+          "path": "D87EC339-5E6F-492D-9636-0C3FC0BB3A5F.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "D87EC339-5E6F-492D-9636-0C3FC0BB3A5F.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "D87EC339-5E6F-492D-9636-0C3FC0BB3A5F.color.jpg",
+          "exists": true,
+          "expected_bytes": 133539,
+          "actual_bytes": 133539
+        },
+        {
+          "path": "818CAF96-C65B-4C6E-ABF6-3F90F4A83E93.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "818CAF96-C65B-4C6E-ABF6-3F90F4A83E93.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "818CAF96-C65B-4C6E-ABF6-3F90F4A83E93.color.jpg",
+          "exists": true,
+          "expected_bytes": 230105,
+          "actual_bytes": 230105
+        },
+        {
+          "path": "F8791178-4479-43FB-8D17-A0FEA18AC39D.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "F8791178-4479-43FB-8D17-A0FEA18AC39D.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "F8791178-4479-43FB-8D17-A0FEA18AC39D.color.jpg",
+          "exists": true,
+          "expected_bytes": 179853,
+          "actual_bytes": 179853
+        },
+        {
+          "path": "F0646430-997B-49C7-89D3-6827AD3A809A.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "F0646430-997B-49C7-89D3-6827AD3A809A.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "F0646430-997B-49C7-89D3-6827AD3A809A.color.jpg",
+          "exists": true,
+          "expected_bytes": 146031,
+          "actual_bytes": 146031
+        },
+        {
+          "path": "camera-track.json",
+          "exists": true,
+          "expected_bytes": 141856,
+          "actual_bytes": 141856
+        },
+        {
+          "path": "text-observations.json",
+          "exists": true,
+          "expected_bytes": 114,
+          "actual_bytes": 114
+        },
+        {
+          "path": "roomplan.json",
+          "exists": true,
+          "expected_bytes": 58871,
+          "actual_bytes": 58871
+        },
+        {
+          "path": "capture.json",
+          "exists": true,
+          "expected_bytes": 3460748,
+          "actual_bytes": 3460748
+        }
+      ],
+      "segments": [
+        {
+          "id": "video-0000",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0001",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0002",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0003",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0004",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0005",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0006",
+          "frame_count_manifest": 29,
+          "frame_count_index": 29,
+          "frames_with_depth": 29,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "2.900000",
+            "nb_frames": "29",
+            "side_data_list": [
+              {}
+            ]
+          }
+        }
+      ],
+      "issues": [],
+      "video_frames": 629,
+      "video_depth_frames": 629,
+      "video_depth_missing_frames": 0,
+      "video_depth_bytes_accounted": 154583040,
+      "segment_count": 7,
+      "video_skipped_samples": 10,
+      "video_duration_seconds": 62.80462695902679,
+      "capture_start_unix_seconds": 1791710805.342022,
+      "capture_start_utc": "2026-10-11T09:26:45.342022+00:00",
+      "camera_xyz_bounds": {
+        "min": [
+          -12.638316,
+          -0.3641284,
+          -12.256088
+        ],
+        "max": [
+          -0.009808257,
+          0.21403079,
+          23.398392
+        ]
+      },
+      "declared_asset_hashes_checked": 0,
+      "video_integrity_scope": "manifest file sizes, every frame index/count, native depth/confidence strides and full contiguous byte accounting, video container dimensions/frame counts; no full RGB bitstream decode"
+    },
+    {
+      "folder": "D598D846-F87F-491F-B446-19BA52295D4D 2",
+      "files": 76,
+      "total_bytes": 458930054,
+      "capture_id": "D598D846-F87F-491F-B446-19BA52295D4D",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "capture_schema": 1,
+      "package_schema": 1,
+      "video_schema": 2,
+      "video_status": "complete",
+      "room_count": 1,
+      "rooms_semantic_sha256": "cc066ddc8f4e5d4d202761ef9066873e9266e136cedd0000ce5ba2329a9dc72d",
+      "rooms_geometry_metadata_sha256": "65c914bcf25ce445f0169c2979da42d699b0f13f52e7d527926ddebfd6cb5980",
+      "surface_id_count": 53,
+      "metadata_floor_level": 1,
+      "metadata_floor_name": "Floor 1",
+      "standard_derived_files_absent": [],
+      "raw_snapshot_keyframes": {
+        "depth": 6,
+        "color": 6,
+        "poses": 1565,
+        "camera_track_keys": [
+          "schema_version",
+          "clock",
+          "poses",
+          "sample_interval_seconds",
+          "unix_offset_seconds"
+        ]
+      },
+      "missing_referenced_files": [],
+      "embedded_keyframe_copies_absent": [],
+      "asset_checks": [
+        {
+          "path": "719A3ADD-C017-4BFD-93C7-31970EA1D947.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "719A3ADD-C017-4BFD-93C7-31970EA1D947.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "719A3ADD-C017-4BFD-93C7-31970EA1D947.color.jpg",
+          "exists": true,
+          "expected_bytes": 179609,
+          "actual_bytes": 179609
+        },
+        {
+          "path": "0FCF4A55-190D-4250-973F-03CD42B0072C.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "0FCF4A55-190D-4250-973F-03CD42B0072C.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "0FCF4A55-190D-4250-973F-03CD42B0072C.color.jpg",
+          "exists": true,
+          "expected_bytes": 97365,
+          "actual_bytes": 97365
+        },
+        {
+          "path": "1F93C99A-AEB0-4C4A-BD22-4E02FD046D7D.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "1F93C99A-AEB0-4C4A-BD22-4E02FD046D7D.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "1F93C99A-AEB0-4C4A-BD22-4E02FD046D7D.color.jpg",
+          "exists": true,
+          "expected_bytes": 94875,
+          "actual_bytes": 94875
+        },
+        {
+          "path": "51B55C24-390B-401A-AA7E-FC39E26E1412.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "51B55C24-390B-401A-AA7E-FC39E26E1412.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "51B55C24-390B-401A-AA7E-FC39E26E1412.color.jpg",
+          "exists": true,
+          "expected_bytes": 218486,
+          "actual_bytes": 218486
+        },
+        {
+          "path": "E4334565-EC66-492D-A5DC-BB09C455119A.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "E4334565-EC66-492D-A5DC-BB09C455119A.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "E4334565-EC66-492D-A5DC-BB09C455119A.color.jpg",
+          "exists": true,
+          "expected_bytes": 118101,
+          "actual_bytes": 118101
+        },
+        {
+          "path": "CC13D84D-1952-4062-8890-E94EA6AD03AB.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "CC13D84D-1952-4062-8890-E94EA6AD03AB.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "CC13D84D-1952-4062-8890-E94EA6AD03AB.color.jpg",
+          "exists": true,
+          "expected_bytes": 148558,
+          "actual_bytes": 148558
+        },
+        {
+          "path": "camera-track.json",
+          "exists": true,
+          "expected_bytes": 339467,
+          "actual_bytes": 339467
+        },
+        {
+          "path": "text-observations.json",
+          "exists": true,
+          "expected_bytes": 114,
+          "actual_bytes": 114
+        },
+        {
+          "path": "roomplan.json",
+          "exists": true,
+          "expected_bytes": 751989,
+          "actual_bytes": 751989
+        },
+        {
+          "path": "capture.json",
+          "exists": true,
+          "expected_bytes": 3471080,
+          "actual_bytes": 3471080
+        }
+      ],
+      "segments": [
+        {
+          "id": "video-0000",
+          "frame_count_manifest": 99,
+          "frame_count_index": 99,
+          "frames_with_depth": 99,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.966667",
+            "nb_frames": "99",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0001",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0002",
+          "frame_count_manifest": 99,
+          "frame_count_index": 99,
+          "frames_with_depth": 99,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.083333",
+            "nb_frames": "99",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0003",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.033333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0004",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.033333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0005",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.033333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0006",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0007",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0008",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.033333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0009",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0010",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0011",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.033333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0012",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0013",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0014",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0015",
+          "frame_count_manifest": 56,
+          "frame_count_index": 56,
+          "frames_with_depth": 56,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "5.600000",
+            "nb_frames": "56",
+            "side_data_list": [
+              {}
+            ]
+          }
+        }
+      ],
+      "issues": [],
+      "video_frames": 1554,
+      "video_depth_frames": 1554,
+      "video_depth_missing_frames": 0,
+      "video_depth_bytes_accounted": 381911040,
+      "segment_count": 16,
+      "video_skipped_samples": 9,
+      "video_duration_seconds": 155.61142249999102,
+      "capture_start_unix_seconds": 1791710886.1437378,
+      "capture_start_utc": "2026-10-11T09:28:06.143738+00:00",
+      "camera_xyz_bounds": {
+        "min": [
+          -3.7408988,
+          -0.28019747,
+          -24.366684
+        ],
+        "max": [
+          28.901722,
+          0.2041174,
+          3.6876373
+        ]
+      },
+      "declared_asset_hashes_checked": 0,
+      "video_integrity_scope": "manifest file sizes, every frame index/count, native depth/confidence strides and full contiguous byte accounting, video container dimensions/frame counts; no full RGB bitstream decode"
+    },
+    {
+      "folder": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC 2",
+      "files": 94,
+      "total_bytes": 628954134,
+      "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+      "capture_schema": 1,
+      "package_schema": 1,
+      "video_schema": 2,
+      "video_status": "complete",
+      "room_count": 1,
+      "rooms_semantic_sha256": "25a576e256fefb57430077302b8195c16d2a81690ed9ab21bbabeb2e27b13ad7",
+      "rooms_geometry_metadata_sha256": "97f43450a5bacb934ea70861896929039c210a84d534d43a9e0a63841065870a",
+      "surface_id_count": 64,
+      "metadata_floor_level": 1,
+      "metadata_floor_name": "Floor 1",
+      "standard_derived_files_absent": [],
+      "raw_snapshot_keyframes": {
+        "depth": 6,
+        "color": 6,
+        "poses": 2185,
+        "camera_track_keys": [
+          "clock",
+          "unix_offset_seconds",
+          "schema_version",
+          "sample_interval_seconds",
+          "poses"
+        ]
+      },
+      "missing_referenced_files": [],
+      "embedded_keyframe_copies_absent": [],
+      "asset_checks": [
+        {
+          "path": "02B1EA58-EF79-404D-92AD-9E20BAE578CE.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "02B1EA58-EF79-404D-92AD-9E20BAE578CE.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "02B1EA58-EF79-404D-92AD-9E20BAE578CE.color.jpg",
+          "exists": true,
+          "expected_bytes": 160856,
+          "actual_bytes": 160856
+        },
+        {
+          "path": "E31490F5-4B9C-401D-9558-388983BF5E76.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "E31490F5-4B9C-401D-9558-388983BF5E76.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "E31490F5-4B9C-401D-9558-388983BF5E76.color.jpg",
+          "exists": true,
+          "expected_bytes": 182624,
+          "actual_bytes": 182624
+        },
+        {
+          "path": "48624DC1-FC41-407F-B758-2DEDCA948A8C.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "48624DC1-FC41-407F-B758-2DEDCA948A8C.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "48624DC1-FC41-407F-B758-2DEDCA948A8C.color.jpg",
+          "exists": true,
+          "expected_bytes": 109859,
+          "actual_bytes": 109859
+        },
+        {
+          "path": "900846D7-9D04-4E9B-9EEF-AFC823FD5EBC.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "900846D7-9D04-4E9B-9EEF-AFC823FD5EBC.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "900846D7-9D04-4E9B-9EEF-AFC823FD5EBC.color.jpg",
+          "exists": true,
+          "expected_bytes": 124176,
+          "actual_bytes": 124176
+        },
+        {
+          "path": "5F3C5821-B320-44BD-A99B-E534FCB29B4F.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "5F3C5821-B320-44BD-A99B-E534FCB29B4F.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "5F3C5821-B320-44BD-A99B-E534FCB29B4F.color.jpg",
+          "exists": true,
+          "expected_bytes": 126713,
+          "actual_bytes": 126713
+        },
+        {
+          "path": "3399BCA6-734A-4432-84C0-31D6E44D355C.depth-f32le",
+          "exists": true,
+          "expected_bytes": 196608,
+          "actual_bytes": 196608
+        },
+        {
+          "path": "3399BCA6-734A-4432-84C0-31D6E44D355C.confidence-u8",
+          "exists": true,
+          "expected_bytes": 49152,
+          "actual_bytes": 49152
+        },
+        {
+          "path": "3399BCA6-734A-4432-84C0-31D6E44D355C.color.jpg",
+          "exists": true,
+          "expected_bytes": 177252,
+          "actual_bytes": 177252
+        },
+        {
+          "path": "camera-track.json",
+          "exists": true,
+          "expected_bytes": 472900,
+          "actual_bytes": 472900
+        },
+        {
+          "path": "text-observations.json",
+          "exists": true,
+          "expected_bytes": 10800,
+          "actual_bytes": 10800
+        },
+        {
+          "path": "roomplan.json",
+          "exists": true,
+          "expected_bytes": 1144932,
+          "actual_bytes": 1144932
+        },
+        {
+          "path": "capture.json",
+          "exists": true,
+          "expected_bytes": 3482608,
+          "actual_bytes": 3482608
+        }
+      ],
+      "segments": [
+        {
+          "id": "video-0000",
+          "frame_count_manifest": 99,
+          "frame_count_index": 99,
+          "frames_with_depth": 99,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "99",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0001",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0002",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0003",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0004",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0005",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0006",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0007",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0008",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.016667",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0009",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0010",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0011",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "9.983333",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0012",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0013",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0014",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0015",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0016",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0017",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0018",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0019",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0020",
+          "frame_count_manifest": 100,
+          "frame_count_index": 100,
+          "frames_with_depth": 100,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "10.000000",
+            "nb_frames": "100",
+            "side_data_list": [
+              {}
+            ]
+          }
+        },
+        {
+          "id": "video-0021",
+          "frame_count_manifest": 83,
+          "frame_count_index": 83,
+          "frames_with_depth": 82,
+          "depth_bounds_valid": true,
+          "depth_exactly_accounted": true,
+          "errors": [],
+          "video_probe": {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 960,
+            "duration": "8.433333",
+            "nb_frames": "83",
+            "side_data_list": [
+              {}
+            ]
+          }
+        }
+      ],
+      "issues": [],
+      "video_frames": 2182,
+      "video_depth_frames": 2181,
+      "video_depth_missing_frames": 1,
+      "video_depth_bytes_accounted": 536002560,
+      "segment_count": 22,
+      "video_skipped_samples": 10,
+      "video_duration_seconds": 218.26927729102317,
+      "capture_start_unix_seconds": 1791709872.0512252,
+      "capture_start_utc": "2026-10-11T09:11:12.051225+00:00",
+      "camera_xyz_bounds": {
+        "min": [
+          -31.955856,
+          -1.0396253,
+          -28.253212
+        ],
+        "max": [
+          10.297076,
+          0.64774257,
+          7.0212603
+        ]
+      },
+      "declared_asset_hashes_checked": 0,
+      "video_integrity_scope": "manifest file sizes, every frame index/count, native depth/confidence strides and full contiguous byte accounting, video container dimensions/frame counts; no full RGB bitstream decode"
+    }
+  ],
+  "pairings": [
+    {
+      "saved_folder": "7356DC0B-2677-47EF-871C-F96104271EE0",
+      "candidates": [
+        {
+          "capture_folder": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC 2",
+          "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+          "shared_surface_ids": 64,
+          "saved_surface_count": 64,
+          "capture_surface_count": 64,
+          "roomplan_semantically_identical": false,
+          "roomplan_geometry_and_metadata_identical": true
+        }
+      ],
+      "pairing_basis": "all RoomPlan geometry and metadata identical, including IDs and reference origin; opaque coreModel byte encodings differ",
+      "exact_capture_folder": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC 2"
+    },
+    {
+      "saved_folder": "9BB978E5-B944-4651-BC3C-F595A21534E3",
+      "candidates": [
+        {
+          "capture_folder": "081DA781-19B1-4A3F-91BE-8DF0094E5032 2",
+          "capture_id": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "shared_surface_ids": 28,
+          "saved_surface_count": 28,
+          "capture_surface_count": 28,
+          "roomplan_semantically_identical": false,
+          "roomplan_geometry_and_metadata_identical": true
+        }
+      ],
+      "pairing_basis": "all RoomPlan geometry and metadata identical, including IDs and reference origin; opaque coreModel byte encodings differ",
+      "exact_capture_folder": "081DA781-19B1-4A3F-91BE-8DF0094E5032 2"
+    },
+    {
+      "saved_folder": "7080F10B-FDBB-4DEF-991B-DC9939234741 2",
+      "candidates": [
+        {
+          "capture_folder": "785D48F6-4754-46A8-B07D-D001BCAAC621 2",
+          "capture_id": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "shared_surface_ids": 71,
+          "saved_surface_count": 71,
+          "capture_surface_count": 71,
+          "roomplan_semantically_identical": false,
+          "roomplan_geometry_and_metadata_identical": true
+        }
+      ],
+      "pairing_basis": "all RoomPlan geometry and metadata identical, including IDs and reference origin; opaque coreModel byte encodings differ",
+      "exact_capture_folder": "785D48F6-4754-46A8-B07D-D001BCAAC621 2"
+    },
+    {
+      "saved_folder": "C66CA4C6-EB8B-4B2F-8004-E9EC4D23986C",
+      "candidates": [
+        {
+          "capture_folder": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF 2",
+          "capture_id": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "shared_surface_ids": 47,
+          "saved_surface_count": 47,
+          "capture_surface_count": 47,
+          "roomplan_semantically_identical": false,
+          "roomplan_geometry_and_metadata_identical": true
+        }
+      ],
+      "pairing_basis": "all RoomPlan geometry and metadata identical, including IDs and reference origin; opaque coreModel byte encodings differ",
+      "exact_capture_folder": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF 2"
+    },
+    {
+      "saved_folder": "41181EA6-6082-47C5-AD36-F4986B082DFA",
+      "candidates": [
+        {
+          "capture_folder": "3F8FE86D-8F9E-47A8-A010-49417284BD8E 2",
+          "capture_id": "3F8FE86D-8F9E-47A8-A010-49417284BD8E",
+          "shared_surface_ids": 18,
+          "saved_surface_count": 18,
+          "capture_surface_count": 18,
+          "roomplan_semantically_identical": false,
+          "roomplan_geometry_and_metadata_identical": true
+        }
+      ],
+      "pairing_basis": "all RoomPlan geometry and metadata identical, including IDs and reference origin; opaque coreModel byte encodings differ",
+      "exact_capture_folder": "3F8FE86D-8F9E-47A8-A010-49417284BD8E 2"
+    },
+    {
+      "saved_folder": "E64A3BD9-7243-4EE9-9E33-375EDA34351E",
+      "candidates": [
+        {
+          "capture_folder": "D598D846-F87F-491F-B446-19BA52295D4D 2",
+          "capture_id": "D598D846-F87F-491F-B446-19BA52295D4D",
+          "shared_surface_ids": 53,
+          "saved_surface_count": 53,
+          "capture_surface_count": 53,
+          "roomplan_semantically_identical": false,
+          "roomplan_geometry_and_metadata_identical": true
+        }
+      ],
+      "pairing_basis": "all RoomPlan geometry and metadata identical, including IDs and reference origin; opaque coreModel byte encodings differ",
+      "exact_capture_folder": "D598D846-F87F-491F-B446-19BA52295D4D 2"
+    }
+  ],
+  "issues": [],
+  "unpaired_capture_folders": [
+    "611423DC-EDB2-4FCE-91B1-F47573C20F8B 2"
+  ],
+  "counts": {
+    "saved_maps": 6,
+    "captures": 7,
+    "files": 513,
+    "total_bytes": 3150248156,
+    "video_segments": 103,
+    "video_frames": 9936,
+    "video_depth_frames": 9932,
+    "video_duration_seconds": 1003.1602624990046
+  },
+  "segment_error_count": 0,
+  "file_issue_count": 0,
+  "limitations": [
+    "AR archives structurally valid NSKeyedArchives; native ARKit deserialization and physical relocalization not established by this audit.",
+    "No asset content hashes were declared in package manifests; lengths and embedded-original equality were checked. Audit computes SHA256 for saved maps/archives and RoomPlan payloads.",
+    "Saved manual ramp annotations are stale relative to explicit user correction: model Floor 1 and raised L joined by stairs/elevator; do not infer a ramp."
+  ]
+}

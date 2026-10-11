@@ -69,11 +69,14 @@ final class StudentCenterLocalizationTests: XCTestCase {
         let sourceWallFloor = SIMD4<Float>(-5.297282, -1.5322381, 2.5336292, 1)
         let registeredWallFloor = SIMD4<Float>(20.857033, -1.5936141, -7.1286273, 1)
         assertVector(mapFromWorld * sourceWallFloor, equals: registeredWallFloor)
+        let registeredWallPoint = SIMD2(registeredWallFloor.x, registeredWallFloor.z)
+        // Reconciled geometry splits this measured wall around its doorway, so
+        // verify the observed point against its retained segment, not an old centroid.
         let canonicalWall = try XCTUnwrap(map.footprints.first {
-            $0.kind == .wall && simd_distance($0.center, SIMD2(20.85197, -7.094421)) < 0.001
+            let local = $0.local(registeredWallPoint)
+            return $0.kind == .wall && abs(local.x) <= $0.size.x / 2 && abs(local.y) < 0.001
         })
-        XCTAssertLessThan(simd_distance(SIMD2(registeredWallFloor.x, registeredWallFloor.z),
-                                       canonicalWall.center), 0.06)
+        XCTAssertEqual(canonicalWall.local(registeredWallPoint).y, 0, accuracy: 0.001)
 
         let sourceWallDirection = SIMD4<Float>(-0.9255238, 0, 0.3786894, 0)
         assertVector(mapFromWorld * sourceWallDirection,

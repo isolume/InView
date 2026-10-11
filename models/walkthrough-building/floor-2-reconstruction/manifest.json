@@ -50,7 +50,7 @@
     },
     {
       "filename": "navigation-validation.json",
-      "sha256": "bb27d213ea39e428b3de8deb6606a8aca87a5c060206714361cb6f6bf4e352fe"
+      "sha256": "5c54eccbf5e022fb36f5e4601218eb080bafdcbd652d3fe3701428c4a52d1a4f"
     },
     {
       "filename": "preparation-validation.json",
@@ -76,5 +76,6 @@
       "filename": "structural-repairs.json",
       "sha256": "e55d6dba7fed629e96e4a7aa38c678a7fe2a6f697b16c69748f58bbd2d0bc7fb"
     }
-  ]
+  ],
+  "navigation_map_sha256": "8a7ae52a72be9b4a96f6c22d789fd5b43e986a308952cf5be19cf0610d0cf18a"
 }

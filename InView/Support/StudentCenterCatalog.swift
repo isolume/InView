@@ -34,7 +34,8 @@ enum StudentCenterCatalog {
     }
 
     static func coverage(for level: Int) -> Coverage {
-        level == floorLevel && map() != nil ? .scannedArea : .noMap
+        if level == 1 { return StudentCenterFloor1Catalog.elevatedMap() != nil ? .scannedArea : .noMap }
+        return level == floorLevel && map() != nil ? .scannedArea : .noMap
     }
 
     static func map() -> VenueMap? {
@@ -59,11 +60,13 @@ enum StudentCenterCatalog {
     }
 
     static func illustrationURL(for floor: Int) -> URL? {
+        if floor == 1 { return StudentCenterFloor1Catalog.modelURL() }
         guard floor == 2 || floor == 3 else { return nil }
         return resourceURL("student-center-east-floor-\(floor)-model", extension: "usdz")
     }
 
     static func illustrationPreviewURL(for floor: Int) -> URL? {
+        if floor == 1 { return StudentCenterFloor1Catalog.previewURL() }
         guard floor == 2 || floor == 3 else { return nil }
         return resourceURL("student-center-east-floor-\(floor)-model", extension: "png")
     }
@@ -74,7 +77,8 @@ enum StudentCenterCatalog {
 
     /// These elevations belong to the estimated asset, not an observed floor connection.
     static func modelFloorY(for floor: Int) -> Float? {
-        modelLayout?.elevations[String(floor)]
+        if floor == 1 { return 0 }
+        return modelLayout?.elevations[String(floor)]
     }
 
     struct ModelLandmark: Identifiable {
@@ -86,6 +90,11 @@ enum StudentCenterCatalog {
 
     /// Video-model labels use their own stable IDs and never become routing access points.
     static func modelLandmarks(for floor: Int) -> [ModelLandmark] {
+        if floor == 1 {
+            return StudentCenterFloor1Catalog.modelLandmarks().map {
+                ModelLandmark(id: $0.id, title: $0.title, position: $0.position, floor: 1)
+            }
+        }
         guard hasEstimatedModel(on: floor), let modelLayout else { return [] }
         return modelLayout.labels.filter { $0.floor == floor }.map { label in
             ModelLandmark(id: landmarkID(floor: floor, title: label.title), title: label.title,
@@ -95,6 +104,7 @@ enum StudentCenterCatalog {
 
     /// A canvas host for an estimated model, deliberately containing no measured or routable geometry.
     static func estimatedScene(for floor: Int) -> ProcessedScene? {
+        if floor == 1 { return StudentCenterFloor1Catalog.scene() }
         guard hasEstimatedModel(on: floor) else { return nil }
         return ProcessedScene(sourceScanID: "estimated-model-floor-\(floor)",
                               mapID: "student-center-east-illustration", floorID: "student-center-east-floor-\(floor)",
