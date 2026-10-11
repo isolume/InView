@@ -21,8 +21,16 @@ public struct StreamingBackendClient: Sendable {
     /// Transport capabilities are negotiated for this server, so older servers keep using JSON.
     func beginSession(_ manifest: StreamManifest) async throws -> (summary: StreamSummary, acceptsGzip: Bool) {
         try manifest.validate()
-        let response = try await request(path: ["streams"], method: "POST", stage: .upload,
+        let response: Response
+        do {
+            response = try await request(path: ["streams"], method: "POST", stage: .upload,
                                          body: JSONEncoder().encode(manifest))
+        } catch BackendClientError.http(status: 404, code: "not_found"?, message: _) {
+            // The server answers but has no stream routes: a deployment older than continuous capture.
+            throw BackendClientError.http(
+                status: 404, code: "streams_unsupported",
+                message: "This scan server is out of date and can't receive scans. Update it, then resume from Settings › Saved scans.")
+        }
         let summary: StreamSummary = try decode(response)
         try summary.validate(manifest: manifest)
         return (summary, response.acceptsGzip)

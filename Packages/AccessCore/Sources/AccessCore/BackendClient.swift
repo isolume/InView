@@ -49,7 +49,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
             case .notConnectedToInternet: return "Could not connect to the scan server. Check your connection."
             case .networkConnectionLost: return "The connection to the scan server was lost. Try again."
             case .appTransportSecurityRequiresSecureConnection:
-                return "Use a secure address for the scan server."
+                return "The scan server address must start with https:// unless the server is on your local network."
             case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
                  .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
                 return "Could not make a secure connection to the scan server. Check its address."

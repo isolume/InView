@@ -20,10 +20,14 @@ public struct StreamingCaptureStatus: Equatable, Sendable {
     public var lastError: String?
     /// True only after the server acknowledges the complete capture.
     public var finished: Bool
+    /// The server rejected the upload for a reason a retry cannot fix (wrong address, outdated server,
+    /// invalid frames). Capture continues on the phone; `lastError` says why.
+    public var uploadStopped: Bool
 
-    public init(captured: Int, uploaded: Int, lastError: String? = nil, finished: Bool = false) {
+    public init(captured: Int, uploaded: Int, lastError: String? = nil, finished: Bool = false,
+                uploadStopped: Bool = false) {
         self.captured = captured; self.uploaded = uploaded
-        self.lastError = lastError; self.finished = finished
+        self.lastError = lastError; self.finished = finished; self.uploadStopped = uploadStopped
     }
 }
 
@@ -145,7 +149,8 @@ public actor StreamingCaptureQueue {
 
     public func snapshot() -> StreamingCaptureStatus {
         StreamingCaptureStatus(captured: captured, uploaded: state.uploaded,
-                               lastError: lastError, finished: state.finished)
+                               lastError: lastError, finished: state.finished,
+                               uploadStopped: permanentUploadFailure && lastError != nil)
     }
 
     /// Saves a whole-capture file (RoomPlan export, semantics, OCR text, movement track) with the
