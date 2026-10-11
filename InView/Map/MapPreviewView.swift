@@ -12,7 +12,17 @@ struct MapPreviewView: View {
     var userPosition: SIMD2<Float>? = nil
     var userHeading: Float = 0
     var showsScanStart = true
+    /// Pins to draw instead of the map's own points, such as live places found nearby.
+    var places: [MapPlace]? = nil
+    /// Room kept clear for controls and panels over the plan. The paper and grid still fill the view.
+    var contentInsets = EdgeInsets()
+    /// Changing it shows the whole floor again.
+    var resetID = 0
+    var cornerRadius = Theme.Radius.control
+    var showsFitButton = true
     var onTap: ((SIMD2<Float>) -> Void)?
+    /// A tap on a pin; without `onTap`, taps elsewhere are ignored.
+    var onSelectPlace: ((MapPlace) -> Void)? = nil
     @State private var zoom: CGFloat = 1
     @State private var pan: CGSize = .zero
     @GestureState private var pinch: CGFloat = 1
@@ -24,21 +34,29 @@ struct MapPreviewView: View {
         GeometryReader { geometry in
             let liveZoom = min(Self.maximumZoom, max(1, zoom * pinch))
             let livePan = clamped(CGSize(width: pan.width + drag.width, height: pan.height + drag.height), zoom: liveZoom, in: geometry.size)
-            let projection = MapProjection(map: map, size: geometry.size, zoom: liveZoom, pan: livePan)
+            let projection = MapProjection(map: map, size: geometry.size, zoom: liveZoom, pan: livePan,
+                                           extra: displayedPlaces.map(\.position), insets: contentInsets)
             Canvas { context, size in
                 draw(in: &context, size: size, projection: projection)
             } symbols: {
                 // The same badge the lists, the 3D map and the surroundings map use.
-                ForEach(map.points) { point in
-                    KindBadge(symbol: point.kind.symbolName,
-                              tint: point.isTooSteep ? Theme.color(for: .warning) : point.kind.tint,
-                              size: KindBadge.mapDiameter, isOnMap: true)
-                        .tag(point.id)
+                ForEach(displayedPlaces) { place in
+                    KindBadge(symbol: place.symbol, tint: place.tint, size: KindBadge.mapDiameter, isOnMap: true)
+                        .tag(place.id)
                 }
             }
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { location in
-                    onTap?(projection.venuePoint(location))
+                    // Choosing a start point takes every tap; otherwise a tap picks the pin under it.
+                    if let onTap { onTap(projection.venuePoint(location)); return }
+                    func distance(_ place: MapPlace) -> CGFloat {
+                        let point = projection.screenPoint(place.position)
+                        return hypot(point.x - location.x, point.y - location.y)
+                    }
+                    let reach = KindBadge.mapDiameter / 2 + KindBadge.ringWidth + 8
+                    if let hit = displayedPlaces.min(by: { distance($0) < distance($1) }), distance(hit) <= reach {
+                        onSelectPlace?(hit)
+                    }
                 }
                 .simultaneousGesture(
                     MagnifyGesture()
@@ -59,7 +77,7 @@ struct MapPreviewView: View {
                     including: zoom > 1 ? .all : .subviews
                 )
                 .overlay(alignment: .topTrailing) {
-                    if zoom > 1 {
+                    if zoom > 1, showsFitButton {
                         Button("Show whole floor", systemImage: "arrow.down.right.and.arrow.up.left") {
                             withAnimation(.smooth) { zoom = 1; pan = .zero }
                         }
@@ -72,15 +90,18 @@ struct MapPreviewView: View {
                 }
                 .animation(.smooth, value: zoom > 1)
         }
-        .background(PlanInk.paper, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-        .accessibilityLabel("Floor plan with \(map.points.count) accessible points")
+        .background(PlanInk.paper, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .onChange(of: resetID) { _, _ in withAnimation(.smooth) { zoom = 1; pan = .zero } }
+        .accessibilityLabel("Floor plan with \(displayedPlaces.count) places")
         .accessibilityZoomAction { action in
             zoom = min(Self.maximumZoom, max(1, action.direction == .zoomIn ? zoom * 1.5 : zoom / 1.5))
             if zoom == 1 { pan = .zero }
         }
         .accessibilityValue(route.map { "Route to \($0.destination.title), \(Int($0.length.rounded())) meters" } ?? "")
     }
+
+    private var displayedPlaces: [MapPlace] { places ?? map.points.map(MapPlace.init) }
 
     /// Keeps the zoomed plan from sliding off the view.
     private func clamped(_ pan: CGSize, zoom: CGFloat, in size: CGSize) -> CGSize {
@@ -153,10 +174,10 @@ struct MapPreviewView: View {
     private func drawPlaces(in context: inout GraphicsContext, projection: MapProjection) {
         let radius = KindBadge.mapDiameter / 2 + KindBadge.ringWidth
         let destination = route?.destination.id
-        let places = map.points.sorted { ($0.id == destination ? 0 : 1) < ($1.id == destination ? 0 : 1) }
+        let places = displayedPlaces.sorted { ($0.id == destination ? 0 : 1) < ($1.id == destination ? 0 : 1) }
         var occupied: [CGRect] = []
         for point in places {
-            let center = projection.screenPoint(point.floorPoint)
+            let center = projection.screenPoint(point.position)
             guard let badge = context.resolveSymbol(id: point.id) else { continue }
             context.draw(badge, at: center)
             occupied.append(CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
@@ -182,7 +203,7 @@ struct MapPreviewView: View {
 
         for point in places {
             place(Text(point.title).font(.caption.weight(.semibold)).foregroundStyle(PlanInk.label),
-                  near: projection.screenPoint(point.floorPoint), clearance: radius, plate: true)
+                  near: projection.screenPoint(point.position), clearance: radius, plate: true)
         }
         for stairs in map.footprints where stairs.kind == .stairs {
             place(Text("Stairs").font(.caption2.bold()).foregroundStyle(Theme.stairs),
@@ -221,8 +242,8 @@ struct MapPreviewView: View {
     private func drawScaleBar(in context: inout GraphicsContext, size: CGSize, projection: MapProjection) {
         let meters: Float = projection.scale >= 60 ? 1 : projection.scale >= 25 ? 2 : 5
         let length = CGFloat(meters) * projection.scale
-        guard length < size.width / 2 else { return }
-        let origin = CGPoint(x: 12, y: size.height - 14)
+        guard length < (size.width - contentInsets.leading) / 2 else { return }
+        let origin = CGPoint(x: contentInsets.leading + 12, y: size.height - contentInsets.bottom - 14)
         var bar = Path()
         bar.move(to: origin)
         bar.addLine(to: CGPoint(x: origin.x + length, y: origin.y))
@@ -431,21 +452,24 @@ private struct MapProjection {
     private let offset: CGPoint
 
     /// `zoom` scales about the view's center and `pan` then moves the plan, both in screen points.
-    init(map: VenueMap, size: CGSize, zoom: CGFloat = 1, pan: CGSize = .zero, inset: CGFloat = 24) {
+    /// `insets` is room covered by controls: the floor is fitted, and zoomed, within what's left.
+    init(map: VenueMap, size: CGSize, zoom: CGFloat = 1, pan: CGSize = .zero, inset: CGFloat = 24,
+         extra: [SIMD2<Float>] = [], insets: EdgeInsets = EdgeInsets()) {
         var lower = SIMD2<Float>(-0.5, -0.5)
         var upper = SIMD2<Float>(0.5, 0.5)
-        for point in map.footprints.flatMap(\.corners) + map.points.map(\.floorPoint) {
+        for point in map.footprints.flatMap(\.corners) + map.points.map(\.floorPoint) + extra {
             lower = simd_min(lower, point)
             upper = simd_max(upper, point)
         }
         let span = upper - lower
-        let available = CGSize(width: max(1, size.width - 2 * inset), height: max(1, size.height - 2 * inset))
+        let available = CGSize(width: max(1, size.width - insets.leading - insets.trailing - 2 * inset),
+                               height: max(1, size.height - insets.top - insets.bottom - 2 * inset))
         let fitted = min(available.width / CGFloat(span.x), available.height / CGFloat(span.y))
         let origin = CGPoint(
-            x: inset + (available.width - CGFloat(span.x) * fitted) / 2,
-            y: inset + (available.height - CGFloat(span.y) * fitted) / 2
+            x: insets.leading + inset + (available.width - CGFloat(span.x) * fitted) / 2,
+            y: insets.top + inset + (available.height - CGFloat(span.y) * fitted) / 2
         )
-        let middle = CGPoint(x: size.width / 2, y: size.height / 2)
+        let middle = CGPoint(x: insets.leading + inset + available.width / 2, y: insets.top + inset + available.height / 2)
         scale = fitted * zoom
         minimum = lower
         offset = CGPoint(x: middle.x + (origin.x - middle.x) * zoom + pan.width,
