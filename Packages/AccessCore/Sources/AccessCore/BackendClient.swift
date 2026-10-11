@@ -19,7 +19,7 @@ public struct CaptureUploadSummary: Codable, Equatable, Sendable {
 }
 
 public enum BackendRequestStage: Equatable, Sendable {
-    case upload, original, scene, health, analysis
+    case upload, original, scene, health, analysis, nearby
 }
 
 public enum BackendClientError: Error, LocalizedError, Equatable {
@@ -37,7 +37,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
         switch self {
         case .invalidURL: return "Enter a backend address beginning with http:// or https://."
         case .insecureTokenTransport:
-            return "The scan server address must use https:// so the access token isn't sent in the clear."
+            return "The scan server address must use https:// unless the server is on your local network, so the access token isn't sent in the clear."
         case .invalidCapture(let message): return message
         case .connection(let stage, let code):
             switch code {
@@ -48,6 +48,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
                 case .scene: return "The 3D map took too long to respond. Try again."
                 case .health: return "The scan server took too long to respond. Check its address and your connection."
                 case .analysis: return "The scan's navigation details took too long to load. Try again."
+                case .nearby: return "Nearby places took too long to load. Try again."
                 }
             case .cannotFindHost: return "Could not find the scan server. Check its address."
             case .notConnectedToInternet: return "Could not connect to the scan server. Check your connection."
@@ -247,8 +248,7 @@ public struct BackendClient: Sendable {
               let host = components.host, !host.isEmpty,
               components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil else { throw BackendClientError.invalidURL }
-        if let accessToken, !accessToken.isEmpty, scheme != "https",
-           !["localhost", "127.0.0.1", "::1"].contains(host.lowercased()) {
+        if let accessToken, !accessToken.isEmpty, scheme != "https", !BackendTransport.isLocalNetworkHost(host) {
             throw BackendClientError.insecureTokenTransport
         }
         let safeCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_~")
@@ -291,6 +291,12 @@ public struct BackendClient: Sendable {
             throw BackendClientError.invalidResponse("The backend returned a scene that is too large.")
         }
         return data
+    }
+
+    /// Shared request path for feature extensions in this module.
+    func send(path: [String], method: String, stage: BackendRequestStage,
+              timeout: TimeInterval = 45, body: Data? = nil) async throws -> Data {
+        try await request(path: path, method: method, stage: stage, timeout: timeout, body: body)
     }
 
     private func decode<T: Decodable>(_ data: Data) throws -> T {

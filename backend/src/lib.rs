@@ -1,6 +1,7 @@
 pub mod alignment;
 pub mod api;
 pub mod auth;
+pub mod building_nav;
 pub mod buildings;
 pub mod capture;
 pub mod display_mesh;
@@ -14,6 +15,7 @@ pub mod product_store;
 pub mod raw_lidar;
 pub mod recognition_service;
 pub mod recognized_objects;
+pub mod route_api;
 pub mod routing;
 pub mod scan_api;
 pub mod scan_package;
@@ -124,6 +126,24 @@ pub fn app(state: AppState) -> Router {
             "/api/buildings/{building_id}/overview",
             get(buildings::overview),
         )
+        .route(
+            "/api/buildings/{building_id}/connectors",
+            get(buildings::connectors)
+                .post(buildings::add_connector)
+                .layer(DefaultBodyLimit::max(16 * 1024)),
+        )
+        .route(
+            "/api/buildings/{building_id}/routes",
+            post(route_api::building_routes).layer(DefaultBodyLimit::max(64 * 1024)),
+        )
+        .route(
+            "/api/buildings/{building_id}/levels",
+            get(route_api::building_levels),
+        )
+        .route(
+            "/api/buildings/{building_id}/nearby",
+            post(route_api::building_nearby).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .route("/graphs", get(api::list_graphs))
         .route("/graphs/{graph_id}", axum::routing::put(api::put_graph))
         .route(
@@ -145,6 +165,15 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/scans/{scan_id}/camera-track", get(scan_api::camera_track))
         .route("/scans/{scan_id}/manifest", get(scan_api::manifest))
+        .route(
+            "/scans/{scan_id}/routes",
+            post(route_api::scan_routes).layer(DefaultBodyLimit::max(64 * 1024)),
+        )
+        .route("/scans/{scan_id}/levels", get(route_api::scan_levels))
+        .route(
+            "/scans/{scan_id}/nearby",
+            post(route_api::scan_nearby).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .route("/scans/{scan_id}/assets/{filename}", get(scan_api::asset))
         .route(
             "/scans/{scan_id}/analysis",

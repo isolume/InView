@@ -6,11 +6,34 @@ enum AppConfig {
     static var detailedScanning: Bool { UserDefaults.standard.bool(forKey: "detailedScanning") }
     static var recordScanVideo: Bool { UserDefaults.standard.bool(forKey: "recordScanVideo") }
 
+    /// The hosted server from Config/Secrets.xcconfig.
+    static var hostedBackendAddress: String { value(for: "InViewBackendURL") ?? "" }
+    /// A developer's own server on the same network (INVIEW_LOCAL_BACKEND_URL), if the build names one.
+    static var localBackendAddress: String? { value(for: "InViewLocalBackendURL") }
+    static var hasLocalBackend: Bool { localBackendAddress != nil }
+
+    /// Whether the build's local server is in use instead of the hosted one. The build flag
+    /// INVIEW_USE_LOCAL_BACKEND sets the default; the settings toggle overrides it on this phone.
+    static var usesLocalBackend: Bool {
+        guard hasLocalBackend else { return false }
+        if let chosen = UserDefaults.standard.object(forKey: "useLocalBackend") as? Bool { return chosen }
+        return ["YES", "TRUE", "1"].contains((value(for: "InViewUseLocalBackend") ?? "").uppercased())
+    }
+
+    static func setUsesLocalBackend(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "useLocalBackend")
+    }
+
+    /// The server this build points at: local when chosen, otherwise hosted.
+    static var builtInBackendAddress: String {
+        usesLocalBackend ? (localBackendAddress ?? hostedBackendAddress) : hostedBackendAddress
+    }
+
     /// The build's server, unless one was typed into settings for this same build. A new build that
     /// points somewhere else wins over an old override, so a phone never sticks to a retired server.
     static var backendAddress: String {
         let defaults = UserDefaults.standard
-        let builtIn = value(for: "InViewBackendURL") ?? ""
+        let builtIn = builtInBackendAddress
         if let saved = defaults.string(forKey: "roomProcessingAddress"), !saved.isEmpty,
            (defaults.string(forKey: "roomProcessingBuiltInAddress") ?? "") == builtIn {
             return saved
@@ -31,7 +54,7 @@ enum AppConfig {
     static func setBackendAddress(_ address: String) {
         let defaults = UserDefaults.standard
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        let builtIn = value(for: "InViewBackendURL") ?? ""
+        let builtIn = builtInBackendAddress
         if trimmed.isEmpty || trimmed == builtIn {
             defaults.removeObject(forKey: "roomProcessingAddress")
             defaults.removeObject(forKey: "roomProcessingBuiltInAddress")
@@ -52,12 +75,11 @@ enum AppConfig {
 
     /// This processing credential is deliberately separate from the signed-in account session.
     /// A token entered in settings wins; otherwise the one built in from Config/Secrets.xcconfig,
-    /// which is only ever sent to the build's own server.
+    /// which is only ever sent to the build's own servers (hosted or local; both run with that token).
     static var backendToken: String? {
         if let entered = backendToken(for: backendAddress) { return entered }
-        guard let builtIn = value(for: "InViewBackendToken"),
-              let origin = backendOrigin(backendAddress),
-              origin == backendOrigin(value(for: "InViewBackendURL") ?? "") else { return nil }
+        guard let builtIn = value(for: "InViewBackendToken"), let origin = backendOrigin(backendAddress),
+              [hostedBackendAddress, localBackendAddress ?? ""].compactMap(backendOrigin).contains(origin) else { return nil }
         return builtIn
     }
 

@@ -200,8 +200,7 @@ public struct StreamingBackendClient: Sendable {
         }
         components.percentEncodedPath += "/" + segments.joined(separator: "/")
         guard let url = components.url else { throw BackendClientError.invalidURL }
-        if accessToken != nil, url.scheme != "https",
-           !["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? "") {
+        if accessToken != nil, !BackendTransport.allowsCredential(to: url) {
             throw BackendClientError.insecureTokenTransport  // Never send a credential in clear text.
         }
         var request = URLRequest(url: url)
