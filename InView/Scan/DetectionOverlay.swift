@@ -28,20 +28,13 @@ struct DetectionOverlay: View {
                         context.stroke(paths.stairs, with: .color(.orange), lineWidth: 2)
                     }
                     ForEach(signPlacements(in: geometry.size)) { placement in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(placement.observation.text).font(.caption.weight(.bold)).lineLimit(2)
-                            Text("\(placement.spatial.meaning.kind.rawValue.capitalized) sign · unverified destination")
-                                .font(.system(size: 9))
-                            Text(String(format: "x %.2f  y %.2f  z %.2f m", placement.spatial.x, placement.spatial.y, placement.spatial.z))
-                                .font(.system(size: 9, design: .monospaced))
-                            if let height = placement.spatial.heightAboveFloorM {
-                                Text(String(format: "%.2f m above measured floor", height)).font(.system(size: 9))
-                            }
-                        }
-                        .foregroundStyle(.white).padding(7).frame(maxWidth: 215)
-                        .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.mint.opacity(0.8)))
-                        .position(placement.point)
+                        // Just the words, where they hang; the sign reader does the rest.
+                        Label(placement.observation.text, systemImage: "text.viewfinder")
+                            .font(.caption.weight(.semibold)).lineLimit(1)
+                            .foregroundStyle(.white).padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(.black.opacity(0.55), in: Capsule())
+                            .frame(maxWidth: 180)
+                            .position(placement.point)
                     }
                     ForEach(placements(in: geometry.size)) { placement in
                         FindTag(sighting: placement.sighting)

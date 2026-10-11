@@ -11,7 +11,6 @@ struct ScanView: View {
     @State private var marks = 0
     /// Created per scan session, while the mapper reads a sign.
     @State private var signReader: SignReader?
-    @State private var showsFloorTrace = true
 
     var body: some View {
         Group {
@@ -72,8 +71,7 @@ struct ScanView: View {
                 Color(.systemBackground).ignoresSafeArea()
             }
             if controller.phase == .scanning {
-                DetectionOverlay(detector: controller.detector, session: controller.session, signs: controller.signObservations,
-                                 floors: showsFloorTrace ? controller.tracedFloors : [])
+                DetectionOverlay(detector: controller.detector, session: controller.session, signs: controller.signObservations)
                     .ignoresSafeArea()
                 Crosshair()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -108,33 +106,13 @@ struct ScanView: View {
                         }
                         Spacer()
                         if controller.videoStatus == "Recording video" {
-                            Label("Recording", systemImage: "record.circle")
-                                .font(.caption.weight(.medium))
-                                .padding(8)
+                            Circle().fill(.red).frame(width: 8, height: 8)
+                                .padding(10)
                                 .glassEffect(.regular)
+                                .accessibilityLabel("Recording")
                         }
                         if controller.phase == .scanning {
                             DetectionStatus(detector: controller.detector)
-                        }
-                    }
-                    if controller.phase == .scanning {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Button { showsFloorTrace.toggle() } label: {
-                                    Label(showsFloorTrace ? "Hide floor trace" : "Show floor trace", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
-                                        .font(.caption.weight(.semibold))
-                                }.buttonStyle(.glass)
-                                if showsFloorTrace, let trace = controller.liveWalkTrace {
-                                    ScanWalkPreview(map: VenueMap(floorY: controller.tracedFloors.first?.bottom ?? 0,
-                                                                  footprints: controller.tracedFloors, points: []),
-                                                    trace: trace, coverage: nil, isLive: true)
-                                        .frame(width: 190, height: 155)
-                                    Text("Measured outlines + phone trail\nNot a verified route")
-                                        .font(.caption2).padding(6)
-                                        .background(.ultraThinMaterial, in: .rect(cornerRadius: 8))
-                                }
-                            }
-                            Spacer()
                         }
                     }
                     Spacer()
@@ -235,25 +213,30 @@ struct ScanView: View {
         .glassEffectID("status", in: glass)
     }
 
-    /// Separate glass pieces rather than one slab, like the Camera app's controls.
+    /// One row of round glass buttons and Finish, like the Camera app, so the camera stays in view.
     private var scanControls: some View {
         VStack(spacing: 10) {
-            StatusPill(text: "Mark what's in the middle of the screen", isCompact: true)
+            if let error = controller.errorMessage {
+                StatusPill(text: error, systemImage: Theme.symbol(for: .barrier), isCompact: true)
+                    .foregroundStyle(Theme.color(for: .barrier))
+            } else if let warning = controller.originalScanWarning {
+                StatusPill(text: warning, systemImage: Theme.symbol(for: .warning), isCompact: true)
+                    .foregroundStyle(Theme.color(for: .warning))
+            } else {
+                StatusPill(text: controller.trackingNotice ?? controller.scanGuidance, isCompact: true)
+            }
             HStack(spacing: 10) {
                 ForEach(VisionDetection.Kind.allCases, id: \.self) { kind in
                     Button {
                         controller.detector.addManual(kind)
                         marks += 1
                     } label: {
-                        VStack(spacing: 6) {
-                            KindBadge(kind: kind, size: 30)
-                            Text(kind.title).font(.caption.weight(.semibold))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 72)
-                        .contentShape(.rect)
+                        KindBadge(kind: kind, size: 26)
+                            .frame(width: 54, height: 54)
+                            .contentShape(.circle)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Theme.Radius.panel))
+                    .glassEffect(.regular.interactive(), in: .circle)
                     .glassEffectID("mark-\(kind.title)", in: glass)
                     .accessibilityLabel("Mark \(kind.title.lowercased())")
                     .accessibilityHint("Marks the spot in the center of the screen")
@@ -261,45 +244,30 @@ struct ScanView: View {
                 Button {
                     signReader = SignReader(session: controller.session)
                 } label: {
-                    VStack(spacing: 6) {
-                        KindBadge(symbol: "text.viewfinder", tint: .indigo, size: 30)
-                        Text(controller.readSigns.isEmpty ? "Sign" : "Signs \(controller.readSigns.count)")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 72)
-                    .contentShape(.rect)
+                    KindBadge(symbol: "text.viewfinder", tint: .indigo, size: 26)
+                        .frame(width: 54, height: 54)
+                        .contentShape(.circle)
+                        .overlay(alignment: .topTrailing) {
+                            if !controller.readSigns.isEmpty {
+                                Text("\(controller.readSigns.count)")
+                                    .font(.caption2.bold()).foregroundStyle(.white)
+                                    .padding(4).background(.indigo, in: .circle)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Theme.Radius.panel))
+                .glassEffect(.regular.interactive(), in: .circle)
                 .glassEffectID("mark-sign", in: glass)
-                .accessibilityLabel("Read a sign")
+                .accessibilityLabel(controller.readSigns.isEmpty ? "Read a sign" : "Read a sign, \(controller.readSigns.count) read")
                 .accessibilityHint("Reads a room number or exit sign so its door is labeled on the map")
-            }
-            Button(action: controller.finish) {
-                Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent)
-            .controlSize(.large)
-            Text(controller.trackingNotice ?? controller.scanGuidance)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            if let status = controller.videoStatus, status != "Recording video" {
-                Text(status).font(.footnote).foregroundStyle(.secondary)
-            }
-            if let notice = controller.videoDepthNotice {
-                Text(notice).font(.footnote).foregroundStyle(.secondary)
-            }
-            if controller.automaticFloorDetectionUnavailable {
-                Text("Use the floor button when you move to another floor.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
-            if let error = controller.errorMessage {
-                StatusPill(text: error, systemImage: Theme.symbol(for: .barrier), isCompact: true)
-                    .foregroundStyle(Theme.color(for: .barrier))
-            }
-            if let warning = controller.originalScanWarning {
-                StatusPill(text: warning, systemImage: Theme.symbol(for: .warning), isCompact: true)
-                    .foregroundStyle(Theme.color(for: .warning))
+                Spacer(minLength: 0)
+                Button(action: controller.finish) {
+                    Image(systemName: "checkmark").font(.title2.weight(.bold))
+                        .frame(width: 54, height: 54)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("Finish scan")
             }
         }
     }
@@ -325,33 +293,22 @@ private struct DetectionStatus: View {
         let counts = detector.sightings.reduce(into: [VisionDetection.Kind: Int]()) { counts, sighting in
             if sighting.isConfirmed { counts[sighting.kind, default: 0] += 1 }
         }
+        // Only what was found, as small chips; nothing at all until there is something to show.
         VStack(alignment: .trailing, spacing: 6) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(Theme.color(for: detector.lastError == nil && detector.isEnabled ? .good : .warning))
-                    .frame(width: 7, height: 7)
-                Text(statusLine)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
-                    .contentTransition(.numericText())
-            }
             ForEach(VisionDetection.Kind.allCases, id: \.self) { kind in
                 if let count = counts[kind] {
                     chip(kind.title, count: count, symbol: kind.symbolName, tint: kind.tint)
                 }
             }
             if detector.isWaitingForSteadyCamera {
-                Label("Hold still a moment to look for features", systemImage: "hand.raised")
+                Label("Hold still", systemImage: "hand.raised")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .glassEffect(.regular)
                     .symbolEffect(.pulse)
             }
         }
         .animation(.spring, value: confirmedCount)
-        .animation(.smooth, value: detector.framesAnalyzed)
-        .frame(maxWidth: 210, alignment: .trailing)
-        .glassPanel(padding: 12)
         .sensoryFeedback(.success, trigger: confirmedCount) { old, new in new > old }
     }
 
@@ -366,17 +323,6 @@ private struct DetectionStatus: View {
             .padding(.vertical, 6)
             .background(tint, in: Capsule())
             .transition(.scale.combined(with: .opacity))
-    }
-
-    private var statusLine: String {
-        if !detector.isEnabled {
-            return "Mark accessibility features below"
-        }
-        if detector.lastError != nil { return "Feature detection unavailable" }
-        if detector.sightings.contains(where: { !$0.isConfirmed }) {
-            return "Move slightly, then hold still for another view"
-        }
-        return "Looking for accessibility features"
     }
 }
 
