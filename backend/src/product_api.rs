@@ -324,6 +324,89 @@ pub async fn match_contacts(
     let matches = blocking(move || state.product.match_contacts(&account, &request.hashes)).await?;
     Ok(Json(json!({ "matches": matches })))
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartShareRequest {
+    person_id: String,
+    mode: product_store::people::ShareMode,
+    #[serde(default)]
+    minutes: Option<u64>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RespondShareRequest {
+    accept: bool,
+    #[serde(default)]
+    minutes: Option<u64>,
+}
+pub async fn list_shares(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let account = account(&state, &headers)?;
+    let shares = blocking(move || state.product.list_shares(&account)).await?;
+    Ok(Json(json!({ "shares": shares })))
+}
+pub async fn start_share(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<StartShareRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<product_store::people::ShareView>), ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    let view = blocking(move || {
+        state
+            .product
+            .start_share(&account, &request.person_id, request.mode, request.minutes)
+    })
+    .await?;
+    Ok((StatusCode::CREATED, Json(view)))
+}
+pub async fn respond_share(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    payload: Result<Json<RespondShareRequest>, JsonRejection>,
+) -> Result<Json<product_store::people::ShareView>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    blocking(move || {
+        state
+            .product
+            .respond_share(&account, &id, request.accept, request.minutes)
+    })
+    .await
+    .map(Json)
+}
+pub async fn end_share(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let account = account(&state, &headers)?;
+    blocking(move || state.product.end_share(&account, &id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+pub async fn publish_position(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<product_store::people::Position>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let Json(position) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    let shared = blocking(move || state.product.publish_position(&account, position)).await?;
+    Ok(Json(json!({ "shared": shared })))
+}
+pub async fn person_location(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(person): Path<String>,
+) -> Result<Json<product_store::people::PersonLocation>, ApiError> {
+    let account = account(&state, &headers)?;
+    blocking(move || state.product.person_location(&account, &person))
+        .await
+        .map(Json)
+}
 pub async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,

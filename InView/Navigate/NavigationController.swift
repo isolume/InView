@@ -532,6 +532,14 @@ final class NavigationController: ObservableObject {
         selectedDestination = nil
     }
 
+    /// Moves the destination of a route in progress (a person who is walking), re-planning from where the
+    /// rider is without ending guidance or repeating the start announcement.
+    func updateLiveDestination(_ destination: AccessPoint) {
+        guard phase == .navigating || phase == .routing else { return }
+        selectedDestination = destination
+        requestRoute(.update)
+    }
+
     func selectDestination(_ destination: AccessPoint?) {
         if phase == .loading || phase == .browsing || phase == .locating {
             selectedDestination = destination

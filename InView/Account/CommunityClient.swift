@@ -156,6 +156,43 @@ struct CommunityClient {
         return reply.matches
     }
 
+    // MARK: Live location
+
+    func shares(token: String) async throws -> [PersonShare] {
+        struct Reply: Decodable { var shares: [PersonShare] }
+        let reply: Reply = try await request("api/people/shares", token: token)
+        return reply.shares
+    }
+
+    /// `offer`: you let them see you. `request`: you ask to see them (they must accept).
+    func startShare(personID: String, offering: Bool, minutes: Int = 60, token: String) async throws -> PersonShare {
+        try await request("api/people/shares", method: "POST", token: token,
+                          body: JSONSerialization.data(withJSONObject: [
+                              "person_id": personID, "mode": offering ? "offer" : "request", "minutes": minutes] as [String: Any]))
+    }
+
+    func respondToShare(id: String, accept: Bool, minutes: Int = 60, token: String) async throws -> PersonShare {
+        try await request("api/people/shares/\(id)/respond", method: "POST", token: token,
+                          body: JSONSerialization.data(withJSONObject: ["accept": accept, "minutes": minutes] as [String: Any]))
+    }
+
+    func endShare(id: String, token: String) async throws {
+        _ = try await response("api/people/shares/\(id)", method: "DELETE", token: token)
+    }
+
+    /// Whether the server kept it: false means nobody can currently see your position.
+    @discardableResult
+    func publish(_ position: SharedPosition, token: String) async throws -> Bool {
+        struct Reply: Decodable { var shared: Bool }
+        let reply: Reply = try await request("api/accounts/me/position", method: "PUT", token: token,
+                                             body: JSONEncoder().encode(position))
+        return reply.shared
+    }
+
+    func location(of personID: String, token: String) async throws -> PersonLocation {
+        try await request("api/people/\(personID)/location", token: token)
+    }
+
     func submissions(token: String) async throws -> [CommunitySubmission] {
         try await request("api/submissions", token: token)
     }
@@ -217,7 +254,13 @@ struct CommunityClient {
             switch response.statusCode {
             case 200..<300: return data
             case 401: throw CommunityError.sessionExpired
+            case 404 where path.hasSuffix("/location"):
+                throw CommunityError.server("They aren’t sharing a live position right now.")
+            case 404 where path.hasPrefix("api/people/shares"):
+                throw CommunityError.server("That location share has ended.")
             case 404: throw CommunityError.server("No one with that email or handle is available to find.")
+            case 409 where path.hasPrefix("api/people/shares"):
+                throw CommunityError.server("End a location share before starting another.")
             case 409: throw CommunityError.server("That handle is already in use. Try another.")
             case 422, 400: throw CommunityError.server("Use 3 to 24 letters, numbers, dots or underscores for a handle.")
             case 429: throw CommunityError.server("You’ve searched a lot. Wait a few minutes and try again.")

@@ -397,6 +397,27 @@ against someone who already guesses the address, which is why matching is opt-in
   identifier derived from the account id. A name that looks like an email address is replaced by the
   handle (or "InView user").
 
+### Live location sharing
+
+People who found each other can share where they are, on the published map, for a bounded time.
+Consent is explicit and either side can end it at any time.
+
+| Endpoint | What it does |
+|----------|--------------|
+| `POST /api/people/shares` | `{person_id, mode: "offer"\|"request", minutes?}`. `offer`: you let them see you (active at once). `request`: you ask to see them (they must accept). 5 minutes to 8 hours, default 60. |
+| `GET /api/people/shares` | Your open and recent shares with `direction` (`outgoing` = you share) and `state` (`requested`, `active`, `declined`, `revoked`, `expired`). |
+| `POST /api/people/shares/{id}/respond` | `{accept, minutes?}`, only by the person being asked to share. |
+| `DELETE /api/people/shares/{id}` | Ends it, by either side. |
+| `PUT /api/accounts/me/position` | `{venue_id, floor, x, z, heading_deg?, accuracy_m?}` in the venue's shared map frame. Kept only while someone can see it; returns `{shared}`. |
+| `GET /api/people/{person_id}/location` | A sharer's latest position, only to a viewer with an active share and only if fresher than 60 s. |
+
+- A share can only start with a **discoverable** person, so absent and hidden people look the same.
+- Positions are held **in memory only** and are dropped when the last active share ends. They are
+  never written to disk or returned to anyone but the viewer of an active share.
+- Coordinates are in a published venue's frame (`venue_id` + `floor`), so only phones located on the
+  same published map can route to each other. A map scanned on one phone has a private frame and is
+  never shared.
+
 ## Accounts and reviewed maps
 
 The user-facing foundation is separate from the original reconstruction API. It

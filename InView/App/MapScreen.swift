@@ -77,6 +77,8 @@ struct MapScreen: View {
     @State private var routeGeneration = 0
     @State private var floorError: String?
     @State private var selectedModelPlace: AccessPoint?
+    @ObservedObject private var people = PeopleLocationService.shared
+    @State private var lastFollowed: PersonLocation?
     /// A place the assistant was asked to show, opened once a map style change settles.
     @State private var pendingAssistantPlace: UUID?
     @FocusState private var searchFocused: Bool
@@ -124,7 +126,7 @@ struct MapScreen: View {
     /// Model places may be endpoints where the open map has matching measured coverage.
     private var routablePlaces: [AccessPoint] {
         guard hasMap else { return [] }
-        return (controller.map?.points ?? []) + livePins + (modelHasMatchingMap ? registeredModelPoints : [])
+        return (controller.map?.points ?? []) + livePins + followedPin + (modelHasMatchingMap ? registeredModelPoints : [])
     }
     private var canUseMyLocation: Bool { elevatedMap == nil && (isDemo || controller.canGuide) }
     private var routePreference: RoutePreference {
@@ -205,12 +207,59 @@ struct MapScreen: View {
         }
     }
 
-    private var displayPoints: [AccessPoint] { (hasMap ? controller.map?.points ?? [] : []) + livePins + modelPoints }
+    private var displayPoints: [AccessPoint] { (hasMap ? controller.map?.points ?? [] : []) + livePins + followedPin + modelPoints }
 
     /// The server scan behind a saved floor; published and example maps have none to search.
     private var liveScanID: String? { isDemo ? nil : localFloor?.captureID }
     /// Live places from the scan server, pinned at the spot the scan measured them on this floor.
     private var livePins: [AccessPoint] { hasMap && liveScanID != nil ? live.pins : [] }
+    /// Where the person being followed is, as a pin on this floor, when they are on it.
+    private var followedPin: [AccessPoint] {
+        guard hasMap, !isDemo, localFloor == nil, let location = people.followedLocation,
+              location.isOn(venueID: SharedPosition.studentCenterVenueID, floor: sourceLevel) else { return [] }
+        return [location.destination(floorY: controller.map?.floorY ?? 0)]
+    }
+    /// Your own position in the venue's shared frame, or nil when you aren't tracked on the shared map
+    /// (a map scanned on this phone has a frame no one else can use).
+    private var sharedPosition: SharedPosition? {
+        guard !isDemo, localFloor == nil, controller.isPositionReliable, let point = controller.position else { return nil }
+        return SharedPosition(floor: sourceLevel, x: point.x, z: point.y,
+                              headingDegrees: controller.heading * 180 / .pi)
+    }
+    private func followPerson(_ location: PersonLocation?) {
+        defer { lastFollowed = location }
+        guard let location, !isDemo, localFloor == nil, hasMap,
+              location.isOn(venueID: SharedPosition.studentCenterVenueID, floor: sourceLevel),
+              location.hasMoved(from: lastFollowed) else { return }
+        let destination = location.destination(floorY: controller.map?.floorY ?? 0)
+        if controller.selectedDestination?.id == destination.id, lastFollowed != nil {
+            controller.updateLiveDestination(destination)
+        } else {
+            controller.navigate(to: destination, nearestOfKind: false)
+        }
+    }
+    @ViewBuilder private var followBanner: some View {
+        if let followed = people.followed {
+            let onOtherFloor = people.followedLocation.map {
+                !$0.isOn(venueID: SharedPosition.studentCenterVenueID, floor: sourceLevel)
+            } ?? false
+            HStack(spacing: 10) {
+                Image(systemName: "location.fill").foregroundStyle(.blue).accessibilityHidden(true)
+                Text(onOtherFloor
+                     ? "\(followed.name) is on floor \(people.followedLocation?.position.floor ?? 0)."
+                     : people.followMessage ?? "Directions to \(followed.name), live")
+                    .font(.subheadline.weight(.medium)).lineLimit(2)
+                Spacer(minLength: 8)
+                Button("Stop") {
+                    people.stopFollowing()
+                    controller.clearDirections()
+                }.buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+            .accessibilityElement(children: .contain)
+        }
+    }
     private var liveAnswersQuery: Bool { live.answeredQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// Search from the person when tracked, else a chosen start, else the scan's origin, which is
     /// where the walk began and so lies on the mapped paths.
@@ -335,6 +384,9 @@ struct MapScreen: View {
             if let id = pendingAssistantPlace { pendingAssistantPlace = nil; revealPlace(id) }
         }
         .onChange(of: routePreference) { _, _ in routePreferenceChanged() }
+        .safeAreaInset(edge: .top, spacing: 0) { followBanner }
+        .modifier(PeopleTracking(isDemo: isDemo, people: people, ownPosition: sharedPosition,
+                                 destinationID: controller.selectedDestination?.id, onFollow: followPerson))
         .onChange(of: liveTrigger, initial: true) { _, trigger in
             live.update(scanID: trigger.scanID, origin: trigger.origin, query: trigger.query,
                         existing: controller.map?.points ?? [])
@@ -1730,5 +1782,27 @@ private struct FoundYouBadge: View {
         .onAppear { bounce += 1 }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Found your location")
+    }
+}
+
+/// Keeps location sharing and following in step with the map, kept out of `body` so its modifier chain
+/// stays within what the compiler can check.
+private struct PeopleTracking: ViewModifier {
+    let isDemo: Bool
+    @ObservedObject var people: PeopleLocationService
+    let ownPosition: SharedPosition?
+    let destinationID: UUID?
+    let onFollow: (PersonLocation?) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { if !isDemo { people.start() } }
+            .onDisappear { people.stop() }
+            .onChange(of: ownPosition) { _, position in people.noteOwnPosition(position) }
+            .onChange(of: people.followedLocation) { _, location in onFollow(location) }
+            .onChange(of: destinationID) { _, id in
+                // Ending directions also ends following; a person is only a destination while followed.
+                if id == nil, people.followed != nil { people.stopFollowing() }
+            }
     }
 }
