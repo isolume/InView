@@ -241,7 +241,7 @@ final class SignReader: ObservableObject {
         }
     }
 
-    private struct Plate: Sendable {
+    struct Plate: Sendable {
         var reading: SignReading
         var text: String
         var box: CGRect
@@ -283,6 +283,14 @@ final class SignReader: ObservableObject {
     /// OCR on the middle of the upright frame, lines grouped into plates, the most central readable
     /// plate measured with depth.
     private nonisolated static func read(_ input: Input) -> Plate? {
+        read(handler: FrameEncoder.uprightRequestHandler(for: input.snapshot), depthFrame: input.depthFrame) { box in
+            FrameEncoder.portraitJPEG(from: input.snapshot, box: box, maxDimension: 640)
+        }
+    }
+
+    /// The reading core, independent of ARKit: any upright image handler, its matched depth, and a cropper.
+    nonisolated static func read(handler: VNImageRequestHandler, depthFrame: () -> CaptureDepthFrame?,
+                                 crop: (CGRect) -> Data?) -> Plate? {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         // Room identifiers must not be autocorrected into words.
@@ -291,7 +299,7 @@ final class SignReader: ObservableObject {
         // Vision's region is bottom-left origin in the upright image: the middle of the view.
         request.regionOfInterest = CGRect(x: 0.06, y: 0.12, width: 0.88, height: 0.76)
         do {
-            try FrameEncoder.uprightRequestHandler(for: input.snapshot).perform([request])
+            try handler.perform([request])
         } catch { return nil }
         let lines: [(text: String, box: CGRect)] = (request.results ?? []).compactMap { result in
             guard let candidate = result.topCandidates(1).first, candidate.confidence >= 0.5 else { return nil }
@@ -312,7 +320,7 @@ final class SignReader: ObservableObject {
         }
         let center = CGPoint(x: 0.5, y: 0.5)
         guard var plate = plates.min(by: { distance($0.box, center) < distance($1.box, center) }) else { return nil }
-        guard let frame = input.depthFrame() else { return plate }
+        guard let frame = depthFrame() else { return plate }
         // Measure the whole plate, else its largest line: thin text can miss the depth grid.
         let sensor = { (box: CGRect) in CaptureImageOrientation.sensorBox(fromUpright: [box.minX, box.minY, box.width, box.height]) }
         plate.position = SignLocalizer.measure(boxSensorNorm: sensor(plate.box), in: frame)?.position
@@ -320,7 +328,7 @@ final class SignReader: ObservableObject {
         if plate.position != nil {
             let padded = plate.box.insetBy(dx: -max(0.04, plate.box.width * 0.35), dy: -max(0.04, plate.box.height * 0.6))
                 .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-            plate.crop = FrameEncoder.portraitJPEG(from: input.snapshot, box: padded, maxDimension: 640)
+            plate.crop = crop(padded)
         }
         return plate
     }
