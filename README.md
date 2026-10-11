@@ -6,9 +6,10 @@ The app opens on a 3D map of Georgia State's Student Center East (Floors 2 and 3
 
 ## What it does
 
-- **Scan:** walk a floor with a LiDAR iPhone. RoomPlan builds the map. A vision model (OpenAI or Gemini) spots elevators, ramps and stairs, and LiDAR checks each one.
+- **Scan:** walk a floor with a LiDAR iPhone. RoomPlan builds the map. A vision model (OpenAI or Gemini) spots elevators, ramps and stairs, and LiDAR checks each one. Connected rooms can share one scan, with confirmed doorway crossings handled automatically.
+- **Read signs:** on-device OCR labels room, direction, exit and other readable signs with measured XYZ, floor-relative elevation and optional geographic data—no API key required. See [spatial sign capture and export](docs/spatial-signs.md).
 - **Review:** keep or drop each find, name places, then save. You get a floor plan, a 3D model and an accessibility report.
-- **Navigate:** the app recognizes the saved space and shows AR arrows with spoken directions. Routes avoid stairs, narrow doors (under 81 cm), steep ramps and new obstacles.
+- **Navigate:** when a floor has compatible localization data, the app recognizes the saved space and shows AR arrows with spoken directions. Routes avoid stairs, narrow doors (under 81 cm), ramps with missing or excessive slope measurements, and new obstacles. Shared JSON maps support browsing and manually chosen route previews, but have no live positioning. Voice uses ElevenLabs when configured, with a system-voice fallback.
 - **Ask:** with a Gemini key, tap the mic and ask where something is.
 - **Share:** signed-in users submit maps. Admins review and publish them.
 

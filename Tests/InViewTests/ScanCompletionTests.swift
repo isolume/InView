@@ -2,10 +2,57 @@ import AccessCore
 import Foundation
 import RoomPlan
 import XCTest
+import UIKit
 @testable import InView
 
 @MainActor
 final class ScanCompletionTests: XCTestCase {
+    func testOCRReadsRoomAndExportsMeasuredXYZWithoutServer() async throws {
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 800), format: format).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 600, height: 800))
+            ("ROOM 204" as NSString).draw(at: CGPoint(x: 70, y: 340), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 70, weight: .bold), .foregroundColor: UIColor.black
+            ])
+        }
+        let jpeg = try XCTUnwrap(image.jpegData(compressionQuality: 0.95))
+        let frame = CaptureDepthFrame(id: "sign-frame", timestampSeconds: 100,
+            mapFromCamera: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.5, 0, 1],
+            camera: CaptureCameraCalibration(imageWidth: 800, imageHeight: 600, fx: 400, fy: 400, cx: 400, cy: 300),
+            depth: CaptureDepthImage(width: 256, height: 192, valuesM: Array(repeating: 2, count: 256 * 192),
+                                     confidence: Array(repeating: 2, count: 256 * 192)))
+        let calibration = TextRecognizer.Calibration(frame: frame, floorID: "floor-2", floorY: 0, environment: nil)
+        let input = TextRecognizer.Image(frameID: frame.id, asset: "sign-frame.color.jpg", jpeg: jpeg, url: nil,
+                                         calibration: calibration)
+        let document = await Task.detached {
+            TextRecognizer.recognize([input], limits: .init(maximumImages: 1, timeBudget: 10))
+        }.value
+        let observation = try XCTUnwrap(document.observations.first { $0.text.contains("204") })
+        let spatial = try XCTUnwrap(observation.spatial)
+        XCTAssertEqual(spatial.meaning.kind, .room)
+        XCTAssertEqual(spatial.z, -2, accuracy: 0.001)
+        XCTAssertEqual(spatial.floorID, "floor-2")
+        XCTAssertNotNil(spatial.heightAboveFloorM)
+        XCTAssertNil(spatial.latitude)
+
+        let id = UUID().uuidString
+        let folder = try CaptureStore.captureDirectory(for: id)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var raw = snapshot()
+        raw.textObservations = document.observations
+        SemanticExport.stageCapturedText(raw: raw, captureID: id)
+        let path = folder.appending(path: TextObservationsDocument.filename)
+        var saved = try JSONDecoder().decode(TextObservationsDocument.self, from: Data(contentsOf: path))
+        XCTAssertEqual(saved.captureID, id)
+        XCTAssertEqual(saved.observations, document.observations)
+        // A later geographic placement updates the same fixed local point, without rerunning OCR.
+        let reference = BuildingMapReference(latitude: 33.75, longitude: -84.39, headingDegrees: 15)
+        SemanticExport.stageCapturedText(raw: raw, captureID: id, reference: reference)
+        saved = try JSONDecoder().decode(TextObservationsDocument.self, from: Data(contentsOf: path))
+        XCTAssertNotNil(saved.observations.first?.spatial?.latitude)
+        XCTAssertEqual(saved.observations.first?.spatial?.z, spatial.z)
+    }
+
     private func room(includeGeometry: Bool = true, nonfiniteCurve: Bool = false) throws -> CapturedRoom {
         let wallPose: [Double] = [
             1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -0.05, -1.5, 1
