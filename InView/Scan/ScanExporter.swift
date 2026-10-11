@@ -189,7 +189,7 @@ enum RoomPlanAssembly {
         let floorY: Float
         let bundle: CaptureBundle
         let map: VenueMap
-        let structureData: Data?
+        let structure: CapturedStructure?
     }
 
     static func prepare(
@@ -237,7 +237,7 @@ enum RoomPlanAssembly {
                                        spottedStairs: spottedStairs, observed: raw?.observedFootprints ?? [])
             try Task.checkCancellation()
             return Prepared(rooms: canonicalRooms, parts: canonicalParts, floorY: floorY, bundle: bundle,
-                            map: map, structureData: try structure.map { try JSONEncoder().encode($0) })
+                            map: map, structure: structure)
         }
     }
 

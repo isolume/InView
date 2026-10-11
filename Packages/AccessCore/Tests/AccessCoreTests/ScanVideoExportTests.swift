@@ -130,7 +130,8 @@ private func videoExportTemporaryFiles(_ directory: URL) throws -> [String] {
 @Test func scanVideoExportPreservesAllIndexedMediaAndOriginalMeasuredEvidence() throws {
     let fixture = try videoExportFixture()
     defer { fixture.remove() }
-    let optional = ["roomplan.json", "roomplan-structure.json", "camera-track.json", "semantics.json", "worldmap.archive"]
+    let optional = ["roomplan.json", "roomplan.plist", "roomplan-structure.json", "roomplan-structure.plist",
+                    "camera-track.json", "semantics.json", "worldmap.archive"]
     for name in optional { try Data("original \(name)".utf8).write(to: fixture.file(name)) }
     try Data("unfinished segment excluded".utf8).write(to: fixture.file("video-0002.mp4"))
     try Data("private file excluded".utf8).write(to: fixture.file("unrelated.txt"))
@@ -237,7 +238,8 @@ private func videoExportTemporaryFiles(_ directory: URL) throws -> [String] {
     defer { fixture.remove() }
     let outside = fixture.directory.appendingPathComponent("outside.bin")
     try Data("outside evidence".utf8).write(to: outside)
-    for name in ["video-manifest.json", "capture.json", "video-0000.mp4", "video-0000.depth.bin", "video-0000.frames.json", "worldmap.archive"] {
+    for name in ["video-manifest.json", "capture.json", "video-0000.mp4", "video-0000.depth.bin",
+                 "video-0000.frames.json", "worldmap.archive", "roomplan.plist", "roomplan-structure.plist"] {
         let url = fixture.file(name)
         let original = try? Data(contentsOf: url)
         if original != nil { try FileManager.default.removeItem(at: url) }

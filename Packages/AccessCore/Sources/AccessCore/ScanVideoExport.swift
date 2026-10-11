@@ -54,7 +54,8 @@ public enum ScanVideoExport {
             try document.validate(segment: segment)
             indexedFiles.append(frames.identity)
         }
-        for name in ["roomplan.json", "roomplan-structure.json", "camera-track.json", "semantics.json", "worldmap.archive"] {
+        for name in ["roomplan.json", "roomplan.plist", "roomplan-structure.json", "roomplan-structure.plist",
+                     "camera-track.json", "semantics.json", "worldmap.archive"] {
             if let file = try directory.file(name) { indexedFiles.append(file.identity) }
         }
 

@@ -208,7 +208,8 @@ struct SavedStreamUploadsView: View {
             guard UUID(uuidString: id) != nil else { continue }
             let values = try directory.resourceValues(forKeys: [.creationDateKey, .isDirectoryKey, .isSymbolicLinkKey])
             guard values.isDirectory == true, values.isSymbolicLink != true else { continue }
-            var originalFiles = ["roomplan.json", "roomplan-structure.json", "raw-snapshot.json", "capture.json"]
+            var originalFiles = ["roomplan.json", "roomplan.plist", "roomplan-structure.json", "roomplan-structure.plist",
+                                 "raw-snapshot.json", "capture.json"]
                 .map { directory.appending(path: $0) }
                 .filter { files.fileExists(atPath: $0.path) }
             for name in ["roomplan-source", "roomplan-rooms"] {

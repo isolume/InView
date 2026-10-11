@@ -27,6 +27,22 @@ enum CaptureStore {
         try roomPlanData.write(to: directory.appending(path: "roomplan.json"), options: .atomic)
     }
 
+    static func stageRawSnapshot(id: String, data: Data) throws {
+        try Task.checkCancellation()
+        let folder = try directory(for: id)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try data.write(to: folder.appending(path: "raw-snapshot.json"), options: .atomic)
+        } catch {
+            throw RoomCaptureArchive.Failure.storage(error)
+        }
+    }
+
+    /// Native metadata is separate from the validated measurements used for navigation.
+    static func stageNativeRooms<Value: Encodable>(id: String, rooms: Value) throws {
+        _ = try RoomCaptureArchive.writeJSON(rooms, to: try directory(for: id).appending(path: "roomplan.json"))
+    }
+
     /// Keeps calibrated evidence beside the canonical capture without embedding binary data in JSON.
     /// Call after staging the bundle, whose map and floor identify the unchanged ARKit frame.
     static func stageEvidence(_ raw: RawScanSnapshot, id: String) throws {
@@ -207,22 +223,22 @@ enum CaptureStore {
         var scene: ProcessedScene
     }
 
-    /// Secure Apple's raw capture before processing it; failed room processing remains recoverable.
+    /// Archive Apple's opaque input when its serializer supports it, before processing.
     static func stageRoomCaptureData<Value: Encodable>(id: String, roomID: UUID, value: Value) throws {
         try Task.checkCancellation()
         let directory = try directory(for: id).appending(path: "roomplan-source", directoryHint: .isDirectory)
-        try RoomCaptureArchive.write(value, to: directory.appending(path: roomID.uuidString + ".plist"))
+        _ = try RoomCaptureArchive.writeJSON(value, to: directory.appending(path: roomID.uuidString + ".json"))
     }
 
     /// If the SDK cannot serialize its opaque input, keep its processed native result instead.
     static func stageProcessedRoom<Value: Encodable>(id: String, roomID: UUID, value: Value) throws {
         let directory = try directory(for: id).appending(path: "roomplan-rooms", directoryHint: .isDirectory)
-        try RoomCaptureArchive.write(value, to: directory.appending(path: roomID.uuidString + ".plist"))
+        _ = try RoomCaptureArchive.writeJSON(value, to: directory.appending(path: roomID.uuidString + ".json"))
     }
 
-    static func stageRoomStructure(id: String, data: Data) throws {
-        try Task.checkCancellation()
-        try data.write(to: try directory(for: id).appending(path: "roomplan-structure.json"), options: .atomic)
+    static func stageRoomStructure<Value: Encodable>(id: String, structure: Value) throws {
+        _ = try RoomCaptureArchive.writeJSON(structure,
+            to: try directory(for: id).appending(path: "roomplan-structure.json"))
     }
 
     static func loadRawSnapshot(id: String) throws -> RawScanSnapshot {

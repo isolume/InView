@@ -12,6 +12,8 @@ struct InViewApp: App {
                 ScanFloorPickerPreview(isSwitch: true)
             } else if ProcessInfo.processInfo.arguments.contains("--scan-review-preview") {
                 ScanReviewPreview()
+            } else if ProcessInfo.processInfo.arguments.contains("--scan-review-failure-preview") {
+                ScanReviewFailurePreview()
             } else if ProcessInfo.processInfo.arguments.contains("--building-directions-preview") {
                 BuildingDirectionsPreview()
             } else if ProcessInfo.processInfo.arguments.contains("--final-map-preview")

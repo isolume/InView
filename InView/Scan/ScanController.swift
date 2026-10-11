@@ -134,13 +134,11 @@ final class ScanController: ObservableObject {
     private var pendingRoomData: CapturedRoomData?
     private var pendingRoomSourceID: UUID?
     private var rooms: [CapturedRoom] = []
-    private var livePortals: [RoomTransitionPortal] = []
     private var liveFloors: [Footprint] = []
     private var roomInstruction: String?
     private var roomInstructionTime: TimeInterval = 0
-    private var roomTransitions = RoomTransitionDetector()
-    private var doorMonitor: Timer?
-    private static let doorMonitorInterval: TimeInterval = 0.2
+    private var previewMonitor: Timer?
+    private static let previewMonitorInterval: TimeInterval = 0.2
     private var worldMap: ARWorldMap?
     /// What the camera saw as the scan began, shown later to help riders find their place.
     private var startView: Data?
@@ -172,6 +170,22 @@ final class ScanController: ObservableObject {
         }
         elevationMonitor.onUnavailable = { [weak self] in self?.automaticFloorDetectionUnavailable = true }
     }
+
+    #if DEBUG
+    /// Exercise finishing with immutable recorded inputs, without starting camera hardware.
+    convenience init(completedRooms: [CapturedRoom], rawSnapshot: RawScanSnapshot, scanID: UUID,
+                     originalWarning: String? = nil) {
+        self.init()
+        self.rooms = completedRooms
+        self.finishedRawSnapshot = rawSnapshot
+        self.scanID = scanID
+        self.originalScanWarning = originalWarning
+        self.isActive = true
+        prepareScene()
+    }
+
+    func waitForScenePreparation() async { await sceneTask?.value }
+    #endif
 
     func setAppIsActive(_ active: Bool) {
         appIsActive = active
@@ -332,8 +346,7 @@ final class ScanController: ObservableObject {
             floorChangePausedCapture = true
             endSection(thenFinish: false, pauseAfter: true)
         } else if phase == .processing {
-            // A doorway handoff may still be observing this floor while its room saves.
-            // End that evidence immediately when travel to another floor begins.
+            // Evidence on this floor ends as soon as travel to another floor begins.
             rawCapture.pause()
             floorChangePausedCapture = !pauseAfterProcessing
             videoCapture?.pause()
@@ -381,8 +394,8 @@ final class ScanController: ObservableObject {
         memoryObserver = nil
         startViewTimer?.invalidate()
         startViewTimer = nil
-        doorMonitor?.invalidate()
-        doorMonitor = nil
+        previewMonitor?.invalidate()
+        previewMonitor = nil
         detector.pause()
         rawCapture.stop()
         videoCapture?.stop()
@@ -398,8 +411,6 @@ final class ScanController: ObservableObject {
         sessionDelegate = nil
         captureView?.stop()
         captureView = nil
-        roomTransitions.reset()
-        livePortals = []
         liveFloors = []
         if phase != .unsupported { session.pause() }
     }
@@ -660,16 +671,10 @@ final class ScanController: ObservableObject {
         pauseAfterProcessing = pauseAfter
         phase = .processing
         detector.pause()
-        doorMonitor?.invalidate()
-        doorMonitor = nil
-        roomTransitions.suspend()
-        livePortals = []
-        if !finish && !pauseAfter {
-            rawCapture.observeFloorDuringHandoff()
-        } else {
-            rawCapture.pause()
-            videoCapture?.pause()
-        }
+        previewMonitor?.invalidate()
+        previewMonitor = nil
+        rawCapture.pause()
+        videoCapture?.pause()
         splatCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
         captureSession?.stop(pauseARSession: false)
@@ -682,16 +687,14 @@ final class ScanController: ObservableObject {
         guard isActive, let captureSession else { return }
         captureView?.clearRoom()
         sessionDelegate?.discardRoomUpdates()
-        livePortals = []
         liveFloors = []
         roomInstruction = nil
-        roomTransitions.suspend()
-        doorMonitor?.invalidate()
+        previewMonitor?.invalidate()
         captureSession.run(configuration: RoomCaptureSession.Configuration())
-        doorMonitor = Timer.scheduledTimer(withTimeInterval: Self.doorMonitorInterval, repeats: true) { [weak self] _ in
+        previewMonitor = Timer.scheduledTimer(withTimeInterval: Self.previewMonitorInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 if let room = self?.sessionDelegate?.takeLatestRoom() { self?.liveRoomUpdated(room) }
-                self?.checkDoorways()
+                self?.updateScanGuidance()
             }
         }
     }
@@ -711,22 +714,12 @@ final class ScanController: ObservableObject {
         guard isActive, phase == .scanning else { return }
         if let floorY = measurements.floorY { rawCapture.floorY = floorY }
         liveFloors = measurements.floors
-        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
-              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1,
-              let observedAt = measurements.observedAt,
-              abs(ProcessInfo.processInfo.systemUptime - observedAt) < 1 else {
-            livePortals = []
-            roomTransitions.suspend()
-            return
-        }
-        livePortals = measurements.portals
     }
 
-    /// A room handoff requires a stable measured portal and confirmed movement through it.
-    /// Room size, travel distance, and elapsed time never finalize a room.
-    private func checkDoorways() {
+    /// Refresh capture guidance without ending the scan as the mapper moves between rooms.
+    private func updateScanGuidance() {
         guard isActive, phase == .scanning, !isChangingFloors, pendingFloor == nil,
-              let frame = session.currentFrame else { roomTransitions.suspend(); return }
+              let frame = session.currentFrame else { return }
         let normal: Bool
         if case .normal = frame.camera.trackingState {
             normal = abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1
@@ -737,21 +730,8 @@ final class ScanController: ObservableObject {
             || liveFloors.contains { Polygon.contains(SIMD2(position.x, position.z), in: $0.corners) }
         scanGuidance = roomInstruction.flatMap {
             ProcessInfo.processInfo.systemUptime - roomInstructionTime < 4 ? $0 : nil
-        } ?? (floorObserved ? "Move slowly through the room and its doorways."
+        } ?? (floorObserved ? "Keep moving slowly and include the floor."
                            : "Tilt down to capture the floor around you.")
-        // A guessed phone height can reject genuine doors in a corridor whose floor
-        // RoomPlan missed. Use the measured ARKit floor supplement in the same frame.
-        guard let floorY = rawCapture.measuredFloorElevation(near: position) else {
-            roomTransitions.suspend()
-            return
-        }
-        let transition = roomTransitions.update(portals: livePortals,
-            position: position, floorY: floorY,
-            timestamp: frame.timestamp, trackingIsNormal: normal)
-        if transition != nil {
-            Log.scan.notice("confirmed room crossing; keeping the shared AR session")
-            endSection(thenFinish: false)
-        }
     }
 
     private func updateInstruction(_ instruction: RoomCaptureSession.Instruction) {
@@ -793,10 +773,8 @@ final class ScanController: ObservableObject {
     /// Process the immutable section separately from the bounded camera preview.
     private func sectionEnded(_ data: CapturedRoomData, error: Error?) {
         guard isActive, phase == .scanning || phase == .processing, sectionTask == nil else { return }
-        doorMonitor?.invalidate()
-        doorMonitor = nil
-        roomTransitions.suspend()
-        livePortals = []
+        previewMonitor?.invalidate()
+        previewMonitor = nil
         captureView?.clearRoom()
         let endedUnexpectedly = phase == .scanning
         if endedUnexpectedly {
@@ -841,9 +819,9 @@ final class ScanController: ObservableObject {
                     try Task.checkCancellation()
                     guard self?.isActive == true, self?.sectionRequestID == requestID else { return }
                     // Opaque source serialization is optional; it must not prevent RoomBuilder
-                    // from producing the room or completing a confirmed doorway handoff.
+                    // from producing the room or completing the floor's scan.
                     self?.logRoomFailure(failure, stage: failureStage)
-                    self?.originalScanWarning = "Some original scan data couldn't be saved. You can still save the map."
+                    self?.originalScanWarning = "Some original sensor data is unavailable."
                 }
                 try Task.checkCancellation()
                 guard self?.isActive == true, self?.sectionRequestID == requestID else { return }
@@ -948,7 +926,6 @@ final class ScanController: ObservableObject {
         let stairs = detector.stairsFootprints()
         let id = scanID
         let floor = currentFloor
-        let originalWarning = originalScanWarning
         sceneError = nil
         sceneStage = .preparing
         phase = .processingScene
@@ -968,15 +945,24 @@ final class ScanController: ObservableObject {
                 }
                 try Task.checkCancellation()
                 guard isActive, scanID == id else { return }
-                try await ScanWork.run {
+                let nativeArchiveWarning = try await ScanWork.run { () -> String? in
                     let rawData = try ScanExporter.rawSnapshotData(raw)
-                    let roomData = try ScanExporter.nativeRoomPlanData(rooms: sourceRooms)
-                    try CaptureStore.stageOriginals(id: id.uuidString, rawData: rawData, roomPlanData: roomData)
+                    try CaptureStore.stageRawSnapshot(id: id.uuidString, data: rawData)
+                    do {
+                        try CaptureStore.stageNativeRooms(id: id.uuidString, rooms: sourceRooms)
+                        return nil
+                    } catch let failure as RoomCaptureArchive.Failure {
+                        guard case .encoding = failure else { throw failure }
+                        Log.scan.error("couldn't serialize native rooms: \(failure.underlyingError.localizedDescription, privacy: .private)")
+                        return "Some original room data is unavailable."
+                    }
                 }
                 try Task.checkCancellation()
                 guard isActive, scanID == id else { return }
                 rawArchived = true
                 finishedRawSnapshot = nil
+                if let nativeArchiveWarning { originalScanWarning = nativeArchiveWarning }
+                let originalWarning = originalScanWarning
                 if detailRequested { splatCapture.finish(meshes: []) }
                 sceneStage = .reconstructing
                 let assembled = try await RoomPlanAssembly.prepare(rooms: sourceRooms, raw: raw,
@@ -997,8 +983,13 @@ final class ScanController: ObservableObject {
                         result.warnings.append("Some supporting scan evidence couldn't be saved. The room map is ready to use.")
                         Log.scan.error("couldn't stage scan evidence: \(error.localizedDescription, privacy: .public)")
                     }
-                    if let structureData = assembled.structureData {
-                        try CaptureStore.stageRoomStructure(id: id.uuidString, data: structureData)
+                    if let structure = assembled.structure {
+                        do { try CaptureStore.stageRoomStructure(id: id.uuidString, structure: structure) }
+                        catch let failure as RoomCaptureArchive.Failure {
+                            guard case .encoding = failure else { throw failure }
+                            result.warnings.append("Some original room data is unavailable.")
+                            Log.scan.error("couldn't serialize native structure: \(failure.underlyingError.localizedDescription, privacy: .private)")
+                        }
                     }
                     try CaptureStore.saveScene(result, for: assembled.bundle)
                     return result
@@ -1013,12 +1004,27 @@ final class ScanController: ObservableObject {
                 captureBundle = assembled.bundle
                 localScene = finalScene
                 scene = finalScene
+                if finalScene.warnings.contains("Some original room data is unavailable.") {
+                    originalScanWarning = "Some original room data is unavailable."
+                }
                 do { try await stageReviewedSemantics(assembled.map) }
                 catch is CancellationError { throw CancellationError() }
                 catch { analysisError = "Some place details couldn't be saved. Find places will try again." }
                 prepareDetail(assembled.bundle)
             } catch {
-                if !Task.isCancelled { self?.sceneError = error.localizedDescription }
+                if !Task.isCancelled {
+                    self?.logRoomFailure(error, stage: "map preparation")
+                    if RoomCaptureArchive.Failure.storage(error).isOutOfSpace
+                        || (error as? RoomCaptureArchive.Failure)?.isOutOfSpace == true {
+                        self?.sceneError = "There isn't enough storage to prepare this map. Free some space, then try again."
+                    } else if let failure = error as? RoomCaptureArchive.Failure, case .storage = failure {
+                        self?.sceneError = "Couldn't save this scan on this phone. Try again."
+                    } else if error is EncodingError {
+                        self?.sceneError = "Some scan measurements couldn't be read. Try preparing the map again."
+                    } else {
+                        self?.sceneError = error.localizedDescription
+                    }
+                }
             }
             if !Task.isCancelled {
                 self?.phase = .review
@@ -1058,10 +1064,8 @@ final class ScanController: ObservableObject {
                 currentFloor = nextFloor
                 pendingFloor = nil
                 rooms = []
-                livePortals = []
                 liveFloors = []
                 roomInstruction = nil
-                roomTransitions.reset()
                 pendingRoomData = nil
                 pendingRoomSourceID = nil
                 worldMap = nil

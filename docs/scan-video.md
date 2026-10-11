@@ -7,12 +7,22 @@ microphone audio. It writes H.264 MP4 segments and synchronized depth to the
 capture's existing `Documents/Captures/<scan-id>/` directory. Nothing is uploaded
 automatically. **Find places** retains its existing bounded photo/depth request.
 
+Scanning continues through doorways. A door crossing does not stop or save a
+room; finishing, changing floors, or a scanner/resource interruption ends the
+current capture.
+
 In **Scanning → Saved scans**, choose **Export video + LiDAR**, then **Share
 video + LiDAR**. The resulting `.inviewvideo.tar` includes the MP4s, their frame
 indexes and depth/confidence bytes, `video-manifest.json`, `capture.json`, native
 RoomPlan geometry and available alignment/semantic support files. It is a local
 reconstruction handoff, separate from the server's 256 MiB recognition package.
 Files are also available through iOS Files or Finder file sharing.
+
+Native RoomPlan originals use JSON when serializable, with a binary `.plist`
+fallback that preserves values JSON cannot represent. Both formats are included
+in local exports when present. Unavailable opaque SDK source data is reported
+separately from the validated room map; genuine storage or alignment failures
+keep the scan in review with a retry action.
 
 ## Alignment contract
 
@@ -37,7 +47,7 @@ RoomPlan. `presentation_time_seconds` is the actual movie timestamp, rounded to
 one microsecond, relative to the first accepted frame in its segment. Use these
 timestamps to match decoded images; do not infer capture time from frame index
 or the nominal rate. Pauses, encoder backpressure and tracking loss can create
-gaps. Segment times remain on the original ARKit clock across room handoffs;
+gaps. Segment times remain on the original ARKit clock throughout a floor scan;
 a new floor creates a new scan/session and its own coordinate frame.
 
 Encoded video pixels remain in sensor-native landscape orientation. The MP4
@@ -71,7 +81,7 @@ depth plus confidence, before movie/index overhead. Actual resolution, strides,
 sampling and storage vary. Export needs space for a second copy of the evidence.
 
 Recording pauses with interruptions, floor transitions, resource pauses and app
-inactivity. It continues through ordinary same-floor doorway handoffs. Finish
+inactivity. It continues through doorways on the same floor. Finish
 waits for accepted samples and seals the final segment before map assembly.
 Closing early produces a partial recording. An unfinished segment after a crash
 is not advertised as usable; earlier finalized files stay on the phone.
