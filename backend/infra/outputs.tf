@@ -5,7 +5,7 @@ output "instance_ip" {
 
 output "backend_url" {
   description = "Set this as INVIEW_BACKEND_URL (or enter it in the app's scan processing settings)."
-  value       = "https://${var.backend_domain}"
+  value       = var.backend_domain != "" ? "https://${var.backend_domain}" : "https://${replace(vultr_instance.backend.main_ip, ".", "-")}.sslip.io"
 }
 
 output "ssh_command" {

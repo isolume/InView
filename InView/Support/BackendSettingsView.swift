@@ -6,7 +6,7 @@ struct BackendSettingsView: View {
     @AppStorage("detailedScanning") private var detailedScanning = false
     @AppStorage("recordScanVideo") private var recordScanVideo = false
     @State private var address = AppConfig.backendAddress
-    @State private var token = AppConfig.backendToken ?? ""
+    @State private var token = AppConfig.backendToken(for: AppConfig.backendAddress) ?? ""
     @State private var message: String?
     @State private var checking = false
 
@@ -27,7 +27,8 @@ struct BackendSettingsView: View {
                 Section {
                     TextField("Server address", text: $address)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    SecureField("Access token", text: $token)
+                    SecureField(AppConfig.hasBuiltInBackendToken ? "Access token (built in; enter to override)" : "Access token",
+                                text: $token)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button(checking ? "Checking…" : "Save settings", action: saveSettings)
                         .disabled(checking)

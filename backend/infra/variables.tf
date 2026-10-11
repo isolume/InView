@@ -32,11 +32,12 @@ variable "backend_port" {
 }
 
 variable "backend_domain" {
-  description = "DNS hostname pointed at the instance, used for automatic HTTPS."
+  description = "DNS hostname pointed at the instance, used for automatic HTTPS. Leave empty to use <instance-ip>.sslip.io, a public DNS name that resolves to the instance without any records of your own."
   type        = string
+  default     = ""
   validation {
-    condition     = can(regex("^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$", var.backend_domain))
-    error_message = "backend_domain must be a DNS hostname without a scheme, port, or path."
+    condition     = var.backend_domain == "" || can(regex("^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$", var.backend_domain))
+    error_message = "backend_domain must be empty or a DNS hostname without a scheme, port, or path."
   }
 }
 

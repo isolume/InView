@@ -1,0 +1,4 @@
+Starting against local PostgreSQL; NOT TigerData.
+[2m2026-10-10T23:02:22.439440Z[0m [32m INFO[0m [2minview_backend[0m[2m:[0m Building maps connected to PostgreSQL (Timescale when available)
+[2m2026-10-10T23:02:22.440329Z[0m [33m WARN[0m [2minview_backend[0m[2m:[0m Furniture recognition disabled; run recognition/setup.sh to enable it
+[2m2026-10-10T23:02:22.441519Z[0m [32m INFO[0m [2minview_backend[0m[2m:[0m InView backend listening [3maddress[0m[2m=[0m127.0.0.1:3000
