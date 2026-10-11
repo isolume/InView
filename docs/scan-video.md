@@ -7,9 +7,9 @@ microphone audio. It writes H.264 MP4 segments and synchronized depth to the
 capture's existing `Documents/Captures/<scan-id>/` directory. Nothing is uploaded
 automatically. **Find places** retains its existing bounded photo/depth request.
 
-Scanning continues through doorways. A door crossing does not stop or save a
-room; finishing, changing floors, or a scanner/resource interruption ends the
-current capture.
+Scanning continues through doorways. Walking out through a door saves the room
+behind you and starts the next one while video keeps recording; finishing,
+changing floors, or a scanner/resource interruption ends the current capture.
 
 In **Scanning → Saved scans**, choose **Export video + LiDAR**, then **Share
 video + LiDAR**. The resulting `.inviewvideo.tar` includes the MP4s, their frame

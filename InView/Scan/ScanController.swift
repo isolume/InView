@@ -102,6 +102,8 @@ final class ScanController: ObservableObject {
         case .saving: return "Saving map…"
         }
     }
+    /// Saving the room the mapper just walked out of; the scan carries on once it's done.
+    var isSavingRoomLeft: Bool { phase == .processing && !pauseAfterProcessing && !finishAfterProcessing }
     var canRetryScene: Bool { !rooms.isEmpty || captureBundle != nil }
     var canUseLocalScene: Bool { localScene != nil && scene == nil && !isProcessingScene }
     var canPlaceReviewPoints: Bool {
@@ -147,6 +149,10 @@ final class ScanController: ObservableObject {
     private var pendingRoomSourceID: UUID?
     private var rooms: [CapturedRoom] = []
     private var liveFloors: [Footprint] = []
+    private var livePortals: [RoomTransitionPortal] = []
+    /// Walking out through a door ends the room there, so the next space starts with a fresh
+    /// RoomPlan model instead of growing the last one.
+    private var roomTransitions = RoomTransitionDetector()
     private var roomInstruction: String?
     private var roomInstructionTime: TimeInterval = 0
     private var previewMonitor: Timer?
@@ -445,6 +451,8 @@ final class ScanController: ObservableObject {
         sessionDelegate = nil
         captureView?.stop()
         captureView = nil
+        roomTransitions.reset()
+        livePortals = []
         liveFloors = []
         if phase != .unsupported { session.pause() }
     }
@@ -753,8 +761,15 @@ final class ScanController: ObservableObject {
         detector.pause()
         previewMonitor?.invalidate()
         previewMonitor = nil
-        rawCapture.pause()
-        videoCapture?.pause()
+        roomTransitions.suspend()
+        livePortals = []
+        if !finish && !pauseAfter {
+            // Walking out of a room: keep the walk, floor and video going while it saves.
+            rawCapture.observeFloorDuringHandoff()
+        } else {
+            rawCapture.pause()
+            videoCapture?.pause()
+        }
         splatCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
         captureSession?.stop(pauseARSession: false)
@@ -768,6 +783,8 @@ final class ScanController: ObservableObject {
         captureView?.clearRoom()
         sessionDelegate?.discardRoomUpdates()
         liveFloors = []
+        livePortals = []
+        roomTransitions.suspend()
         roomInstruction = nil
         previewMonitor?.invalidate()
         captureSession.run(configuration: RoomCaptureSession.Configuration())
@@ -794,12 +811,21 @@ final class ScanController: ObservableObject {
         guard isActive, phase == .scanning else { return }
         if let floorY = measurements.floorY { rawCapture.floorY = floorY }
         liveFloors = measurements.floors
+        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1,
+              let observedAt = measurements.observedAt,
+              abs(ProcessInfo.processInfo.systemUptime - observedAt) < 1 else {
+            livePortals = []
+            roomTransitions.suspend()
+            return
+        }
+        livePortals = measurements.portals
     }
 
     /// Refresh capture guidance without ending the scan as the mapper moves between rooms.
     private func updateScanGuidance() {
         guard isActive, phase == .scanning, !isChangingFloors, pendingFloor == nil,
-              let frame = session.currentFrame else { return }
+              let frame = session.currentFrame else { roomTransitions.suspend(); return }
         let normal: Bool
         if case .normal = frame.camera.trackingState {
             normal = abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1
@@ -815,6 +841,22 @@ final class ScanController: ObservableObject {
         } ?? (floorObserved ? "Keep moving slowly and include the floor."
                            : "Tilt down to capture the floor around you.")
         if scanGuidance != guidance { scanGuidance = guidance }
+        checkDoorways(position: position, timestamp: frame.timestamp, trackingIsNormal: normal)
+    }
+
+    /// Ends the room once the mapper has walked out through one of its measured doors or openings.
+    private func checkDoorways(position: SIMD3<Float>, timestamp: TimeInterval, trackingIsNormal: Bool) {
+        // A guessed phone height can reject real doors in a corridor whose floor RoomPlan
+        // missed, so use the floor ARKit measured near the mapper.
+        guard let floorY = rawCapture.measuredFloorElevation(near: position) else {
+            roomTransitions.suspend()
+            return
+        }
+        guard roomTransitions.update(portals: livePortals, position: position, floorY: floorY,
+                                     timestamp: timestamp, trackingIsNormal: trackingIsNormal) != nil else { return }
+        Log.scan.notice("walked out through a doorway; saving the room and starting the next")
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        endSection(thenFinish: false)
     }
 
     private func updateInstruction(_ instruction: RoomCaptureSession.Instruction) {
@@ -858,6 +900,8 @@ final class ScanController: ObservableObject {
         guard isActive, phase == .scanning || phase == .processing, sectionTask == nil else { return }
         previewMonitor?.invalidate()
         previewMonitor = nil
+        roomTransitions.suspend()
+        livePortals = []
         captureView?.clearRoom()
         let endedUnexpectedly = phase == .scanning
         if endedUnexpectedly {

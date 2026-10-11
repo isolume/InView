@@ -120,7 +120,9 @@ struct ScanView: View {
                     Spacer()
                     switch controller.phase {
                     case .processing:
-                        StatusPill(text: "Hold here while the room is saved…", isWorking: true)
+                        StatusPill(text: controller.isSavingRoomLeft ? "Room saved. Starting the next space…"
+                                                                     : "Hold here while the room is saved…",
+                                   isWorking: true)
                             .glassEffectID("status", in: glass)
                     case .interrupted:
                         if controller.isChangingFloors { floorTransitionPanel }

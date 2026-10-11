@@ -107,6 +107,7 @@ final class RawScanCapture {
     private var lastObstacleTimestamp: TimeInterval?
     private let obstacleInterval: TimeInterval = 1.5
     private var walkRecorder = ScanWalkTraceRecorder()
+    private var observesFloorOnly = false
     var floorY: Float?
     var hasObservedFloor: Bool { observedSurfaces.snapshot().contains { $0.kind == .floor } }
     /// Lightweight live tracing values; never constructs a raw/depth archive for the UI.
@@ -163,6 +164,7 @@ final class RawScanCapture {
     }
 
     func resume() {
+        observesFloorOnly = false
         guard timer == nil, session != nil else { return }
         if let session { trackRecorder.start(session: session) }
         contextTracker.start()
@@ -182,6 +184,14 @@ final class RawScanCapture {
         worker?.cancel()
         // Keep the worker slot occupied until it releases its immutable snapshot. A quick
         // pause/resume cannot queue another allocation behind a worker still finishing.
+    }
+
+    /// Keep measured floor and the walk going while the room just left is saved, without
+    /// depth work competing with RoomBuilder.
+    func observeFloorDuringHandoff() {
+        observesFloorOnly = true
+        generation += 1
+        worker?.cancel()
     }
 
     func measuredFloorElevation(near position: SIMD3<Float>) -> Float? {
@@ -273,6 +283,7 @@ final class RawScanCapture {
                             trackingIsNormal: normal, frameIsFresh: fresh)
         guard normal, fresh else { return }
         observedSurfaces.update(frame: frame, floorY: floorY)
+        guard !observesFloorOnly else { return }
         let measuredFloor = measuredFloorElevation(near: position)
         let keepArchive = retainsDepthKeyframes ? shouldKeepDepth(frame) : frames.isEmpty
         let measureObstacles = measuredFloor != nil
