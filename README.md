@@ -76,11 +76,22 @@ cargo run --locked --manifest-path backend/Cargo.toml
 ```
 
 Enter `http://127.0.0.1:3000` in **Scanning → Find places**. The default loopback
-bind allows development without a processing token. Remote binds require
-`INVIEW_API_TOKEN`; put an HTTPS reverse proxy in front and enter its HTTPS
-address and access token in the app. Authenticated clients reject remote plain
-HTTP. The processing token is stored in the phone's Keychain, separately from
-account sessions.
+bind allows development without a processing token.
+
+To run the server on the Mac for a real phone on the same Wi-Fi:
+
+```sh
+backend/run-local.sh
+```
+
+It binds every interface with the token from `Config/Secrets.xcconfig`
+(`INVIEW_BACKEND_TOKEN`) and prints the address to put in `INVIEW_LOCAL_BACKEND_URL`
+there. Rebuild once; the app then carries both servers. `INVIEW_USE_LOCAL_BACKEND = YES`
+makes the Mac the default, and **Scanning → Use the Mac server** switches either way
+on the phone without a rebuild. Tokens travel over plain HTTP only to private-network
+addresses (10/8, 172.16/12, 192.168/16, `.local`); any other server needs HTTPS, as the
+hosted deployment provides. The processing token is stored in the phone's Keychain,
+separately from account sessions.
 
 The executable persists original scans, analyses and graphs in `INVIEW_SCAN_DIR`
 (default `data/scans`), streams in `INVIEW_STREAM_DIR` (default `data/streams`),
