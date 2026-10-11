@@ -1,0 +1,233 @@
+{
+  "format": "glTF 2.0 binary",
+  "passed": true,
+  "errors": [],
+  "checks": [
+    "GLB header/chunk/buffer boundaries",
+    "Accessor byte ranges, strides, alignment, finite values and declared min/max",
+    "Index bounds and vertex attribute counts",
+    "Unit normals, tolerance 0.0001",
+    "No degenerate triangles, doubled local-space area threshold 1e-12",
+    "Scene graph references and world transforms",
+    "Per-object floor, zone and estimated_from_video extras",
+    "Standalone floor geometry and transforms exactly match combined export",
+    "Native package mesh counts and source triangle counts/world bounds",
+    "Source hashes unchanged during each validation"
+  ],
+  "files": [
+    {
+      "file": "building.glb",
+      "sha256": "1d407e35523d87be04fc05c96f033dffdda9a24b70b7ed8306c24d647ccf864e",
+      "bytes": 5291308,
+      "modified_at_utc": "2026-10-10T22:20:21.682809+00:00",
+      "passed": true,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "scenes": 1,
+        "nodes": 986,
+        "meshes": 688,
+        "materials": 22,
+        "buffers": 1,
+        "bufferViews": 2046,
+        "accessors": 2046,
+        "textures": 0,
+        "images": 0,
+        "numeric_components_checked": 1175142,
+        "mesh_primitives": 688,
+        "unique_mesh_vertices": 149220,
+        "indices_checked": 248694,
+        "unique_mesh_triangles": 82898,
+        "mesh_nodes": 986,
+        "instanced_triangles": 206134,
+        "scene_nodes_reached": 986,
+        "normals_checked": 149220,
+        "degenerate_triangles": 0
+      },
+      "normal_length_range": [
+        0.9999999149940798,
+        1.0000001404979417
+      ],
+      "minimum_triangle_area_local_m2": 6.053383941139389e-08,
+      "bounds_y_up_m": {
+        "min": [
+          -42.09900022454957,
+          -0.23999999463558197,
+          -10.899000190198421
+        ],
+        "max": [
+          9.212500303983688,
+          5.6000001430511475,
+          16.199000380933285
+        ],
+        "dimensions": [
+          51.31150052853326,
+          5.840000137686729,
+          27.098000571131706
+        ]
+      },
+      "mesh_nodes_by_floor": {
+        "2": 585,
+        "3": 401
+      },
+      "zones": {
+        "Lounge suite": 198,
+        "Original atrium balcony": 94,
+        "Main stair \u00b7 lower flight": 31,
+        "Seating concourse": 68,
+        "Windowed desk area": 68,
+        "Interior gallery corridor": 77,
+        "Restroom passage": 49,
+        "Lift and glazed stair landing": 49,
+        "Main stair \u00b7 upper flight": 44,
+        "Window-side lounge": 168,
+        "Mural corridor": 83,
+        "Restroom and gallery passage": 57
+      }
+    },
+    {
+      "file": "floor-2.glb",
+      "sha256": "ed1d938f1c634000d93dd1674c223846e91aeb2801d83f07c133adca102d0e0d",
+      "bytes": 3566020,
+      "modified_at_utc": "2026-10-10T22:20:22.922535+00:00",
+      "passed": true,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "scenes": 1,
+        "nodes": 585,
+        "meshes": 446,
+        "materials": 21,
+        "buffers": 1,
+        "bufferViews": 1316,
+        "accessors": 1316,
+        "textures": 0,
+        "images": 0,
+        "numeric_components_checked": 809958,
+        "mesh_primitives": 446,
+        "unique_mesh_vertices": 103734,
+        "indices_checked": 178710,
+        "unique_mesh_triangles": 59570,
+        "mesh_nodes": 585,
+        "instanced_triangles": 115582,
+        "scene_nodes_reached": 585,
+        "normals_checked": 103734,
+        "degenerate_triangles": 0
+      },
+      "normal_length_range": [
+        0.9999999149940798,
+        1.0000001404979417
+      ],
+      "minimum_triangle_area_local_m2": 6.053383941139389e-08,
+      "bounds_y_up_m": {
+        "min": [
+          -42.09900022454957,
+          -0.23999999463558197,
+          -10.899000190198421
+        ],
+        "max": [
+          9.212500303983688,
+          2.9105951792633373,
+          12.298999808728695
+        ],
+        "dimensions": [
+          51.31150052853326,
+          3.1505951738989193,
+          23.197999998927116
+        ]
+      },
+      "mesh_nodes_by_floor": {
+        "2": 585
+      },
+      "zones": {
+        "Lounge suite": 198,
+        "Original atrium balcony": 94,
+        "Main stair \u00b7 lower flight": 31,
+        "Seating concourse": 68,
+        "Windowed desk area": 68,
+        "Interior gallery corridor": 77,
+        "Restroom passage": 49
+      }
+    },
+    {
+      "file": "floor-3.glb",
+      "sha256": "4744510a948a209cba3d3bab6c535d8dfff5ef4e913a51e76709402f941d2c45",
+      "bytes": 2317524,
+      "modified_at_utc": "2026-10-10T22:20:23.481854+00:00",
+      "passed": true,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "scenes": 1,
+        "nodes": 401,
+        "meshes": 274,
+        "materials": 18,
+        "buffers": 1,
+        "bufferViews": 815,
+        "accessors": 815,
+        "textures": 0,
+        "images": 0,
+        "numeric_components_checked": 518082,
+        "mesh_primitives": 274,
+        "unique_mesh_vertices": 67396,
+        "indices_checked": 104022,
+        "unique_mesh_triangles": 34674,
+        "mesh_nodes": 401,
+        "instanced_triangles": 90552,
+        "scene_nodes_reached": 401,
+        "normals_checked": 67396,
+        "degenerate_triangles": 0
+      },
+      "normal_length_range": [
+        0.9999999149940798,
+        1.0000001404979417
+      ],
+      "minimum_triangle_area_local_m2": 1.589277128306506e-07,
+      "bounds_y_up_m": {
+        "min": [
+          -32.09900083252343,
+          1.7632535145825592,
+          -0.22750030584662895
+        ],
+        "max": [
+          8.6990007249269,
+          5.6000001430511475,
+          16.199000380933285
+        ],
+        "dimensions": [
+          40.798001557450334,
+          3.836746628468588,
+          16.426500686779914
+        ]
+      },
+      "mesh_nodes_by_floor": {
+        "3": 401
+      },
+      "zones": {
+        "Lift and glazed stair landing": 49,
+        "Main stair \u00b7 upper flight": 44,
+        "Window-side lounge": 168,
+        "Mural corridor": 83,
+        "Restroom and gallery passage": 57
+      }
+    }
+  ],
+  "alignment": {
+    "passed": true,
+    "errors": [],
+    "combined_is_union_of_floor_exports": true,
+    "objects_compared": 986,
+    "maximum_transform_component_difference": 0,
+    "floor_elevations_m": {
+      "2": 0,
+      "3": 4.0
+    },
+    "elevation_source": "layout.json",
+    "export_coordinates": "shared world coordinates; no display separation offset"
+  },
+  "native_source_comparison": {
+    "passed": true,
+    "errors": [],
+    "maximum_bounds_difference_m": 3.8093328313948405e-07
+  }
+}

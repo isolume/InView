@@ -9,11 +9,32 @@ public struct Route: Sendable {
     public let length: Float
     /// Distance the route keeps from obstacles. Below the ideal when the space is cramped.
     public let clearance: Float
+    public let preference: RoutePreference
+
+    /// A distance-based estimate using the same speed for both preferences.
+    /// Building transitions and waiting times are handled by the building route.
+    public var estimatedSeconds: TimeInterval { Double(length) / preference.walkingSpeedMetersPerSecond }
 
     let level: Int
     let goalIndex: Int
+    let requiredClearance: Float?
+    let requiresMeasuredRampSlope: Bool
 
     public var isNarrow: Bool { clearance < RoutePlanner.clearances[0] }
+
+    init(destination: AccessPoint, waypoints: [SIMD2<Float>], length: Float, clearance: Float,
+         level: Int, goalIndex: Int, preference: RoutePreference = .stepFree,
+         requiredClearance: Float? = nil, requiresMeasuredRampSlope: Bool = false) {
+        self.destination = destination
+        self.waypoints = waypoints
+        self.length = length
+        self.clearance = clearance
+        self.level = level
+        self.goalIndex = goalIndex
+        self.preference = preference
+        self.requiredClearance = requiredClearance
+        self.requiresMeasuredRampSlope = requiresMeasuredRampSlope
+    }
 }
 
 /// What changes while the user is moving: outages the crew reports and obstacles the camera sees.
@@ -22,17 +43,27 @@ public struct RouteConditions: Sendable {
     public var unavailable: Set<UUID>
     /// Floor positions of things blocking the way that aren't on the saved map.
     public var obstacles: [SIMD2<Float>]
+    /// Minimum distance from obstacles. When set, routing never tries a tighter clearance.
+    /// Leave unset for audits that need to identify cramped passages.
+    public var minimumClearance: Float?
+    /// Reject ramps without a measured, finite incline. Width and incline are separate requirements.
+    public var requiresMeasuredRampSlope: Bool
+    public var preference: RoutePreference
 
-    public init(unavailable: Set<UUID> = [], obstacles: [SIMD2<Float>] = []) {
+    public init(unavailable: Set<UUID> = [], obstacles: [SIMD2<Float>] = [], minimumClearance: Float? = nil,
+                requiresMeasuredRampSlope: Bool = false, preference: RoutePreference = .stepFree) {
         self.unavailable = unavailable
         self.obstacles = obstacles
+        self.minimumClearance = minimumClearance
+        self.requiresMeasuredRampSlope = requiresMeasuredRampSlope
+        self.preference = preference
     }
 }
 
-/// Finds wheelchair routes over a saved map. Immutable, so it is safe to use off the main thread.
+/// Finds routes over measured floor. Immutable, so it is safe to use off the main thread.
 public final class RoutePlanner: Sendable {
-    /// Clearances to try, widest first. 0.45 m keeps 90 cm passages (ADA 36 in); the tighter
-    /// levels keep navigation working in cramped spaces like a hackathon floor.
+    /// Clearances to try, widest first. 0.45 m keeps 90 cm passages; tighter levels can
+    /// identify cramped passages during audits. Navigation can require a minimum clearance.
     public static let clearances: [Float] = [0.45, 0.3, 0.15]
     /// How far the user may stand from free floor (e.g. pressed against a table) and still get a route.
     static let startSearchRadius: Float = 1.5
@@ -49,21 +80,21 @@ public final class RoutePlanner: Sendable {
         grids = Self.clearances.map { OccupancyGrid(map: map, clearance: $0) }
     }
 
-    /// The route to whichever usable access point is shortest to roll to, which is not always the
-    /// closest in a straight line. Too-steep ramps are only considered when nothing else is reachable.
+    /// The route to a usable access point. Step-free prefers wider passages;
+    /// Fastest compares distance across every permitted clearance.
     public func nearestRoute(from start: SIMD2<Float>, conditions: RouteConditions = RouteConditions()) -> Route? {
         let available = map.points.filter {
-            ($0.kind == .elevator || $0.kind == .ramp) && !conditions.unavailable.contains($0.id)
+            ($0.kind == .elevator || $0.kind == .ramp) && isEligible($0, conditions: conditions)
         }
         let grids = grids(avoiding: conditions.obstacles)
-        return bestRoute(from: start, among: available.filter { !$0.isTooSteep }, grids: grids)
-            ?? bestRoute(from: start, among: available.filter(\.isTooSteep), grids: grids)
+        return bestRoute(from: start, among: available, grids: grids, conditions: conditions)
     }
 
     /// Routes to a selected point, including a named room, while respecting live conditions.
     public func route(from start: SIMD2<Float>, to destination: AccessPoint, conditions: RouteConditions = RouteConditions()) -> Route? {
-        guard !conditions.unavailable.contains(destination.id) else { return nil }
-        return bestRoute(from: start, among: [destination], grids: grids(avoiding: conditions.obstacles))
+        guard isEligible(destination, conditions: conditions) else { return nil }
+        return bestRoute(from: start, among: [destination], grids: grids(avoiding: conditions.obstacles),
+                         conditions: conditions)
     }
 
     /// The widest usable clearance to each point, in the supplied order. Unlike creating
@@ -90,49 +121,90 @@ public final class RoutePlanner: Sendable {
         return clearances
     }
 
-    /// Recomputes a route from the user's new position. Keeps the destination when it is still usable
-    /// and reachable; otherwise picks the next best one.
+    /// Recomputes a route from the user's new position, preserving its destination,
+    /// preference and requirements. Choose a new route to change preference.
     public func reroute(_ route: Route, from start: SIMD2<Float>, conditions: RouteConditions = RouteConditions()) -> Route? {
-        guard !conditions.unavailable.contains(route.destination.id) else {
-            return nearestRoute(from: start, conditions: conditions)
-        }
+        var conditions = conditions
+        conditions.preference = route.preference
+        conditions.requiresMeasuredRampSlope = conditions.requiresMeasuredRampSlope || route.requiresMeasuredRampSlope
+        guard isEligible(route.destination, conditions: conditions),
+              conditions.minimumClearance?.isFinite != false else { return nil }
         let grids = grids(avoiding: conditions.obstacles)
+        if route.preference == .fastest {
+            // A previous path happening to be wide must not prevent Fastest from
+            // considering a shorter walking passage when conditions change.
+            conditions.minimumClearance = max(0.3, route.requiredClearance ?? 0.3,
+                                              conditions.minimumClearance ?? 0.3)
+            return bestRoute(from: start, among: [route.destination], grids: grids, conditions: conditions)
+        }
+        let minimumClearance = max(route.clearance, conditions.minimumClearance ?? route.clearance)
+        conditions.minimumClearance = minimumClearance
         let grid = grids[route.level]
-        if let startIndex = grid.nearestFreeIndex(to: start, within: Self.startSearchRadius), !grid.isBlocked(route.goalIndex) {
+        if grid.clearance >= minimumClearance,
+           let startIndex = grid.nearestFreeIndex(to: start, within: Self.startSearchRadius), !grid.isBlocked(route.goalIndex) {
             let result = grid.search(from: startIndex, to: route.goalIndex)
             if result.cost[route.goalIndex].isFinite {
-                return makeRoute(on: grid, level: route.level, parents: result.parent, goal: route.goalIndex, destination: route.destination)
+                return makeRoute(on: grid, level: route.level, parents: result.parent, goal: route.goalIndex,
+                                 destination: route.destination, conditions: conditions)
             }
         }
-        return bestRoute(from: start, among: [route.destination], grids: grids)
-            ?? nearestRoute(from: start, conditions: conditions)
+        return bestRoute(from: start, among: [route.destination], grids: grids, conditions: conditions)
     }
 
     private func grids(avoiding obstacles: [SIMD2<Float>]) -> [OccupancyGrid] {
         obstacles.isEmpty ? grids : grids.map { $0.blocking(obstacles, radius: Self.obstacleRadius) }
     }
 
-    private func bestRoute(from start: SIMD2<Float>, among points: [AccessPoint], grids: [OccupancyGrid]) -> Route? {
-        guard !points.isEmpty else { return nil }
+    private func isEligible(_ point: AccessPoint, conditions: RouteConditions) -> Bool {
+        guard !conditions.unavailable.contains(point.id) else { return false }
+        if conditions.preference == .stepFree, point.isTooSteep { return false }
+        if point.kind == .ramp, conditions.requiresMeasuredRampSlope || conditions.preference == .fastest {
+            guard let slope = point.slopeDegrees, slope.isFinite, slope >= 0, slope < 90 else { return false }
+        }
+        return true
+    }
+
+    private func bestRoute(from start: SIMD2<Float>, among points: [AccessPoint], grids: [OccupancyGrid],
+                           conditions: RouteConditions) -> Route? {
+        guard !points.isEmpty, conditions.minimumClearance?.isFinite != false else { return nil }
+        var conditions = conditions
+        if conditions.preference == .fastest {
+            // Fastest is a walking route, never the very tight audit-only grid.
+            conditions.minimumClearance = max(0.3, conditions.minimumClearance ?? 0.3)
+        }
+        var fastest: Route?
         for (level, grid) in grids.enumerated() {
+            if let minimumClearance = conditions.minimumClearance, !(grid.clearance >= minimumClearance) { continue }
             guard let startIndex = grid.nearestFreeIndex(to: start, within: Self.startSearchRadius) else { continue }
             let result = grid.search(from: startIndex)
             var best: (point: AccessPoint, goal: Int, cost: Float)?
             for point in points {
                 guard let goal = grid.closestIndex(to: point.floorPoint, within: Self.goalSearchRadius, where: { result.cost[$0].isFinite }) else { continue }
+                if conditions.preference == .fastest {
+                    let candidate = makeRoute(on: grid, level: level, parents: result.parent, goal: goal,
+                                              destination: point, conditions: conditions)
+                    if fastest == nil || candidate.length < fastest!.length {
+                        fastest = candidate
+                    }
+                    continue
+                }
                 if best == nil || result.cost[goal] < best!.cost {
                     best = (point, goal, result.cost[goal])
                 }
             }
             if let best {
-                return makeRoute(on: grid, level: level, parents: result.parent, goal: best.goal, destination: best.point)
+                return makeRoute(on: grid, level: level, parents: result.parent, goal: best.goal,
+                                 destination: best.point, conditions: conditions)
             }
         }
-        return nil
+        return fastest
     }
 
-    private func makeRoute(on grid: OccupancyGrid, level: Int, parents: [Int32], goal: Int, destination: AccessPoint) -> Route {
+    private func makeRoute(on grid: OccupancyGrid, level: Int, parents: [Int32], goal: Int,
+                           destination: AccessPoint, conditions: RouteConditions) -> Route {
         let waypoints = grid.smooth(grid.path(to: goal, parents: parents).map(grid.center(of:)))
-        return Route(destination: destination, waypoints: waypoints, length: Polyline.length(of: waypoints), clearance: grid.clearance, level: level, goalIndex: goal)
+        return Route(destination: destination, waypoints: waypoints, length: Polyline.length(of: waypoints),
+                     clearance: grid.clearance, level: level, goalIndex: goal, preference: conditions.preference,
+                     requiredClearance: conditions.minimumClearance, requiresMeasuredRampSlope: conditions.requiresMeasuredRampSlope)
     }
 }

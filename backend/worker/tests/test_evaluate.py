@@ -17,17 +17,17 @@ def perfect_nav_graph(truth: dict) -> dict:
     """The truth waypoint graph in backend Graph v1 shape (what an ideal nav_graph stage emits)."""
     nodes = [{"id": n["id"], "map_id": "m", "floor_id": "f", "x": n["position_m"][0], "y": n["position_m"][1],
               "z": n["position_m"][2]} for n in truth["graph"]["nodes"]]
+    points = {n["id"]: {k: n[k] for k in ("x", "y", "z")} for n in nodes}
     edges = []
     for i, e in enumerate(truth["graph"]["edges"]):
         for a, b, suffix in ((e["from"], e["to"], "f"), (e["to"], e["from"], "r")):
             edge = {"id": f"e{i}{suffix}", "from": a, "to": b, "step_free": not e.get("stairs", False),
-                    "availability": "open", "segment": "surface"}
-            if "clear_width_m" in e:
-                edge["minimum_clear_width_m"] = e["clear_width_m"]
-            if "slope" in e:
-                edge["maximum_slope"] = e["slope"]
+                    "availability": "available", "minimum_clear_width_m": e.get("clear_width_m", 1.8),
+                    "maximum_slope": e.get("slope", 0.0),
+                    "segment": {"type": "surface", "map_id": "m", "floor_id": "f",
+                                "path_points": [points[a], points[b]]}}
             edges.append(edge)
-    return {"id": "x-nav", "nodes": nodes, "edges": edges}
+    return {"schema_version": 1, "id": "x-nav", "nodes": nodes, "edges": edges}
 
 
 def test_text_metrics():
@@ -97,8 +97,8 @@ def test_nav_graph_and_routes_scoring(truth):
     assert scored["ambulatory_reachability_agreement"] == scored["wheelchair_reachability_agreement"] == 1.0
     assert scored["ambulatory_route_length_ratio"] == pytest.approx(1.0, abs=1e-3)
     # A graph that ignores door widths and stairs disagrees on wheelchair reachability.
-    careless = {**graph, "edges": [{k: v for k, v in e.items() if k not in ("minimum_clear_width_m", "maximum_slope")}
-                                   | {"step_free": True} for e in graph["edges"]]}
+    careless = {**graph, "edges": [dict(e, step_free=True, minimum_clear_width_m=2.0, maximum_slope=0.0)
+                                   for e in graph["edges"]]}
     wheel = [r for r in truth["routes"] if r["profile"] == "wheelchair"]
     if not all(r["reachable"] for r in wheel):
         assert evaluate.score_nav_graph(careless, truth)["wheelchair_reachability_agreement"] < 1.0
@@ -143,3 +143,37 @@ def test_cli_evaluate_writes_report(tmp_path, capsys):
     assert report["scenarios"][0]["seed"] == 4 and "doors" in report["aggregate"]
     assert "doors.recall" in capsys.readouterr().out
     assert not math.isnan(report["aggregate"]["doors"]["recall"])
+
+
+def one_way_graph(**properties):
+    path = [{"x": x, "y": 0.0, "z": z} for x, z in [(0, 0), (0, 1), (1, 1), (1, 0)]]
+    edge = {"id": "e", "from": "a", "to": "b", "availability": "available", "step_free": True,
+            "minimum_clear_width_m": 1.0, "maximum_slope": 0.0,
+            "segment": {"type": "surface", "map_id": "m", "floor_id": "f", "path_points": path}}
+    edge.update(properties)
+    return {"schema_version": 1, "id": "one-way", "nodes": [{"id": key, "map_id": "m", "floor_id": "f", **point}
+                                        for key, point in (("a", path[0]), ("b", path[-1]))], "edges": [edge]}
+
+
+@pytest.mark.parametrize("change", [{"step_free": None}, {"availability": "closed"},
+                                    {"availability": "unknown"}, {"minimum_clear_width_m": None},
+                                    {"minimum_clear_width_m": 0.85}, {"maximum_slope": None}])
+def test_graph_scoring_uses_the_routing_profiles_hard_requirements(change):
+    _, adjacency = evaluate._graph(one_way_graph(**change), "wheelchair")
+    assert adjacency == {}
+
+
+def test_graph_scores_directed_reachability_and_actual_surface_path_length():
+    graph = one_way_graph()
+    _, adjacency = evaluate._graph(graph, "wheelchair")
+    assert adjacency == {"a": [("b", 3.0)]}
+    truth = {"spaces": [{"id": key, "kind": "room", "center_m": [x, 0, 0],
+                          "polygon_xz_m": [[x - 0.2, -0.2], [x + 0.2, -0.2], [x + 0.2, 0.2], [x - 0.2, 0.2]]}
+                         for key, x in (("a", 0), ("b", 1))],
+             "graph": {"room_adjacency": [["a", "b"]]},
+             "routes": [{"profile": profile, "from_space": "a", "to_space": "b", "reachable": True, "length_m": 3}
+                        for profile in ("ambulatory", "wheelchair")]}
+    result = evaluate.score_nav_graph(graph, truth)
+    for profile in ("ambulatory", "wheelchair"):
+        assert result[f"{profile}_reachability_agreement"] == 0.5
+        assert result[f"{profile}_route_length_ratio"] == 1.0

@@ -31,6 +31,10 @@ import cv2
 import numpy as np
 
 from .contracts import RESERVED_KEYS, Thresholds
+from .guidance.graph import NavGraph, eligible
+from .guidance.planner import extract, shortest_tree
+from .guidance.profiles import DEFAULT_PROFILES
+from .navgraph.validate import validate_graph
 from .synthetic import building, offline
 
 REPORT_SCHEMA_VERSION = 1
@@ -412,29 +416,18 @@ def score_hazards(product: list, truth: dict) -> dict:
     }
 
 
-def _edge_usable(edge: dict, nodes: dict, profile: str) -> bool:
-    if profile != "wheelchair":
-        return True
-    meta = edge.get("metadata") or {}
-    if edge.get("step_free") is False or meta.get("stairs"):
-        return False
-    width = edge.get("minimum_clear_width_m")
-    if isinstance(width, (int, float)) and width < Thresholds.DOOR_MIN_CLEAR_M:
-        return False
-    slope = edge.get("maximum_slope")
-    return not (isinstance(slope, (int, float)) and slope > Thresholds.RAMP_MAX_SLOPE + 1e-6)
+ROUTING_PROFILES = {p.name: p for p in DEFAULT_PROFILES}
 
 
 def _graph(product: dict, profile: str) -> tuple[dict, dict]:
-    nodes = {n["id"]: np.array([n.get("x", 0.0), n.get("y", 0.0), n.get("z", 0.0)], float)
-             for n in product.get("nodes", []) if "id" in n}
+    validate_graph(product)
+    graph = NavGraph.from_json(product)
+    nodes = {n.id: np.asarray(n.position) for n in graph.nodes}
     adjacency: dict[str, list[tuple[str, float]]] = {}
-    for e in product.get("edges", []):
-        a, b = e.get("from"), e.get("to")
-        if a in nodes and b in nodes and _edge_usable(e, nodes, profile):
-            length = float(np.linalg.norm(nodes[a] - nodes[b]))
-            adjacency.setdefault(a, []).append((b, length))
-            adjacency.setdefault(b, []).append((a, length))  # Reachability is scored undirected.
+    for edge in graph.edges:
+        if eligible(edge, ROUTING_PROFILES[profile].requirements):
+            a, b = graph.nodes[edge.source].id, graph.nodes[edge.target].id
+            adjacency.setdefault(a, []).append((b, edge.length_m))
     return nodes, adjacency
 
 
@@ -478,20 +471,23 @@ def score_nav_graph(product: dict, truth: dict) -> dict:
         "adjacency_f1": round(2 * precision * recall / (precision + recall), 4) if precision and recall else 0.0,
     }
     targets = sorted(s for s in representative if spaces[s]["kind"] != "corridor")
+    graph = NavGraph.from_json(product)
     for profile in ("ambulatory", "wheelchair"):
-        _, profile_adjacency = _graph(product, profile)
         agree, total, ratios = 0, 0, []
-        for i, a in enumerate(targets):
-            distance = _dijkstra(profile_adjacency, representative[a])
-            for b in targets[i + 1:]:
+        for a in targets:
+            tree = shortest_tree(graph, ROUTING_PROFILES[profile], graph.index[representative[a]])
+            for b in targets:
+                if a == b:
+                    continue
                 route = _truth_route(truth, a, b, profile)
                 if route is None:
                     continue
-                reachable = representative[b] in distance
+                path = extract(graph, tree, graph.index[representative[b]])
+                reachable = path is not None
                 total += 1
                 agree += reachable == route["reachable"]
                 if reachable and route["reachable"] and route["length_m"]:
-                    ratios.append(distance[representative[b]] / route["length_m"])
+                    ratios.append(path.length_m / route["length_m"])
         result[f"{profile}_reachability_agreement"] = ratio(agree, total)
         result[f"{profile}_route_length_ratio"] = median(ratios)
     return result

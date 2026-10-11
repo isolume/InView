@@ -123,12 +123,10 @@ async fn build_scene(
     .map_err(ApiError::invalid)
 }
 
-pub async fn preview(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<Html<&'static str>, ApiError> {
-    state.scans.get(&id).await.ok_or_else(missing)?;
-    Ok(Html(include_str!("../preview.html")))
+pub async fn preview() -> Html<&'static str> {
+    // Like Studio, the public shell reveals no scan existence or source data.
+    // Its requests for the actual capture are protected by processing authorization.
+    Html(include_str!("../preview.html"))
 }
 
 fn insert_error(error: ScanInsertError) -> ApiError {

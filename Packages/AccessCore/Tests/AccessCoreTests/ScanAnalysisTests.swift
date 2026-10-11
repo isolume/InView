@@ -146,12 +146,32 @@ struct ScanAnalysisTests {
         #expect(analysis.places[0].accessPoint(scanID: "scan-2")?.id != points[0].id)
         #expect(Set(points.map(\.id)).count == points.count)
         let onFloor = analysis.places[2].accessPoint(scanID: "scan-1", floorY: -1.3)
-        #expect(onFloor?.position == SIMD3(8.5, -1.3, 3))
+        #expect(onFloor?.position == SIMD3(8.5, 1.2, 3))
         // Version 5, RFC 4122 variant.
         let uuid = points[0].id.uuidString
         #expect(Array(uuid)[14] == "5")
         #expect("89AB".contains(Array(uuid)[19]))
         #expect(AccessPoint.detectedID(scanID: "a", placeID: "b") == AccessPoint.detectedID(scanID: "a", placeID: "b"))
+    }
+
+    @Test func placeReviewPreservesPhoneIdentityAndRejectsAnotherFloor() throws {
+        let originalID = UUID()
+        let data = Data("""
+        {"scan_id":"analysis-request", "places":[{
+          "id":"phone-derived", "category":"ramp", "source_access_point_id":"\(originalID)",
+          "source":"manual", "position_m":[1,0.3,2], "floor_id":"floor-1", "confidence":1,
+          "slope_degrees":8,"requires_assistance":true
+        }]}
+        """.utf8)
+        let place = try #require(JSONDecoder().decode(ScanAnalysis.self, from: data).places.first)
+        let point = try #require(place.accessPoint(scanID: "original", floorY: 0, expectedFloorID: "floor-1"))
+        #expect(point.id == originalID)
+        #expect(point.source == .manual && point.requiresAssistance)
+        #expect(point.slopeDegrees == 8 && point.position.y == 0.3)
+        #expect(place.accessPoint(scanID: "original", floorY: 0, expectedFloorID: "floor-2") == nil)
+        #expect(place.accessPoint(scanID: "original", floorY: 4, expectedFloorID: "floor-1") == nil)
+        let noPosition = ScanAnalysis.Place(id: "missing", category: .room, position: nil)
+        #expect(noPosition.accessPoint(scanID: "original", floorY: 0) == nil)
     }
 
     @Test func mergeSkipsKnownIDsNearbySameKindAndNeverTouchesManualPoints() {

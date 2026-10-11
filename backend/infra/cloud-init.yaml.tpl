@@ -89,6 +89,9 @@ runcmd:
   - groupadd --system caddy
   - useradd --system --gid caddy --create-home --home-dir /var/lib/caddy --shell /usr/sbin/nologin caddy
   - mkdir -p /etc/caddy
+  # Vultr's Ubuntu image ships ufw enabled with only SSH open; the Vultr firewall group is not enough.
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
   - /usr/local/sbin/inview-caddyfile
   - systemctl daemon-reload
   - systemctl enable --now caddy

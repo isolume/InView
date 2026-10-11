@@ -1,152 +1,185 @@
 import AccessCore
 import SwiftUI
 
-/// Reopening the app never sends saved camera samples automatically. A volunteer can
-/// explicitly resume a retained stream, using its original server or a newly selected one.
+/// Saved captures are inspected locally. Opening this screen never resumes an upload.
 struct SavedStreamUploadsView: View {
     private struct SavedScan: Identifiable, Sendable {
-        var manifest: StreamManifest
+        var id: String
         var root: URL
         var date: Date
-        var id: String { manifest.id }
+        var hasScene: Bool
+        var hasStream: Bool
+        var originalFiles: [URL]
     }
+
+    private struct SavedPreview: Identifiable, Sendable {
+        var id: String
+        var scene: ProcessedScene
+        var hasStream: Bool
+    }
+
     @State private var scans: [SavedScan] = []
     @State private var busyID: String?
-    @State private var status: [String: String] = [:]
-    @State private var preview: StreamResult?
+    @State private var preview: SavedPreview?
     @State private var evidenceScanID: String?
-    @State private var task: Task<Void, Never>?
+    @State private var previewTask: Task<Void, Never>?
     @State private var listingError: String?
-    @State private var activeQueue: StreamingCaptureQueue?
-    @State private var uploadProgress: StreamingCaptureStatus?
-    @State private var processingStage: ScanController.SceneStage = .preparing
+    @State private var previewError: String?
+    @State private var isLoading = true
 
     var body: some View {
         List {
-            if scans.isEmpty {
-                Text(listingError ?? "No saved continuous scans.").foregroundStyle(.secondary)
+            if isLoading {
+                ProgressView("Loading scans…")
+            } else if scans.isEmpty {
+                Text(listingError ?? "No saved scans yet.").foregroundStyle(.secondary)
             }
-            ForEach(scans) { scan in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(scan.date.formatted(date: .abbreviated, time: .shortened)).font(.headline)
-                    if let message = status[scan.id] { Text(message).font(.footnote).foregroundStyle(.secondary) }
-                    Button("View scan data") { evidenceScanID = scan.id }
-                    Button {
-                        resume(scan)
-                    } label: {
-                        if busyID == scan.id { ProgressView(busyLabel) }
-                        else { Text("Resume upload and view model") }
-                    }
-                    .disabled(busyID != nil)
-                    if AppConfig.backendURL != nil {
-                        Button("Send to selected server") { resume(scan, moveToSelectedServer: true) }
-                            .disabled(busyID != nil)
-                    }
-                    if busyID == scan.id, processingStage == .uploading,
-                       let uploadProgress, uploadProgress.captured > 0 {
-                        ProgressView(value: min(1, Double(uploadProgress.uploaded) / Double(uploadProgress.captured)))
+            if scans.contains(where: { !$0.hasStream }) {
+                Section("Scans") {
+                    ForEach(scans.filter { !$0.hasStream }) { scan in
+                        scanRow(scan)
                     }
                 }
-                .buttonStyle(.borderless)
-                .padding(.vertical, 4)
+            }
+            if scans.contains(where: \.hasStream) {
+                Section {
+                    ForEach(scans.filter(\.hasStream)) { scan in
+                        scanRow(scan)
+                    }
+                } header: {
+                    Text("Earlier scans")
+                } footer: {
+                    Text("Saved models and original evidence stay on this device.")
+                }
             }
         }
         .navigationTitle("Saved scans")
         .task {
             do { scans = try await ScanWork.run(priority: .utility) { try Self.savedScans() } }
-            catch { listingError = error.localizedDescription }
+            catch is CancellationError { return }
+            catch { listingError = "Saved scans couldn't be opened. Please try again." }
+            isLoading = false
         }
-        .task(id: busyID) {
-            guard busyID != nil else { return }
-            while !Task.isCancelled {
-                if let activeQueue { uploadProgress = await activeQueue.snapshot() }
-                do { try await Task.sleep(for: .seconds(1)) }
-                catch { return }
-            }
-        }
-        .onDisappear { task?.cancel() }
-        .fullScreenCover(isPresented: Binding(get: { preview != nil }, set: { if !$0 { preview = nil } })) {
-            if let preview {
-                RoomMapExperience(scene: preview.scene, title: "Saved scan", onClose: { self.preview = nil },
-                                  streamEvidenceID: preview.capture.id)
-            }
+        .onDisappear { previewTask?.cancel() }
+        .fullScreenCover(item: $preview) { saved in
+            RoomMapExperience(scene: saved.scene, title: "Saved scan", onClose: { preview = nil },
+                              streamEvidenceID: saved.hasStream ? saved.id : nil)
         }
         .fullScreenCover(isPresented: Binding(get: { evidenceScanID != nil }, set: { if !$0 { evidenceScanID = nil } })) {
             if let evidenceScanID { RawLidarReviewView(scanID: evidenceScanID) }
         }
+        .alert("Couldn't open the map", isPresented: Binding(
+            get: { previewError != nil }, set: { if !$0 { previewError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(previewError ?? "Please try again.") }
     }
 
-    private var busyLabel: String {
-        switch processingStage {
-        case .preparing: return "Preparing scan…"
-        case .coloring: return "Coloring 3D model…"
-        case .uploading:
-            guard let uploadProgress else { return "Uploading scan…" }
-            if uploadProgress.pending == 0 { return "Finishing upload…" }
-            return "Uploading \(uploadProgress.uploaded) of \(uploadProgress.captured) samples…"
-        case .reconstructing: return "Building model…"
-        case .saving: return "Saving model…"
-        }
-    }
-
-    private func resume(_ scan: SavedScan, moveToSelectedServer: Bool = false) {
-        busyID = scan.id
-        status[scan.id] = nil
-        processingStage = .preparing
-        uploadProgress = nil
-        let selectedServer = AppConfig.backendURL
-        task = Task {
-            defer { busyID = nil; activeQueue = nil }
-            do {
-                let queue = try await ScanWork.run(priority: .utility) {
-                    // nil preserves the original server binding from the checkpoint.
-                    try StreamingCaptureQueue(root: scan.root, manifest: scan.manifest, backendURL: nil,
-                                              accessToken: AppConfig.backendToken)
+    private func scanRow(_ scan: SavedScan) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(scan.date.formatted(date: .abbreviated, time: .shortened))
+                .font(.headline)
+            if scan.hasScene {
+                Button { openMap(scan) } label: {
+                    if busyID == scan.id { ProgressView("Opening map…") }
+                    else { Label("View map", systemImage: "map") }
                 }
-                activeQueue = queue
-                if moveToSelectedServer, let selectedServer {
-                    try await queue.configureBackend(selectedServer)
+                .disabled(busyID != nil)
+            } else {
+                Text("Original scan saved. No finished map is available.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            if scan.hasStream {
+                Button { evidenceScanID = scan.id } label: {
+                    Label("View scan data", systemImage: "point.3.connected.trianglepath.dotted")
                 }
-                uploadProgress = await queue.snapshot()
-                processingStage = .uploading
-                do {
-                    _ = try await queue.finish()
-                } catch StreamingCaptureError.notConfigured {
-                    guard let selectedServer else { throw StreamingCaptureError.notConfigured }
-                    try await queue.configureBackend(selectedServer)
-                    _ = try await queue.finish()
+            }
+            if !scan.originalFiles.isEmpty {
+                ShareLink(items: scan.originalFiles) {
+                    Label("Export original scan", systemImage: "square.and.arrow.up")
                 }
-                processingStage = .reconstructing
-                let result = try await queue.result()
-                processingStage = .saving
-                try await ScanWork.run(priority: .utility) {
-                    try JSONEncoder().encode(result).write(to: scan.root.appending(path: "result.json"), options: .atomic)
-                }
-                status[scan.id] = "Uploaded. Model ready for review."
-                preview = result
-            } catch is CancellationError {
-                status[scan.id] = "Paused. Your scan is saved on this phone."
-            } catch {
-                status[scan.id] = error.localizedDescription
             }
         }
+        .buttonStyle(.borderless)
+        .padding(.vertical, 4)
+    }
+
+    private func openMap(_ scan: SavedScan) {
+        guard busyID == nil else { return }
+        busyID = scan.id
+        previewTask = Task {
+            defer { busyID = nil; previewTask = nil }
+            do {
+                let scene = try await ScanWork.run { try Self.loadScene(scan) }
+                try Task.checkCancellation()
+                preview = SavedPreview(id: scan.id, scene: scene, hasStream: scan.hasStream)
+            } catch is CancellationError {
+                // Closing the list cancels its local reads.
+            } catch {
+                previewError = "The saved map couldn't be read. Your original scan data is still available."
+            }
+        }
+    }
+
+    private nonisolated static func loadScene(_ scan: SavedScan) throws -> ProcessedScene {
+        try Task.checkCancellation()
+        let sceneURL = scan.root.appending(path: "scene.json")
+        if FileManager.default.fileExists(atPath: sceneURL.path) {
+            let scene = try JSONDecoder().decode(ProcessedScene.self, from: Data(contentsOf: sceneURL))
+            let captureURL = scan.root.appending(path: "capture.json")
+            let source: CaptureBundle?
+            if FileManager.default.fileExists(atPath: captureURL.path) {
+                source = try JSONDecoder().decode(CaptureBundle.self, from: Data(contentsOf: captureURL))
+                try source?.validate()
+            } else {
+                source = nil
+            }
+            try scene.validate(expectedScanID: scan.id, source: source)
+            return scene
+        }
+        let resultURL = scan.root.appending(path: "stream/result.json")
+        let result = try JSONDecoder().decode(StreamResult.self, from: Data(contentsOf: resultURL))
+        try result.validate(streamID: scan.id)
+        return result.scene
     }
 
     private nonisolated static func savedScans() throws -> [SavedScan] {
         let root = URL.documentsDirectory.appending(path: "Captures", directoryHint: .isDirectory)
-        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
-        return try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])
-            .compactMap { directory in
-                guard UUID(uuidString: directory.lastPathComponent) != nil else { return nil }
-                let stream = directory.appending(path: "stream", directoryHint: .isDirectory)
-                let manifestURL = stream.appending(path: "manifest.json")
-                guard FileManager.default.fileExists(atPath: manifestURL.path) else { return nil }
-                let manifest = try JSONDecoder().decode(StreamManifest.self, from: Data(contentsOf: manifestURL))
-                try manifest.validate()
-                guard manifest.id == directory.lastPathComponent else { return nil }
-                let date = try directory.resourceValues(forKeys: [.creationDateKey]).creationDate ?? .distantPast
-                return SavedScan(manifest: manifest, root: stream, date: date)
+        let files = FileManager.default
+        guard files.fileExists(atPath: root.path) else { return [] }
+        var scans: [SavedScan] = []
+        for directory in try files.contentsOfDirectory(at: root,
+            includingPropertiesForKeys: [.creationDateKey, .isDirectoryKey, .isSymbolicLinkKey]) {
+            try Task.checkCancellation()
+            let id = directory.lastPathComponent
+            guard UUID(uuidString: id) != nil else { continue }
+            let values = try directory.resourceValues(forKeys: [.creationDateKey, .isDirectoryKey, .isSymbolicLinkKey])
+            guard values.isDirectory == true, values.isSymbolicLink != true else { continue }
+            var originalFiles = ["roomplan.json", "roomplan-structure.json", "raw-snapshot.json", "capture.json"]
+                .map { directory.appending(path: $0) }
+                .filter { files.fileExists(atPath: $0.path) }
+            for name in ["roomplan-source", "roomplan-rooms"] {
+                let roomSources = directory.appending(path: name, directoryHint: .isDirectory)
+                if let sourceValues = try? roomSources.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                   sourceValues.isDirectory == true, sourceValues.isSymbolicLink != true,
+                   let sources = try? files.contentsOfDirectory(at: roomSources,
+                       includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]) {
+                    for source in sources.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                        try Task.checkCancellation()
+                        guard ["json", "plist"].contains(source.pathExtension.lowercased()),
+                              let sourceValues = try? source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+                              sourceValues.isRegularFile == true, sourceValues.isSymbolicLink != true else { continue }
+                        originalFiles.append(source)
+                    }
+                }
             }
-            .sorted { $0.date > $1.date }
+            let hasStream = files.fileExists(atPath: directory.appending(path: "stream/manifest.json").path)
+            let hasScene = files.fileExists(atPath: directory.appending(path: "scene.json").path)
+                || files.fileExists(atPath: directory.appending(path: "stream/result.json").path)
+            guard !originalFiles.isEmpty || hasStream || hasScene else { continue }
+            scans.append(SavedScan(id: id, root: directory, date: values.creationDate ?? .distantPast,
+                                   hasScene: hasScene, hasStream: hasStream, originalFiles: originalFiles))
+        }
+        return scans.sorted { $0.date > $1.date }
     }
 }

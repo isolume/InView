@@ -2,120 +2,76 @@ import AccessCore
 import SwiftUI
 
 struct BackendSettingsView: View {
-    @State private var address = AppConfig.backendAddress
-    @State private var accessToken = AppConfig.enteredBackendToken ?? ""
-    @State private var continuousScanning = AppConfig.continuousScanning
-    @State private var connectionStatus: ConnectionStatus?
-    @State private var isChecking = false
-    @State private var connectionTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("detailedScanning") private var detailedScanning = false
+    @State private var address = AppConfig.backendAddress
+    @State private var token = AppConfig.backendToken(for: AppConfig.backendAddress) ?? ""
+    @State private var message: String?
+    @State private var checking = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("Continuous scanning", isOn: $continuousScanning)
+                    Text("Maps are built on this device.")
+                    Toggle("Detailed scan", isOn: $detailedScanning)
                 } footer: {
-                    Text("Scan without sections. This preview saves camera and depth samples on the phone and sends them to your server for the 3D model.")
+                    Text("Adds surface detail and photo colors to new scans. Uses more battery and storage.")
                 }
                 Section {
-                    TextField("Server address (optional)", text: $address)
-                        .textContentType(.URL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    if !address.isEmpty {
-                        // Kept in the Keychain, never in the address; required by authenticated servers.
-                        SecureField(AppConfig.hasBuiltInBackendToken ? "Access token (built in; enter to override)"
-                                                                       : "Access token (if required)", text: $accessToken)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button("Clear server address") { address = "" }
-                    }
-                    Button("Test connection") { checkConnection() }
-                        .disabled(isChecking || AppConfig.validatedBackendURL(address) == nil)
-                    if isChecking {
-                        HStack {
-                            ProgressView()
-                            Text("Checking…")
-                        }
-                    } else if let connectionStatus {
-                        let severity: AccessibilityReport.Finding.Severity = connectionStatus.isConnected ? .good : .barrier
-                        Label {
-                            Text(connectionStatus.message).foregroundStyle(.secondary)
-                        } icon: {
-                            Image(systemName: Theme.symbol(for: severity)).foregroundStyle(Theme.color(for: severity))
-                        }
-                    }
+                    TextField("Server address", text: $address)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                    SecureField(AppConfig.hasBuiltInBackendToken ? "Access token (built in; enter to override)" : "Access token",
+                                text: $token)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Button(checking ? "Checking…" : "Save settings", action: saveSettings)
+                        .disabled(checking)
+                    if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
                 } header: {
-                    Text("Scan processing server")
+                    Text("Find places")
                 } footer: {
-                    Text(continuousScanning
-                         ? "Without a server, the scan stays on this phone. Connect a server to build the full 3D model."
-                         : "Leave blank to process scans on this device. If set, scans are sent to this server.")
+                    Text("Optional. Choose Find places during review to send this scan's photos, measurements and location to your server. You decide which suggestions to keep.")
                 }
                 Section {
                     NavigationLink("Saved scans") { SavedStreamUploadsView() }
+                } footer: {
+                    Text("View saved maps and export original scan data. Earlier scan evidence remains available.")
                 }
             }
-            .navigationTitle("Scan processing")
+            .onChange(of: address) { oldValue, newValue in
+                if AppConfig.backendOrigin(oldValue) != AppConfig.backendOrigin(newValue) {
+                    token = AppConfig.backendToken(for: newValue) ?? ""
+                }
+            }
+            .navigationTitle("Scanning")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", systemImage: "checkmark", role: .confirm) {
-                        guard AppConfig.setBackendToken(accessToken) else {
-                            connectionStatus = ConnectionStatus(message: "Could not securely save the access token.", isConnected: false)
-                            return
-                        }
-                        AppConfig.setBackendAddress(address)
-                        AppConfig.setContinuousScanning(continuousScanning)
-                        dismiss()
-                    }
-                    .disabled(!address.isEmpty && AppConfig.validatedBackendURL(address) == nil)
+                    Button("Close", systemImage: "xmark", role: .close) { dismiss() }
                 }
             }
-            .onChange(of: address) { _, _ in
-                connectionTask?.cancel()
-                isChecking = false
-                connectionStatus = nil
-            }
-            .onChange(of: accessToken) { _, _ in
-                connectionTask?.cancel()
-                isChecking = false
-                connectionStatus = nil
-            }
-            .onDisappear { connectionTask?.cancel() }
         }
     }
 
-    private func checkConnection() {
-        guard let url = AppConfig.validatedBackendURL(address) else { return }
-        connectionTask?.cancel()
-        let testedAddress = address, testedToken = accessToken
-        let token = testedToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        isChecking = true
-        connectionStatus = nil
-        connectionTask = Task {
-            let status: ConnectionStatus
+    private func saveSettings() {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty || AppConfig.validatedBackendURL(trimmed) != nil else {
+            message = "Enter a valid server address."
+            return
+        }
+        guard AppConfig.setBackendToken(token, for: trimmed) else {
+            message = "The access token couldn't be saved. Try again."
+            return
+        }
+        AppConfig.setBackendAddress(trimmed)
+        guard let url = AppConfig.backendURL else { message = "Server disconnected."; return }
+        checking = true
+        Task {
+            defer { checking = false }
             do {
-                try await BackendClient(baseURL: url, accessToken: token).checkHealth()
-                status = ConnectionStatus(message: "Connected to the scan processing server.", isConnected: true)
-            } catch is CancellationError {
-                return
-            } catch {
-                status = ConnectionStatus(message: error.localizedDescription, isConnected: false)
-            }
-            guard !Task.isCancelled, address == testedAddress, accessToken == testedToken else { return }
-            connectionStatus = status
-            isChecking = false
+                try await BackendClient(baseURL: url, accessToken: AppConfig.backendToken).checkHealth()
+                message = "Server is ready."
+            } catch { message = error.localizedDescription }
         }
     }
-}
-
-private struct ConnectionStatus {
-    let message: String
-    let isConnected: Bool
 }

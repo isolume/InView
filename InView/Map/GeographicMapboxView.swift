@@ -259,8 +259,11 @@ private struct GeographicMapboxCanvas: UIViewRepresentable {
                 GeoJSONSource(id: "inview-walls").data(.featureCollection(geometry.wallFeatures))
                 FillExtrusionLayer(id: "inview-wall-shapes", source: "inview-walls")
                     .fillExtrusionColor(UIColor(red: 0.88, green: 0.90, blue: 0.87, alpha: 1))
-                    .fillExtrusionBase(floorAltitude + 0.04)
-                    .fillExtrusionHeight(floorAltitude + wallHeight)
+                    .filter(Exp(.lt) { Exp(.get) { "base" }; wallHeight })
+                    .fillExtrusionBase(Exp(.sum) { Exp(.get) { "base" }; floorAltitude })
+                    .fillExtrusionHeight(Exp(.sum) {
+                        Exp(.min) { Exp(.get) { "height" }; wallHeight }; floorAltitude
+                    })
                     .fillExtrusionVerticalGradient(false)
                     .fillExtrusionAmbientOcclusionIntensity(0.18)
                     .minZoom(17)
@@ -364,13 +367,22 @@ private struct GeographicMapboxGeometry {
     init(scene: ProcessedScene?, map: VenueMap, reference: BuildingMapReference) {
         self.reference = reference
         var floors: [[SIMD2<Float>]] = []
-        var walls: [[SIMD2<Float>]] = []
+        var walls: [(points: [SIMD2<Float>], base: Float, height: Float)] = []
+        var sceneWalls: [(footprint: Footprint, base: Float, height: Float)] = []
         var objects: [(points: [SIMD2<Float>], base: Float, height: Float)] = []
         if let scene {
             for surface in scene.surfaces {
                 guard let pose = Self.matrix(surface.mapFromSurface),
                       var size = Self.vector(surface.renderDimensionsM) else { continue }
                 if surface.kind == "floor" {
+                    if let polygon = surface.polygonCorners, polygon.count >= 3 {
+                        let projected = polygon.compactMap { point -> SIMD2<Float>? in
+                            guard let vertex = Self.vector(point) else { return nil }
+                            let world = pose * SIMD4(vertex, 1)
+                            return SIMD2(world.x, world.z)
+                        }
+                        if projected.count == polygon.count { floors.append(projected); continue }
+                    }
                     if let measured = Self.vector(surface.measuredDimensionsM) { size = measured }
                     let normal = (0..<3).min { size[$0] < size[$1] } ?? 1
                     size[normal] = 0
@@ -378,8 +390,15 @@ private struct GeographicMapboxGeometry {
                 } else if surface.kind == "wall" {
                     // Use the scan's oriented wall footprint. Passage rectangles
                     // are removed below, so navigation never draws a sealed door.
-                    let projected = Self.projectedBox(pose: pose, size: size, center: .zero)
-                    if projected.count >= 3 { walls.append(projected) }
+                    var wallPose = pose
+                    if size.z > size.x {
+                        wallPose *= simd_float4x4(simd_quatf(angle: -.pi / 2, axis: [0, 1, 0]))
+                        size = SIMD3(size.z, size.y, size.x)
+                    }
+                    let base = max(0.04, wallPose.translation.y - size.y / 2 - map.floorY)
+                    let height = max(base + 0.01, wallPose.translation.y + size.y / 2 - map.floorY)
+                    sceneWalls.append((Footprint(kind: .wall, transform: wallPose,
+                                                 width: size.x, depth: max(0.10, size.z)), base, height))
                 }
             }
             for object in scene.objects {
@@ -405,11 +424,12 @@ private struct GeographicMapboxGeometry {
         // Never infer a building-wide floor from wall bounds: a partial scan
         // must leave unmapped wings and gaps intact. An older scan without floor
         // surfaces leaves the exterior unclipped until its outline is available.
-        // The routing map already has doorway-split wall segments, when present.
-        // Prefer those to a full SceneSurface wall crossing a captured opening.
-        let wallFootprints = map.footprints.filter { $0.kind == .wall }
+        let wallFootprints = sceneWalls.isEmpty
+            ? map.footprints.filter { $0.kind == .wall }.map { (footprint: $0, base: Float(0.04), height: Float(0.70)) }
+            : sceneWalls
         if !wallFootprints.isEmpty {
-            walls = wallFootprints.flatMap { wall -> [[SIMD2<Float>]] in
+            walls = wallFootprints.flatMap { panel -> [(points: [SIMD2<Float>], base: Float, height: Float)] in
+                let wall = panel.footprint
                 let intersecting = passages.filter { passage in
                     abs(wall.local(passage.center).y) <= (wall.size.y + passage.size.y) / 2 + 0.15
                         && abs(wall.local(passage.center).x) <= (wall.size.x + passage.size.x) / 2
@@ -425,8 +445,9 @@ private struct GeographicMapboxGeometry {
                 }
                 return intervals.map { a, b in
                     let direction = SIMD2(cos(wall.yaw), sin(wall.yaw))
-                    return Footprint(kind: .wall, center: wall.center + direction * ((a + b) / 2),
-                                     size: SIMD2(b - a, max(0.10, wall.size.y)), yaw: wall.yaw).corners
+                    let footprint = Footprint(kind: .wall, center: wall.center + direction * ((a + b) / 2),
+                                              size: SIMD2(b - a, max(0.10, wall.size.y)), yaw: wall.yaw)
+                    return (footprint.corners, panel.base, panel.height)
                 }
             }
         }
@@ -437,7 +458,7 @@ private struct GeographicMapboxGeometry {
         // Native RoomPlan polygons survive in VenueMap even when an older portable scene
         // only has a floor's rectangular dimensions. Prefer the measured room boundary.
         let measuredFloors = map.footprints.filter { $0.kind == .floor }.map(\.corners)
-        if !measuredFloors.isEmpty { floors = measuredFloors }
+        if floors.isEmpty { floors = measuredFloors }
         func polygon(_ points: [SIMD2<Float>], properties: JSONObject? = nil) -> Feature? {
             // Local X/Z is right handed with +Z south; geographic longitude /
             // latitude reverses that winding. GeoJSON outer rings are CCW.
@@ -449,12 +470,15 @@ private struct GeographicMapboxGeometry {
         }
         // Render each connected floor once. Overlapping room rectangles at the same height
         // produce coplanar faces and striped surfaces if they are extruded separately.
-        let floorRegions = try? BuildingFootprintCutaway.unionRegions(floors)
-        floorFeatures = FeatureCollection(features: (floorRegions ?? []).compactMap {
+        let floorRegions = (try? BuildingFootprintCutaway.unionRegions(floors))
+            ?? floors.map { BuildingFootprintCutaway.Region(exterior: $0) }
+        floorFeatures = FeatureCollection(features: floorRegions.compactMap {
             Self.feature(exterior: $0.exterior, holes: $0.holes, reference: reference)
         })
         floorPolygons = floors
-        wallFeatures = FeatureCollection(features: walls.compactMap { polygon($0) })
+        wallFeatures = FeatureCollection(features: walls.compactMap {
+            polygon($0.points, properties: ["base": .number(Double($0.base)), "height": .number(Double($0.height))])
+        })
         objectFeatures = FeatureCollection(features: objects.compactMap {
             polygon($0.points, properties: ["base": .number(Double($0.base)), "height": .number(Double($0.height))])
         })

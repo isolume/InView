@@ -212,6 +212,9 @@ def test_scripts_languages_and_lexicon():
     assert [h[1] for h in i18n.lexicon_hits("EMERGENCY EXIT")] == ["emergency_exit"]
     assert [h[1] for h in i18n.lexicon_hits("非常口")] == ["emergency_exit"]
     assert i18n.lexicon_hits("EXITING") == []
+    assert i18n.languages("выход") == ["ru"] and i18n.languages("יציאה") == ["he"]
+    assert i18n.lexicon_hits("NOT AN EXIT") == []
+    assert i18n.excluded_categories("NOT AN EMERGENCY EXIT") == {"exit", "emergency_exit"}
 
 
 # --- end to end over frames -------------------------------------------------------------------
@@ -246,6 +249,47 @@ def test_bilingual_restroom_sign_links_text_and_screens_accessibility():
     assert sign["viewing_distance_m"] == pytest.approx(np.linalg.norm(np.subtract(sign["position_m"], [0, 1.5, 0.5])), abs=1e-3)
     assert all(s in {"Latn"} for s in sign["scripts"])
     assert not any("text-only" in issue for issue in sign["issues"])
+
+
+@pytest.mark.parametrize("body", ["NOT AN EXIT", "SIN SALIDA", "NOT AN EMERGENCY EXIT"])
+def test_negative_exit_text_vetoes_color_and_does_not_become_a_place(body):
+    from inview_worker.semantics import places
+
+    spec = gallery.SignSpec("negative_exit", "informational", gallery.GREEN, gallery.WHITE, text=body)
+    image, quad = gallery.render_scene(spec)
+    x0, y0 = quad.min(axis=0).astype(int)
+    x1, y1 = quad.max(axis=0).astype(int)
+    texts = [{"id": "negative", "text": body, "frame_id": "f", "confidence": 0.95,
+              "image_size_px": [480, 640], "bbox_px": [x0 + 5, y0 + 5, x1 - x0 - 10, y1 - y0 - 10]}]
+    signs, _ = analyze([wall_frame()], lambda _: image, texts=texts, floor_height=0.0, ocr=False)
+    plates = [s for s in signs if s["kind"] != "text_region"]
+    assert plates and all(s["category"] not in {"exit", "emergency_exit"} for s in plates)
+    assert all({"exit", "emergency_exit"} <= set(s["excluded_categories"]) for s in plates)
+    assert not any(p["category"] in {"exit", "emergency_exit"}
+                   for p in places.build(places.Scene(signs=signs, texts=texts))[0])
+
+
+def test_high_resolution_ocr_still_text_links_to_the_same_keyframe_sign():
+    frame, image, quad = scene_frame("exit_text")
+    x0, y0 = quad.min(axis=0).astype(float)
+    box = [x0 + 8, y0 + 8, 100, 35]
+    text = {"id": "t", "text": "SALIDA", "frame_id": "f", "image_asset": "f.ocr.jpg",
+            "image_size_px": [1920, 2560], "bbox_px": [v * 4 for v in box]}
+    signs, _ = analyze([frame], lambda _: image, texts=[text], floor_height=0.0, ocr=False)
+    [sign] = [s for s in signs if s["kind"] != "text_region"]
+    assert sign["text_ids"] == ["t"] and sign["text"] == "SALIDA"
+    assert sign["category"] == "exit" and sign["languages"] == ["es"]
+    assert text["image_size_px"] == [1920, 2560] and text["bbox_px"] == [v * 4 for v in box]
+
+
+@pytest.mark.parametrize("bad", [
+    {"image_size_px": [0, 640]}, {"image_size_px": [480, float("nan")]},
+    {"image_size_px": "unknown"}, {"bbox_px": [20, 20, float("inf"), 5]},
+    {"bbox_px": [20, 20, -10, 5]}, {"bbox_px": [500, 20, 10, 5]},
+])
+def test_invalid_ocr_geometry_cannot_link_to_a_sign(bad):
+    from inview_worker.signage.analyze import _text_in_image
+    assert _text_in_image({"bbox_px": [20, 20, 10, 5], "image_size_px": [480, 640], **bad}, 480, 640) is None
 
 
 def test_directional_sign_arrow_points_along_the_wall():
@@ -342,6 +386,9 @@ def test_stage_uses_roomplan_floor_without_floor_map_and_upstream_text():
     frame, image, quad = scene_frame("exit_text")
     inputs = ScanInputs("s", frames=[frame])
     ctx = ScanContext("s", inputs, MemorySource(None, {"f.png": cv2.imencode(".png", image)[1].tobytes()}))
+    # This exercises upstream OCR association. A host-installed Tesseract would independently
+    # read the fixture's English EXIT and make the expected language depend on the environment.
+    ctx.config["signs_ocr"] = False
     x0, y0 = quad.min(axis=0).astype(int)
     ctx.products["text"] = Product([{"id": "t1", "text": "SALIDA", "frame_id": "f",
                                      "bbox_px": [int(x0) + 5, int(y0) + 5, 100, 40]}])

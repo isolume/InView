@@ -15,7 +15,7 @@ SURFACE_FIELDS = {"type", "map_id", "floor_id", "path_points"}
 TRANSITION_FIELDS = {"type", "connector_id", "kind", "estimated_seconds"}
 POINT_FIELDS = {"x", "y", "z"}
 AVAILABILITY = {"available", "closed", "unknown"}
-CONNECTOR_KINDS = {"elevator", "stairs", "escalator"}
+CONNECTOR_KINDS = {"elevator", "ramp", "stairs", "escalator"}
 
 
 class GraphValidationError(ValueError):

@@ -1,32 +1,39 @@
 # InView backend
 
 Rust service for scan ingestion, measured scene reconstruction, reviewed graph
-routing, and persistent building reference frames. The iPhone app owns AR
-capture and navigation. The Python [worker](worker/README.md) derives floor maps,
-text, signage, places, hazards, and navigation graphs from saved scans.
+routing, persistent building reference frames, and account-based map review.
+The iPhone app owns AR capture and navigation. The Python [worker](worker/README.md)
+derives floor maps, text, signage, places, hazards, and candidate navigation graphs
+from saved scans. The API and graph format remain provisional; see
+[the team plan](../larp.md) and [Building maps](BUILDING_MAPS.md).
 
-Set `INVIEW_SCAN_DIR` to persist immutable source captures and replaceable
-analyses/graphs. Continuous streams use `INVIEW_STREAM_DIR` (default
-`data/streams`). Building reference frames and alignment observations use
+The executable persists immutable source captures and replaceable analyses/graphs
+in `INVIEW_SCAN_DIR` (default `data/scans`). Continuous streams use
+`INVIEW_STREAM_DIR` (default `data/streams`). Building reference frames and alignment observations use
 PostgreSQL, with TimescaleDB when available. See [Building maps](BUILDING_MAPS.md)
 and the authenticated `start-server.sh` launcher for database configuration.
+
+HTTP handlers, graph types, storage and route selection live in separate modules.
+`AppState::default()` remains an isolated test/embedder fixture.
 
 ## Endpoints
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | GET | `/health` | Service health |
-| GET/POST | `/api/buildings` | List/create persistent building reference frames (PostgreSQL required) |
-| GET | `/api/buildings/{id}` | Get current or pinned map version |
-| POST | `/api/buildings/{id}/alignments` | Provisionally align an already-uploaded scan |
+| GET/POST | `/api/buildings` | List/create building reference frames (PostgreSQL required) |
+| GET | `/api/buildings/{id}` | Current or pinned map version |
+| POST | `/api/buildings/{id}/alignments` | Provisionally align an uploaded scan |
 | GET | `/api/buildings/{id}/observations` | Time-indexed, version-pinned camera positions |
-| GET | `/api/buildings/{id}/overview` | Top-down preview of aligned camera paths and mesh samples |
-| GET | `/scans/{id}/camera-track` | Full camera path (dense `camera-track.json` first, then package manifest, then portable frames; `source` says which) |
-| GET/PUT | `/scans/{id}/analysis` | Derived OpenCV worker output (`places`, `doors`, `hazards`, `signs`, `nav_graph`, `routes`, ...); GET returns 404 `analysis_not_found` until the worker has run. See [worker/PIPELINE.md](worker/PIPELINE.md) |
+| GET | `/api/buildings/{id}/overview` | Aligned camera paths and mesh samples |
+| GET | `/scans/{id}/camera-track` | Dense movement track, with manifest/portable-frame fallback |
+| GET/PUT | `/scans/{id}/analysis` | Derived worker output; 404 until processed |
 | GET | `/graphs` | List graph summaries |
-| PUT | `/graphs/{graph_id}` | Validate and replace a complete graph (persisted when `INVIEW_SCAN_DIR` is set; 503 `graph_storage_error` if the write fails) |
-| GET | `/graphs/{graph_id}` | Reload the graph |
-| POST | `/graphs/{graph_id}/routes` | Select a route between node IDs |
+| PUT | `/graphs/{graph_id}` | Validate and replace a candidate graph |
+| GET | `/graphs/{graph_id}` | Public reviewed graph; processing credentials can read candidates |
+| POST | `/graphs/{graph_id}/routes` | Route using the same public/candidate boundary |
+| GET | `/api/admin/graphs/{graph_id}` | Administrator review of the current candidate and its fingerprint |
+| POST | `/api/admin/graphs/{graph_id}/publish` | Publish the exact administrator-reviewed building graph |
 | POST | `/scans` | Validate and retain a new capture bundle |
 | GET | `/scans` | List capture summaries |
 | GET | `/scans/{scan_id}` | Retrieve the original capture JSON |
@@ -45,20 +52,28 @@ and the authenticated `start-server.sh` launcher for database configuration.
 From this folder, using current stable Rust:
 
 ```sh
-cargo run --release
+cargo run --release --locked
 ```
 
 The default address is `127.0.0.1:3000`. `INVIEW_BIND` overrides it, for example
-`INVIEW_BIND=0.0.0.0:3000` behind an HTTPS reverse proxy. Non-loopback binds
-require `INVIEW_API_TOKEN` (at least 32 ASCII non-whitespace characters). When a
-token is configured, all data endpoints and `/health` require `Authorization:
-Bearer <token>`. The studio shell is public; it prompts for the token before
-fetching capture data. The iPhone rejects tokens sent to a remote plain HTTP URL.
+`INVIEW_BIND=0.0.0.0:3000` behind an HTTPS reverse proxy. A non-loopback bind
+requires `INVIEW_API_TOKEN` containing at least 32 ASCII non-whitespace characters.
+Processing endpoints (`/health`, scans, streams, building frames and candidate graph
+writes/lists) require `Authorization: Bearer <token>` whenever configured. Account
+sessions do not grant processing access, and processing credentials do not grant
+account or administrator access. Public catalog browsing and published graph
+routing require neither token. The studio shell is public and prompts for the
+processing token before fetching capture data. The iPhone rejects tokens sent to
+a remote plain HTTP URL. Without a processing token, loopback development retains
+the candidate-graph behavior used by the examples below.
 `RUST_LOG=inview_backend=debug,tower_http=debug` enables request logging.
+`INVIEW_SCAN_DIR` selects durable scan storage (default `data/scans`), including
+`analysis/`, candidate `graphs/`, and separate `published-graphs/` snapshots and history.
 `INVIEW_STREAM_DIR` selects durable stream storage (default `data/streams` relative
-to this working directory). Keep one backend process per directory. See
+to this working directory). Keep one backend process per set of storage directories. See
 [SCANS.md](SCANS.md#continuous-capture-prototype) for the wire contract, reconstruction
-method and bounds. Scans and graphs persist when `INVIEW_SCAN_DIR` is set.
+method and bounds. Set `INVIEW_DATABASE_URL` for building-frame persistence;
+`INVIEW_REQUIRE_TIMESCALE=1` requires that database and verifies TimescaleDB at startup.
 
 For local furniture recognition, install the separate inference runtime once:
 
@@ -104,13 +119,15 @@ selection controls. Synthetic route metadata is ignored for real scans.
 This dependency-free canvas viewer is a development aid; the iPhone app owns
 the native map and AR navigation views.
 
-The iOS app now uploads its RoomPlan capture and opens the returned scene in a
-native navigation map. Version 3 processing emits shaped furniture meshes with
-normals and materials; the existing cuboid parts remain a fallback. See the root
-README for local iPhone networking and the offline in-app demo.
+The iOS app builds its RoomPlan map and scene on-device. During review,
+**Find places** can upload a separate evidence package for worker suggestions;
+the returned geometry does not replace the local map. The server retains its
+scene-processing API: version 3 emits shaped furniture meshes with normals and
+materials, with cuboid parts as a fallback. See the root README for local iPhone
+networking and the offline in-app demo.
 
 [Scan format and processing notes](SCANS.md) describe the portable capture draft,
-coordinate conventions, supported processing, and the remaining iPhone adapter.
+coordinate conventions, supported processing, and the current iPhone adapter.
 
 ### Draft graph and routing conventions
 
@@ -125,16 +142,27 @@ coordinate conventions, supported processing, and the remaining iPhone adapter.
   comes from that polyline; estimated time is length divided by the requested
   `movement_speed_mps` (temporary default: 1). Endpoints must match within 5 cm.
 - Transition edges name a connector and connect explicit boarding/exit nodes.
-  One edge represents one complete ride to a served floor, with a nonnegative
-  `estimated_seconds` that includes waiting/boarding once. Add direct ride edges
-  for supported floor pairs rather than chaining an elevator ride through floors.
+  Kinds are `elevator`, `ramp`, `stairs`, and `escalator`. One edge represents a
+  complete crossing between its endpoints, with a nonnegative `estimated_seconds`.
+  Elevator estimates include waiting/boarding once; add direct ride edges for
+  supported floor pairs rather than chaining a ride through floors.
   Transitions return source/destination maps and floors and no ground polyline.
+  Use a `ramp` transition when its landings belong to separate map or floor frames;
+  do not connect those local coordinates with a fabricated path. A measured ramp
+  wholly within one frame can remain a 3D surface edge.
 - `step_free` is `true`, `false`, or `null`/omitted for unknown. `availability` is
   `available`, `closed`, or `unknown` (the default). Only available edges are used.
   Step-free requests require `true` and exclude stairs and escalators.
 - Optional `minimum_clear_width_m` and `maximum_slope` requirements need known,
   suitable edge measurements. Slope is absolute rise/run, not degrees or percent.
   These checks enforce submitted properties; they do not certify accessibility.
+- Both modes minimize the full trip's estimated seconds, including approach and
+  exit paths. A fastest request uses `requires_step_free: false` with width/slope
+  limits omitted or null; it can choose stairs or an elevator. A step-free request
+  uses `requires_step_free: true` and the selected width/slope limits; a suitable
+  ramp and elevator compete on total time. Unknown required measurements exclude
+  a connection. Each request is independent, so switching modes must send the
+  complete current requirements rather than carry limits from the previous mode.
 - Responses retain ordered node IDs, separate surface/transition segments, total
   estimated seconds, and the requested requirements. No eligible path returns
   HTTP 422 with `error.code: "no_verified_route"`; requirements are never relaxed.
@@ -143,18 +171,29 @@ coordinate conventions, supported processing, and the remaining iPhone adapter.
   object holds experimental scan references and other data outside this small core.
 - Graph requests have a 2 MiB limit. Use scan packages for large capture assets. Replacing a graph affects subsequent requests;
   each active route computation uses a single graph snapshot.
-- Graph persistence: with `INVIEW_SCAN_DIR`, each accepted graph is written atomically
-  (temp file, fsync, rename) to `INVIEW_SCAN_DIR/graphs/<sha256(graph id)>.json` before
-  the PUT is acknowledged, and all graphs are reloaded at startup. Unreadable, invalid
-  or misnamed graph files are logged and skipped rather than blocking startup.
-- The Python worker's `publishers/graph.py` PUTs the analysis `nav_graph` product
-  (`id = "<scan_id>-nav"`) here after storing the analysis. A scan with a navigation graph is routable via `POST /graphs/<scan_id>-nav/routes`.
-  Scans without a `nav_graph` are skipped; 422
-  validation errors are logged by the worker.
-- The iOS app (`BackendClient.analysis(scanID:)`) polls `GET /scans/{id}/analysis` in the
-  background after processing and merges `places`
-  into the draft map's destination points with stable IDs, never replacing points the
-  volunteer added.
+- Candidate graph writes are persisted atomically before acknowledgment under
+  `INVIEW_SCAN_DIR/graphs/<sha256(graph id)>.json` (temp file, fsync, rename), and
+  accepted graphs are reloaded at startup. Unreadable, invalid or misnamed graph
+  files are logged and skipped rather than blocking startup. Worker output remains
+  a candidate: `PUT /graphs/{id}` cannot change public navigation.
+- The Python worker's `publishers/graph.py` writes the analysis `nav_graph` product
+  (`id = "<scan_id>-nav"`) after storing the analysis. Processing credentials can
+  route against that candidate via `POST /graphs/<scan_id>-nav/routes`; loopback
+  development without a processing token also supports candidate routing. Scans
+  without a `nav_graph` are skipped; 422 validation errors are logged by the worker.
+- An administrator reviews `GET /api/admin/graphs/{id}`, then publishes with
+  `{expected_fingerprint,geometry_reviewed:true,routes_reviewed:true,floor_links_reviewed:true}`.
+  The graph must declare `metadata.venue_id` equal to its graph ID. A changed candidate
+  invalidates the fingerprint (409). Publication retains a separate immutable receipt
+  and advances the public snapshot. Later worker output cannot overwrite that release.
+- The app's explicit **Find places** action uploads a fresh immutable package for the
+  saved capture and polls `GET /scans/{id}/analysis`. Run the separate Python worker
+  in watch mode (`python -m inview_worker watch --interval 15` with the backend URL
+  and processing token); Rust scene generation alone does not run the semantic
+  pipeline. See [worker/README.md](worker/README.md) for setup. Suggestions retain
+  source evidence and require individual Keep or Drop decisions. Kept places use
+  stable IDs and preserve volunteer-added points; server output never replaces
+  the local map geometry.
 
 ## Operational limits
 
@@ -163,13 +202,23 @@ four-request admission limit; excess requests return 503 `processing_busy`.
 Continuous reconstruction permits two builders at once. SIGINT and SIGTERM drain
 active HTTP requests. Accepted durable writes finish even if the client disconnects.
 
-Back up the scan directory together with the database. Without `INVIEW_SCAN_DIR`,
-source scans and graphs disappear on restart. The [Vultr configuration](infra/README.md)
-provides HTTPS and container-persistent local files; it does not provision a database.
+Back up the scan, stream and product directories together with the database.
+The executable uses durable default directories even when their environment
+variables are unset; isolated `AppState::default()` scan/graph stores are in-memory.
+The [Vultr configuration](infra/README.md) provides HTTPS and container-persistent
+scan, stream and account/submission files; it does not provision a database. Docker
+runs from `/data`, so the default relative `INVIEW_PRODUCT_DIR` (`data/product`)
+stores account snapshots at `/data/data/product` inside the persistent mount.
+Preserve this default when updating an existing instance to retain its accounts.
 
-Geometry validation checks data consistency, not real-world clearance or
-accessibility. Alignment and connector properties still require review. Routing
-returns planning geometry; live positioning, speech, and rerouting run on the phone.
+Geometry validation checks data consistency, not real-world wall clearance,
+scan alignment, connector identity or accessibility; map review must establish
+those properties. The `/scans` prototype uses supplied object labels. Continuous
+`/streams` scans can use the separate local furniture recognizer; uncertain results
+retain measured shapes. Original capture JSON, including unknown fields, and package
+sidecars remain immutable. Routing returns planning geometry; live positioning,
+speech and rerouting run on the phone. Active journeys do not yet track server graph
+revisions. Database integration tests require an explicitly configured test database.
 
 ## Checks
 
@@ -177,4 +226,117 @@ returns planning geometry; live positioning, speech, and rerouting run on the ph
 cargo fmt --check
 cargo test --locked
 cargo clippy --all-targets -- -D warnings
+# Optional: explicitly configured isolated PostgreSQL/TimescaleDB integration.
+cargo test --test buildings -- --ignored
 ```
+
+## Accounts and reviewed maps
+
+The user-facing foundation is separate from the original reconstruction API. It
+currently accepts contributions only for `student-center-east`, Floors 1–3.
+Ordinary users can register, sign in, upload a saved `VenueMap`, and see their own
+submissions. Only explicitly configured administrators can review and publish maps.
+An uploaded or processed scan never becomes a public map automatically.
+
+`INVIEW_PRODUCT_DIR` selects durable account/submission storage (default
+`data/product`). One process holds an exclusive lock for this directory. Changes
+are acknowledged after a private atomic snapshot and file/directory sync. Restart
+retains accounts, sessions, source submissions, edited drafts, review history,
+and published versions. This bounded file store supports one local service; it
+does not replace a production database or backup system.
+
+To create a dedicated administrator, set **both** `INVIEW_ADMIN_EMAIL` and
+`INVIEW_ADMIN_PASSWORD` before launch. There is no default administrator or password.
+The password must contain at least 12 characters. Bootstrap creates that account
+once, does not reset an existing administrator password, and refuses to elevate
+an existing contributor account. Remove bootstrap credentials from the launch
+environment after initial creation. The review workspace is at `/admin`; browser
+sign-in requires HTTPS or loopback, keeps its bearer token in memory, and sends no
+token in a URL. Serve the service behind HTTPS before using real accounts across
+a network. Configure separate processing credentials as described above.
+
+| Method | Endpoint | Access |
+|---|---|---|
+| POST | `/api/accounts/register` | `{email,password,name?}` → `{token,expires_at,account}` |
+| POST | `/api/accounts/login` | `{email,password}` → same response |
+| GET | `/api/accounts/me` | Bearer → `{id,email,name,role}` |
+| POST | `/api/accounts/logout` | Bearer → 204; revokes that session |
+| GET / POST | `/api/submissions` | Bearer; own summaries / new submission |
+| GET | `/api/submissions/{id}` | Owner or admin; source and current draft |
+| POST | `/api/submissions/{id}/resubmit` | Owner; revised source after changes requested |
+| GET | `/api/admin/submissions` | Admin review queue |
+| PATCH | `/api/admin/submissions/{id}` | Admin; revision-checked draft or review decision |
+| POST | `/api/admin/submissions/{id}/publish` | Admin; approves and publishes current revision |
+| GET | `/api/venues/student-center-east/maps` | Public; latest published version per floor |
+| GET | `/api/venues/student-center-east/maps/{floor}/versions/{version}` | Public; immutable version |
+
+Passwords use salted Argon2id hashes. Random bearer sessions expire after 14 days;
+only their SHA-256 digests are stored. Logout revokes the selected session.
+Registration cannot set a role. Authentication work has two concurrent slots and
+bounded process-local attempt limits (10 attempts per normalized email per 15
+minutes, 10 registrations per 15 minutes). There is no email verification,
+password reset, account deletion, or production abuse gateway in this first pass.
+
+Create a submission with:
+
+```json
+{
+  "client_submission_id": "868d07e2-2e7a-471f-b9dd-8b7df679b590",
+  "venue_id": "student-center-east",
+  "floor": 2,
+  "map": {
+    "createdAt": "2026-10-10T12:00:00Z",
+    "floorY": 0,
+    "footprints": [{ "kind": "floor", "center": [0, 0], "size": [8, 6], "yaw": 0 }],
+    "points": []
+  },
+  "title": "Floor 2 scan",
+  "notes": "Optional contributor note",
+  "authorized_space": true
+}
+```
+
+The geometry above is an illustrative example, not a building map. Submission
+requires nonempty, validated geometry. Dates must be ISO 8601 without fractional seconds,
+matching the native encoder. Vectors use arrays; the service validates supported
+feature/furniture kinds, UUID identifiers, positive finite dimensions, nondegenerate
+outlines, and the native display limits. Floors support at most 10,000 footprints,
+1,000 destinations, 128 vertices per outline, 500-meter dimensions/overall span,
+and the native position bounds. Geometry validation does not establish physical
+clearance, permitted access, or accessibility.
+
+Exact retries of `client_submission_id` are scoped to the account and return the
+accepted receipt with HTTP 200; the initial upload returns 201. Different content
+under that identifier returns 409. The source payload stays unchanged. Summaries
+contain `id`, `owner_id`, `venue_id`, `floor`, `title`, `notes`, `status`, `revision`,
+`created_at`, `updated_at`, `review_note`, and `published_version`. Timestamps are
+Unix seconds. Status is `submitted`, `in_review`, `changes_requested`, or `published`.
+
+Admin edits accept `{expected_revision,map?,review_note?,status?}`. Status edits are
+limited to `in_review` or `changes_requested`; a change request needs a note. Each
+edit increments the revision and invalidates an older approval. A contributor
+resubmits with `{client_submission_id,expected_revision,map,notes?,authorized_space:true}`;
+the service retains another immutable source, resets review, and increments the
+revision. Identical resubmission retries still succeed after later review.
+
+Publication requires `{expected_revision,geometry_reviewed:true,routes_reviewed:true,
+floor_links_reviewed:true}`. It stores the exact reviewed draft as an immutable
+version and updates the floor's latest public release in one durable transaction.
+The public DTO is `{venue_id,name,maps:[{id,submission_id,venue_id,floor,version,
+map_revision,source_revision,published_at,origin:"admin_reviewed",map,ar_ready:false}]}`.
+Missing floors are omitted. Subsequent draft edits do not change existing releases.
+No raw originals, account details, or review notes are served through public routes.
+
+This upload contains map geometry and labels, not raw camera/depth files or an
+ARWorldMap. All published maps report `ar_ready:false`. The service does not invent
+alignment assets. The web workspace edits destination labels, types, staff
+assistance and pin positions, plus review notes. Broader structural geometry and
+route edits are supported by the API but need a future editor.
+Source evidence is the contributor's original map and notes, not a captured photo.
+
+Account bodies are limited to 16 KiB, submission/edit bodies to 2 MiB, and the
+complete store to 128 MiB. Each user can retain up to 100 submissions, each
+submission up to 20 source revisions and 200 review edits. Oversized input fails
+explicitly; accepted maps are not truncated. Keep source files on the phone until
+the receipt is confirmed. There is no deployment, automatic publication, or
+remote administrator creation in this change.

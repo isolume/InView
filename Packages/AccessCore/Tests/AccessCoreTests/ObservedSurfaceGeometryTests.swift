@@ -45,6 +45,30 @@ private func measuredBarrier(bottom: Float = -1.3, height: Float = 1,
     #expect(abs(barrier.size.x - 3) < 0.001)
 }
 
+@Test func classifiedRoomWallsRetainTheirFullMeasuredHeight() throws {
+    let plane = measuredBarrier(height: 2.8, classification: .wall)
+    let wall = try #require(ObservedSurfaceGeometry.footprint(for: plane, floorY: -1.3))
+    #expect(wall.kind == .wall)
+    #expect(wall.height == 2.8)
+    #expect(wall.bottom == -1.3)
+    #expect(wall.id == plane.id)
+    #expect(ObservedSurfaceGeometry.footprint(for: measuredBarrier(height: 6.1, classification: .wall), floorY: -1.3) == nil)
+    #expect(ObservedSurfaceGeometry.footprint(for: measuredBarrier(bottom: -4, height: 2.8, classification: .wall), floorY: -1.3) == nil)
+}
+
+@Test func growingClassifiedWallIsNotDeletedWhenItPassesRailingHeight() throws {
+    let id = UUID()
+    var observations = ObservedSurfaceAccumulator()
+    for (index, height) in [Float(1), 1, 2.8, 2.8].enumerated() {
+        observations.observe(measuredBarrier(height: height, classification: .wall, id: id),
+                             floorY: -1.3, timestamp: Double(index) * 0.75)
+    }
+    let wall = try #require(observations.snapshot().first)
+    #expect(observations.snapshot().count == 1)
+    #expect(wall.id == id)
+    #expect(wall.height == 2.8)
+}
+
 @Test func confirmedObservedFloorCanAnchorLowBarriersWithoutRoomPlan() throws {
     let plane = measuredFloor()
     var observations = ObservedSurfaceAccumulator()
@@ -69,7 +93,7 @@ private func measuredBarrier(bottom: Float = -1.3, height: Float = 1,
     #expect(observations.floorElevation(near: [30, -3, 1], within: 12) == nil)
 }
 
-@Test func barrierFallbackDoesNotTurnObjectsOrFullHeightWallsIntoRailings() {
+@Test func barrierFallbackDoesNotTurnUnclassifiedObjectsIntoWalls() {
     #expect(ObservedSurfaceGeometry.footprint(for: measuredBarrier(height: 2.4), floorY: -1.3) == nil)
     #expect(ObservedSurfaceGeometry.footprint(for: measuredBarrier(height: 0.2), floorY: -1.3) == nil)
     #expect(ObservedSurfaceGeometry.footprint(for: measuredBarrier(bottom: -0.8), floorY: -1.3) == nil)

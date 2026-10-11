@@ -508,21 +508,47 @@ impl GraphStore {
     /// task so a dropped request cannot leave a graph on disk that memory does not serve.
     pub async fn put(&self, graph: Graph) -> io::Result<()> {
         let store = self.clone();
-        tokio::spawn(async move { store.put_now(graph).await })
+        tokio::spawn(async move { store.put_now(graph, false).await })
             .await
             .map_err(io::Error::other)?
     }
 
-    async fn put_now(&self, graph: Graph) -> io::Result<()> {
+    /// Preserve an immutable publication receipt before advancing the current reviewed snapshot.
+    /// Ordinary worker writes use `put` on a different store and cannot modify these releases.
+    pub async fn publish(&self, graph: Graph) -> io::Result<()> {
+        let store = self.clone();
+        tokio::spawn(async move { store.put_now(graph, true).await })
+            .await
+            .map_err(io::Error::other)?
+    }
+
+    async fn put_now(&self, graph: Graph, publication: bool) -> io::Result<()> {
         // Holding the lock across the write keeps disk and memory in the same order.
         let mut graphs = self.graphs.write().await;
         if let Some(directory) = &self.directory {
             let directory = directory.as_ref().clone();
             let path = directory.join(format!("{}.json", scan_filename(&graph.id)));
             let bytes = serde_json::to_vec(&graph).map_err(invalid_scan)?;
-            tokio::task::spawn_blocking(move || persist_replaceable(&directory, &path, &bytes))
-                .await
-                .map_err(io::Error::other)??;
+            tokio::task::spawn_blocking(move || {
+                if publication {
+                    let history = directory.join("history");
+                    fs::create_dir_all(&history)?;
+                    let receipt = history.join(format!("{:x}.json", Sha256::digest(&bytes)));
+                    // Content-addressed receipts can be reused, but never replaced.
+                    if receipt.exists() {
+                        if fs::read(&receipt)? != bytes {
+                            return Err(invalid_scan(
+                                "Published graph history does not match its fingerprint",
+                            ));
+                        }
+                    } else {
+                        persist_immutable(&history, &receipt, &bytes)?;
+                    }
+                }
+                persist_replaceable(&directory, &path, &bytes)
+            })
+            .await
+            .map_err(io::Error::other)??;
         }
         graphs.insert(graph.id.clone(), Arc::new(graph));
         Ok(())

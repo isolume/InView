@@ -40,12 +40,37 @@ def _hex(bgr) -> str | None:
     return None if bgr is None else "#{:02x}{:02x}{:02x}".format(int(bgr[2]), int(bgr[1]), int(bgr[0]))
 
 
+def _text_in_image(text: dict, width: int, height: int) -> dict | None:
+    """Put an OCR still's box into the keyframe's pixels without changing the source product.
+
+    Older text products omitted their image size and already used keyframe pixels. Invalid explicit
+    sizes/boxes are dropped rather than accidentally associating unrelated text with a sign.
+    """
+    try:
+        box = np.asarray(text.get("bbox_px"), dtype=np.float64)
+        size = np.asarray(text.get("image_size_px", [width, height]), dtype=np.float64)
+        if box.shape != (4,) or size.shape != (2,) or not np.isfinite(box).all() or not np.isfinite(size).all():
+            return None
+        if (size <= 0).any() or (box[2:] <= 0).any():
+            return None
+        scale = np.array([width, height], dtype=np.float64) / size
+        low = np.clip(box[:2] * scale, 0, [width, height])
+        high = np.clip((box[:2] + box[2:]) * scale, 0, [width, height])
+        if (high <= low).any():
+            return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return {**text, "bbox_px": [*low.tolist(), *(high - low).tolist()],
+            "image_size_px": [width, height]}
+
+
 def _observe(frame: Frame, image: np.ndarray, texts_by_frame: dict[str, list[dict]], cameras: dict, ocr: bool):
     height, width = image.shape[:2]
+    texts = [mapped for t in texts_by_frame.get(frame.id, [])
+             if (mapped := _text_in_image(t, width, height)) is not None]
     for detection in detect(image, ocr=ocr):
         reading = read(image, detection) if detection.kind != "text_region" else None
-        linked = [t for t in texts_by_frame.get(frame.id, [])
-                  if len(t.get("bbox_px") or []) == 4 and overlap_fraction(t["bbox_px"], detection.bbox) >= TEXT_LINK_OVERLAP]
+        linked = [t for t in texts if overlap_fraction(t["bbox_px"], detection.bbox) >= TEXT_LINK_OVERLAP]
         # Neutral plates must carry something readable, otherwise they are just rectangles.
         if detection.kind == "sign_candidate" and not (reading and reading.has_content) and not linked:
             continue
@@ -99,18 +124,20 @@ def _pictogram_names(obs: Observation) -> list[str]:
 
 
 def _texts(obs: Observation) -> list[str]:
-    out = [t.get("text", "") for t in obs.texts if t.get("text")]
+    out = [t.get("text", "") for t in sorted(obs.texts, key=lambda t: (t["bbox_px"][1], t["bbox_px"][0]))
+           if t.get("text")]
     if obs.detection.text:
         out.append(obs.detection.text)
     return out
 
 
 def _category(obs: Observation):
-    text_categories = [c for text in _texts(obs) for _, c, _ in i18n.lexicon_hits(text)]
+    texts = _texts(obs)
+    text_categories = [c for text in texts for _, c, _ in i18n.lexicon_hits(text)]
     arrows = [a["image_direction"] for a in obs.reading.arrows] if obs.reading else []
     has_text = bool(_texts(obs) or (obs.reading and obs.reading.text_lines) or not obs.is_plate)
     return assess_mod.infer_category(_pictogram_names(obs), arrows, obs.detection.color if obs.is_plate else None,
-                                     text_categories, has_text)
+                                     text_categories, has_text, i18n.excluded_categories(" ".join(texts)))
 
 
 def _cluster(observations: list[Observation]) -> list[list[Observation]]:
@@ -181,12 +208,13 @@ def _sign(cluster: list[Observation], floor_height: float | None) -> dict:
     text_ids = sorted({t["id"] for t in texts if t.get("id")})
     all_texts = [t for o in cluster for t in _texts(o)]
     text_categories = [c for text in all_texts for _, c, _ in i18n.lexicon_hits(text)]
+    excluded = set().union(*(i18n.excluded_categories(" ".join(_texts(o))) for o in cluster))
     text_lines = [line for r in readings for line in r.text_lines]
     colors = [o.detection.color for o in cluster if o.detection.color]
     color = max(sorted(set(colors)), key=colors.count) if colors else None
     category, confidence, evidence = assess_mod.infer_category(
         pictos, [a["image_direction"] for a in arrows], color if head.is_plate else None, text_categories,
-        bool(all_texts or text_lines or not head.is_plate))
+        bool(all_texts or text_lines or not head.is_plate), excluded)
     languages = sorted({lang for t in texts for lang in i18n.languages(t.get("text", ""), t.get("language"))}
                        | {lang for o in cluster if o.detection.text for lang in i18n.languages(o.detection.text)})
     scripts = sorted({s for t in texts for s in ([t["script"]] if t.get("script") else i18n.scripts(t.get("text", "")))}
@@ -212,6 +240,8 @@ def _sign(cluster: list[Observation], floor_height: float | None) -> dict:
         "kind": _legacy_kind(head, category, pictos, color),
         "category": category,
         "category_confidence": confidence,
+        "excluded_categories": sorted(excluded),
+        "review_status": "candidate",
         "evidence": evidence,
         "color": color,
         "text": text,

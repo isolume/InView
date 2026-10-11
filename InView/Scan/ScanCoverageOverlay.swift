@@ -55,6 +55,8 @@ final class ScanCoverageCameraView: MTKView, MTKViewDelegate {
         clearColor = MTLClearColorMake(0, 0, 0, 0)
         colorPixelFormat = .bgra8Unorm
         framebufferOnly = true
+        autoResizeDrawable = false
+        (layer as? CAMetalLayer)?.maximumDrawableCount = 2
         preferredFramesPerSecond = 30
         isPaused = true
         delegate = self
@@ -78,6 +80,14 @@ final class ScanCoverageCameraView: MTKView, MTKViewDelegate {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil { stop() } else { start() }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // A transparent accent does not need three full-resolution camera-sized
+        // drawable buffers. Two pixels per point keep its fine details crisp.
+        let scale = min(window?.screen.scale ?? 2, 2)
+        drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
     }
 
     private func start() {
@@ -114,17 +124,17 @@ final class ScanCoverageCameraView: MTKView, MTKViewDelegate {
         workerID = id
         lastSampleTimestamp = frame.timestamp
         worker = Task.detached(priority: .utility) { [weak self] in
-            let vertices = ScanCoverageMetalRenderer.makeGeometry(frame: copied.decodedFrame(), coverage: coverage)
-            await self?.didBuild(vertices, generation: generation, id: id)
+            let geometry = ScanCoverageMetalRenderer.makeGeometry(frame: copied.decodedFrame(), coverage: coverage)
+            await self?.didBuild(geometry, generation: generation, id: id)
         }
     }
 
-    private func didBuild(_ vertices: [ScanCoverageVertex], generation: Int, id: UUID) {
+    private func didBuild(_ geometry: ScanCoverageGeometry, generation: Int, id: UUID) {
         guard workerID == id else { return }
         worker = nil
         workerID = nil
         guard self.generation == generation, window != nil else { return }
-        renderer?.setGeometry(vertices)
+        renderer?.setGeometry(geometry)
     }
 
     nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}

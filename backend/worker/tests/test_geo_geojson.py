@@ -1,5 +1,6 @@
 """GeoJSON export: RFC 7946 validity, OpenCV simplification, feature mapping, and the stage."""
 import json
+import copy
 
 import numpy as np
 import pytest
@@ -30,8 +31,15 @@ HAZARDS = [
 ]
 NAV_GRAPH = {"id": "s-nav", "nodes": [{"id": "n1", "x": 0.0, "y": 0.0, "z": 1.5}, {"id": "n2", "x": 0.0, "y": 0.0, "z": 0.0},
                                       {"id": "n3", "x": 0.0, "y": 0.0, "z": -2.0}], "edges": []}
+for node in NAV_GRAPH["nodes"]:
+    node.update(map_id="synthetic-map", floor_id="ground")
+for index, (a, b) in enumerate(zip(NAV_GRAPH["nodes"], NAV_GRAPH["nodes"][1:])):
+    NAV_GRAPH["edges"].append({"id": f"e{index}", "from": a["id"], "to": b["id"],
+                               "segment": {"type": "surface", "map_id": "synthetic-map", "floor_id": "ground",
+                                           "path_points": [{k: n[k] for k in ("x", "y", "z")} for n in (a, b)]}})
 ROUTES = {"profiles": ["wheelchair"], "routes": [
     {"from_place": "p-lift", "to_place": "p-exit", "profile": "wheelchair", "node_ids": ["n1", "n2", "n3"],
+     "edge_ids": ["e0", "e1"],
      "length_m": 3.5, "estimated_seconds": 4.0},
     {"from_place": "p-lift", "to_place": "p-exit", "profile": "ambulatory", "node_ids": ["n1", "missing"]},
 ]}
@@ -94,10 +102,10 @@ def test_feature_properties():
     features = by_id(full_collection()[0])
     exit_props = features["amenity:p-exit"]["properties"]
     assert exit_props["names"] == {"en": "Exit", "es": "Salida"} and exit_props["category"] == "exit"
-    assert features["amenity:p-lift"]["properties"]["accessibility"] == {"wheelchair": True}
+    assert "accessibility" not in features["amenity:p-lift"]["properties"]
     assert features["unit:r1"]["properties"]["category"] == "walkway"
     assert features["unit:r1"]["properties"]["name"] == "Hall"
-    assert features["opening:d1"]["properties"]["accessibility"]["wheelchair"] is True
+    assert features["opening:d1"]["properties"]["accessibility"] == {"meets_clear_width": True, "meets_headroom": True}
     assert features["obstruction:h1"]["geometry"]["type"] == "Point"
     assert features["obstruction:h1"]["properties"]["accessibility"] == {"barrier": True, "step_free": False}
     assert features["obstruction:h2"]["geometry"]["type"] == "Polygon"
@@ -159,3 +167,56 @@ def test_synthetic_pipeline_exports_outline_and_door(synthetic_ctx):
     outline = next(f for f in collection["features"] if f["properties"]["feature_type"] == "level")
     local = PROJECTION.to_local(outline["geometry"]["coordinates"][0])
     assert np.allclose(np.abs(local), 2.0, atol=0.15)                      # the 4 m x 4 m synthetic room
+
+
+def test_routes_preserve_edge_bends_instead_of_joining_nodes_through_obstacles():
+    graph = copy.deepcopy(NAV_GRAPH)
+    path = [{"x": x, "y": 0, "z": z} for x, z in [(0, 1.5), (1, 1.5), (1, 0), (0, 0)]]
+    graph["edges"][0]["segment"]["path_points"] = path
+    collection, _ = geojson.build(PROJECTION, nav_graph=graph, routes=ROUTES)
+    feature = next(f for f in collection["features"] if f["properties"]["feature_type"] == "route")
+    assert np.allclose(PROJECTION.to_local(feature["geometry"]["coordinates"]),
+                       [[0, 1.5], [1, 1.5], [1, 0], [0, 0], [0, -2]], atol=0.02)
+    assert feature["properties"]["length_m"] == 5.5
+
+
+def test_routes_without_selected_edges_do_not_fall_back_to_node_chords():
+    routes = copy.deepcopy(ROUTES)
+    routes["routes"][0].pop("edge_ids")
+    collection, notices = geojson.build(PROJECTION, nav_graph=NAV_GRAPH, routes=routes)
+    assert not any(f["properties"]["feature_type"] == "route" for f in collection["features"])
+    assert any("no selected edge_ids" in n for n in notices)
+
+
+def test_route_legs_split_at_floor_transitions_and_do_not_project_another_map():
+    from routes_fixtures import nav_graph
+    from inview_worker.guidance import AMBULATORY, NavGraph, find_route
+
+    graph = nav_graph()
+    path = find_route(NavGraph.from_json(graph), AMBULATORY, "entrance", "office")
+    routes = {"routes": [{"id": "upstairs", "node_ids": path.node_ids,
+                          "edge_ids": [e.id for e in path.edges], "profile": "ambulatory"}]}
+    collection, notices = geojson.build(PROJECTION, map_id="scan", nav_graph=graph, routes=routes)
+    legs = [f for f in collection["features"] if f["properties"]["feature_type"] == "route"]
+    assert not notices and [f["properties"]["level_id"] for f in legs] == ["ground", "upper"]
+    assert len({f["id"] for f in legs}) == 2
+    assert all(f["properties"]["map_id"] == "scan" for f in legs)
+
+    for node in graph["nodes"]:
+        if node["floor_id"] == "upper":
+            node["map_id"] = "another-origin"
+    for edge in graph["edges"]:
+        if edge["segment"].get("floor_id") == "upper":
+            edge["segment"]["map_id"] = "another-origin"
+    collection, notices = geojson.build(PROJECTION, map_id="scan", nav_graph=graph, routes=routes)
+    legs = [f for f in collection["features"] if f["properties"]["feature_type"] == "route"]
+    assert [f["properties"]["level_id"] for f in legs] == ["ground"]
+    assert any("no matching geographic reference" in n for n in notices)
+
+
+@pytest.mark.parametrize("category", ["ramp", "elevator", "accessible_restroom"])
+def test_place_category_never_asserts_wheelchair_approval(category):
+    collection, _ = geojson.build(PROJECTION, places=[{"id": "candidate", "category": category,
+                                                     "position_m": [0, 0, 0], "confidence": 0.1}])
+    place = by_id(collection)["amenity:candidate"]
+    assert "accessibility" not in place["properties"]

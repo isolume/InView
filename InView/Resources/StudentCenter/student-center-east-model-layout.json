@@ -1,0 +1,752 @@
+{
+  "title": "Floors 2 & 3",
+  "reference_videos": [
+    "IMG_5439.MOV",
+    "IMG_5436.MOV"
+  ],
+  "approximate": true,
+  "navigation_ready": false,
+  "units": "meters",
+  "up_axis": "Y",
+  "floor_elevations_m": {
+    "2": 0,
+    "3": 4.0
+  },
+  "furniture": [
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        -9.42,
+        0,
+        1.65
+      ],
+      "yaw_degrees": -90,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        -9.42,
+        0,
+        -1.04
+      ],
+      "yaw_degrees": -90,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        -6.6,
+        0,
+        -4.57
+      ],
+      "yaw_degrees": 180,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -7.25,
+        0,
+        2.45
+      ],
+      "yaw_degrees": 18,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -5.72,
+        0,
+        2.45
+      ],
+      "yaw_degrees": -18,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -7.3,
+        0,
+        -0.94
+      ],
+      "yaw_degrees": 164,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -5.7,
+        0,
+        -0.94
+      ],
+      "yaw_degrees": 194,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -4,
+        0,
+        -2.45
+      ],
+      "yaw_degrees": 65,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -4.12,
+        0,
+        -4.23
+      ],
+      "yaw_degrees": 105,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "large-drum-table",
+      "position_m": [
+        -6.55,
+        0,
+        0.9
+      ],
+      "yaw_degrees": 0,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "large-drum-table",
+      "position_m": [
+        -6.55,
+        0,
+        -2.6
+      ],
+      "yaw_degrees": 0,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -8.55,
+        0,
+        0.12
+      ],
+      "yaw_degrees": 0,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -4.1,
+        0,
+        -3.4
+      ],
+      "yaw_degrees": 0,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "charging-stand",
+      "position_m": [
+        -4.8,
+        0,
+        1.5
+      ],
+      "yaw_degrees": 20,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "lectern",
+      "position_m": [
+        -3.4,
+        0,
+        -1.8
+      ],
+      "yaw_degrees": 90,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        -3.35,
+        0,
+        2.4
+      ],
+      "yaw_degrees": 0,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "square-planter",
+      "position_m": [
+        -9.4,
+        0,
+        -4.55
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.63,
+      "floor": 2,
+      "zone": "Lounge suite"
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        -13.2,
+        0,
+        4.6
+      ],
+      "yaw_degrees": 0,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Seating concourse"
+    },
+    {
+      "asset": "square-planter",
+      "position_m": [
+        -27.9,
+        0,
+        7.8
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.77,
+      "floor": 2,
+      "zone": "Seating concourse"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -27.8,
+        0,
+        0.7
+      ],
+      "yaw_degrees": -90,
+      "scale": 0.91,
+      "floor": 2,
+      "zone": "Windowed desk area"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -27.8,
+        0,
+        -1.0
+      ],
+      "yaw_degrees": -90,
+      "scale": 0.91,
+      "floor": 2,
+      "zone": "Windowed desk area"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -27.25,
+        0,
+        -0.2
+      ],
+      "yaw_degrees": 0,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Windowed desk area"
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        -40.6,
+        0,
+        6.8
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.8,
+      "floor": 2,
+      "zone": "Interior gallery corridor"
+    },
+    {
+      "asset": "square-planter",
+      "position_m": [
+        -26.7,
+        0,
+        11.4
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.68,
+      "floor": 2,
+      "zone": "Restroom passage"
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        2.77,
+        4.0,
+        7.6
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.84,
+      "floor": 3,
+      "zone": "Lift and glazed stair landing"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -27.4,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -26.54,
+        4.0,
+        4.68
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -25.65,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -23.9,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -23.04,
+        4.0,
+        4.68
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -22.15,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -20.4,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -19.54,
+        4.0,
+        4.68
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -18.65,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -16.9,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -16.04,
+        4.0,
+        4.68
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -15.149999999999999,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -13.399999999999999,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -12.54,
+        4.0,
+        4.68
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -11.649999999999999,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -9.899999999999999,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -9.04,
+        4.0,
+        4.68
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -8.149999999999999,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -6.399999999999999,
+        4.0,
+        4.58
+      ],
+      "yaw_degrees": 180,
+      "scale": 0.93,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        -24.7,
+        4.0,
+        5.11
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        -16.0,
+        4.0,
+        5.11
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        -7.3,
+        4.0,
+        5.11
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.86,
+      "floor": 3,
+      "zone": "Window-side lounge"
+    },
+    {
+      "asset": "square-planter",
+      "position_m": [
+        -27.95,
+        4.0,
+        9.7
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.7,
+      "floor": 3,
+      "zone": "Restroom and gallery passage"
+    }
+  ],
+  "labels": [
+    {
+      "floor": 2,
+      "title": "Lounge",
+      "position": [
+        -7.1,
+        0.6,
+        -1.4
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Lifts",
+      "position": [
+        -0.2,
+        0.6,
+        7.5
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Seating concourse",
+      "position": [
+        -17.6,
+        0.6,
+        6.5
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Desk area",
+      "position": [
+        -25.7,
+        0.6,
+        -1.0
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Gallery",
+      "position": [
+        -36.2,
+        0.6,
+        6.1
+      ]
+    },
+    {
+      "floor": 3,
+      "title": "Main stair",
+      "position": [
+        6.6,
+        4.6,
+        5.8
+      ]
+    },
+    {
+      "floor": 3,
+      "title": "Lifts",
+      "position": [
+        -0.35,
+        4.6,
+        7.55
+      ]
+    },
+    {
+      "floor": 3,
+      "title": "Window lounge",
+      "position": [
+        -17.5,
+        4.6,
+        6.3
+      ]
+    },
+    {
+      "floor": 3,
+      "title": "Mural corridor",
+      "position": [
+        -21.8,
+        4.6,
+        14.1
+      ]
+    },
+    {
+      "floor": 3,
+      "title": "Restrooms",
+      "position": [
+        -15.3,
+        4.6,
+        10.15
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Restrooms",
+      "position": [
+        -10.1,
+        0.6,
+        10.6
+      ]
+    }
+  ],
+  "observed": [
+    {
+      "floor": 2,
+      "time": "0:00\u20130:24",
+      "area": "Carpeted lounge and internal room passage"
+    },
+    {
+      "floor": 2,
+      "time": "0:28\u20131:04",
+      "area": "Atrium balcony, room 203, end doors marked 200, lift bank and stairs"
+    },
+    {
+      "floor": 2,
+      "time": "1:08\u20131:28",
+      "area": "Modular seating, second railed opening, windowed desk area"
+    },
+    {
+      "floor": 2,
+      "time": "1:32\u20132:24",
+      "area": "Gallery corridor branch, room recesses, art and benches"
+    },
+    {
+      "floor": 2,
+      "time": "2:28\u20132:51",
+      "area": "Restroom passage, paired fountains, elevators marked 2"
+    },
+    {
+      "floor": 3,
+      "time": "2:52\u20133:44",
+      "area": "Mural corridor, glazed suite fronts, elevator with floor 3 plaque"
+    },
+    {
+      "floor": 3,
+      "time": "3:48\u20134:24",
+      "area": "Window-side armchairs, interior glazing, restroom passage"
+    },
+    {
+      "floor": 3,
+      "time": "4:28\u20134:49",
+      "area": "Glazed bench landing and main stair descent"
+    }
+  ],
+  "estimated": [
+    "Every length, width, floor height, and furniture spacing",
+    "The footprints and relative orientation of the two railed openings",
+    "The turns and connection back from the gallery/restroom passages",
+    "The mural corridor's return shape and its exact alignment over floor 2",
+    "The alignment and riser count of the connecting main stair"
+  ],
+  "not_modeled": [
+    "Closed room interiors not entered in the video",
+    "Unfilmed building wings",
+    "Ground floor",
+    "Photographic murals, faces, and personal belongings"
+  ],
+  "video_discontinuity": "The footage cuts from lifts marked 2 at about 2:51 to the mural corridor at about 2:52. The ride/ascent is not shown; the floor-3 plaque is visible around 3:44.",
+  "gallery_topology": "Modeled as a branch. The footage may retrace it; no additional through-connection is claimed.",
+  "display_conventions": "Roofless cutaway walls and shortened glazing; split stair flights belong to their adjacent floor; separated preview adds a display-only vertical offset."
+}

@@ -3,13 +3,95 @@ import Security
 
 /// Build-time settings from Config/*.xcconfig, passed through Info.plist.
 enum AppConfig {
-    /// The streaming branch defaults to the continuous scanner; RoomPlan remains available for comparison.
-    static var continuousScanning: Bool {
-        UserDefaults.standard.object(forKey: "continuousScanning") as? Bool ?? true
+    static var detailedScanning: Bool { UserDefaults.standard.bool(forKey: "detailedScanning") }
+
+    /// The build's server, unless one was typed into settings for this same build. A new build that
+    /// points somewhere else wins over an old override, so a phone never sticks to a retired server.
+    static var backendAddress: String {
+        let defaults = UserDefaults.standard
+        let builtIn = value(for: "InViewBackendURL") ?? ""
+        if let saved = defaults.string(forKey: "roomProcessingAddress"), !saved.isEmpty,
+           (defaults.string(forKey: "roomProcessingBuiltInAddress") ?? "") == builtIn {
+            return saved
+        }
+        return builtIn
     }
 
-    static func setContinuousScanning(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "continuousScanning")
+    static var backendURL: URL? { validatedBackendURL(backendAddress) }
+
+    static func validatedBackendURL(_ address: String) -> URL? {
+        guard let url = URL(string: address.trimmingCharacters(in: .whitespacesAndNewlines)),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              let host = url.host, !host.isEmpty,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return nil }
+        return url
+    }
+
+    static func setBackendAddress(_ address: String) {
+        let defaults = UserDefaults.standard
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let builtIn = value(for: "InViewBackendURL") ?? ""
+        if trimmed.isEmpty || trimmed == builtIn {
+            defaults.removeObject(forKey: "roomProcessingAddress")
+            defaults.removeObject(forKey: "roomProcessingBuiltInAddress")
+        } else {
+            defaults.set(trimmed, forKey: "roomProcessingAddress")
+            defaults.set(builtIn, forKey: "roomProcessingBuiltInAddress")
+        }
+    }
+
+    private static let tokenService = "org.inview.scan-backend"
+
+    /// Credentials never follow a changed server to a different origin, including a different port.
+    static func backendOrigin(_ address: String) -> String? {
+        guard let url = validatedBackendURL(address), let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased() else { return nil }
+        return "\(scheme)://\(host):\(url.port ?? (scheme == "https" ? 443 : 80))"
+    }
+
+    /// This processing credential is deliberately separate from the signed-in account session.
+    /// A token entered in settings wins; otherwise the one built in from Config/Secrets.xcconfig,
+    /// which is only ever sent to the build's own server.
+    static var backendToken: String? {
+        if let entered = backendToken(for: backendAddress) { return entered }
+        guard let builtIn = value(for: "InViewBackendToken"),
+              let origin = backendOrigin(backendAddress),
+              origin == backendOrigin(value(for: "InViewBackendURL") ?? "") else { return nil }
+        return builtIn
+    }
+
+    static var hasBuiltInBackendToken: Bool { value(for: "InViewBackendToken") != nil }
+
+    /// Only what was typed in settings for this server, so the field never reveals the built-in token.
+    static func backendToken(for address: String) -> String? {
+        guard let origin = backendOrigin(address) else { return nil }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService, kSecAttrAccount as String: "api-access-token@" + origin,
+            kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    @discardableResult static func setBackendToken(_ token: String, for address: String) -> Bool {
+        guard let origin = backendOrigin(address) else { return token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService, kSecAttrAccount as String: "api-access-token@" + origin
+        ]
+        if token.isEmpty { return [errSecSuccess, errSecItemNotFound].contains(SecItemDelete(query as CFDictionary)) }
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(token.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecSuccess { return true }
+        guard status == errSecItemNotFound else { return false }
+        return SecItemAdd(query.merging(attributes) { _, value in value } as CFDictionary, nil) == errSecSuccess
     }
 
     /// Which vision model spots elevators, ramps and stairs while scanning.
@@ -29,83 +111,6 @@ enum AppConfig {
     static var mapboxAccessToken: String? {
         guard let token = value(for: "MBXAccessToken"), token.hasPrefix("pk.") else { return nil }
         return token
-    }
-
-    /// The build's server, unless one was typed into settings for this same build. A new build that
-    /// points somewhere else wins over an old override, so a phone never sticks to a retired server.
-    static var backendAddress: String {
-        let defaults = UserDefaults.standard
-        let builtIn = value(for: "InViewBackendURL") ?? ""
-        if let saved = defaults.string(forKey: "roomProcessingAddress"), !saved.isEmpty,
-           (defaults.string(forKey: "roomProcessingBuiltInAddress") ?? "") == builtIn {
-            return saved
-        }
-        return builtIn
-    }
-
-    static var backendURL: URL? { validatedBackendURL(backendAddress) }
-
-    private static let tokenService = "org.inview.scan-backend"
-    private static let tokenAccount = "api-access-token"
-
-    /// A token entered in settings wins; otherwise the one built in from Config/Secrets.xcconfig.
-    static var backendToken: String? { keychainBackendToken ?? value(for: "InViewBackendToken") }
-
-    static var hasBuiltInBackendToken: Bool { value(for: "InViewBackendToken") != nil }
-    /// Only what was typed in settings, so the field never reveals the built-in token.
-    static var enteredBackendToken: String? { keychainBackendToken }
-
-    private static var keychainBackendToken: String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: tokenService,
-            kSecAttrAccount as String: tokenAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let bytes = item as? Data else { return nil }
-        return String(data: bytes, encoding: .utf8)
-    }
-
-    @discardableResult static func setBackendToken(_ token: String) -> Bool {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: tokenService,
-            kSecAttrAccount as String: tokenAccount
-        ]
-        if trimmed.isEmpty { return [errSecSuccess, errSecItemNotFound].contains(SecItemDelete(query as CFDictionary)) }
-        guard let data = trimmed.data(using: .utf8) else { return false }
-        let attributes: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        ]
-        let result = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if result == errSecSuccess { return true }
-        guard result == errSecItemNotFound else { return false }
-        return SecItemAdd(query.merging(attributes) { _, value in value } as CFDictionary, nil) == errSecSuccess
-    }
-
-    static func validatedBackendURL(_ address: String) -> URL? {
-        guard let url = URL(string: address.trimmingCharacters(in: .whitespacesAndNewlines)),
-              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
-              let host = url.host, !host.isEmpty,
-              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return nil }
-        return url
-    }
-
-    static func setBackendAddress(_ address: String) {
-        let defaults = UserDefaults.standard
-        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty || trimmed == (value(for: "InViewBackendURL") ?? "") {
-            defaults.removeObject(forKey: "roomProcessingAddress")
-            defaults.removeObject(forKey: "roomProcessingBuiltInAddress")
-        } else {
-            defaults.set(trimmed, forKey: "roomProcessingAddress")
-            defaults.set(value(for: "InViewBackendURL") ?? "", forKey: "roomProcessingBuiltInAddress")
-        }
     }
 
     private static func value(for key: String) -> String? {

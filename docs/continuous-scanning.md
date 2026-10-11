@@ -1,241 +1,191 @@
-# Continuous scanning
+# Continuous scanning with RoomPlan
 
-The `streaming` branch defaults to a continuous ARKit scanner. Choose a floor,
-walk through the space, and tap **Finish**. The camera session does not start
-RoomPlan or stop at room boundaries. **Scan processing → Continuous scanning**
-can be turned off to compare with the existing RoomPlan scanner.
+Choose a floor, scan the space, and tap **Finish**. New scans use RoomPlan and
+build their maps on the phone. Connected rooms share one AR session; confirmed
+room transitions are handled internally. Saving and reviewing a local map work
+without a server. **Find places** is an explicit optional processing request during
+review; it does not replace the local geometry or resume an older stream.
 
-This is a prototype capture and reconstruction path. It has compiled for the
-Simulator; a long physical LiDAR scan is still needed to establish capture quality,
-tracking behavior, memory, heat, and the accuracy of detected loop closures.
+## Room transitions
 
-## Capture and transport
+A room is finalized only after a confirmed crossing of a measured door or opening.
+The detector requires stable portal measurements, reliable tracking, movement
+through the clear passage, and sustained clearance on the other side. Walking
+past a doorway, looking through it, measurement jitter, or briefly stepping over
+and back must not trigger a handoff. Stale measurements, tracking loss, and
+implausible jumps discard pending crossings. A spatial cooldown prevents repeated
+handoffs at the same doorway, including when RoomPlan changes its identifier.
 
-- One shared AR session supplies camera tracking, scene depth, and compact floor
-  and obstacle measurements. ARKit's classified scene reconstruction also runs:
-  it fuses every LiDAR frame into one mesh, so surfaces seen only at grazing
-  angles, like a ceiling while the phone faces forward, still fill in. The mesh
-  is copied once, when the scan finishes, never during capture.
-- While scanning, the app checks ARKit's ceiling-labeled faces near the volunteer
-  every 1.5 seconds and asks them to tilt up when the area around them has none.
-  After two seconds of looking up without finding a ceiling (too high for LiDAR),
-  it stays quiet until they move 3 m on.
-- At most one keyframe is copied, encoded, and written at a time. Camera images
-  remain in the depth sensor's orientation. JPEG dimensions and camera calibration
-  are scaled together; depth uses the same normalized image coordinates.
-- Samples are selected at most twice per second when the phone has moved 10 cm,
-  turned 10 degrees, or held a view for three seconds. Tracking must be normal and
-  current. This is continuous coverage with selected samples, not an archive of
-  every camera frame.
-- Each accepted RGB/depth sample is atomically saved before upload. A separate
-  worker sends one immutable numbered chunk at a time. Retrying a lost response
-  cannot create a duplicate frame. Original chunks remain available for reupload.
-- The camera view draws RoomPlan's live outlines of walls, doors, windows and
-  furniture as they are recognized. RoomPlan only draws here: the stream, the
-  classified mesh and the AR world map all come from the shared ARKit session it
-  runs on, and the scan is unaffected when RoomPlan reaches its scene size limit
-  or stops for heat. Outlines restart on their own in that case.
-- **Captured surfaces** can additionally highlight saved measurements in green
-  over the camera view. It is off by default because the extra Metal layer competes
-  with the camera view for drawables on a busy GPU. Tap it to show coverage.
-  Highlights use the surface currently visible, so a nearer object hides captured
-  geometry behind it; uncertain depth and lost tracking hide the affected
-  highlights. Green means captured on this phone, not fully scanned or finished
-  processing. The bounded preview can refresh older highlights as an area is
-  captured again; saved scan data is retained.
-- The status pill reports upload progress. **Upload retrying** means a connection
-  problem that will be retried; **Upload failed** means the server rejected the
-  scan (wrong address, outdated server without stream endpoints, plain `http://`
-  to a remote host). The reason appears under the controls, and capture continues
-  on the phone either way; resume from **Settings → Saved scans** afterwards.
-- Uploads use lossless gzip when the server advertises support. The phone retains
-  the original JSON and measurements; older servers continue receiving ordinary
-  JSON. The uploader reuses the established stream between samples and reconciles
-  again on explicit retry or Finish.
-- Connectivity does not block capture. Without a server, samples remain on the
-  phone and a compact measured map can be reviewed, with ARKit's mesh as its 3D
-  model. The backend's depth reconstruction is separate and does not use it.
+Room extent, distance walked, and elapsed time never finalize a room. The former
+7 m and two-minute rollover is removed, so a long scan of one large room does not
+split because it passes an app threshold. RoomPlan itself can still reach a size
+or processing limit. Tracking interruptions, critical heat, storage pressure, and
+floor travel can also pause capture. These are explicit pauses, not silent cuts
+followed by another room capture. **Continue scanning** resumes where supported;
+**Finish** retries a retained room whose saving or processing failed before
+finishing the map. This is not an unlimited building-wide
+LiDAR capture guarantee.
 
-## On-device mesh and ceiling
+A confirmed handoff briefly processes the room before continuing RoomPlan in the
+shared coordinate system. The app asks the mapper to hold position; bounded ARKit
+floor observations and the recorded walk continue during this normal handoff.
+Depth processing pauses to leave room for RoomBuilder. Floor travel, capture
+errors and finalization stop these observations. Finish becomes available after pending room work completes. Floor changes keep
+separate captures and saved maps; they do not merge different floors into one
+room structure.
 
-At Finish, the mesh anchors' native buffers are copied on the main actor; decoding
-happens on a background task. `ReconstructedMesh` merges the anchors into one mesh in map
-coordinates, welding vertices in 2 cm cells (4, 8, then 16 cm until it fits 150,000
-triangles). Faces keep ARKit's label (wall, floor, ceiling, table, seat, door,
-window) and are wound towards ARKit's normals, the side the sensor saw. The 3D map
-draws it single-sided, like a dollhouse: from above, near walls and the ceiling fall
-away. Ceiling faces are also left out of the drawing and of floor cutaways. With
-several floor levels, each level's cutaway keeps only its own faces. Unlabeled meshes are still left
-out of cutaways. The mesh is display geometry only; routing still uses measured
-floor coverage.
+## Finishing the map
 
-`CeilingMeasurement` compares ceiling and floor faces on a 25 cm plan grid. Review
-shows the median ceiling height and how much of the floor has ceiling captured above
-it; the capture metadata records both. The raw archive keeps the native mesh
-buffers; the welded mesh is in the capture bundle.
+Each room's original `CapturedRoomData` is archived as a binary property list
+before `RoomBuilder` processes it. This preserves sensor values that JSON cannot
+represent. If the SDK cannot serialize its opaque input, room processing still
+continues; its processed native result is archived instead, with an original-data
+warning. Actual file-write failures pause with the input retained for retry. Only
+an out-of-space error asks the user to free storage.
 
-After welding, `MeshColorizer` colors the mesh from the stream's saved photos,
-reading up to 200 chunks spread over the walk, one at a time, with each photo
-decoded at 512 px. `MeshColoring` projects every vertex into each photo and keeps
-the photo only where its measured depth agrees with the vertex (within 6 cm plus 3%
-of the distance), so a surface in front doesn't paint the one behind it. Views count
-more when they're head-on and close, and less near the image edge. Vertices no photo
-saw borrow from neighbors up to four edges away, then fall back to gray. Colors are
-stored per vertex as `vertex_colors` (0xRRGGBB) on the mesh, and the map draws them
-unlit, since the photos already carry the room's light. The colored mesh seeds the
-splat's starting point cloud (`sparse_pc.ply`) with those colors. Coloring happens on
-the phone during Finish (the "Coloring 3D model…" stage); a failure leaves the
-model plain and doesn't stop the save.
-- Finish seals the local capture before contacting the server. A failed upload
-  remains retryable. **Scan processing → Saved scans** can explicitly resume a
-  saved stream and review its model after an app restart. A saved stream normally
-  uses its original server; **Send to selected server** explicitly changes that
-  binding. Opening the saved-scans list does not send camera data.
-- Upload progress reports acknowledged samples, then switches to building the
-  model after the server receives the full capture. Preparing and saving are
-  separate stages. A growing upload backlog does not mean reconstruction has
-  started.
+One completed room uses its native result directly. Multiple completed rooms
+are assembled with Apple's `StructureBuilder`, and that structure supplies both
+the portable scene and navigation geometry. An SDK merge failure is not replaced
+by concatenated room geometry.
 
-Continuous mode retains one separate depth observation for the compact local
-fallback, alongside measured floor and obstacle coverage. The full synchronized
-camera/depth history remains in the stream archive. Finish does not export a
-second full depth history. The RoomPlan comparison path retains its existing
-bounded depth archive.
+The finishing operation validates finite, rigid geometry and checks that the
+assembled structure remains in the original shared coordinate envelope. Original
+captures are saved before this operation. Processing or alignment failure keeps
+them available and leaves the previously saved map selected.
 
-Local originals are under `Documents/Captures/<scan UUID>/stream/`. Server
-originals use `INVIEW_STREAM_DIR`, defaulting to `data/streams/`. These archives
-contain indoor camera images as well as depth measurements. The scan-processing
-server setting identifies where those images are sent.
+Original RoomPlan capture data remains in the local archive. Preliminary
+measurements discarded by native processing are not reinserted as walls or
+furniture in the finished map.
+Confirmed ARKit floor observations can add exact uncovered floor regions. Gaps
+and missing coverage remain open rather than becoming an invented floor slab.
+Connected measured patches are retried until no more coverage can be added, so
+anchor order cannot discard the far end of an observed corridor. A disconnected
+patch is not connected by invented geometry.
 
-**Saved scans → View scan data** opens the original depth measurements as an
-orbitable point cloud, with **Depth** and **Color** appearances. It works offline
-and does not resume uploads. **Map options → Scan data** opens the same view while
-reviewing a continuous scan or its saved model. This is a sampled preview of the
-original camera poses, so it may differ from the backend's corrected model. It
-reads one saved chunk at a time, selects up to 24 views across the whole walk,
-and displays at most 90,000 points. Opening it never changes the saved map,
-capture, or upload progress.
+## Capture guidance and review
 
-Use the share button in **Scan data** to export all saved observations for offline
-reconstruction. Export is optional and runs only when requested; it adds no work
-to Finish. The TAR contains the original sensor-oriented JPEGs, packed
-little-endian float32 depth and confidence files, and a versioned observation
-index with calibration, original camera poses, timestamps, and observed labels.
-It reads and releases one validated chunk at a time. Missing depth is encoded as
-the canonical float32 NaN `0x7fc00000`. These are portable representations of the
-saved measurements, rather than byte-exact native ARKit buffers with row padding.
-The export preserves the source archive and its upload checkpoint. Closing the
-view cancels preparation; temporary share files are removed after dismissal.
+RoomPlan instructions provide short prompts about speed, light and wall distance.
+The app also prompts for a downward view when neither RoomPlan nor ARKit has
+measured floor under the phone. Doorway handoffs use a measured floor elevation.
 
-This adapts the calibrated inventory and binary sidecar ideas from PR #1 without
-adding its separate RoomPlan package upload or location collection. Normal
-tracking observations remain accepted even when world mapping is limited;
-requiring a fully mapped environment would create gaps while exploring a building.
+**Check scan** compares the mapper's recorded walk with the finished measured
+floor. Dashed segments mark missing coverage along that walk. The trace is bounded
+to 4,096 samples and breaks across tracking loss, stale poses, implausible jumps
+and explicit pauses. An incomplete assessment is labeled as partial. This check
+cannot detect every unvisited room or certify complete building coverage, and
+the walk never becomes routing geometry.
 
-## Reconstruction and drift correction
+The review also flags missing floor outlines, doorway widths, ramp slopes and
+destinations. Accessibility reports include measured openings as well as doors,
+retain unknown measurements as unknown, and show findings instead of a letter
+grade that could imply an incomplete scan is accessible.
 
-The backend keeps a bounded set of reconstruction keyframes, proposes nonadjacent
-revisit candidates, and verifies candidates against image and measured depth
-evidence. Verified constraints are added to a pose graph alongside the supplied
-camera trajectory. Optimization fixes the first camera pose so geographic placement
-keeps the same reference origin.
+`LocalSceneBuilder` retains the existing bundled furniture catalog. RoomPlan's
+categories, measured dimensions, and placement select and position those models;
+unsupported categories use neutral measured shapes. This preserves custom model
+styling without requiring server furniture recognition. It does not identify an
+exact furniture brand or reconstruct unseen object details.
 
-After optimization, the backend rereads the saved chunks one at a time and rebuilds
-the measured mesh. Camera-pose corrections are interpolated by sample timestamp,
-using linear translation and shortest-path quaternion interpolation. Supplied
-floor, barrier, and obstacle poses receive the same corrections. Object dimensions
-and local measured polygons are preserved. A weak or absent loop match leaves
-the supplied trajectory unchanged; it does not imply that trajectory has no drift.
+Review and navigation derive a separate finished display with measured floor
+polygons, clean wall cutaways, furniture, and place labels. Framing follows the
+actual floor polygons and visible geometry; near walls keep a 50 cm cutaway in
+3D. Preparation runs in the background and resets when the displayed floor
+changes, keeping the original coordinate frame, routing coverage, obstacles, and
+saved evidence intact.
 
-The first reconstruction triangulates supported depth neighborhoods, excludes
-confidence holes and depth discontinuities, welds nearby vertices, and removes
-duplicate faces. It is not volumetric TSDF fusion, automatic room segmentation,
-or textured reconstruction. Camera images are retained for registration and later
-processing. Mesh triangles never become assumed walkable floors.
+Earlier depth-only scenes can still derive supported flat floor and upright wall
+panels. Measured openings and missing coverage stay open, and small isolated
+fragments are omitted. This is display preparation, not semantic room recognition
+or photoreal reconstruction. It accepts up to 200,000 mesh triangles, 400,000
+vertices, and 4,000 surfaces, objects, or supplied floor outlines each, with
+additional bounded geometry work. Inputs above those display limits show **Map
+unavailable** while saved originals remain available.
 
-Large meshes automatically compact nearby measured vertices from 2 cm to 4 cm
-and then 8 cm cells. All later samples continue integrating; vertex and triangle
-counts trigger compaction rather than rejecting the scan. This reduces detail and
-can shrink narrow openings, so the model reports when compaction was needed.
-Full original measurements stay saved for later processing.
+## Optional detail and place suggestions
 
-The server then reduces the display mesh toward a soft target of 50,000 triangles,
-using topology-preserving simplification first and spatial cleanup when overlapping
-depth prevents useful reduction. Estimated display error can reach 20 cm; small
-features and fragmented openings can lose detail. Connected regions, substantial
-closed boundary loops and extent anchors receive protection. Original observations,
-measured floor polygons and obstacle bounds remain separate from this display pass.
-Source/display counts and estimated error are reported in reconstruction metadata.
-Both halves of the returned capture/scene use the same reduced mesh. Result and
-scene responses use lossless gzip when the client accepts it and it saves bytes.
-Known photo-catalog furniture is sent as model keys and measured placements; the
-app reuses its bundled models instead of downloading another copy for each object.
+**Scanning → Detailed scan** adds a bounded native mesh and photos to new captures.
+It is off by default. Original RoomPlan inputs and the raw snapshot are secured
+before optional mesh compaction or coloring. The structural map remains usable
+when detail fails, and **Try detail again** retries from the same originals.
+**Map appearance → Scan detail** selects the matching derived display without
+changing floor coverage, destination positions or routing geometry. Classified
+meshes are limited to 150,000 triangles and 200,000 vertices. Photo coloring shares
+a fixed work budget and supports cancellation. Long-scan memory, battery and
+finish latency still require testing on a LiDAR phone.
 
-Local server recognition can identify supported furniture categories from selected
-RGB views. It runs during upload, caches object masks, and fits measured object
-bounds using depth and the corrected poses. Distinct views confirm model placement;
-single or ambiguous views keep measured shapes. An existing unclassified obstacle
-can gain a category while retaining its measured geometry. Run
-`bash recognition/setup.sh` from `backend/` once to install the inference runtime.
-Inference stays on the scan server and does not send images to another service.
-If recognition is catching up, the app waits with cancellable backoff; if the worker
-fails, the model reports a measured-geometry fallback. Floor recognition and
-reviewed navigation geometry remain separate work.
+New captures retain up to six paired depth/photo keyframes within the existing
+8 MiB selected-evidence budget, plus bounded movement and environment samples.
+**Find places** sends an immutable package of those indexed photos, measurements,
+location and reviewed semantics to the configured processing server. It does not
+send the original native room archives or adopt the server's reconstructed map.
+Suggestions preserve their measured positions and floor identity; each has an
+individual **Keep** or **Drop** action. Saving refreshes the reviewed semantic
+sidecar. Confirmed phone points retain their identity and edits.
 
-The result contains a compact derived capture, its matching scene, original and
-optimized keyframe poses, and alignment diagnostics. The app validates these
-together and corrects review pins and detected stairs using their observation
-times. The raw observations remain separate from the derived model.
-Finished result and scene responses are cached on the server with source and
-version checks. Retrying an interrupted response reuses the finished model rather
-than starting reconstruction again. Result requests use a three-minute request
-timeout and remain cancellable. Concurrent requests for the same capture
-share its work; response requests and active builders remain bounded.
+## Originals and export
 
-New review destinations can be placed after the backend result is ready, or after
-explicitly choosing **Use local map**. Choosing the local map fixes that review's
-coordinates and ends backend retries for that review. The retained stream can
-still be processed from **Saved scans**, where its model is previewed separately
-without replacing an already saved map or its destinations.
+Local archives are under `Documents/Captures/<scan UUID>/`:
 
-## Navigation and limits
+- `roomplan-source/*.plist`: each original room input, written before native room
+  processing, including inputs whose processing failed. Use `PropertyListDecoder`
+  to decode these inputs; earlier JSON originals remain supported by export.
+- `roomplan-rooms/*.plist`: processed native room results retained when the SDK
+  cannot serialize an original input.
+- `roomplan.json`: completed native room results.
+- `roomplan-structure.json`: the assembled native structure for a multi-room scan.
+- `raw-snapshot.json`: bounded selected depth observations, supplemental live
+  measurements and the optional recorded walk, separate from finished geometry.
+- `capture.json` and `scene.json`: the portable projection and cached local scene.
+- `package-manifest.json` and indexed depth/photo files: bounded processing evidence.
+- `semantics.json`, `text-observations.json` and `camera-track.json`: reviewed points,
+  text candidates and movement evidence in the same scan frame.
+- `detail.json`: optional derived surface capture and scene, saved together;
+  these never replace the canonical capture or structural scene.
 
-A pose correction that varies along a scan cannot be installed as one transform
-on the saved `ARWorldMap`. A materially corrected map therefore remains available
-for review and saving, but live AR navigation is disabled until localization
-against the corrected model is implemented. An uncorrected model continues to use
-the existing relocalization path; absence of a verified loop is not an accuracy
-certification.
+Open **Scanning → Saved scans** to view a saved map or **Export original scan**.
+The export includes available original room inputs, completed rooms, structure,
+raw snapshot, and portable capture. Opening the list and exporting do not send
+scan data to a server. A capture can appear with originals available even when no
+finished map could be produced.
 
-If localization takes too long, **Try again** restarts with the saved AR world
-map. Routing remains unavailable until ARKit recognizes that coordinate system;
-standing at the starting spot alone does not establish alignment.
+New RoomPlan scans retain a bounded depth archive, not every sensor frame or a
+full RGB photo history. Selected accessibility evidence photos and the scan-start
+reference photo remain separate. When configured, accessibility detection still
+sends selected images to the chosen vision provider; that service is independent
+of map construction.
 
-Continuous capture has no default total sample, archive, mesh or result-size cap.
-Capacity depends on available disk and memory. An individual chunk is at most
-4 MiB, and each sample is validated before acknowledgement. Tests or other callers
-can still choose an explicit smaller local capture budget. Backend reconstruction
-bounds graph keyframes, registration candidates and concurrent workers.
-The current graph uses at most 64 keyframes, so long scans may lose revisit
-opportunities. Whole-building drift correction and live guidance still benefit
-from a submap strategy and localization against the corrected model.
+Earlier stream archives and cached results are retained without deletion.
+**Earlier scans → View scan data** opens their depth/color evidence offline, and
+the evidence share action exports the original saved observations. Opening or
+exporting old evidence does not resume uploads or replace a saved navigation map.
+Those original streams retain their sensor-oriented photos, calibration, depth,
+and camera poses for possible later processing. New RoomPlan captures do not
+create another streaming photo archive.
 
-Sections are not part of this scanner's user flow. Tracking loss, storage limits,
-memory warnings, critical heat, and moving to a different floor can still pause
-capture. Continuing a paused scan keeps its AR coordinate system; changing floors
-starts a separate capture.
+## Validation
 
-## Local validation
+Run `swift test --package-path Packages/AccessCore` and build the iOS app. The
+room-transition tests cover stable doors and openings, sustained clearance,
+walking past, backing out, stale observations, tracking loss, implausible motion,
+revisits, changed portal identifiers, and rotated coordinate frames. The
+large-room test exercises extended movement without portals and verifies that
+time, distance, and room extent never trigger a handoff. Map tests cover measured
+polygons, openings, floor separation, source preservation, and resource limits.
+Coverage tests include reversed and shuffled corridor patches, preserved gaps,
+tracking breaks, missing intervals between recorded poses, and bounded review work.
 
-Run `swift test --package-path Packages/AccessCore` and `cargo test` in `backend/`.
-The streaming tests cover durable samples, retries, interrupted transport,
-reopened queues, server rollback, capture limits, calibration, and pose-correction
-interpolation. Backend tests exercise measured depth geometry and synthetic loop
-closure; synthetic results do not replace physical corridor testing.
+For a Simulator-only UI fixture, launch with `--scan-review-preview`. It opens the
+production scan-check views with two measured rooms and a missing corridor; it
+does not start capture or modify saved maps.
 
-For a phone test, run the backend with `INVIEW_BIND=0.0.0.0:3000`, set the phone's
-scan-processing address to the Mac's local network address, and scan a textured
-loop with the floor and surrounding surfaces in view. Inspect both the rebuilt
-model and returned alignment diagnostics, then repeat with a straight corridor
-and a deliberately interrupted connection. The prototype backend has no
-authentication; keep this development test on a trusted local network.
+Physical LiDAR validation remains necessary. Scan one large room beyond the old
+7 m/two-minute limits, then enter adjoining rooms through doors and openings.
+Check the original inputs, native merged structure, map and furniture, alignment
+with saved points, interruption/resume, revisits, and floor changes. Synthetic
+fixtures and passing detector tests do not establish RoomPlan quality, heat,
+tracking, or seamless room handoffs on the device.
+
+The Rust streaming backend is retained as separate developer research. Its
+archived capture, transport, reconstruction, loop-closure, and recognition
+protocols are documented in [backend/SCANS.md](../backend/SCANS.md); they are not
+instructions for the current app scanning flow.

@@ -39,11 +39,10 @@ async fn unavailable_database_does_not_break_existing_routes() {
 }
 
 #[tokio::test]
+#[ignore = "requires an isolated PostgreSQL database via INVIEW_TEST_DATABASE_URL"]
 async fn postgres_building_frame_snapshots_and_pose_evidence() {
-    let Ok(base) = std::env::var("INVIEW_TEST_DATABASE_URL") else {
-        eprintln!("Set INVIEW_TEST_DATABASE_URL for isolated PostgreSQL integration test");
-        return;
-    };
+    let base = std::env::var("INVIEW_TEST_DATABASE_URL")
+        .expect("Set INVIEW_TEST_DATABASE_URL for the isolated PostgreSQL integration test");
     let admin = PgPool::connect(&base).await.unwrap();
     let schema = format!("inview_test_{}", Uuid::new_v4().simple());
     sqlx::query(&format!("CREATE SCHEMA \"{schema}\""))

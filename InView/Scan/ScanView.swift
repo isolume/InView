@@ -5,12 +5,9 @@ import SwiftUI
 struct ScanView: View {
     @StateObject private var controller = ScanController()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var glass
     @State private var marks = 0
-    @State private var showsProcessingSettings = false
-    /// Green highlights of saved surfaces, off by default: RoomPlan's live outlines are the scan feedback,
-    /// and the extra Metal layer competed with the camera view for drawables.
-    @State private var showsScanCoverage = false
 
     var body: some View {
         Group {
@@ -28,15 +25,11 @@ struct ScanView: View {
                             .multilineTextAlignment(.center)
                         if let error = controller.sceneError {
                             Text(error).font(.subheadline).foregroundStyle(.secondary)
-                            Button("Settings") { showsProcessingSettings = true }
-                            if controller.canMoveStreamToSelectedServer {
-                                Button("Send to selected server", action: controller.moveStreamToSelectedServer)
-                            }
                             if controller.canUseLocalScene { Button("Use local map", action: controller.useLocalScene) }
                         }
                         Button(controller.scene == nil ? "Try again" : "Continue to \(nextFloor)", action: controller.retryFloorSwitch)
                             .buttonStyle(.borderedProminent)
-                        Button("Close", role: .cancel, action: close).buttonStyle(.bordered)
+                        Button("Close", role: .close, action: close).buttonStyle(.bordered)
                     }.padding()
                 } else {
                     MapReviewView(controller: controller, onClose: close)
@@ -45,7 +38,9 @@ struct ScanView: View {
         }
         .onAppear { controller.start() }
         .onDisappear { controller.stop() }
-        .sheet(isPresented: $showsProcessingSettings) { BackendSettingsView() }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            controller.setAppIsActive(phase == .active)
+        }
         .sheet(isPresented: Binding(
             get: { controller.proposedFloorLevel != nil },
             set: { if !$0, controller.proposedFloorLevel != nil { controller.cancelFloorChange() } }
@@ -72,13 +67,6 @@ struct ScanView: View {
             } else {
                 Color(.systemBackground).ignoresSafeArea()
             }
-            if controller.isContinuous, showsScanCoverage, !controller.isChangingFloors,
-               controller.phase == .scanning || controller.phase == .interrupted {
-                ScanCoverageOverlay(session: controller.session, coverage: controller.scanCoverage)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
             if controller.phase == .scanning {
                 DetectionOverlay(detector: controller.detector, session: controller.session)
                     .ignoresSafeArea()
@@ -101,34 +89,14 @@ struct ScanView: View {
                             .accessibilityLabel("\(floor.name). Change floor")
                         }
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 6) {
-                            DetectionStatus(detector: controller.detector,
-                                            section: controller.isContinuous ? nil : controller.sectionCount + 1)
-                            if controller.isContinuous {
-                                if controller.phase == .scanning || controller.phase == .interrupted {
-                                    Button {
-                                        showsScanCoverage.toggle()
-                                    } label: {
-                                        Label("Captured surfaces", systemImage: showsScanCoverage ? "checkmark.circle.fill" : "eye.slash")
-                                            .font(.caption.weight(.semibold))
-                                    }
-                                    .buttonStyle(.glass)
-                                    .tint(showsScanCoverage ? .green : .secondary)
-                                    .accessibilityLabel("Captured surfaces")
-                                    .accessibilityValue(showsScanCoverage ? "Shown in green" : "Hidden")
-                                    .accessibilityHint("Double tap to toggle highlights of surfaces saved on this phone")
-                                }
-                                StatusPill(text: controller.streamStatusLine, isCompact: true)
-                            }
+                        if controller.phase == .scanning {
+                            DetectionStatus(detector: controller.detector)
                         }
                     }
                     Spacer()
-                    if !controller.isContinuous, controller.suggestsNewSection, controller.phase == .scanning {
-                        sectionSuggestion
-                    }
                     switch controller.phase {
                     case .processing:
-                        StatusPill(text: "Processing section…", isWorking: true)
+                        StatusPill(text: "Hold here while the room is saved…", isWorking: true)
                             .glassEffectID("status", in: glass)
                     case .interrupted:
                         if controller.isChangingFloors { floorTransitionPanel }
@@ -175,33 +143,10 @@ struct ScanView: View {
         .glassEffectID("status", in: glass)
     }
 
-    /// The volunteer walked through a doorway. RoomPlan keeps one room per section, so this is the moment to split.
-    private var sectionSuggestion: some View {
-        HStack(spacing: 10) {
-            Image(systemName: Theme.Symbol.door).font(.title3).foregroundStyle(Theme.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("New room?").font(.subheadline.weight(.semibold))
-                Text("Add a section so the last one is kept as scanned.").font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Button("Add section", action: controller.addSection)
-                .buttonStyle(.glassProminent)
-                .controlSize(.small)
-            Button("Dismiss", systemImage: "xmark", action: controller.dismissSectionSuggestion)
-                .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .controlSize(.small)
-        }
-        .glassPanel(padding: 12)
-        .glassEffectID("suggestion", in: glass)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    /// RoomPlan ended the section by itself; what it scanned is kept, and the volunteer decides what's next.
+    /// An interruption keeps the scan available for recovery or review.
     private var interruptedPanel: some View {
         VStack(spacing: 12) {
-            Label("Scanning stopped", systemImage: Theme.symbol(for: .warning))
+            Label("Scanning paused", systemImage: Theme.symbol(for: .warning))
                 .font(.headline)
                 .foregroundStyle(Theme.color(for: .warning))
             Text(controller.errorMessage ?? "The scanner paused. Move somewhere with more detail in view before continuing.")
@@ -213,7 +158,7 @@ struct ScanView: View {
                 .multilineTextAlignment(.center)
             HStack(spacing: 10) {
                 Button(action: controller.continueScanning) {
-                    Label("Continue scanning", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                    Label("Resume", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glassProminent)
                 Button(action: controller.finish) {
@@ -237,7 +182,7 @@ struct ScanView: View {
                     .buttonStyle(.glassProminent)
                     .controlSize(.large)
             } else {
-                ProgressView("Saving AR map…")
+                ProgressView("Saving map…")
             }
         }
         .frame(maxWidth: .infinity)
@@ -269,23 +214,12 @@ struct ScanView: View {
                     .accessibilityHint("Marks the spot in the center of the screen")
                 }
             }
-            HStack(spacing: 10) {
-                if !controller.isContinuous {
-                    Button(action: controller.addSection) {
-                        Label("Next section", systemImage: "plus.square.on.square").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glass)
-                }
-                Button(action: controller.finish) {
-                    Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(controller.isContinuous && !controller.canFinishContinuousScan)
+            Button(action: controller.finish) {
+                Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
             }
+            .buttonStyle(.glassProminent)
             .controlSize(.large)
-            Text(controller.scanNotice ?? controller.trackingNotice ?? controller.ceilingNotice ?? (controller.isContinuous
-                 ? "Move slowly and include the floor as you scan."
-                 : "Include the floor as you scan. Long scans save sections automatically."))
+            Text(controller.trackingNotice ?? controller.scanGuidance)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if controller.automaticFloorDetectionUnavailable {
@@ -295,10 +229,10 @@ struct ScanView: View {
             if let error = controller.errorMessage {
                 StatusPill(text: error, systemImage: Theme.symbol(for: .barrier), isCompact: true)
                     .foregroundStyle(Theme.color(for: .barrier))
-            } else if let notice = controller.uploadNotice {
-                StatusPill(text: notice, systemImage: "icloud.slash", isCompact: true)
+            }
+            if let warning = controller.originalScanWarning {
+                StatusPill(text: warning, systemImage: Theme.symbol(for: .warning), isCompact: true)
                     .foregroundStyle(Theme.color(for: .warning))
-                    .multilineTextAlignment(.center)
             }
         }
     }
@@ -319,7 +253,6 @@ private struct Crosshair: View {
 
 private struct DetectionStatus: View {
     @ObservedObject var detector: AccessibilityDetector
-    let section: Int?
 
     var body: some View {
         let counts = detector.sightings.reduce(into: [VisionDetection.Kind: Int]()) { counts, sighting in
@@ -370,15 +303,10 @@ private struct DetectionStatus: View {
 
     private var statusLine: String {
         if !detector.isEnabled {
-            return AppConfig.visionProvider == .openai ? "Vision off: set OPENAI_API_KEY" : "Vision off: set GEMINI_API_KEY"
+            return "Mark accessibility features below"
         }
-        if let error = detector.lastError { return error }
-        var line = section.map { "Section \($0) · " } ?? ""
-        line += "\(detector.framesAnalyzed) frames checked"
-        if detector.rejectedClaims > 0 {
-            line += " · \(detector.rejectedClaims) false finds ruled out by LiDAR"
-        }
-        return line
+        if detector.lastError != nil { return "Feature detection unavailable" }
+        return "Looking for accessibility features"
     }
 }
 
@@ -394,12 +322,11 @@ struct MapReviewView: View {
             if let scene = controller.scene {
                 RoomMapExperience(scene: scene, map: controller.draft, title: "Review map", onClose: onClose,
                                   primaryTitle: isSaving ? "Saving…" : "Save map", primaryAction: save,
-                                  secondaryTitle: "Review points",
+                                  secondaryTitle: "Check scan",
                                   reviewDestination: AnyView(RoomReviewSheet(controller: controller, onSaved: onClose)),
-                                  streamEvidenceID: controller.streamEvidenceID,
                                   currentMapPosition: { controller.placementPosition },
                                   onPlaceBuilding: controller.setGeographicReference,
-                                  error: $saveError)
+                                  error: $saveError, detailScene: controller.detailScene)
             } else {
                 MapReviewDetailsView(controller: controller, onClose: onClose)
             }
@@ -423,14 +350,7 @@ private struct ScanSceneProgress: View {
     @ObservedObject var controller: ScanController
 
     var body: some View {
-        VStack(spacing: 10) {
-            if let progress = controller.sceneUploadProgress {
-                Text(controller.sceneStatusLine).font(.subheadline)
-                ProgressView(value: progress).frame(width: 220)
-            } else {
-                ProgressView(controller.sceneStatusLine)
-            }
-        }
+        ProgressView(controller.sceneStatusLine)
     }
 }
 
@@ -452,14 +372,17 @@ private struct MapReviewDetailsView: View {
     @State private var pendingPoint: SIMD2<Float>?
     @State private var pendingDestinationPoint: SIMD2<Float>?
     @State private var destinationName = ""
-    @State private var isShowingSettings = false
     @State private var saveError: String?
     @State private var isSaving = false
     @State private var shownEvidence: ShownEvidence?
+    @State private var showsSettings = false
 
     var body: some View {
         NavigationStack {
             List {
+                if let warning = controller.originalScanWarning {
+                    Section { Text(warning).foregroundStyle(.secondary) }
+                }
                 if let draft = controller.draft {
                     if controller.isProcessingScene {
                         Section { ScanSceneProgress(controller: controller) }
@@ -469,14 +392,7 @@ private struct MapReviewDetailsView: View {
                             if controller.canUseLocalScene {
                                 Button("Use local map", action: controller.useLocalScene)
                             }
-                            HStack {
-                                Button("Settings") { isShowingSettings = true }
-                                Spacer()
-                                if controller.canRetryScene { Button("Try again", action: controller.retryScene) }
-                            }
-                            if controller.canMoveStreamToSelectedServer {
-                                Button("Send to selected server", action: controller.moveStreamToSelectedServer)
-                            }
+                            if controller.canRetryScene { Button("Try again", action: controller.retryScene) }
                         }
                     }
                     Section {
@@ -485,15 +401,49 @@ private struct MapReviewDetailsView: View {
                     } footer: {
                         Text(controller.canPlaceReviewPoints
                              ? "Tap the plan to name a destination or add an elevator or ramp the camera missed."
-                             : "Finish building the model or choose Use local map before adding destinations.")
+                             : "Finish preparing the map before adding destinations.")
                     }
-                    if controller.hasSelectedLocalStreamMap {
-                        Section {
-                            Text("Local map selected. Your saved scan can still be uploaded from Settings.")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                    ScanReviewSections(map: draft, trace: controller.walkTrace, coverage: controller.walkCoverage)
+                    Section {
+                        if controller.isPreparingDetail {
+                            ProgressView("Preparing detail…")
+                        } else if let error = controller.detailError {
+                            Text(error).font(.subheadline).foregroundStyle(.secondary)
+                            if controller.canRetryDetail { Button("Retry detail", action: controller.retryDetail) }
                         }
+                        if controller.isFindingPlaces {
+                            ProgressView(controller.analysisStatus ?? "Finding places…")
+                        } else {
+                            Button("Find places", systemImage: "text.viewfinder", action: controller.findPlaces)
+                            if let status = controller.analysisStatus {
+                                Text(status).font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
+                        if let error = controller.analysisError {
+                            Text(error).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        ForEach(controller.analysisCandidates, id: \.id) { place in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(place.localizedName()).font(.body.weight(.medium))
+                                Text(place.category.title).font(.caption).foregroundStyle(.secondary)
+                                if !controller.canKeepAnalysisPlace(place) {
+                                    Text("Its position on this floor needs checking. Add it by tapping the plan.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                HStack {
+                                    Button("Keep") { controller.keepAnalysisPlace(place) }
+                                        .disabled(!controller.canKeepAnalysisPlace(place))
+                                    Button("Drop", role: .destructive) { controller.dropAnalysisPlace(place) }
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        Button("Scan settings", systemImage: "gearshape") { showsSettings = true }
+                    } header: {
+                        Text("Place suggestions")
+                    } footer: {
+                        Text("Find places sends this scan's photos, measurements and location to your scan server. Suggestions stay here until you keep them.")
                     }
-                    if controller.isContinuous { ceilingSection }
                     if !controller.unconfirmed.isEmpty {
                         Section {
                             ForEach(controller.unconfirmed) { sighting in
@@ -579,6 +529,7 @@ private struct MapReviewDetailsView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showsSettings) { BackendSettingsView() }
             .navigationTitle("Review map")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -633,7 +584,6 @@ private struct MapReviewDetailsView: View {
             .sheet(item: $shownEvidence) { shown in
                 EvidenceSheet(title: shown.title, evidence: shown.evidence)
             }
-            .sheet(isPresented: $isShowingSettings) { BackendSettingsView() }
         }
     }
 
@@ -664,28 +614,6 @@ private struct MapReviewDetailsView: View {
                 saveError = error.localizedDescription
             }
             isSaving = false
-        }
-    }
-
-    /// What LiDAR captured above the floor, so a volunteer can rescan before saving.
-    private var ceilingSection: some View {
-        Section {
-            if let ceiling = controller.ceiling {
-                LabeledContent("Height", value: String(format: "%.1f m", ceiling.heightM))
-                if let coverage = ceiling.floorCoverage {
-                    LabeledContent("Captured", value: "\(Int((coverage * 100).rounded()))% of the floor")
-                } else {
-                    LabeledContent("Captured", value: String(format: "%.0f m²", ceiling.areaM2))
-                }
-            } else {
-                Text("Not captured").foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("Ceiling")
-        } footer: {
-            Text(controller.ceiling == nil
-                 ? "Tilt the phone up as you scan so LiDAR can reach the ceiling."
-                 : "Measured by LiDAR. Tilt the phone up over areas without ceiling to fill them in.")
         }
     }
 

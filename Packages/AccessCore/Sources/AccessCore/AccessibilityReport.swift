@@ -1,7 +1,8 @@
 import Foundation
 import simd
 
-/// A quick accessibility audit of a scanned floor: what blocks wheelchairs and what works.
+/// Measurement checks for a scanned floor. Findings describe captured evidence,
+/// not a certification of the space or a guarantee that every barrier was found.
 public struct AccessibilityReport: Codable, Sendable {
     public struct Finding: Codable, Hashable, Identifiable, Sendable {
         public enum Severity: String, Codable, Sendable {
@@ -22,6 +23,15 @@ public struct AccessibilityReport: Codable, Sendable {
     /// 0–100, losing points for each barrier and warning.
     public let score: Int
     public let findings: [Finding]
+
+    /// A finding-based review status. A high legacy score cannot establish accessibility
+    /// when the scan contains little or no measured evidence.
+    public var summary: String {
+        if findings.contains(where: { $0.severity == .barrier }) { return "Potential barriers found" }
+        if findings.contains(where: { $0.severity == .warning }) { return "Measurements to review" }
+        if findings.contains(where: { $0.severity == .good }) { return "No barriers found in measurements" }
+        return "No measurements yet"
+    }
 
     public var grade: String {
         switch score {
@@ -52,39 +62,49 @@ public struct AccessibilityReport: Codable, Sendable {
     private static func compute(map: VenueMap, planner: RoutePlanner?,
                                 isCancelled: () -> Bool) throws -> AccessibilityReport {
         guard !isCancelled() else { throw CancellationError() }
-        var findings: [Finding] = []
+        // Ramp checks below retain the name of each ramp; the other missing-evidence
+        // checks also belong in saved reports, not just the live scan review.
+        var findings = ScanReviewChecks(map: map).items.filter { $0.id != .rampSlopes }.map {
+            Finding(severity: .warning, title: $0.title, detail: $0.detail)
+        }
 
-        let doors = map.footprints.filter { $0.kind == .door }
-        let narrowDoors = doors.filter { $0.size.x < OccupancyGrid.minimumDoorWidth }
-        if !narrowDoors.isEmpty {
-            let widths = narrowDoors.map { "\(Int(($0.size.x * 100).rounded())) cm" }.joined(separator: ", ")
-            findings.append(Finding(
-                severity: .barrier,
-                title: narrowDoors.count == 1 ? "1 door is too narrow" : "\(narrowDoors.count) doors are too narrow",
-                detail: "Measured \(widths). Wheelchairs need at least 81 cm (32 in) of clear width."
-            ))
-        } else if !doors.isEmpty {
-            findings.append(Finding(severity: .good, title: "Doors are wide enough", detail: "All \(doors.count) doors give at least 81 cm (32 in) of clear width."))
+        for kind in [Footprint.Kind.door, .opening] {
+            let measured = map.footprints.filter { $0.kind == kind && ScanReviewChecks.isMeasuredWidth($0.size.x) }
+            let narrow = measured.filter { $0.size.x < OccupancyGrid.minimumDoorWidth }
+            let noun = kind == .door ? "door" : "opening"
+            if !narrow.isEmpty {
+                let widths = narrow.map { String(format: "%.0f cm", $0.size.x * 100) }.joined(separator: ", ")
+                findings.append(Finding(
+                    severity: .barrier,
+                    title: narrow.count == 1 ? "1 \(noun) is too narrow" : "\(narrow.count) \(noun)s are too narrow",
+                    detail: "Estimated widths: \(widths), below the 81 cm guide. Confirm the usable clearance on site."
+                ))
+            } else if !measured.isEmpty {
+                findings.append(Finding(severity: .good, title: "\(kind == .door ? "Door" : "Opening") widths meet the guide",
+                                        detail: "\(measured.count) measured at 81 cm or wider. Confirm the usable clearance on site."))
+            }
         }
 
         let maximum = String(format: "%.1f°", AccessPoint.maximumRampSlope)
         for ramp in map.points where ramp.kind == .ramp {
-            guard let slope = ramp.slopeDegrees else {
-                findings.append(Finding(severity: .warning, title: "\(ramp.name): slope not measured", detail: "Rescan the ramp surface to check it against the ADA limit."))
+            guard ScanReviewChecks.isMeasuredSlope(ramp.slopeDegrees), let slope = ramp.slopeDegrees else {
+                findings.append(Finding(severity: .warning, title: "\(ramp.name): slope not measured", detail: "Rescan the ramp surface before relying on its incline."))
                 continue
             }
             let measured = String(format: "%.1f°", slope)
             findings.append(ramp.isTooSteep
-                ? Finding(severity: .barrier, title: "\(ramp.name) is too steep", detail: "Measured \(measured); the ADA allows at most \(maximum) (1:12).")
-                : Finding(severity: .good, title: "\(ramp.name) is a gentle slope", detail: "Measured \(measured), within the ADA limit of \(maximum)."))
+                ? Finding(severity: .barrier, title: "\(ramp.name) is too steep", detail: "Estimated \(measured), above the \(maximum) (1:12) guide.")
+                : Finding(severity: .good, title: "\(ramp.name) slope meets the guide", detail: "Estimated \(measured), within the \(maximum) guide. Surface condition and landings still need checking."))
         }
 
         let stairs = map.footprints.filter { $0.kind == .stairs }
-        let stepFree = map.points.filter { $0.kind == .elevator || ($0.kind == .ramp && !$0.isTooSteep) }
+        let stepFree = map.points.filter {
+            $0.kind == .elevator || ($0.kind == .ramp && ScanReviewChecks.isMeasuredSlope($0.slopeDegrees) && !$0.isTooSteep)
+        }
         if !stairs.isEmpty {
             findings.append(stepFree.isEmpty
                 ? Finding(severity: .barrier, title: "Stairs with no step-free alternative", detail: "No elevator or usable ramp was found on this floor.")
-                : Finding(severity: .good, title: "Stairs have a step-free alternative", detail: stepFree.map(\.name).joined(separator: ", ") + "."))
+                : Finding(severity: .warning, title: "Check the mapped stairs alternative", detail: stepFree.map(\.name).joined(separator: ", ") + ". Confirm it serves the same floors and is available."))
         }
         if !map.points.contains(where: { $0.kind == .elevator }) {
             findings.append(Finding(severity: .warning, title: "No elevator mapped", detail: "Other floors may be unreachable by wheelchair."))
@@ -107,7 +127,7 @@ public struct AccessibilityReport: Codable, Sendable {
         for (point, clearance) in zip(map.points, clearances) {
             guard !isCancelled() else { throw CancellationError() }
             guard let clearance else {
-                findings.append(Finding(severity: .barrier, title: "\(point.name) can't be reached", detail: "No step-free path from the entrance with enough room for a wheelchair."))
+                findings.append(Finding(severity: .barrier, title: "\(point.name) can't be reached", detail: "No path was found from the scan's starting point. Check for missing floor coverage, blocked passages or insufficient clearance."))
                 continue
             }
             if clearance < RoutePlanner.clearances[0] {

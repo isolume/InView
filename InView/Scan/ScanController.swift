@@ -1,16 +1,16 @@
 import ARKit
 import AccessCore
 import Combine
-import RealityKit
 import RoomPlan
 import SwiftUI
+import UIKit
 
-/// Drives a volunteer scan: RoomPlan capture of one or more sections with live vision detection,
+/// Drives a volunteer scan: RoomPlan capture of rooms with live vision detection,
 /// then an ARWorldMap snapshot that navigation sessions relocalize against, so they share the scan's coordinates.
 @MainActor
 final class ScanController: ObservableObject {
     enum SceneStage: Equatable {
-        case preparing, coloring, uploading, reconstructing, saving
+        case preparing, reconstructing, saving
     }
     enum Phase: Equatable {
         case unsupported
@@ -26,32 +26,39 @@ final class ScanController: ObservableObject {
         case review
     }
 
-    @Published private(set) var phase: Phase
-    @Published private(set) var sectionCount = 0
+    @Published private(set) var phase: Phase {
+        didSet { updateIdleTimer() }
+    }
     @Published private(set) var errorMessage: String?
     @Published private(set) var draft: VenueMap? {
-        didSet { scheduleReport() }
+        didSet {
+            scheduleReport()
+            // A reviewed edit changes the immutable evidence sent by the next request.
+            pendingAnalysis = nil
+            draftRevision &+= 1
+        }
     }
     @Published private(set) var report: AccessibilityReport?
     @Published private(set) var scene: ProcessedScene?
+    @Published private(set) var detailScene: ProcessedScene?
+    @Published private(set) var detailError: String?
+    @Published private(set) var isPreparingDetail = false
+    @Published private(set) var analysisCandidates: [ScanAnalysis.Place] = []
+    @Published private(set) var analysisStatus: String?
+    @Published private(set) var analysisError: String?
+    @Published private(set) var isFindingPlaces = false
     @Published private(set) var sceneError: String?
     @Published private(set) var isProcessingScene = false
     @Published private(set) var sceneStage: SceneStage = .preparing
     @Published private(set) var scanNotice: String?
     @Published private(set) var trackingNotice: String?
-    /// Asks the volunteer to tilt up when the area around them has no captured ceiling yet.
-    @Published private(set) var ceilingNotice: String?
-    /// Measured from ARKit's labeled mesh when a continuous scan finishes.
-    @Published private(set) var ceiling: CeilingMeasurement?
+    @Published private(set) var scanGuidance = "Move slowly and include the floor as you scan."
+    @Published private(set) var walkTrace: ScanWalkTrace?
+    @Published private(set) var walkCoverage: ScanWalkFloorCoverage.Assessment?
+    @Published private(set) var originalScanWarning: String?
     @Published private(set) var captureView: RoomCaptureView?
-    @Published private(set) var streamStatus: StreamingCaptureStatus?
-    @Published private(set) var scanCoverage = DepthScanCoverage().snapshot()
-    @Published private(set) var hasSelectedLocalStreamMap = false
-    let isContinuous = AppConfig.continuousScanning
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
-    /// The volunteer just walked through a doorway: RoomPlan keeps one room per section, so suggest a new one.
-    @Published private(set) var suggestsNewSection = false
     @Published private(set) var currentFloor: ScanFloorIdentity?
     @Published private(set) var buildingName = "Building"
     @Published private(set) var isChangingFloors = false
@@ -69,110 +76,34 @@ final class ScanController: ObservableObject {
     private var floorSwitchTask: Task<Void, Never>?
     private var captureBundle: CaptureBundle?
     private var localScene: ProcessedScene?
+    private var finishedRawSnapshot: RawScanSnapshot?
+    private var rawArchived = false
     private var sceneTask: Task<Void, Never>?
-    /// Polls the backend's OpenCV analysis after an upload and merges its places into the draft.
+    private var detailTask: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
-    /// Detected place IDs already offered once, so a point the volunteer deleted is not re-added.
-    private var mergedDetectionIDs: Set<UUID> = []
-    private var streamingCapture: StreamingScanCapture?
-    /// GPS, heading and barometer context attached to every streamed keyframe.
-    private let contextTracker = CaptureContextTracker()
-    /// Dense (≈10 Hz) camera movement between streamed keyframes.
-    private let trackRecorder = CameraTrackRecorder()
-    var streamEvidenceID: String? { streamingCapture?.queue.manifest.id }
-    private var streamStartTask: Task<Void, Never>?
-    private var streamStatusTimer: Timer?
-    private var streamStatusTask: Task<Void, Never>?
-    private var streamBackendURL: URL?
-    private var streamAlignmentApplied = false
-    /// RoomPlan draws live outlines of walls, doors and furniture during a continuous scan. It only draws:
-    /// the stream, mesh and world map all come from the shared session RoomPlan runs on.
-    private var outlinesRunning = false
-    private var outlinesStarted = Date.now
-    private var outlineRestartTask: Task<Void, Never>?
-
-    var streamStatusLine: String {
-        guard let streamStatus else { return "Starting scan…" }
-        if streamStatus.captured == 0 { return "Move slowly to start scanning" }
-        if streamStatus.uploadStopped { return "Upload failed · scan saved on phone" }
-        if streamStatus.lastError != nil { return "Upload retrying · scan saved on phone" }
-        if streamBackendURL == nil { return "Scan saved on phone" }
-        return streamStatus.pending > 0
-            ? "Uploaded \(streamStatus.uploaded) of \(streamStatus.captured) samples" : "Scan uploaded"
-    }
-
-    /// Why the upload isn't progressing, so a volunteer isn't left guessing at a bare "paused".
-    var uploadNotice: String? {
-        guard let streamStatus, streamStatus.captured > 0, let error = streamStatus.lastError else { return nil }
-        return error
-    }
-
+    private var detailRequested = false
+    private var reviewedAnalysisIDs: Set<String> = []
+    private var pendingAnalysis: (scanID: String, server: URL)?
+    private var draftRevision = 0
     var sceneStatusLine: String {
-        guard isContinuous else { return "Building map…" }
         switch sceneStage {
-        case .preparing: return "Preparing scan…"
-        case .coloring: return "Coloring 3D model…"
-        case .uploading:
-            guard let streamStatus, streamStatus.captured > 0 else { return "Uploading scan…" }
-            if streamStatus.pending == 0 { return "Finishing upload…" }
-            return "Uploading \(streamStatus.uploaded) of \(streamStatus.captured) samples…"
+        case .preparing: return "Preparing rooms…"
         case .reconstructing: return "Building map…"
         case .saving: return "Saving map…"
         }
     }
-
-    var sceneUploadProgress: Double? {
-        guard isContinuous, sceneStage == .uploading,
-              let streamStatus, streamStatus.captured > 0 else { return nil }
-        return min(1, Double(streamStatus.uploaded) / Double(streamStatus.captured))
-    }
-
-    var canFinishContinuousScan: Bool { (streamStatus?.captured ?? 0) > 0 }
-    var canMoveStreamToSelectedServer: Bool {
-        isContinuous && !hasSelectedLocalStreamMap && streamBackendURL != nil && AppConfig.backendURL != nil
-            && !matchesStreamServer(AppConfig.backendURL!)
-    }
-
-    private func matchesStreamServer(_ url: URL) -> Bool {
-        streamBackendURL?.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            == url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    }
-
-    func moveStreamToSelectedServer() {
-        guard !hasSelectedLocalStreamMap, !isProcessingScene,
-              let streamingCapture, let backend = AppConfig.backendURL else { return }
-        isProcessingScene = true
-        sceneTask = Task { [weak self] in
-            await streamingCapture.queue.stopUploads()
-            do {
-                try await streamingCapture.queue.configureBackend(backend)
-                guard let self, self.isActive, !Task.isCancelled else { return }
-                self.streamBackendURL = backend
-                self.isProcessingScene = false
-                self.retryScene()
-            } catch {
-                self?.sceneError = error.localizedDescription
-                self?.isProcessingScene = false
-            }
-        }
-    }
-
-    var canRetryScene: Bool { captureBundle != nil && !hasSelectedLocalStreamMap }
-    var canUseLocalScene: Bool {
-        localScene != nil && !isProcessingScene && (isContinuous
-            ? !streamAlignmentApplied && !hasSelectedLocalStreamMap : scene == nil)
-    }
+    var canRetryScene: Bool { !rooms.isEmpty || captureBundle != nil }
+    var canUseLocalScene: Bool { localScene != nil && scene == nil && !isProcessingScene }
     var canPlaceReviewPoints: Bool {
-        scene != nil && !isProcessingScene && (!isContinuous || streamAlignmentApplied || hasSelectedLocalStreamMap)
+        scene != nil && !isProcessingScene
     }
 
     private func makeCaptureView() -> RoomCaptureView {
         rawCapture.prepare(session: session)
         let view = RoomCaptureView(frame: .zero, arSession: session)
-        // A continuous scan shows RoomPlan's live outlines of walls, doors and furniture on the camera:
-        // that is the volunteer's feedback that the room is being picked up. A sectioned scan skips
-        // the second render of the growing room; navigation draws the processed room after capture.
-        view.isModelEnabled = isContinuous
+        // Camera outlines still show scan coverage; avoid drawing the growing room a second time
+        // in a miniature preview hidden behind our controls. Navigation renders it after capture.
+        view.isModelEnabled = false
         view.delegate = captureDelegate
         // Live updates too, as Apple's RoomPlan sample does alongside the view's own delegate.
         let id = scanID
@@ -182,8 +113,12 @@ final class ScanController: ObservableObject {
                 self?.liveRoomUpdated(room)
             },
             onEnd: { [weak self] data, error in
-                guard let self, self.scanID == id else { return }
-                if self.isContinuous { self.outlinesEnded(error) } else { self.sectionEnded(data, error: error) }
+                guard self?.scanID == id else { return }
+                self?.sectionEnded(data, error: error)
+            },
+            onInstruction: { [weak self] instruction in
+                guard self?.scanID == id else { return }
+                self?.updateInstruction(instruction)
             }
         )
         view.captureSession.delegate = sessionDelegate
@@ -194,26 +129,27 @@ final class ScanController: ObservableObject {
     private var sessionDelegate: CaptureSessionDelegate?
     private var sectionTask: Task<Void, Never>?
     private var sectionRequestID = UUID()
+    private var pendingRoomData: CapturedRoomData?
+    private var pendingRoomSourceID: UUID?
     private var rooms: [CapturedRoom] = []
-    /// Everything RoomPlan reported live in the current section; what its result drops is recovered from here.
-    private var memory = RoomMemory()
-    private var recovered: [RoomParts] = []
-    private var liveDoors: [CapturedRoom.Surface] = []
-    /// Which side of each door the camera was on at the last check.
-    private var doorSides: [UUID: Float] = [:]
-    private var sectionStarted = Date.now
+    private var livePortals: [RoomTransitionPortal] = []
+    private var liveFloors: [Footprint] = []
+    private var roomInstruction: String?
+    private var roomInstructionTime: TimeInterval = 0
+    private var roomTransitions = RoomTransitionDetector()
     private var doorMonitor: Timer?
-    /// Doorway crossings in the first moments of a section are the volunteer settling in, not leaving.
-    private static let doorSuggestionDelay: TimeInterval = 15
-    private static let doorMonitorInterval: TimeInterval = 0.5
+    private static let doorMonitorInterval: TimeInterval = 0.2
     private var worldMap: ARWorldMap?
     /// What the camera saw as the scan began, shown later to help riders find their place.
     private var startView: Data?
     private var startViewTimer: Timer?
     private var hasStarted = false
-    private var isActive = false
+    private var isActive = false {
+        didSet { updateIdleTimer() }
+    }
+    private var appIsActive = UIApplication.shared.applicationState == .active
+    private var previousIdleTimerDisabled: Bool?
     private var worldMapRequestID = UUID()
-    private var sectionPolicy = ScanSectionPolicy()
     private var resourceTimer: Timer?
     private var memoryObserver: NSObjectProtocol?
     private var pauseAfterProcessing = false
@@ -222,11 +158,7 @@ final class ScanController: ObservableObject {
     private var reportTask: Task<Void, Never>?
 
     init() {
-        rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous, reconstructsMesh: isContinuous)
-        let supported = isContinuous
-            ? ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
-            : RoomCaptureSession.isSupported
-        phase = supported ? .choosingFloor : .unsupported
+        phase = RoomCaptureSession.isSupported ? .choosingFloor : .unsupported
         elevationMonitor.onMovement = { [weak self] in self?.pauseForFloorChange() }
         elevationMonitor.onLanding = { [weak self] proposal in
             guard let self, let currentFloor = self.currentFloor,
@@ -237,6 +169,31 @@ final class ScanController: ObservableObject {
             self.proposedFloorLevel = min(300, max(-20, sum.partialValue))
         }
         elevationMonitor.onUnavailable = { [weak self] in self?.automaticFloorDetectionUnavailable = true }
+    }
+
+    func setAppIsActive(_ active: Bool) {
+        appIsActive = active
+        updateIdleTimer()
+    }
+
+    private func updateIdleTimer() {
+        let needsAwakeScreen: Bool
+        switch phase {
+        case .scanning, .processing, .savingWorldMap:
+            // Room handoffs and the final tracking snapshot still belong to the live capture.
+            needsAwakeScreen = isActive && appIsActive
+        default:
+            needsAwakeScreen = false
+        }
+        if needsAwakeScreen {
+            if previousIdleTimerDisabled == nil {
+                previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+            }
+            UIApplication.shared.isIdleTimerDisabled = true
+        } else if let previousIdleTimerDisabled {
+            UIApplication.shared.isIdleTimerDisabled = previousIdleTimerDisabled
+            self.previousIdleTimerDisabled = nil
+        }
     }
 
     func startScanning(on floor: ScanFloorIdentity, buildingName: String) {
@@ -251,32 +208,19 @@ final class ScanController: ObservableObject {
         guard phase == .scanning, !hasStarted else { return }
         hasStarted = true
         isActive = true
-        if isContinuous {
-            rawCapture.onCeilingHint = { [weak self] shown in
-                let notice = shown ? "Tilt the phone up now and then to capture the ceiling." : nil
-                if self?.ceilingNotice != notice { self?.ceilingNotice = notice }
-            }
-            captureView = makeCaptureView()
-            streamBackendURL = AppConfig.backendURL
-            beginStreamingCapture()
-            beginOutlines()
-        } else {
-            let view = makeCaptureView()
-            captureView = view
-            beginSection()
-        }
+        detailRequested = AppConfig.detailedScanning
+        rawCapture = RawScanCapture(reconstructsMesh: detailRequested)
+        captureView = makeCaptureView()
+        beginSection()
         beginResourceMonitoring()
         rawCapture.start(session: session)
-        splatCapture.start(session: session)
+        if detailRequested { splatCapture.start(session: session) }
         detector.start(session: session)
         elevationMonitor.start()
         startViewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.captureStartView() }
         }
     }
-
-    /// Ends the current section and starts another in the same coordinate space, for floors too big for one scan.
-    func addSection() { endSection(thenFinish: false) }
 
     func finish() {
         guard phase == .scanning || phase == .interrupted else { return }
@@ -285,19 +229,18 @@ final class ScanController: ObservableObject {
             isChangingFloors = false
             proposedFloorLevel = nil
         }
-        if isContinuous {
-            guard canFinishContinuousScan else { return }
-            streamingCapture?.pause()
-            rawCapture.pause()
-            splatCapture.pause()
-            detector.pause()
-            stopOutlines()
-            saveWorldMap()
-            return
-        }
-        // After an interruption there's no section to stop; RoomPlan already processed it.
+        // An interrupted final room may still be held in memory after a processing or
+        // storage failure. Retry it before finalizing so Finish never silently omits it.
         if phase == .interrupted {
-            saveWorldMap()
+            if let pendingRoomData {
+                finishAfterProcessing = true
+                pauseAfterProcessing = false
+                errorMessage = nil
+                phase = .processing
+                sectionEnded(pendingRoomData, error: nil)
+            } else if !rooms.isEmpty {
+                saveWorldMap()
+            }
         } else {
             endSection(thenFinish: true)
         }
@@ -310,17 +253,26 @@ final class ScanController: ObservableObject {
             errorMessage = "Let the phone cool down before continuing. You can finish and save this map now."
             return
         }
+        // A resource pause can stop AR tracking. Resume its existing configuration without
+        // resetting the shared frame, then require fresh tracking before capturing again.
+        if let configuration = session.configuration,
+           session.currentFrame.map({ abs(ProcessInfo.processInfo.systemUptime - $0.timestamp) >= 1 }) ?? true {
+            session.run(configuration, options: [])
+        }
+        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else {
+            errorMessage = "Move slowly in the same area while positioning recovers, then resume."
+            return
+        }
         errorMessage = nil
-        if isContinuous {
-            if let configuration = session.configuration { session.run(configuration, options: []) }
-            phase = .scanning
-            rawCapture.resume()
-            splatCapture.resume()
-            detector.resume()
-            if streamingCapture != nil { streamingCapture?.resume() }
-            else { beginStreamingCapture() }
-            beginOutlines()
-        } else { startSection() }
+        if let pendingRoomData {
+            finishAfterProcessing = false
+            pauseAfterProcessing = false
+            phase = .processing
+            sectionEnded(pendingRoomData, error: nil)
+            return
+        }
+        startSection()
     }
 
     func requestFloorChange() {
@@ -349,8 +301,10 @@ final class ScanController: ObservableObject {
         pendingFloor = floor
         proposedFloorLevel = nil
         isChangingFloors = true
-        if phase == .processing { finishAfterProcessing = true }
-        else { finish() }
+        if phase == .processing {
+            rawCapture.pause()
+            finishAfterProcessing = true
+        } else { finish() }
     }
 
     private func pauseForFloorChange() {
@@ -358,21 +312,21 @@ final class ScanController: ObservableObject {
         isChangingFloors = true
         if phase == .scanning {
             floorChangePausedCapture = true
-            if isContinuous { pauseContinuousCapture() }
-            else { endSection(thenFinish: false, pauseAfter: true) }
+            endSection(thenFinish: false, pauseAfter: true)
         } else if phase == .processing {
+            // A doorway handoff may still be observing this floor while its room saves.
+            // End that evidence immediately when travel to another floor begins.
+            rawCapture.pause()
             floorChangePausedCapture = !pauseAfterProcessing
             pauseAfterProcessing = true
         }
     }
 
-    func dismissSectionSuggestion() {
-        suggestsNewSection = false
-    }
-
     /// Captures the session's map of visual features. Also the retry when a capture fails.
     func saveWorldMap() {
         guard isActive else { return }
+        // Final positioning recovery must not extend the completed floor's recorded walk.
+        rawCapture.pause()
         // A thermal interruption may have paused tracking. Once cooled, let a retry collect
         // more features without moving the saved sections into a new coordinate space.
         if ProcessInfo.processInfo.thermalState != .critical, let configuration = session.configuration {
@@ -392,9 +346,6 @@ final class ScanController: ObservableObject {
 
     func stop() {
         isActive = false
-        analysisTask?.cancel()
-        contextTracker.stop()
-        trackRecorder.stop()
         elevationMonitor.stop()
         floorSwitchTask?.cancel()
         floorSwitchTask = nil
@@ -402,6 +353,8 @@ final class ScanController: ObservableObject {
         sectionRequestID = UUID()
         sectionTask?.cancel()
         sectionTask = nil
+        pendingRoomData = nil
+        pendingRoomSourceID = nil
         resourceTimer?.invalidate()
         resourceTimer = nil
         if let memoryObserver { NotificationCenter.default.removeObserver(memoryObserver) }
@@ -413,21 +366,17 @@ final class ScanController: ObservableObject {
         detector.pause()
         rawCapture.stop()
         splatCapture.stop()
-        streamingCapture?.stop()
-        streamStartTask?.cancel()
-        streamStatusTimer?.invalidate()
-        streamStatusTimer = nil
-        streamStatusTask?.cancel()
         sceneTask?.cancel()
+        detailTask?.cancel()
+        analysisTask?.cancel()
         reportTask?.cancel()
-        outlineRestartTask?.cancel()
-        outlineRestartTask = nil
         captureView?.delegate = nil
         captureView?.captureSession.delegate = nil
-        if phase == .scanning || phase == .processing || outlinesRunning { captureView?.captureSession.stop() }
-        outlinesRunning = false
+        if phase == .scanning || phase == .processing { captureView?.captureSession.stop() }
         captureView = nil
-        scanCoverage = DepthScanCoverage().snapshot()
+        roomTransitions.reset()
+        livePortals = []
+        liveFloors = []
         if phase != .unsupported { session.pause() }
     }
 
@@ -491,22 +440,194 @@ final class ScanController: ObservableObject {
         }
         // Build against the exact saved draft, even if its debounced review report is still pending.
         let report = try await ScanWork.run { try AccessibilityReport.make(map: draft) }
+        try await stageReviewedSemantics(draft)
+        // A fast Save still retains the optional display derived from this floor's originals.
+        if let detailTask { await detailTask.value }
+        try Task.checkCancellation()
         try await MapStore.save(draft, report: report, rooms: rooms, worldMap: worldMap, startView: startView,
                                 floor: currentFloor, buildingName: buildingName, captureID: captureBundle?.id)
     }
 
+    private var measurementTimestamps: [UUID: TimeInterval] {
+        Dictionary(uniqueKeysWithValues: detector.sightings.compactMap { sighting in
+            sighting.measurementTimestamp.map { (sighting.id, $0) }
+        })
+    }
+
+    private func stageReviewedSemantics(_ map: VenueMap) async throws {
+        guard let bundle = captureBundle else { return }
+        let rooms = rooms
+        let info = SemanticExport.captureInfo(floorID: bundle.floorID)
+        let timestamps = measurementTimestamps
+        try await ScanWork.run {
+            try SemanticExport.stageSemantics(map: map, rooms: rooms, capture: info,
+                                               captureID: bundle.id, measurementTimestamps: timestamps)
+        }
+    }
+
+    /// Explicit review is the only action that sends this local capture for processing.
+    func findPlaces() {
+        guard phase == .review, !isFindingPlaces, let map = draft, let bundle = captureBundle else { return }
+        guard let baseURL = AppConfig.backendURL else {
+            analysisError = "Add a scan server in Settings first."
+            return
+        }
+        let client = BackendClient(baseURL: baseURL, accessToken: AppConfig.backendToken)
+        let id = scanID
+        let sourceRooms = rooms
+        let info = SemanticExport.captureInfo(floorID: bundle.floorID)
+        let timestamps = measurementTimestamps
+        let revision = draftRevision
+        let retryID = pendingAnalysis.flatMap { $0.server == baseURL ? $0.scanID : nil }
+        analysisError = nil
+        analysisStatus = "Preparing scan…"
+        isFindingPlaces = true
+        analysisTask = Task { [weak self] in
+            defer {
+                if self?.scanID == id { self?.isFindingPlaces = false; self?.analysisTask = nil }
+            }
+            do {
+                guard let self, self.isActive, self.scanID == id else { return }
+                let requestID: String
+                if let retryID {
+                    requestID = retryID
+                } else {
+                    let package = try await ScanWork.run {
+                        // Refresh from this exact reviewed draft before making its immutable upload.
+                        try SemanticExport.stageSemantics(map: map, rooms: sourceRooms, capture: info,
+                            captureID: bundle.id, measurementTimestamps: timestamps)
+                        let raw = try CaptureStore.loadRawSnapshot(id: bundle.id)
+                        SemanticExport.stageTextObservations(keyframes: (raw.colorKeyframes ?? []).map {
+                            TextRecognizer.Source(frameID: $0.frameID, filename: $0.filename, jpeg: $0.jpeg)
+                        }, captureID: bundle.id)
+                        return try CaptureStore.makeAnalysisPackage(bundle)
+                    }
+                    defer { try? FileManager.default.removeItem(at: package.archiveURL.deletingLastPathComponent()) }
+                    try Task.checkCancellation()
+                    guard self.isActive, self.scanID == id else { return }
+                    self.analysisStatus = "Sending scan…"
+                    try await client.uploadArchive(at: package.archiveURL, capture: package.capture)
+                    requestID = package.capture.id
+                    if self.draftRevision == revision { self.pendingAnalysis = (requestID, baseURL) }
+                }
+                self.analysisStatus = "Finding places…"
+                // Processing is bounded and retryable; remote geometry is never adopted here.
+                for _ in 0..<60 {
+                    try Task.checkCancellation()
+                    if let analysis = try await client.analysis(scanID: requestID) {
+                        guard self.isActive, self.scanID == id else { return }
+                        self.pendingAnalysis = nil
+                        guard self.draftRevision == revision else {
+                            self.analysisStatus = "The map changed. Find places again to include your edits."
+                            return
+                        }
+                        let existing = Set(self.draft?.points.map(\.id) ?? [])
+                        var seen = Set<String>()
+                        self.analysisCandidates = analysis.places.filter { place in
+                            seen.insert(place.id).inserted && !self.reviewedAnalysisIDs.contains(place.id)
+                                && !(place.sourceAccessPointID.map { existing.contains($0) } ?? false)
+                        }
+                        self.analysisStatus = self.analysisCandidates.isEmpty
+                            ? "No new places found." : "Review each place before adding it."
+                        return
+                    }
+                    try await Task.sleep(for: .seconds(2))
+                }
+                self.analysisStatus = nil
+                self.analysisError = "The scan server is still working. Try again in a moment."
+            } catch {
+                guard !Task.isCancelled, self?.scanID == id else { return }
+                if let backendError = error as? BackendClientError,
+                   case .http(404, "scan_not_found", _) = backendError {
+                    self?.pendingAnalysis = nil
+                }
+                self?.analysisStatus = nil
+                self?.analysisError = error.localizedDescription
+            }
+        }
+    }
+
+    func canKeepAnalysisPlace(_ place: ScanAnalysis.Place) -> Bool {
+        guard let draft, let bundle = captureBundle else { return false }
+        return place.accessPoint(scanID: bundle.id, floorY: draft.floorY, expectedFloorID: bundle.floorID) != nil
+    }
+
+    func keepAnalysisPlace(_ place: ScanAnalysis.Place) {
+        guard var map = draft, let bundle = captureBundle,
+              let point = place.accessPoint(scanID: bundle.id, floorY: map.floorY, expectedFloorID: bundle.floorID)
+        else { return }
+        // A phone observation may already be a reviewed point. Preserve all of that point's edits.
+        if !map.points.contains(where: { $0.id == point.id }) { MapBuilder.add(point, to: &map) }
+        draft = map
+        dropAnalysisPlace(place)
+    }
+
+    func dropAnalysisPlace(_ place: ScanAnalysis.Place) {
+        reviewedAnalysisIDs.insert(place.id)
+        analysisCandidates.removeAll { $0.id == place.id }
+    }
+
+    var canRetryDetail: Bool { rawArchived && captureBundle != nil && !isPreparingDetail && detailRequested }
+
+    func retryDetail() {
+        guard canRetryDetail, let bundle = captureBundle else { return }
+        prepareDetail(bundle)
+    }
+
+    private func prepareDetail(_ bundle: CaptureBundle) {
+        guard detailRequested else { return }
+        let id = scanID
+        detailError = nil
+        isPreparingDetail = true
+        detailTask = Task { [weak self] in
+            defer {
+                if self?.scanID == id { self?.isPreparingDetail = false; self?.detailTask = nil }
+            }
+            do {
+                let result = try await ScanWork.run {
+                    // Never compact or color the sole copy of the native scan.
+                    let raw = try CaptureStore.loadRawSnapshot(id: bundle.id)
+                    let rebuilt = try RawScanCapture.reconstruct(raw)
+                    guard let mesh = rebuilt.meshes.first else {
+                        throw CaptureValidationError.invalid("No additional detail was captured. The room map is ready to use.")
+                    }
+                    var detail = bundle
+                    detail.meshes = [mesh]
+                    let plain = try LocalSceneBuilder.make(from: detail, includeDepthPoints: false)
+                    try CaptureStore.saveDetailScene(plain, for: detail)
+                    return (detail, plain, raw)
+                }
+                try Task.checkCancellation()
+                guard let self, self.isActive, self.scanID == id else { return }
+                self.detailScene = result.1
+                // Color is a separate retryable stage; the gray model and canonical map already exist.
+                let colored = try await ScanWork.run {
+                    var detail = result.0
+                    guard let mesh = detail.meshes.first,
+                          let color = try MeshColorizer.color(mesh, frames: result.2.frames,
+                                                              colors: result.2.colorKeyframes ?? []) else { return result.1 }
+                    detail.meshes = [color.mesh]
+                    let scene = try LocalSceneBuilder.make(from: detail, includeDepthPoints: false)
+                    try CaptureStore.saveDetailScene(scene, for: detail)
+                    return scene
+                }
+                guard !Task.isCancelled, self.isActive, self.scanID == id else { return }
+                self.detailScene = colored
+            } catch {
+                guard !Task.isCancelled, self?.scanID == id else { return }
+                self?.detailError = error.localizedDescription
+            }
+        }
+    }
+
     func retryScene() {
-        guard canRetryScene, !isProcessingScene, let captureBundle else { return }
-        processScene(captureBundle, backendURL: AppConfig.backendURL)
+        guard canRetryScene, !isProcessingScene else { return }
+        prepareScene()
     }
 
     func useLocalScene() {
         guard canUseLocalScene, let captureBundle else { return }
-        // Review-added destinations have no capture timestamp. Selecting the local map
-        // fixes this review's coordinates so a later backend retry cannot move its geometry
-        // away from those destinations. Saved samples can still be processed separately.
-        if isContinuous { hasSelectedLocalStreamMap = true }
-        processScene(captureBundle, backendURL: nil)
+        processScene(captureBundle)
     }
 
     private func endSection(thenFinish finish: Bool, pauseAfter: Bool = false) {
@@ -517,8 +638,13 @@ final class ScanController: ObservableObject {
         detector.pause()
         doorMonitor?.invalidate()
         doorMonitor = nil
-        suggestsNewSection = false
-        rawCapture.pause()
+        roomTransitions.suspend()
+        livePortals = []
+        if !finish && !pauseAfter {
+            rawCapture.observeFloorDuringHandoff()
+        } else {
+            rawCapture.pause()
+        }
         splatCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
         captureView?.captureSession.stop(pauseARSession: false)
@@ -527,12 +653,10 @@ final class ScanController: ObservableObject {
     /// Runs a RoomPlan capture for a new section and resets what's remembered about the live room.
     private func beginSection() {
         guard isActive, let captureView else { return }
-        memory = RoomMemory()
-        liveDoors = []
-        doorSides = [:]
-        sectionStarted = .now
-        sectionPolicy.reset()
-        suggestsNewSection = false
+        livePortals = []
+        liveFloors = []
+        roomInstruction = nil
+        roomTransitions.suspend()
         doorMonitor?.invalidate()
         captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
         doorMonitor = Timer.scheduledTimer(withTimeInterval: Self.doorMonitorInterval, repeats: true) { [weak self] _ in
@@ -542,47 +666,72 @@ final class ScanController: ObservableObject {
 
     private func liveRoomUpdated(_ room: CapturedRoom) {
         guard isActive, phase == .scanning else { return }
-        if !isContinuous {
-            memory.remember(room)
-            liveDoors = room.doors
-        }
         let heights = room.floors.map { $0.transform.translation.y }.filter(\.isFinite).sorted()
         if !heights.isEmpty { rawCapture.floorY = heights[heights.count / 2] }
+        liveFloors = MapBuilder.floorFootprints(in: room)
+        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else {
+            livePortals = []
+            roomTransitions.suspend()
+            return
+        }
+        func portal(_ surface: CapturedRoom.Surface, kind: RoomTransitionPortal.Kind) -> RoomTransitionPortal? {
+            guard surface.confidence != .low else { return nil }
+            let pose = surface.transform
+            return RoomTransitionPortal(id: surface.identifier, kind: kind,
+                center: pose.translation,
+                horizontalAxis: SIMD2(pose.columns.0.x, pose.columns.0.z),
+                width: surface.dimensions.x, height: surface.dimensions.y,
+                observedAt: frame.timestamp)
+        }
+        livePortals = room.doors.compactMap { portal($0, kind: .door) }
+            + room.openings.compactMap { portal($0, kind: .opening) }
     }
 
-    /// Remembers what RoomPlan saw live that its processed room left out, so the map keeps it.
-    private func recoverDroppedParts(from room: CapturedRoom) {
-        let missing = memory.missing(from: room)
-        Log.scan.notice("section \(self.rooms.count): RoomPlan kept \(RoomParts(room).count) of \(self.memory.count) live items; recovering \(missing.count)")
-        if !missing.isEmpty { recovered.append(missing) }
-    }
-
-    /// Notices the camera passing through a doorway RoomPlan has found, and suggests a new section once.
+    /// A room handoff requires a stable measured portal and confirmed movement through it.
+    /// Room size, travel distance, and elapsed time never finalize a room.
     private func checkDoorways() {
-        guard isActive, phase == .scanning, !suggestsNewSection, let frame = session.currentFrame else { return }
-        let camera = frame.camera.transform.translation
-        let position = SIMD2(camera.x, camera.z)
-        var sides: [UUID: Float] = [:]
-        var crossed = false
-        for door in liveDoors {
-            let center = SIMD2(door.transform.columns.3.x, door.transform.columns.3.z)
-            let along = SIMD2(door.transform.columns.0.x, door.transform.columns.0.z)
-            let normal = SIMD2(door.transform.columns.2.x, door.transform.columns.2.z)
-            guard simd_length(along) > 1e-3, simd_length(normal) > 1e-3 else { continue }
-            let offset = position - center
-            let lateral = simd_dot(offset, simd_normalize(along))
-            let depth = simd_dot(offset, simd_normalize(normal))
-            guard abs(lateral) <= door.dimensions.x / 2 + 0.4, abs(depth) < 1.2 else { continue }
-            sides[door.identifier] = depth
-            if let previous = doorSides[door.identifier], previous.sign != depth.sign, abs(previous) > 0.05, abs(depth) > 0.05 {
-                crossed = true
-            }
+        guard isActive, phase == .scanning, !isChangingFloors, pendingFloor == nil,
+              let frame = session.currentFrame else { roomTransitions.suspend(); return }
+        let normal: Bool
+        if case .normal = frame.camera.trackingState {
+            normal = abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1
+        } else { normal = false }
+        trackingNotice = normal ? nil : "Move slowly while positioning recovers."
+        let position = frame.camera.transform.translation
+        let floorObserved = rawCapture.hasMeasuredFloor(at: position)
+            || liveFloors.contains { Polygon.contains(SIMD2(position.x, position.z), in: $0.corners) }
+        scanGuidance = roomInstruction.flatMap {
+            ProcessInfo.processInfo.systemUptime - roomInstructionTime < 4 ? $0 : nil
+        } ?? (floorObserved ? "Move slowly through the room and its doorways."
+                           : "Tilt down to capture the floor around you.")
+        // A guessed phone height can reject genuine doors in a corridor whose floor
+        // RoomPlan missed. Use the measured ARKit floor supplement in the same frame.
+        guard let floorY = rawCapture.measuredFloorElevation(near: position) else {
+            roomTransitions.suspend()
+            return
         }
-        doorSides = sides
-        if crossed, Date.now.timeIntervalSince(sectionStarted) > Self.doorSuggestionDelay {
-            Log.scan.notice("camera crossed a doorway; suggesting a new section")
-            suggestsNewSection = true
+        let transition = roomTransitions.update(portals: livePortals,
+            position: position, floorY: floorY,
+            timestamp: frame.timestamp, trackingIsNormal: normal)
+        if transition != nil {
+            Log.scan.notice("confirmed room crossing; keeping the shared AR session")
+            endSection(thenFinish: false)
         }
+    }
+
+    private func updateInstruction(_ instruction: RoomCaptureSession.Instruction) {
+        guard isActive, phase == .scanning else { return }
+        switch instruction {
+        case .moveCloseToWall: roomInstruction = "Move a little closer to the wall."
+        case .moveAwayFromWall: roomInstruction = "Step back to see more of the wall."
+        case .slowDown: roomInstruction = "Slow down so the room can be captured."
+        case .turnOnLight: roomInstruction = "More light will help capture this room."
+        case .lowTexture: roomInstruction = "Include a doorway or other detail in view."
+        case .normal: roomInstruction = nil
+        @unknown default: roomInstruction = nil
+        }
+        roomInstructionTime = ProcessInfo.processInfo.systemUptime
     }
 
     private func sectionProcessed(_ room: CapturedRoom) {
@@ -590,12 +739,11 @@ final class ScanController: ObservableObject {
         switch phase {
         case .processing:
             rooms.append(room)
-            sectionCount = rooms.count
             Log.scan.notice("section \(self.rooms.count) processed: \(room.walls.count) walls, \(room.doors.count) doors, \(room.objects.count) objects")
-            recoverDroppedParts(from: room)
             if finishAfterProcessing {
                 saveWorldMap()
             } else if pauseAfterProcessing {
+                rawCapture.pause()
                 phase = .interrupted
                 if ProcessInfo.processInfo.thermalState == .critical { session.pause() }
             } else {
@@ -612,7 +760,8 @@ final class ScanController: ObservableObject {
         guard isActive, phase == .scanning || phase == .processing, sectionTask == nil else { return }
         doorMonitor?.invalidate()
         doorMonitor = nil
-        suggestsNewSection = false
+        roomTransitions.suspend()
+        livePortals = []
         let endedUnexpectedly = phase == .scanning
         if endedUnexpectedly {
             Log.scan.error("RoomPlan ended the active section: \(error?.localizedDescription ?? "no error reported", privacy: .public)")
@@ -629,27 +778,89 @@ final class ScanController: ObservableObject {
             }
         }
         if let error {
+            rawCapture.pause()
             captureFailed(error)
             pauseAfterProcessing = true
         }
         let requestID = UUID()
+        let sourceID = pendingRoomSourceID ?? UUID()
+        pendingRoomData = data
+        pendingRoomSourceID = sourceID
         sectionRequestID = requestID
         sectionTask = Task { [weak self] in
+            var sourceArchived = false
+            var failureStage = "original room archive"
             do {
+                guard let scanID = self?.scanID else { return }
+                do {
+                    try await ScanWork.run {
+                        try CaptureStore.stageRoomCaptureData(id: scanID.uuidString, roomID: sourceID,
+                                                              value: data)
+                    }
+                    sourceArchived = true
+                } catch let failure as RoomCaptureArchive.Failure {
+                    guard case .encoding = failure else { throw failure }
+                    try Task.checkCancellation()
+                    guard self?.isActive == true, self?.sectionRequestID == requestID else { return }
+                    // Opaque source serialization is optional; it must not prevent RoomBuilder
+                    // from producing the room or completing a confirmed doorway handoff.
+                    self?.logRoomFailure(failure, stage: failureStage)
+                    self?.originalScanWarning = "Some original scan data couldn't be saved. You can still save the map."
+                }
+                try Task.checkCancellation()
+                guard self?.isActive == true, self?.sectionRequestID == requestID else { return }
+                failureStage = "room processing"
                 let builder = RoomBuilder(options: [.beautifyObjects])
                 let room = try await builder.capturedRoom(from: data)
                 try Task.checkCancellation()
+                if !sourceArchived {
+                    failureStage = "processed room archive"
+                    do {
+                        try await ScanWork.run {
+                            try CaptureStore.stageProcessedRoom(id: scanID.uuidString, roomID: sourceID, value: room)
+                        }
+                    } catch let failure as RoomCaptureArchive.Failure {
+                        guard case .encoding = failure else { throw failure }
+                        try Task.checkCancellation()
+                        guard self?.isActive == true, self?.sectionRequestID == requestID else { return }
+                        self?.logRoomFailure(failure, stage: failureStage)
+                    }
+                }
+                try Task.checkCancellation()
                 guard let self, self.isActive, self.sectionRequestID == requestID else { return }
                 self.sectionTask = nil
+                self.pendingRoomData = nil
+                self.pendingRoomSourceID = nil
                 self.sectionProcessed(room)
             } catch {
                 guard !Task.isCancelled, let self, self.isActive, self.sectionRequestID == requestID else { return }
                 self.sectionTask = nil
-                self.errorMessage = "Couldn't finish this section. \(error.localizedDescription)"
-                self.interruptionAdvice = "Try a smaller section, or finish with the completed sections."
+                self.rawCapture.pause()
+                self.logRoomFailure(error, stage: failureStage)
+                if let failure = error as? RoomCaptureArchive.Failure, case .storage = failure {
+                    self.errorMessage = failure.isOutOfSpace
+                        ? "There isn't enough storage to save this room. Free some space, then resume."
+                        : "Couldn't save this room on this phone. Resume to try again."
+                    self.interruptionAdvice = "This room is still held in memory. Resume to retry saving it before closing the scan."
+                } else {
+                    self.errorMessage = "Couldn't finish this room. Resume to try again."
+                    self.interruptionAdvice = sourceArchived
+                        ? "Your original capture is kept on this phone. Continue scanning or Finish will retry this room."
+                        : "This room is still held in memory. Resume to retry before closing the scan."
+                }
                 self.phase = .interrupted
             }
         }
+    }
+
+    private func logRoomFailure(_ error: Error, stage: String) {
+        let underlying = (error as? RoomCaptureArchive.Failure)?.underlyingError ?? error
+        let diagnostic = underlying as NSError
+        var reason = diagnostic.localizedDescription
+        if let encodingError = underlying as? EncodingError, case .invalidValue(_, let context) = encodingError {
+            reason = context.debugDescription + " at " + context.codingPath.map(\.stringValue).joined(separator: ".")
+        }
+        Log.scan.error("\(stage, privacy: .public) failed: \(diagnostic.domain, privacy: .public) code \(diagnostic.code); \(reason, privacy: .private)")
     }
 
     private func startSection() {
@@ -661,7 +872,7 @@ final class ScanController: ObservableObject {
         beginSection()
         detector.resume()
         rawCapture.resume()
-        splatCapture.resume()
+        if detailRequested { splatCapture.resume() }
     }
 
     private func worldMapCaptured(_ worldMap: ARWorldMap?, error: Error?) {
@@ -675,7 +886,6 @@ final class ScanController: ObservableObject {
         self.worldMap = worldMap
         startViewTimer?.invalidate()
         startViewTimer = nil
-        // The latest mesh, after ARKit's own corrections, before the session stops.
         rawCapture.captureReconstructedMesh(from: session)
         session.pause()
         captureView?.delegate = nil
@@ -688,22 +898,14 @@ final class ScanController: ObservableObject {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
-    /// RoomPlan's values are copied into one immutable payload before export leaves the main thread.
-    private struct ExportPayload: @unchecked Sendable {
-        let rooms: [CapturedRoom]
-        let recovered: [RoomParts]
-        let raw: RawScanSnapshot
-        let scanID: UUID
-        let floor: ScanFloorIdentity?
-    }
-
+    /// Archive the sources first, then prepare one authoritative on-device structure.
     private func prepareScene() {
-        let rooms = rooms
-        let recovered = recovered
+        let sourceRooms = rooms
         let points = detector.accessPoints()
         let stairs = detector.stairsFootprints()
-        let scanID = scanID
+        let id = scanID
         let floor = currentFloor
+        let originalWarning = originalScanWarning
         sceneError = nil
         sceneStage = .preparing
         phase = .processingScene
@@ -712,72 +914,65 @@ final class ScanController: ObservableObject {
             defer { self?.isProcessingScene = false }
             do {
                 guard let self else { return }
-                if let streamingCapture {
-                    self.streamStatus = try await streamingCapture.finishCapture()
-                    self.contextTracker.stop()
-                    self.trackRecorder.stop()
+                let raw: RawScanSnapshot
+                if let retained = finishedRawSnapshot { raw = retained }
+                else if rawArchived {
+                    raw = try await ScanWork.run { try CaptureStore.loadRawSnapshot(id: id.uuidString) }
+                } else {
+                    raw = await rawCapture.finishSnapshot()
+                    finishedRawSnapshot = raw
                 }
-                let captured = await self.rawCapture.finishSnapshot()
-                var raw = try await ScanWork.run { try RawScanCapture.reconstruct(captured) }
                 try Task.checkCancellation()
-                let welded = raw
-                let built = try await ScanWork.run {
-                    let map = MapBuilder.build(rooms: rooms, recovered: recovered, points: points, spottedStairs: stairs,
-                                               observed: welded.observedFootprints ?? [])
-                    return (map, welded.meshes.first.flatMap { CeilingMeasurement.measure($0, floorY: map.floorY) })
+                guard isActive, scanID == id else { return }
+                try await ScanWork.run {
+                    let rawData = try ScanExporter.rawSnapshotData(raw)
+                    let roomData = try ScanExporter.nativeRoomPlanData(rooms: sourceRooms)
+                    try CaptureStore.stageOriginals(id: id.uuidString, rawData: rawData, roomPlanData: roomData)
                 }
-                self.draft = built.0
-                self.ceiling = built.1
-                if let ceiling = built.1, case .object(var metadata) = raw.metadata {
-                    metadata["ceiling_height_m"] = .number(Double(ceiling.heightM))
-                    metadata["ceiling_elevation"] = .number(Double(ceiling.elevation))
-                    metadata["ceiling_area_m2"] = .number(Double(ceiling.areaM2))
-                    metadata["ceiling_floor_coverage"] = ceiling.floorCoverage.map { .number(Double($0)) } ?? .null
-                    raw.metadata = .object(metadata)
+                try Task.checkCancellation()
+                guard isActive, scanID == id else { return }
+                rawArchived = true
+                finishedRawSnapshot = nil
+                if detailRequested { splatCapture.finish(meshes: []) }
+                sceneStage = .reconstructing
+                let assembled = try await RoomPlanAssembly.prepare(rooms: sourceRooms, raw: raw,
+                    scanID: id, mapID: id, floor: floor, points: points, spottedStairs: stairs)
+                try Task.checkCancellation()
+                let walkCoverage = try await ScanWork.run {
+                    raw.walkTrace.map { ScanWalkFloorCoverage.assess(trace: $0, map: assembled.map) }
                 }
-                Log.scan.notice("ceiling: \(built.1.map { String(format: "%.2f m high over %.1f m²", $0.heightM, $0.areaM2) } ?? "not captured", privacy: .public)")
-                if let streamingCapture { await self.attachStreamEvidence(to: streamingCapture, rooms: rooms) }
-                if self.isContinuous, let mesh = raw.meshes.first {
-                    self.sceneStage = .coloring
-                    let id = scanID.uuidString
-                    do {
-                        if let colored = try await ScanWork.run({ try MeshColorizer.color(mesh, scanID: id) }) {
-                            raw.meshes = [colored.mesh]
-                            if case .object(var metadata) = raw.metadata {
-                                metadata["mesh_color_photos"] = .number(Double(colored.photos))
-                                metadata["mesh_color_coverage"] = .number(Double(colored.coverage))
-                                raw.metadata = .object(metadata)
-                            }
-                            Log.scan.notice("colored the mesh from \(colored.photos) photos; \(Int(colored.coverage * 100))% of vertices seen")
-                        }
-                    } catch is CancellationError {
-                        throw CancellationError()
-                    } catch {
-                        // The plain model still saves; color is a finish, not a requirement.
-                        Log.scan.error("couldn't color the mesh: \(error.localizedDescription, privacy: .public)")
+                sceneStage = .saving
+                let finalScene = try await ScanWork.run {
+                    var result = try LocalSceneBuilder.make(from: assembled.bundle, includeDepthPoints: false)
+                    if let originalWarning { result.warnings.append(originalWarning) }
+                    try CaptureStore.stageBundle(assembled.bundle)
+                    do { try CaptureStore.stageEvidence(raw, id: id.uuidString) }
+                    catch is CancellationError { throw CancellationError() }
+                    catch {
+                        // Supporting recognition evidence must not invalidate usable RoomPlan geometry.
+                        result.warnings.append("Some supporting scan evidence couldn't be saved. The room map is ready to use.")
+                        Log.scan.error("couldn't stage scan evidence: \(error.localizedDescription, privacy: .public)")
                     }
-                    self.sceneStage = .preparing
-                }
-                // The mesh, colored when it could be, also seeds the splat's starting point cloud.
-                self.splatCapture.finish(meshes: raw.meshes)
-                let payload = ExportPayload(rooms: rooms, recovered: recovered, raw: raw, scanID: scanID, floor: floor)
-                let prepared = try await ScanWork.run {
-                    let rawData = try ScanExporter.rawSnapshotData(payload.raw)
-                    try Task.checkCancellation()
-                    let roomData = try ScanExporter.nativeRoomPlanData(rooms: payload.rooms)
-                    // Originals survive even if their portable export is too large or unsupported.
-                    try CaptureStore.stageOriginals(id: payload.scanID.uuidString, rawData: rawData, roomPlanData: roomData)
-                    let bundle = try ScanExporter.bundle(rooms: payload.rooms, recovered: payload.recovered, raw: payload.raw,
-                                                         scanID: payload.scanID, mapID: payload.scanID, floor: payload.floor)
-                    try CaptureStore.stageBundle(bundle)
-                    // Depth remains archived for reprocessing; the navigation overview uses
-                    // measured walls and objects and does not need a second point cloud.
-                    return (bundle, try LocalSceneBuilder.make(from: bundle, includeDepthPoints: false))
+                    if let structureData = assembled.structureData {
+                        try CaptureStore.stageRoomStructure(id: id.uuidString, data: structureData)
+                    }
+                    try CaptureStore.saveScene(result, for: assembled.bundle)
+                    return result
                 }
                 try Task.checkCancellation()
-                self.captureBundle = prepared.0
-                self.localScene = prepared.1
-                self.scene = try await self.makeScene(prepared.0, backendURL: AppConfig.backendURL)
+                guard isActive, scanID == id else { return }
+                // The map and display come from the same successful assembly; failures publish neither.
+                rooms = assembled.rooms
+                draft = assembled.map
+                walkTrace = raw.walkTrace
+                self.walkCoverage = walkCoverage
+                captureBundle = assembled.bundle
+                localScene = finalScene
+                scene = finalScene
+                do { try await stageReviewedSemantics(assembled.map) }
+                catch is CancellationError { throw CancellationError() }
+                catch { analysisError = "Some place details couldn't be saved. Find places will try again." }
+                prepareDetail(assembled.bundle)
             } catch {
                 if !Task.isCancelled { self?.sceneError = error.localizedDescription }
             }
@@ -799,46 +994,50 @@ final class ScanController: ObservableObject {
                 try Task.checkCancellation()
                 guard isActive else { return }
                 reportTask?.cancel()
+                analysisTask?.cancel()
+                detailTask?.cancel()
                 detector.pause()
                 rawCapture.stop()
                 splatCapture.stop()
-                streamingCapture?.stop()
-                streamingCapture = nil
-                streamStartTask?.cancel()
-                streamStatusTimer?.invalidate()
-                streamStatusTimer = nil
-                streamStatusTask?.cancel()
-                streamStatus = nil
-                scanCoverage = DepthScanCoverage().snapshot()
                 trackingNotice = nil
-                streamAlignmentApplied = false
-                hasSelectedLocalStreamMap = false
-                outlinesRunning = false
+                scanGuidance = "Move slowly and include the floor as you scan."
+                originalScanWarning = nil
                 session.pause()
                 session = ARSession()
                 detector = AccessibilityDetector()
-                rawCapture = RawScanCapture(retainsDepthKeyframes: !isContinuous, reconstructsMesh: isContinuous)
-                ceilingNotice = nil
-                ceiling = nil
+                rawCapture = RawScanCapture()
                 scanID = UUID()
-                // The next floor is its own scan, so its splat photos belong in its own folder.
+                // Every floor has its own photo archive in that floor's scan coordinates.
                 splatCapture = SplatCapture(scanID: scanID)
                 currentFloor = nextFloor
                 pendingFloor = nil
                 rooms = []
-                recovered = []
-                memory = RoomMemory()
-                liveDoors = []
-                doorSides = [:]
-                sectionCount = 0
+                livePortals = []
+                liveFloors = []
+                roomInstruction = nil
+                roomTransitions.reset()
+                pendingRoomData = nil
+                pendingRoomSourceID = nil
                 worldMap = nil
                 startView = nil
                 unconfirmed = []
                 captureBundle = nil
                 localScene = nil
+                finishedRawSnapshot = nil
+                rawArchived = false
                 scene = nil
+                detailScene = nil
+                detailError = nil
+                isPreparingDetail = false
+                analysisCandidates = []
+                analysisStatus = nil
+                analysisError = nil
+                isFindingPlaces = false
+                reviewedAnalysisIDs = []
                 draft = nil
                 report = nil
+                walkTrace = nil
+                walkCoverage = nil
                 errorMessage = nil
                 sceneError = nil
                 isChangingFloors = false
@@ -866,179 +1065,26 @@ final class ScanController: ObservableObject {
         else { completeFloorSwitch() }
     }
 
-    private func processScene(_ bundle: CaptureBundle, backendURL: URL?) {
+    private func processScene(_ bundle: CaptureBundle) {
         sceneError = nil
         sceneStage = .preparing
         isProcessingScene = true
         sceneTask = Task { [weak self] in
             defer { self?.isProcessingScene = false }
             do {
-                guard let self else { return }
-                self.scene = try await self.makeScene(bundle, backendURL: backendURL)
+                let result = try await ScanWork.run {
+                    let scene = try LocalSceneBuilder.make(from: bundle, includeDepthPoints: false)
+                    try CaptureStore.saveScene(scene, for: bundle)
+                    return scene
+                }
+                try Task.checkCancellation()
+                guard let self, isActive else { return }
+                scene = result
             } catch {
                 if !Task.isCancelled { self?.sceneError = error.localizedDescription }
             }
             if !Task.isCancelled { self?.phase = .review }
         }
-    }
-
-    private func makeScene(_ bundle: CaptureBundle, backendURL: URL?) async throws -> ProcessedScene {
-        let result: ProcessedScene
-        if isContinuous, backendURL != nil, let streamingCapture {
-            if streamBackendURL == nil, let backendURL {
-                try await streamingCapture.queue.configureBackend(backendURL)
-                streamBackendURL = backendURL
-            }
-            // The queue stays bound to the server selected at capture start.
-            if let backendURL, !matchesStreamServer(backendURL) {
-                throw CaptureValidationError.invalid("This scan is saved for its original server. Choose Send to selected server to move it to the new address.")
-            }
-            sceneStage = .uploading
-            streamStatus = await streamingCapture.queue.snapshot()
-            _ = try await streamingCapture.queue.finish()
-            streamStatus = await streamingCapture.queue.snapshot()
-            sceneStage = .reconstructing
-            let output = try await streamingCapture.queue.result()
-            sceneStage = .saving
-            try await ScanWork.run(priority: .utility) {
-                try CaptureStore.stageBundle(output.capture)
-                try CaptureStore.saveScene(output.scene, for: output.capture)
-            }
-            captureBundle = output.capture
-            if !streamAlignmentApplied {
-                applyStreamResult(output)
-                streamAlignmentApplied = true
-            }
-            // The backend packages the finished stream as a scan and analyses it in the background.
-            if let backendURL, !Task.isCancelled {
-                fetchDetectedPlaces(scanID: streamingCapture.queue.manifest.id,
-                                    client: BackendClient(baseURL: backendURL, accessToken: AppConfig.backendToken),
-                                    delays: [5, 15, 30, 60, 120, 240])
-            }
-            return output.scene
-        } else if isContinuous, backendURL != nil {
-            throw CaptureValidationError.invalid("The scan upload isn't ready. The captured samples are saved on this phone.")
-        } else if isContinuous, streamBackendURL == nil, scene == nil, backendURL == nil {
-            // Local measured coverage remains available, but does not replace stream reconstruction.
-            guard let localScene else { throw CaptureValidationError.invalid("No measured coverage was saved.") }
-            result = localScene
-            sceneError = "Your scan is saved on this phone. Choose a server in Settings, then try again to build the full 3D model."
-        } else if let backendURL {
-            let client = BackendClient(baseURL: backendURL, accessToken: AppConfig.backendToken)
-            result = try await client.uploadAndProcess(bundle)
-            if !Task.isCancelled { fetchDetectedPlaces(scanID: bundle.id, client: client) }
-        } else if let localScene {
-            result = localScene
-        } else {
-            result = try await ScanWork.run { try LocalSceneBuilder.make(from: bundle, includeDepthPoints: false) }
-        }
-        try Task.checkCancellation()
-        try await ScanWork.run(priority: .utility) { try CaptureStore.saveScene(result, for: bundle) }
-        try Task.checkCancellation()
-        return result
-    }
-
-    /// The worker analyses an upload asynchronously (seconds to minutes), so poll a few times with
-    /// backoff while the volunteer reviews, then merge its places into the draft's points.
-    private func fetchDetectedPlaces(scanID: String, client: BackendClient, delays: [Int] = [0, 5, 15, 30, 60]) {
-        analysisTask?.cancel()
-        analysisTask = Task { [weak self] in
-            for delay in delays {
-                if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
-                guard !Task.isCancelled else { return }
-                do {
-                    guard let analysis = try await client.analysis(scanID: scanID) else { continue }
-                    guard !Task.isCancelled else { return }
-                    self?.mergeDetectedPlaces(analysis)
-                    return
-                } catch is CancellationError {
-                    return
-                } catch BackendClientError.connection {
-                    continue
-                } catch {
-                    Log.scan.notice("navigation analysis unavailable: \(error.localizedDescription, privacy: .public)")
-                    return
-                }
-            }
-        }
-    }
-
-    /// Adds worker-detected places to the destination list. IDs derive from the place IDs, and points
-    /// near an existing one of the same kind are skipped; existing (manual) points never change.
-    private func mergeDetectedPlaces(_ analysis: ScanAnalysis) {
-        guard var map = draft else { return }
-        let detected = analysis.places
-            .compactMap { $0.accessPoint(scanID: analysis.scanID, floorY: map.floorY) }
-            .filter { !mergedDetectionIDs.contains($0.id) }
-        let added = AccessPoint.newDetections(detected, existing: map.points)
-        mergedDetectionIDs.formUnion(detected.map(\.id))
-        guard !added.isEmpty else { return }
-        for point in added { MapBuilder.add(point, to: &map) }
-        draft = map
-        Log.scan.info("merged \(added.count) detected places from the navigation analysis")
-    }
-
-    /// Whole-capture evidence for the backend pipeline, attached before the stream is finished:
-    /// navigation semantics (geo reference, confirmed access points, RoomPlan labels and door states),
-    /// on-device OCR of streamed keyframes, and the native RoomPlan export. Each is optional; a
-    /// failure is logged and never blocks the scan.
-    private func attachStreamEvidence(to capture: StreamingScanCapture, rooms: [CapturedRoom]) async {
-        let queue = capture.queue, map = draft, sources = capture.textSources
-        let info = SemanticExport.captureInfo(floorID: queue.manifest.floorID)
-        do {
-            let files = try await ScanWork.run(priority: .utility) { () -> [(String, Data)] in
-                var files = [(CaptureSemantics.filename, try SemanticExport.semanticsData(map: map, rooms: rooms, capture: info))]
-                if !rooms.isEmpty { files.append(("roomplan.json", try ScanExporter.nativeRoomPlanData(rooms: rooms))) }
-                let text = TextRecognizer.recognize(TextRecognizer.images(keyframes: sources, captureDirectory: nil))
-                files.append((TextObservationsDocument.filename, try text.encoded()))
-                return files
-            }
-            for (name, data) in files { try await queue.attach(data, named: name) }
-        } catch {
-            Log.scan.error("couldn't attach scan evidence: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    private func applyStreamResult(_ result: StreamResult) {
-        guard let original = draft else { return }
-        let timestamps = Dictionary(uniqueKeysWithValues: detector.sightings.compactMap { sighting in
-            sighting.measurementTimestamp.map { (sighting.id, $0) }
-        })
-        func correction(_ id: UUID?) -> simd_float4x4 {
-            guard let id, let timestamp = timestamps[id], let alignment = result.alignment else {
-                return matrix_identity_float4x4
-            }
-            return alignment.correction(at: timestamp)
-        }
-        let points = original.points.map { point in
-            var point = point
-            let p = correction(point.id) * SIMD4(point.position, 1)
-            point.position = [p.x, p.y, p.z]
-            return point
-        }
-        let stairs = original.footprints.filter { $0.kind == .stairs }.map { stair in
-            var stair = stair
-            let transform = correction(stair.id)
-            let p = transform * SIMD4(stair.center.x, stair.bottom ?? original.floorY, stair.center.y, 1)
-            let axis = transform * SIMD4(cos(stair.yaw), 0, sin(stair.yaw), 0)
-            stair.center = [p.x, p.z]
-            stair.bottom = p.y
-            stair.yaw = atan2(axis.z, axis.x)
-            return stair
-        }
-        unconfirmed = unconfirmed.map { sighting in
-            var sighting = sighting
-            let transform = correction(sighting.id)
-            let p = transform * SIMD4(sighting.position, 1)
-            let facing = transform * SIMD4(sighting.facing.x, 0, sighting.facing.y, 0)
-            sighting.position = [p.x, p.y, p.z]
-            let direction = SIMD2(facing.x, facing.z)
-            if simd_length_squared(direction) > 1e-8 { sighting.facing = simd_normalize(direction) }
-            return sighting
-        }
-        var corrected = MapBuilder.streamingMap(result.capture, points: points, stairs: stairs, previous: original)
-        corrected.requiresOptimizedLocalization = result.alignment?.materiallyChanged == true
-        draft = corrected
     }
 
     /// Recomputes the report a moment after the draft stops changing; it runs route searches, so keep it off the main thread.
@@ -1060,15 +1106,12 @@ final class ScanController: ObservableObject {
     }
 
     var canFinishInterruptedScan: Bool {
-        isContinuous ? canFinishContinuousScan : !rooms.isEmpty || rawCapture.hasObservedFloor
+        !rooms.isEmpty || pendingRoomData != nil
     }
 
     var interruptionHint: String {
-        if isContinuous { return "Your scan is saved on this phone. Continue in the same area, or finish and save." }
-        return sectionCount == 0 ? (rawCapture.hasObservedFloor
-            ? "Measured floor coverage is kept. Continue scanning or finish and save."
-            : "No completed sections yet. Continue scanning a smaller area.")
-            : "\(sectionCount == 1 ? "1 section is" : "\(sectionCount) sections are") kept. \(interruptionAdvice)"
+        if pendingRoomData != nil { return interruptionAdvice }
+        return rooms.isEmpty ? "Continue when ready to finish this room." : "Your completed rooms are kept. \(interruptionAdvice)"
     }
 
     private func captureFailed(_ error: Error) {
@@ -1079,8 +1122,8 @@ final class ScanController: ObservableObject {
             errorMessage = "The phone needs to cool down. You can finish and save what you've scanned."
             interruptionAdvice = "Let the phone cool down before continuing, or finish and save now."
         case .exceedSceneSizeLimit:
-            errorMessage = "This section has reached the scanner's size limit."
-            interruptionAdvice = "Continue with a smaller section of this area, or finish and save now."
+            errorMessage = "RoomPlan reached its limit for this room. Scanning has paused."
+            interruptionAdvice = "Your capture is kept. Finish and review it, or resume when ready."
         default:
             interruptionAdvice = "Move somewhere with more detail in view, then continue, or finish with what you have."
         }
@@ -1109,127 +1152,13 @@ final class ScanController: ObservableObject {
         default:
             scanNotice = nil
         }
-        guard !isContinuous, phase == .scanning, let frame = session.currentFrame,
-              case .normal = frame.camera.trackingState,
-              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return }
-        let camera = frame.camera.transform.translation
-        if sectionPolicy.shouldSave(position: [camera.x, camera.z], timestamp: frame.timestamp) {
-            Log.scan.notice("saving a long section automatically; continuing in the same AR session")
-            endSection(thenFinish: false)
-        }
     }
 
     private func pauseForResources(message: String) {
         guard isActive, phase == .scanning else { return }
         errorMessage = message
         interruptionAdvice = "Take a short break before continuing, or finish and save now."
-        if isContinuous {
-            pauseContinuousCapture()
-            if ProcessInfo.processInfo.thermalState == .critical { session.pause() }
-        } else { endSection(thenFinish: false, pauseAfter: true) }
-    }
-
-    private func pauseContinuousCapture() {
-        phase = .interrupted
-        detector.pause()
-        rawCapture.pause()
-        splatCapture.pause()
-        streamingCapture?.pause()
-        stopOutlines()
-    }
-
-    /// Starts RoomPlan drawing over the camera. RoomPlan keeps the world-tracking settings the session
-    /// was prepared with, so depth, planes and the classified mesh keep flowing to the stream.
-    private func beginOutlines() {
-        guard isContinuous, isActive, phase == .scanning, !outlinesRunning, let captureView else { return }
-        outlineRestartTask?.cancel()
-        outlineRestartTask = nil
-        outlinesRunning = true
-        outlinesStarted = .now
-        captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
-    }
-
-    /// Ends RoomPlan's drawing without pausing the shared session the scan still runs on.
-    private func stopOutlines() {
-        outlineRestartTask?.cancel()
-        outlineRestartTask = nil
-        guard outlinesRunning else { return }
-        outlinesRunning = false
-        captureView?.captureSession.stop(pauseARSession: false)
-    }
-
-    /// RoomPlan stopped drawing on its own: its scene size limit, heat, or lost tracking. The scan itself
-    /// continues, so start a fresh outline, unless RoomPlan gave up within seconds, which means it can't
-    /// run here right now and retrying would only loop.
-    private func outlinesEnded(_ error: Error?) {
-        guard outlinesRunning else { return }
-        outlinesRunning = false
-        Log.scan.notice("RoomPlan outlines ended: \(error?.localizedDescription ?? "scene complete", privacy: .public)")
-        guard isActive, phase == .scanning, ProcessInfo.processInfo.thermalState != .critical,
-              Date.now.timeIntervalSince(outlinesStarted) > 10 else { return }
-        outlineRestartTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            self?.beginOutlines()
-        }
-    }
-
-    private func beginStreamingCapture() {
-        guard streamStartTask == nil, let floor = currentFloor else { return }
-        let id = scanID
-        let manifest = StreamManifest(id: id.uuidString, mapID: id.uuidString, floorID: floor.id.uuidString)
-        let root = URL.documentsDirectory.appending(path: "Captures", directoryHint: .isDirectory)
-            .appending(path: id.uuidString, directoryHint: .isDirectory)
-            .appending(path: "stream", directoryHint: .isDirectory)
-        let backend = streamBackendURL
-        streamStartTask = Task { [weak self] in
-            do {
-                let queue = try await ScanWork.run {
-                    try StreamingCaptureQueue(root: root, manifest: manifest, backendURL: backend,
-                                              accessToken: AppConfig.backendToken)
-                }
-                guard let self, self.isActive, self.scanID == id, !Task.isCancelled else { return }
-                let capture = StreamingScanCapture(queue: queue)
-                capture.measurements = { [weak self] in self?.rawCapture.snapshot().observedFootprints ?? [] }
-                capture.onStatus = { [weak self] status in self?.streamStatus = status }
-                capture.onCoverage = { [weak self] coverage in
-                    guard let self, self.isActive, self.scanID == id else { return }
-                    self.scanCoverage = coverage
-                }
-                capture.onTrackingHint = { [weak self] hint in self?.trackingNotice = hint }
-                capture.onError = { [weak self] message in
-                    self?.errorMessage = message
-                    self?.pauseContinuousCapture()
-                }
-                capture.environment = { [weak self] in self?.contextTracker.sample() }
-                capture.movement = { [weak self] after in self?.trackRecorder.poses(after: after) ?? [] }
-                self.contextTracker.start()
-                self.trackRecorder.start(session: self.session)
-                self.streamingCapture = capture
-                self.streamStatus = await queue.snapshot()
-                capture.start(session: self.session)
-                if self.phase != .scanning { capture.pause() }
-                self.streamStatusTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.refreshStreamStatus() }
-                }
-            } catch {
-                guard let self, self.isActive, self.scanID == id, !Task.isCancelled else { return }
-                self.errorMessage = "Couldn't start saving the scan. \(error.localizedDescription)"
-                self.pauseContinuousCapture()
-            }
-            self?.streamStartTask = nil
-        }
-    }
-
-    private func refreshStreamStatus() {
-        guard streamStatusTask == nil, let streamingCapture else { return }
-        let id = scanID
-        streamStatusTask = Task { [weak self] in
-            let status = await streamingCapture.queue.snapshot()
-            guard let self, self.isActive, self.scanID == id else { return }
-            self.streamStatus = status
-            self.streamStatusTask = nil
-        }
+        endSection(thenFinish: false, pauseAfter: true)
     }
 
     private func captureStartView() {
@@ -1250,14 +1179,34 @@ final class ScanController: ObservableObject {
 final class CaptureSessionDelegate: NSObject, RoomCaptureSessionDelegate {
     private let onUpdate: @MainActor (CapturedRoom) -> Void
     private let onEnd: @MainActor (CapturedRoomData, Error?) -> Void
+    private let onInstruction: @MainActor (RoomCaptureSession.Instruction) -> Void
 
-    init(onUpdate: @escaping @MainActor (CapturedRoom) -> Void, onEnd: @escaping @MainActor (CapturedRoomData, Error?) -> Void) {
+    init(onUpdate: @escaping @MainActor (CapturedRoom) -> Void,
+         onEnd: @escaping @MainActor (CapturedRoomData, Error?) -> Void,
+         onInstruction: @escaping @MainActor (RoomCaptureSession.Instruction) -> Void) {
         self.onUpdate = onUpdate
         self.onEnd = onEnd
+        self.onInstruction = onInstruction
     }
 
     func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
         Task { @MainActor in onUpdate(room) }
+    }
+
+    func captureSession(_ session: RoomCaptureSession, didAdd room: CapturedRoom) {
+        Task { @MainActor in onUpdate(room) }
+    }
+
+    func captureSession(_ session: RoomCaptureSession, didChange room: CapturedRoom) {
+        Task { @MainActor in onUpdate(room) }
+    }
+
+    func captureSession(_ session: RoomCaptureSession, didRemove room: CapturedRoom) {
+        Task { @MainActor in onUpdate(room) }
+    }
+
+    func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
+        Task { @MainActor in onInstruction(instruction) }
     }
 
     func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {

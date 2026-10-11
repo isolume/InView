@@ -307,8 +307,12 @@ def test_region_nodes_and_doorway_regions():
 
 def test_step_free_and_slope_rules():
     fm, flat = build(suite())
-    assert all(e["step_free"] is True for e in flat.graph["edges"])
+    assert all(e["step_free"] is None for e in flat.graph["edges"])
     assert all("maximum_slope" not in e for e in flat.graph["edges"])
+
+    measured_flat = {"measured": True, "elevation": np.zeros(fm.walkable.shape)}
+    _, measured = build(suite(), height_map=measured_flat)
+    assert all(e["step_free"] is True and e["maximum_slope"] == 0 for e in measured.graph["edges"])
 
     _, unknown = build(suite(), level=None)
     assert all(e["step_free"] is None for e in unknown.graph["edges"])
@@ -316,7 +320,7 @@ def test_step_free_and_slope_rules():
     # A step across the corridor: corridor edges are no longer step-free, rooms still are.
     step = {"id": "step-1", "kind": "step", "position_m": [2.0, 0.0, 0.0], "severity": "barrier",
             "polygon_xz_m": [[1.8, -0.8], [2.2, -0.8], [2.2, 0.8], [1.8, 0.8]], "measure": {"rise_m": 0.15}}
-    _, stepped = build(suite(), hazards=[step])
+    _, stepped = build(suite(), hazards=[step], height_map=measured_flat)
     blocked = [e for e in stepped.graph["edges"] if e["step_free"] is False]
     assert blocked and all(any(p["x"] > 1.7 for p in e["segment"]["path_points"]) for e in blocked)
     nav = stepped.adjacency
@@ -330,14 +334,17 @@ def test_step_free_and_slope_rules():
     xs = fm.grid.x0 + np.arange(fm.grid.width) * fm.grid.resolution
     elevation = np.zeros((fm.grid.height, fm.grid.width))
     elevation[:, :] = np.clip(xs - 0.5, 0, 3.0)[None, :] / 16
-    _, ramped = build(suite(), height_map=elevation)
+    _, ramped = build(suite(), height_map={"elevation": elevation, "measured": True})
     slopes = [e.get("maximum_slope") for e in ramped.graph["edges"]]
     assert all(s is not None for s in slopes)
     assert max(slopes) == pytest.approx(1 / 16, abs=0.01)
     assert all(e["step_free"] is True for e in ramped.graph["edges"])
-    # Same ramp supplied as a dict wrapper of the raster is accepted.
+    points = [p for e in ramped.graph["edges"] for p in e["segment"]["path_points"]]
+    assert max(p["y"] for p in points) - min(p["y"] for p in points) > 0.15
+    assert all(abs(p["y"] - np.clip(p["x"] - 0.5, 0, 3.0) / 16) < 0.005 for p in points)
+    # A raster without measurement provenance is useful geometry, not eligibility evidence.
     _, wrapped = build(suite(), height_map={"elevation": elevation})
-    assert [e.get("maximum_slope") for e in wrapped.graph["edges"]] == slopes
+    assert all(e["step_free"] is None and "maximum_slope" not in e for e in wrapped.graph["edges"])
 
 
 def test_output_is_deterministic():
@@ -413,9 +420,13 @@ def test_stage_runs_in_the_pipeline_and_publishes_a_valid_graph():
     assert analysis["stages"]["nav_graph"]["status"] == "ok"
     graph = analysis["nav_graph"]
     validate_graph(graph)
-    assert graph["id"] == "suite-nav" and graph["nodes"][0]["floor_id"] == "ground"
+    assert graph["id"] == "suite-nav" and graph["nodes"][0]["floor_id"] == "unassigned"
     assert set(graph["metadata"]["door_nodes"]) == {"door-a", "door-b"}
     assert analysis["summary"]["nav_graph"]["components"] == 1
+    assert graph["metadata"]["review_status"] == "draft"
+    assert analysis["height_map"]["measured"] is False
+    assert all(e["step_free"] is None and "maximum_slope" not in e for e in graph["edges"])
+    assert not any(r["profile"] == "wheelchair" for r in analysis["routes"]["routes"])
     json.dumps(analysis, allow_nan=False)
 
 

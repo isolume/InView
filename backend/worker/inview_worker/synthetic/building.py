@@ -19,8 +19,9 @@ keyframes are ray-cast against the same geometry (walls, floors, steps, ramp, do
 
 Ground truth (never inside the archive): spaces (polygons, labels), doors (nominal/clear widths),
 signs and text lines (3D positions, strings), hazards, places, a waypoint graph with room adjacency
-and per-profile shortest paths (wheelchair avoids stairs, doors under 0.815 m clear and ramps steeper
-than 1:12), and the georeference used to synthesize the GPS samples.
+and per-profile shortest paths using the routing profile's width and slope requirements, and the
+georeference used to synthesize the GPS samples. The default mesh covers the entire generated scene;
+it is a complete-evidence fixture, not a simulation of scan visibility or real capture coverage.
 
     python -m inview_worker.synthetic.building out.inviewscan.tar [--seed N] [--truth truth.json]
 """
@@ -38,6 +39,7 @@ import cv2
 import numpy as np
 
 from .package import CX, CY, FOCAL, IMAGE_H, IMAGE_W
+from ..guidance.profiles import WHEELCHAIR
 
 GENERATOR = "inview_worker.synthetic.building"
 TRUTH_SCHEMA_VERSION = 1
@@ -1084,9 +1086,9 @@ def _usable(edge: dict, profile: str) -> bool:
         return True
     if edge.get("stairs"):
         return False
-    if edge.get("slope", 0.0) > RAMP_MAX_SLOPE + 1e-6:
+    if edge.get("slope", 0.0) > WHEELCHAIR.requirements.maximum_slope + 1e-6:
         return False
-    return edge.get("clear_width_m", math.inf) >= DOOR_MIN_CLEAR_M
+    return edge.get("clear_width_m", math.inf) >= WHEELCHAIR.requirements.minimum_clear_width_m
 
 
 def ground_routes(b: Building, graph: dict) -> list[dict]:

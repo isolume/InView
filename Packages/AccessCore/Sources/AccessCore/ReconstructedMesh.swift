@@ -29,8 +29,12 @@ public enum ReconstructedMesh {
     public static let unlabeled = "none"
     /// Enough for a detailed floor while keeping saved scenes and SceneKit geometry small.
     public static let defaultTriangleTarget = 150_000
+    public static let maximumVertices = 200_000
+    /// Bound temporary arrays before expanding the copied native buffers.
+    public static let maximumSourceVertices = 1_000_000
+    public static let maximumSourceTriangles = 2_000_000
     /// Welding starts at 2 cm, like the backend's depth fusion, and coarsens until the mesh fits.
-    static let cellSizes: [Float] = [0.02, 0.04, 0.08, 0.16]
+    static let cellSizes: [Float] = [0.02, 0.04, 0.08, 0.16, 0.32, 0.64]
     /// Larger coordinates are not plausible indoor measurements and would overflow the weld grid.
     private static let coordinateLimit: Float = 10_000
 
@@ -44,7 +48,18 @@ public enum ReconstructedMesh {
     /// Merges anchors into one mesh with an identity pose. Faces keep ARKit's label and are wound
     /// counterclockwise towards the observed side, so single-sided rendering hides back faces.
     public static func compact(_ anchors: [ReconstructedMeshAnchor],
-                               triangleTarget: Int = defaultTriangleTarget) throws -> Compacted? {
+                               triangleTarget: Int = defaultTriangleTarget,
+                               vertexTarget: Int = maximumVertices) throws -> Compacted? {
+        let triangleLimit = min(defaultTriangleTarget, max(0, triangleTarget))
+        let vertexLimit = min(maximumVertices, max(0, vertexTarget))
+        guard triangleLimit > 0, vertexLimit >= 3 else { return nil }
+        var sourceVertices = 0, sourceTriangles = 0
+        for anchor in anchors {
+            guard anchor.vertices.count <= maximumSourceVertices - sourceVertices,
+                  anchor.faces.count <= maximumSourceTriangles - sourceTriangles else { return nil }
+            sourceVertices += anchor.vertices.count
+            sourceTriangles += anchor.faces.count
+        }
         var positions: [SIMD3<Float>] = []
         var normals: [SIMD3<Float>] = []
         var faces: [SIMD3<Int>] = []
@@ -79,16 +94,17 @@ public enum ReconstructedMesh {
             }
         }
         guard !faces.isEmpty else { return nil }
-        for (level, cell) in cellSizes.enumerated() {
+        for cell in cellSizes {
             try Task.checkCancellation()
             let mesh = try weld(positions: positions, normals: normals, faces: faces, labels: labels, cell: cell)
-            if mesh.triangles.count <= triangleTarget || level == cellSizes.count - 1 {
+            if mesh.triangles.count <= triangleLimit && mesh.vertices.count <= vertexLimit {
                 guard !mesh.triangles.isEmpty else { return nil }
                 var result = mesh
                 if !labeled { result.classifications = nil }
                 return Compacted(mesh: result, cellSize: cell, sourceTriangleCount: faces.count)
             }
         }
+        // Optional detail may be omitted; never drop arbitrary faces or exceed the display budget.
         return nil
     }
 
@@ -170,25 +186,35 @@ public struct CeilingMeasurement: Codable, Equatable, Sendable {
 
     /// Ceilings are compared with floors on a plan grid of this size.
     static let cell: Float = 0.25
+    private static let maximumCellVisits = 1_000_000
+    private static let maximumCells = 100_000
     /// Lower than a doorway or higher than a tall atrium is a mislabeled surface, not this room's ceiling.
     static let plausibleHeights: ClosedRange<Float> = 1.9...8
 
     /// - Parameter floorY: The map's floor, used where ARKit labeled ceiling but no floor below it.
     public static func measure(_ mesh: CaptureMesh, floorY: Float?) -> CeilingMeasurement? {
-        guard let labels = mesh.classifications, labels.count == mesh.triangles.count else { return nil }
+        guard let labels = mesh.classifications, labels.count == mesh.triangles.count,
+              mesh.triangles.count <= ReconstructedMesh.defaultTriangleTarget,
+              mesh.vertices.count <= ReconstructedMesh.maximumVertices else { return nil }
         let mapFromAnchor = mesh.mapFromAnchor
-        guard mapFromAnchor.count == 16 else { return nil }
+        guard validRigidTransform(mapFromAnchor) else { return nil }
         func point(_ index: Int) -> SIMD3<Float>? {
             guard mesh.vertices.indices.contains(index), mesh.vertices[index].count == 3 else { return nil }
             let v = mesh.vertices[index], m = mapFromAnchor
-            return SIMD3(m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12],
-                         m[1] * v[0] + m[5] * v[1] + m[9] * v[2] + m[13],
-                         m[2] * v[0] + m[6] * v[1] + m[10] * v[2] + m[14])
+            let result = SIMD3(m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12],
+                               m[1] * v[0] + m[5] * v[1] + m[9] * v[2] + m[13],
+                               m[2] * v[0] + m[6] * v[1] + m[10] * v[2] + m[14])
+            guard result.x.isFinite, result.y.isFinite, result.z.isFinite,
+                  simd_reduce_max(simd_abs(result)) < 10_000 else { return nil }
+            return result
         }
-        // Area-weighted mean height of each kind of horizontal surface, per plan cell.
+        // Rasterize each face into every intersected cell. Triangle centroids alone cannot
+        // compare independently triangulated floor and ceiling surfaces.
         var floors: [SIMD2<Int32>: SIMD2<Float>] = [:]
         var ceilings: [SIMD2<Int32>: SIMD2<Float>] = [:]
+        var visits = 0
         for (index, triangle) in mesh.triangles.enumerated() {
+            if index % 512 == 0, Task.isCancelled { return nil }
             let label = labels[index]
             guard label == ReconstructedMesh.ceiling || label == ReconstructedMesh.floor, triangle.count == 3,
                   let a = point(triangle[0]), let b = point(triangle[1]), let c = point(triangle[2]) else { continue }
@@ -196,11 +222,28 @@ public struct CeilingMeasurement: Codable, Equatable, Sendable {
             let area = simd_length(cross) / 2
             // ARKit sometimes labels the top of a wall as ceiling; only near-horizontal faces count.
             guard area > 1e-6, area.isFinite, abs(cross.y) / (2 * area) > 0.8 else { continue }
-            let center = (a + b + c) / 3
-            let key = SIMD2(Int32((center.x / cell).rounded(.down)), Int32((center.z / cell).rounded(.down)))
-            let weighted = SIMD2(center.y * area, area)
-            if label == ReconstructedMesh.ceiling { ceilings[key, default: .zero] += weighted }
-            else { floors[key, default: .zero] += weighted }
+            let lower = simd_min(a, simd_min(b, c)), upper = simd_max(a, simd_max(b, c))
+            let x0 = Int((lower.x / cell).rounded(.down)), x1 = Int((upper.x / cell).rounded(.up)) - 1
+            let z0 = Int((lower.z / cell).rounded(.down)), z1 = Int((upper.z / cell).rounded(.up)) - 1
+            guard x1 >= x0, z1 >= z0 else { continue }
+            let count = (x1 - x0 + 1) * (z1 - z0 + 1)
+            guard count <= maximumCellVisits - visits else { return nil }
+            visits += count
+            for z in z0...z1 {
+                for x in x0...x1 {
+                    var polygon = [a, b, c]
+                    polygon = clip(polygon, axis: 0, at: Float(x) * cell, keepingAbove: true)
+                    polygon = clip(polygon, axis: 0, at: Float(x + 1) * cell, keepingAbove: false)
+                    polygon = clip(polygon, axis: 2, at: Float(z) * cell, keepingAbove: true)
+                    polygon = clip(polygon, axis: 2, at: Float(z + 1) * cell, keepingAbove: false)
+                    let weighted = areaAndHeight(polygon)
+                    guard weighted.y > 1e-8 else { continue }
+                    let key = SIMD2(Int32(x), Int32(z))
+                    if label == ReconstructedMesh.ceiling { ceilings[key, default: .zero] += weighted }
+                    else { floors[key, default: .zero] += weighted }
+                }
+            }
+            guard floors.count + ceilings.count <= maximumCells else { return nil }
         }
         var heights: [Float] = []
         var elevations: [Float] = []
@@ -212,14 +255,49 @@ public struct CeilingMeasurement: Codable, Equatable, Sendable {
             guard let below, plausibleHeights.contains(elevation - below) else { continue }
             heights.append(elevation - below)
             elevations.append(elevation)
-            ceilingArea += sum.y
-            coveredFloorArea += floors[key]?.y ?? 0
+            let area = min(cell * cell, sum.y)
+            ceilingArea += area
+            coveredFloorArea += min(area, floors[key]?.y ?? 0)
         }
         guard !heights.isEmpty else { return nil }
-        let floorArea = floors.values.reduce(Float.zero) { $0 + $1.y }
+        let floorArea = floors.values.reduce(Float.zero) { $0 + min(cell * cell, $1.y) }
         return CeilingMeasurement(heightM: median(heights), elevation: median(elevations),
                                   floorCoverage: floorArea > 0 ? min(1, coveredFloorArea / floorArea) : nil,
                                   areaM2: ceilingArea)
+    }
+
+    private static func clip(_ polygon: [SIMD3<Float>], axis: Int, at value: Float,
+                             keepingAbove: Bool) -> [SIMD3<Float>] {
+        guard var previous = polygon.last else { return [] }
+        func inside(_ point: SIMD3<Float>) -> Bool { keepingAbove ? point[axis] >= value : point[axis] <= value }
+        var previousInside = inside(previous)
+        var result: [SIMD3<Float>] = []
+        for current in polygon {
+            let currentInside = inside(current)
+            if previousInside != currentInside {
+                let t = (value - previous[axis]) / (current[axis] - previous[axis])
+                var crossing = previous + t * (current - previous)
+                crossing[axis] = value
+                result.append(crossing)
+            }
+            if currentInside { result.append(current) }
+            previous = current
+            previousInside = currentInside
+        }
+        return result
+    }
+
+    /// Plan area and its elevation moment, including height interpolation on sloped faces.
+    private static func areaAndHeight(_ polygon: [SIMD3<Float>]) -> SIMD2<Float> {
+        guard polygon.count >= 3 else { return .zero }
+        let origin = polygon[0]
+        var result = SIMD2<Float>.zero
+        for index in 1..<(polygon.count - 1) {
+            let a = polygon[index] - origin, b = polygon[index + 1] - origin
+            let area = abs(a.x * b.z - a.z * b.x) / 2
+            result += SIMD2((origin.y + polygon[index].y + polygon[index + 1].y) / 3 * area, area)
+        }
+        return result
     }
 
     private static func median(_ values: [Float]) -> Float {

@@ -78,6 +78,7 @@ final class SplatCapture {
                                   SIMD3(last.columns.2.x, last.columns.2.y, last.columns.2.z))
             guard moved >= Self.minimumMove || facing <= Self.minimumTurn else { return }
         }
+        guard let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return }
         lastPose = pose
         isWriting = true
         let path = String(format: "images/frame_%05d.jpg", frames.count + 1)
@@ -89,9 +90,9 @@ final class SplatCapture {
                            flX: intrinsics[0][0] * Self.scale, flY: intrinsics[1][1] * Self.scale,
                            cx: intrinsics[2][0] * Self.scale, cy: intrinsics[2][1] * Self.scale,
                            w: Int(Float(resolution.width) * Self.scale), h: Int(Float(resolution.height) * Self.scale))
-        let image = CIImage(cvPixelBuffer: frame.capturedImage)
-            .transformed(by: CGAffineTransform(scaleX: CGFloat(Self.scale), y: CGFloat(Self.scale)))
-        writer.write(PhotoWriter.Photo(image: image, url: directory.appending(path: path))) { [weak self] saved in
+        writer.write(PhotoWriter.Photo(snapshot: snapshot,
+            maximumDimension: max(resolution.width, resolution.height) * CGFloat(Self.scale),
+            url: directory.appending(path: path))) { [weak self] saved in
             Task { @MainActor in
                 guard let self else { return }
                 self.isWriting = false
@@ -172,21 +173,19 @@ final class SplatCapture {
 
 /// JPEG encoding and file writes, one at a time, off the main thread.
 private final class PhotoWriter: @unchecked Sendable {
-    /// A camera image and where it goes. CIImage isn't Sendable; each photo is handed over once and not shared.
-    struct Photo: @unchecked Sendable {
-        let image: CIImage
+    /// Copied pixels, never an ARKit pool buffer, handed to one background encoder.
+    struct Photo: Sendable {
+        let snapshot: FrameEncoder.Snapshot
+        let maximumDimension: CGFloat
         let url: URL
     }
 
     private let queue = DispatchQueue(label: "inview.splat-capture", qos: .utility)
-    private let context = CIContext()
 
     func write(_ photo: Photo, completion: @escaping @Sendable (Bool) -> Void) {
-        queue.async { [context] in
-            let options = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.85]
-            let saved = (try? context.writeJPEGRepresentation(of: photo.image, to: photo.url,
-                                                               colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                                               options: options)) != nil
+        queue.async {
+            let saved = FrameEncoder.sensorJPEG(from: photo.snapshot, maxDimension: photo.maximumDimension)
+                .map { (try? $0.jpeg.write(to: photo.url, options: .atomic)) != nil } ?? false
             completion(saved)
         }
     }
