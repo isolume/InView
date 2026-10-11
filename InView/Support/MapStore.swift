@@ -74,26 +74,44 @@ enum MapStore {
 
     static func updateGeographicReference(_ reference: BuildingMapReference) throws {
         try reference.validate()
+        try republish(notifies: true) { $0.geographicReference = reference }
+    }
+
+    /// Saves places added, renamed or removed on the map, with the report checked against them.
+    /// The open map already shows the change, so nothing reloads.
+    static func updatePoints(_ points: [AccessPoint], report: AccessibilityReport) throws {
+        try republish(notifies: false, report: report) { $0.points = points }
+    }
+
+    /// Writes an edited copy of the selected floor and selects it, keeping prior saves intact.
+    /// The copy is a clone on APFS, so only the rewritten files take new space.
+    private static func republish(notifies: Bool, report: AccessibilityReport? = nil,
+                                  _ edit: (inout VenueMap) -> Void) throws {
         try publicationLock.withLock {
             let selected = resolvedSelection()
             let source = selected?.directory ?? directory
             var map = try decoder.decode(VenueMap.self, from: Data(contentsOf: source.appending(path: "venue-map.json")))
-            map.geographicReference = reference
+            edit(&map)
+            func write(into folder: URL) throws {
+                try encoder.encode(map).write(to: folder.appending(path: "venue-map.json"), options: .atomic)
+                if let report {
+                    try encoder.encode(report).write(to: folder.appending(path: "venue-report.json"), options: .atomic)
+                }
+            }
             guard let selected else {
-                try encoder.encode(map).write(to: source.appending(path: "venue-map.json"), options: .atomic)
+                try write(into: source)
                 return
             }
-            // Keep prior saves intact when geographic placement is edited too.
             let storageID = UUID()
             let destination = floorDirectory(identity: selected.floor.identity, storageID: storageID)
             do {
                 try FileManager.default.copyItem(at: source, to: destination)
-                try encoder.encode(map).write(to: destination.appending(path: "venue-map.json"), options: .atomic)
+                try write(into: destination)
                 var registry = selected.registry
                 try registry.record(selected.floor.identity, storageID: storageID,
                                     captureID: selected.floor.captureID)
                 try encoder.encode(registry).write(to: registryURL, options: .atomic)
-                notifySelectionChanged()
+                if notifies { notifySelectionChanged() }
             } catch {
                 try? FileManager.default.removeItem(at: destination)
                 throw error

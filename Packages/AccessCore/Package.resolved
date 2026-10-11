@@ -1,60 +1,6 @@
 {
-  "originHash" : "af6cca40e8f9b50f9cc54e5a41759d604ae9326530f3998b35e6e070e60bce0c",
+  "originHash" : "cbe49f5c388449cebc730c646b513452bfdd327192affe95c958b3292f2ce93e",
   "pins" : [
-    {
-      "identity" : "mapbox-common-ios",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mapbox/mapbox-common-ios.git",
-      "state" : {
-        "revision" : "901e49b4d7b311af1d81223f8e4a4b96d878a880",
-        "version" : "24.32.0"
-      }
-    },
-    {
-      "identity" : "mapbox-core-maps-ios",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mapbox/mapbox-core-maps-ios.git",
-      "state" : {
-        "revision" : "afc55d03f030af1f25bc0bbe51ae884c5ea73d19",
-        "version" : "11.32.0"
-      }
-    },
-    {
-      "identity" : "mapbox-maps-ios",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mapbox/mapbox-maps-ios.git",
-      "state" : {
-        "revision" : "357e1447df5b1fedefbf595bf7812f437cdaec6e",
-        "version" : "11.32.0"
-      }
-    },
-    {
-      "identity" : "metalsplatter",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/scier/MetalSplatter.git",
-      "state" : {
-        "revision" : "71ff248e3016ac43c0a9271e322538421b28c360",
-        "version" : "1.0.1"
-      }
-    },
-    {
-      "identity" : "spz-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/scier/spz-swift.git",
-      "state" : {
-        "revision" : "e2410c91bceba2539c11157ad92e488ef6e16416",
-        "version" : "2.1.0"
-      }
-    },
-    {
-      "identity" : "swift-argument-parser",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-argument-parser",
-      "state" : {
-        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
-        "version" : "1.8.2"
-      }
-    },
     {
       "identity" : "swift-collections",
       "kind" : "remoteSourceControl",
@@ -62,15 +8,6 @@
       "state" : {
         "revision" : "3b69cedbaa49957e97c092ae400bb57602ef941f",
         "version" : "1.7.2"
-      }
-    },
-    {
-      "identity" : "turf-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mapbox/turf-swift.git",
-      "state" : {
-        "revision" : "bf840e6b9529d105687840fe2c9dcd74197d46d1",
-        "version" : "4.0.0"
       }
     }
   ],
