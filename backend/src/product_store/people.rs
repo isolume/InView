@@ -198,7 +198,7 @@ impl ProductStore {
             .filter(|s| s.sharer == me.id || s.viewer == me.id)
             .map(|s| (s.created_at, view_of(&db, me, s, at)))
             .collect();
-        views.sort_by(|a, b| b.0.cmp(&a.0));
+        views.sort_by_key(|view| std::cmp::Reverse(view.0));
         Ok(views.into_iter().map(|(_, v)| v).take(100).collect())
     }
 
