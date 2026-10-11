@@ -109,6 +109,9 @@ final class RawScanCapture {
     private var walkRecorder = ScanWalkTraceRecorder()
     var floorY: Float?
     var hasObservedFloor: Bool { observedSurfaces.snapshot().contains { $0.kind == .floor } }
+    /// Lightweight live tracing values; never constructs a raw/depth archive for the UI.
+    var tracedFloors: [Footprint] { observedSurfaces.snapshot().filter { $0.kind == .floor } }
+    var liveWalkTrace: ScanWalkTrace { walkRecorder.trace }
     /// Pose recording is cheap; floor sampling and depth work keep their own slower limits.
     private let pollingInterval: TimeInterval = 0.25
 

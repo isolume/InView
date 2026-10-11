@@ -7,6 +7,7 @@ struct ScanWalkPreview: View {
     let map: VenueMap
     let trace: ScanWalkTrace
     let coverage: ScanWalkFloorCoverage.Assessment?
+    var isLive = false
 
     var body: some View {
         Canvas { context, size in
@@ -60,13 +61,19 @@ struct ScanWalkPreview: View {
                 context.fill(Path(ellipseIn: CGRect(x: center.x - 4, y: center.y - 4, width: 8, height: 8)),
                              with: .color(Theme.route))
             }
-            let caption = coverage?.hasMissingCoverage == true ? "Dashed: floor missing" : "Recorded walk"
+            if let end = trace.samples.last {
+                let center = point(SIMD2(end.cameraPosition.x, end.cameraPosition.z))
+                context.fill(Path(ellipseIn: CGRect(x: center.x - 5, y: center.y - 5, width: 10, height: 10)), with: .color(.mint))
+                context.stroke(Path(ellipseIn: CGRect(x: center.x - 5, y: center.y - 5, width: 10, height: 10)), with: .color(.primary), lineWidth: 1)
+            }
+            let caption = coverage?.hasMissingCoverage == true ? "Dashed: floor missing"
+                : isLive ? String(format: "%.1f m recorded · local map", trace.distanceMeters) : "Recorded walk"
             context.draw(Text(caption).font(.caption2).foregroundStyle(.secondary),
                          at: CGPoint(x: size.width / 2, y: size.height - 12))
         }
         .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 12))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Recorded walk")
+        .accessibilityLabel(isLive ? "Live floor trace" : "Recorded walk")
         .accessibilityValue(accessibilityDescription)
         .overlay(alignment: .topTrailing) {
             if coverage?.isLimited == true || trace.isTruncated {

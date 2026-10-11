@@ -10,11 +10,14 @@ struct OpenAIVisionClient: VisionDetector {
         let y: Double
         let surfaceX: Double
         let surfaceY: Double
+        let bounds: [Double]?
+        let elevatorEvidence: VisionDetection.ElevatorEvidence?
 
         private enum CodingKeys: String, CodingKey {
             case kind, name, confidence, x, y
             case surfaceX = "surface_x"
-            case surfaceY = "surface_y"
+            case surfaceY = "surface_y", bounds
+            case elevatorEvidence = "elevator_evidence"
         }
     }
 
@@ -70,7 +73,8 @@ struct OpenAIVisionClient: VisionDetector {
                             name: $0.name,
                             confidence: $0.confidence,
                             target: CGPoint(x: $0.x, y: $0.y),
-                            surface: CGPoint(x: $0.surfaceX, y: $0.surfaceY)
+                            surface: CGPoint(x: $0.surfaceX, y: $0.surfaceY),
+                            bounds: VisionDetection.visibleBounds($0.bounds), elevatorEvidence: $0.elevatorEvidence
                         )
                     }
                 }
@@ -119,7 +123,7 @@ struct OpenAIVisionClient: VisionDetector {
                 "items": [
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["kind", "name", "confidence", "x", "y", "surface_x", "surface_y"],
+                    "required": ["kind", "name", "confidence", "x", "y", "surface_x", "surface_y", "bounds", "elevator_evidence"],
                     "properties": [
                         "kind": ["type": "string", "enum": VisionDetection.Kind.allCases.map(\.rawValue)],
                         "name": ["type": "string"],
@@ -128,6 +132,8 @@ struct OpenAIVisionClient: VisionDetector {
                         "y": ["type": "number"],
                         "surface_x": ["type": "number"],
                         "surface_y": ["type": "number"],
+                        "bounds": ["type": "array", "items": ["type": "number", "minimum": 0, "maximum": 1], "minItems": 4, "maxItems": 4],
+                        "elevator_evidence": ["type": "string", "enum": ["door_and_panel", "doorway", "panel_only", "sign_only", "not_applicable"]],
                     ],
                 ],
             ],
