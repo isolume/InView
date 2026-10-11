@@ -45,6 +45,8 @@ struct MapScreen: View {
     @State private var topDown = false
     @State private var resetID = 0
     @State private var showsAR = false
+    /// The AR camera reads signs and tags the doors they label.
+    @State private var readsSigns = false
     @State private var detent = PresentationDetent.height(240)
     @State private var showsMainSheet = false
     @State private var previewRoute: Route?
@@ -171,7 +173,7 @@ struct MapScreen: View {
         guard hasVisualFloor else { return [] }
         let local = (hasMap ? controller.map?.points ?? [] : []) + modelPoints
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let matched = text.isEmpty ? local : local.filter { $0.title.localizedCaseInsensitiveContains(text) || $0.kind.title.localizedCaseInsensitiveContains(text) }
+        let matched = text.isEmpty ? local : local.filter { $0.matches(query: text) }
         // The server already matched live places against names, sign text and everyday words.
         let served = liveAnswersQuery ? livePins : []
         return matched + served.filter { pin in !matched.contains { $0.id == pin.id } }
@@ -197,7 +199,10 @@ struct MapScreen: View {
         .background(Color(.systemGroupedBackground))
         .preferredColorScheme(.light)
         .onAppear { controller.setRoutePreference(routePreference); showsMainSheet = !usesSidePanel }
-        .onChange(of: usesSidePanel) { _, side in showsMainSheet = !side }
+        .onChange(of: usesSidePanel) { _, side in showsMainSheet = !side && !readsSigns }
+        // The sign reader needs the whole camera; the sheet returns when it closes.
+        .onChange(of: readsSigns) { _, reading in showsMainSheet = !usesSidePanel && !reading }
+        .onChange(of: showsAR) { _, shown in if !shown { readsSigns = false } }
         .onChange(of: assistant.phase) { _, phase in
             if phase == .answered, assistant.place != nil { showAssistantPlace() }
         }
@@ -242,13 +247,20 @@ struct MapScreen: View {
     @ViewBuilder private func mapSurface(bottomInset: CGFloat, leadingInset: CGFloat) -> some View {
         if showsAR, controller.canGuide {
             ViewContainer(view: controller.arView)
+                .overlay {
+                    if readsSigns, controller.isPositionReliable {
+                        SignReaderOverlay(reader: controller.signReader, session: controller.arView.session,
+                                          preview: signPreview, onAdd: tagSign, onShowOnMap: showTaggedPlace,
+                                          onClose: { readsSigns = false })
+                    }
+                }
                 .overlay(alignment: .top) {
                     if !controller.isPositionReliable, controller.phase != .locating {
                         Text("Position lost · Look around to reconnect")
                             .font(.subheadline.weight(.medium))
                             .padding(12).background(.regularMaterial, in: Capsule())
                             .padding(.top, 85)
-                    } else if let route = controller.route, controller.phase == .navigating {
+                    } else if !readsSigns, let route = controller.route, controller.phase == .navigating {
                         NextStepBanner(route: route, caption: controller.caption).padding(.horizontal, 16).padding(.top, 85)
                     }
                 }
@@ -306,6 +318,17 @@ struct MapScreen: View {
             .foregroundStyle(.primary)
             .background(.regularMaterial, in: Capsule())
             .accessibilityLabel(showsAR ? "Return to map" : "Enter AR mode")
+            if showsAR, !readsSigns, controller.canGuide, !isDemo {
+                Button { readsSigns = true } label: {
+                    Label("Read signs", systemImage: "text.viewfinder")
+                        .font(.subheadline.weight(.semibold)).padding(.horizontal, 15).frame(height: 46)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                .background(.regularMaterial, in: Capsule())
+                .disabled(!controller.isPositionReliable)
+                .accessibilityHint("Point the camera at a room number or exit sign to label its door on the map")
+            }
             Spacer(minLength: 0)
             cameraPreview
             VStack(spacing: 12) {
@@ -522,12 +545,31 @@ struct MapScreen: View {
                 Text(showsModel ? "Floor \(selectedLevel)" : "Floor \(selectedLevel) · \(coverageTitle)").font(.subheadline).foregroundStyle(.secondary)
             }
             livePositionStatus
-            HStack(spacing: 10) {
+            ScrollView(.horizontal) { HStack(spacing: 10) {
                 if hasVisualFloor {
                     Button { detent = .height(440); query = "Elevator" } label: {
                         Label("Elevators", systemImage: "figure.roll").font(.subheadline.weight(.medium))
                     }
                     .buttonStyle(.bordered).buttonBorderShape(.capsule)
+                }
+                if hasMap, controller.canGuide, !isDemo {
+                    Button(action: readSigns) {
+                        Label("Read a sign", systemImage: "text.viewfinder").font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.bordered).buttonBorderShape(.capsule)
+                    .accessibilityHint("Opens the camera to label doors from room and exit signs")
+                }
+                if hasMap, controller.map?.signPlaces.contains(where: { $0.signCategory == .exit }) == true {
+                    Button { detent = .height(440); query = "Exit" } label: {
+                        Label("Exits", systemImage: SignReading.Category.exit.symbolName).font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.green)
+                }
+                if hasMap, controller.map?.signPlaces.contains(where: { $0.signCategory == .room }) == true {
+                    Button { detent = .height(440); query = "Room" } label: {
+                        Label("Rooms", systemImage: SignReading.Category.room.symbolName).font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.indigo)
                 }
                 if modelAvailable && hasMap {
                     Button { mapStyle = showsModel ? .scan : .model } label: {
@@ -536,7 +578,8 @@ struct MapScreen: View {
                     }
                     .buttonStyle(.bordered).buttonBorderShape(.capsule)
                 }
-            }
+            } }
+            .scrollIndicators(.hidden).scrollClipDisabled()
             if !isDemo, localFloor == nil {
                 Button { modal = .buildingDirections } label: {
                     Label("Between floors", systemImage: "arrow.up.arrow.down")
@@ -719,7 +762,7 @@ struct MapScreen: View {
 
     private func placeRow(_ point: AccessPoint) -> some View {
         HStack(spacing: 14) {
-            KindBadge(kind: point.kind, size: 36)
+            KindBadge(point: point, size: 36)
             VStack(alignment: .leading, spacing: 3) {
                 Text(point.title).font(.body.weight(.medium)).foregroundStyle(.primary)
                 if let result = live.result(for: point), livePins.contains(where: { $0.id == point.id }) {
@@ -1023,6 +1066,38 @@ struct MapScreen: View {
         previewRoute = nil; previewStart = nil
         showsAR = true
         controller.beginGuidance(thenRoute: controller.selectedDestination != nil)
+    }
+
+    /// Opens the AR camera in sign-reading mode; reading starts once the person is found on the map.
+    private func readSigns() {
+        searchFocused = false
+        guard hasMap, controller.canGuide, !isDemo else { modal = .arUnavailable; return }
+        if !showsAR { enterAR() }
+        readsSigns = true
+    }
+
+    private func signPreview(_ sighting: SignReader.Sighting) -> AccessPoint? {
+        guard let map = controller.map else { return nil }
+        let existing = map.signPlaces.first { $0.sign?.reading.title == sighting.reading.title
+            && simd_distance($0.sign?.signPosition ?? .zero, sighting.position) < 1 }
+        return SignPlaceBinder.place(for: sighting.reading, text: sighting.text, sign: sighting.position,
+                                     viewer: sighting.viewer, in: map, id: existing?.id ?? sighting.id,
+                                     confidence: sighting.check == .confirmed ? 0.95 : 0.85)
+            .withReader(sighting.check)
+    }
+
+    private func tagSign(_ point: AccessPoint) async -> String? {
+        guard controller.canTagSigns else { return nil }
+        guard let result = try? await controller.tagSign(point) else { return nil }
+        UIAccessibility.post(notification: .announcement, argument: "\(result.point.title) added to the map")
+        if !result.isNew { return "Updated the place already on this door" }
+        return result.point.sign?.door != nil ? "Door tagged · searchable and routable now" : "Pinned on the map"
+    }
+
+    private func showTaggedPlace(_ point: AccessPoint) {
+        readsSigns = false
+        showsAR = false
+        if let stored = controller.map?.points.first(where: { $0.id == point.id }) { selectPlace(MapPlace(stored)) }
     }
 
     private func closeDestination() {

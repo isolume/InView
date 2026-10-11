@@ -1,6 +1,7 @@
 import CoreImage
 import CoreVideo
 import ImageIO
+import Vision
 
 /// Turns ARKit camera frames into small upright JPEGs for the vision model, without keeping ARKit's buffers.
 ///
@@ -109,6 +110,27 @@ enum FrameEncoder {
                   let image = render(CIImage(cvPixelBuffer: snapshot.pixelBuffer), maxDimension: maxDimension),
                   let data = jpeg(image) else { return nil }
             return SensorEncoded(jpeg: data, width: image.width, height: image.height)
+        }
+    }
+
+    /// A Vision request handler that reads the copy upright (portrait), as the phone is held.
+    static func uprightRequestHandler(for snapshot: Snapshot) -> VNImageRequestHandler {
+        VNImageRequestHandler(cvPixelBuffer: snapshot.pixelBuffer, orientation: .right)
+    }
+
+    /// One region of the upright frame as a JPEG, e.g. a sign for a vision model to read.
+    /// - Parameter box: Normalized `[x, y, width, height]` in the upright image, top-left origin.
+    static func portraitJPEG(from snapshot: Snapshot, box: CGRect, maxDimension: CGFloat) -> Data? {
+        autoreleasepool {
+            let upright = portrait(snapshot)
+            let extent = upright.extent
+            let crop = CGRect(x: extent.minX + box.minX * extent.width,
+                              y: extent.minY + (1 - box.maxY) * extent.height,
+                              width: box.width * extent.width, height: box.height * extent.height)
+                .intersection(extent)
+            guard !Task.isCancelled, !crop.isEmpty,
+                  let image = render(upright.cropped(to: crop), maxDimension: maxDimension) else { return nil }
+            return jpeg(image)
         }
     }
 
