@@ -207,7 +207,7 @@ def _narrow(floor_map: dict | None) -> list[Highlight]:
         if len(members) > 1:
             keep.reason += f" (+{len(members) - 1} more nearby)"
             keep.evidence["merged"] = len(members)
-            keep.geometry["radius_m"] = min(1.2, keep.geometry["radius_m"] + 0.1 * (len(members) - 1))
+            keep.geometry["radius_m"] = min(0.9, keep.geometry["radius_m"] + 0.05 * (len(members) - 1))
         merged.append(keep)
     return merged
 

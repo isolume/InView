@@ -154,6 +154,7 @@ def _render(base_bgra, origin, resolution, scale, highlights, polylines, options
         return _pixels(points, origin, resolution, scale)
 
     # Spotlight: dim the plan outside the neighbourhood of every highlight.
+    focus_mass: np.ndarray | None = None
     if highlights:
         focus = np.zeros((map_h, map_w), np.uint8)
         reach = max(6, int(1.1 * px_per_m))
@@ -171,6 +172,7 @@ def _render(base_bgra, origin, resolution, scale, highlights, polylines, options
         focus = cv2.dilate(focus, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * reach + 1,) * 2))
         sigma = max(4.0, reach * 1.4)
         focus = cv2.GaussianBlur(focus, (0, 0), sigma).astype(np.float32) / 255.0
+        focus_mass = focus
         # Fade towards paper (not black) so the plan stays readable but quiet away from the findings.
         fade = (0.62 * (1.0 - focus))[..., None]
         scene = (scene.astype(np.float32) * (1 - fade) + np.asarray(PAPER, np.float32) * fade).astype(np.uint8)
@@ -258,6 +260,13 @@ def _render(base_bgra, origin, resolution, scale, highlights, polylines, options
     length_m = _nice_length(meters_per_px)
     bar = int(length_m / meters_per_px)
     x0, y0 = 14, map_h - 18
+    if focus_mass is not None and bar + 28 < map_w and map_h > 120:
+        # Put the scale bar in whichever bottom/top-right corner has the least going on.
+        spots = [(14, map_h - 18), (map_w - bar - 14, map_h - 18), (map_w - bar - 14, 30)]
+        def busy(spot):
+            x, y = spot
+            return float(focus_mass[max(0, y - 14): y + 12, max(0, x - 4): x + bar + 8].mean())
+        x0, y0 = min(spots, key=busy)
     if bar + 28 < map_w and map_h > 40:
         cv2.rectangle(scene, (x0, y0), (x0 + bar, y0 + 6), INK, -1)
         cv2.rectangle(scene, (x0 + bar // 2, y0), (x0 + bar, y0 + 6), (255, 255, 255), -1)
