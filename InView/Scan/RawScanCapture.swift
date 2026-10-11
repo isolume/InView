@@ -117,7 +117,7 @@ final class RawScanCapture {
     }
     private let depthInterval: TimeInterval = 2
 
-    /// Call before constructing RoomCaptureView with the custom session. RoomPlan preserves
+    /// Call before constructing RoomCaptureSession with the custom session. RoomPlan preserves
     /// the supplied world-tracking settings. No reset/remove-anchor options are used.
     func prepare(session: ARSession) {
         let configuration: ARWorldTrackingConfiguration

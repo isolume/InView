@@ -807,7 +807,7 @@ private struct BuildingDetailsSheet: View {
                         }
                     }
                 } footer: {
-                    Text("Floors 2 and 3 use the walkthrough model, with estimated scale and connections. Floor 2 also has a partial scan for route previews.")
+                    Text("Route previews cover the mapped portion of Floor 2.")
                 }
                 Section {
                     ForEach([2, 3], id: \.self) { level in
@@ -828,7 +828,7 @@ private struct BuildingDetailsSheet: View {
                     }.buttonStyle(.plain)
                     }
                 } footer: {
-                    Text("An estimated visual reconstruction from the walkthrough. Directions use the floor scan.")
+                    Text("Floor 2 follows the supplied scans. Floor 3 is estimated from the walkthrough.")
                 }
                 if let message = library.message {
                     Section { Text(message).foregroundStyle(.secondary); Button("Check for updates") { Task { await library.refresh() } } }

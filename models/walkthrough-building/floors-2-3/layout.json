@@ -14,294 +14,6 @@
   },
   "furniture": [
     {
-      "asset": "modular-sofa",
-      "position_m": [
-        -9.42,
-        0,
-        1.65
-      ],
-      "yaw_degrees": -90,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "modular-sofa",
-      "position_m": [
-        -9.42,
-        0,
-        -1.04
-      ],
-      "yaw_degrees": -90,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "modular-sofa",
-      "position_m": [
-        -6.6,
-        0,
-        -4.57
-      ],
-      "yaw_degrees": 180,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -7.25,
-        0,
-        2.45
-      ],
-      "yaw_degrees": 18,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -5.72,
-        0,
-        2.45
-      ],
-      "yaw_degrees": -18,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -7.3,
-        0,
-        -0.94
-      ],
-      "yaw_degrees": 164,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -5.7,
-        0,
-        -0.94
-      ],
-      "yaw_degrees": 194,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -4,
-        0,
-        -2.45
-      ],
-      "yaw_degrees": 65,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -4.12,
-        0,
-        -4.23
-      ],
-      "yaw_degrees": 105,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "large-drum-table",
-      "position_m": [
-        -6.55,
-        0,
-        0.9
-      ],
-      "yaw_degrees": 0,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "large-drum-table",
-      "position_m": [
-        -6.55,
-        0,
-        -2.6
-      ],
-      "yaw_degrees": 0,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "small-drum-table",
-      "position_m": [
-        -8.55,
-        0,
-        0.12
-      ],
-      "yaw_degrees": 0,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "small-drum-table",
-      "position_m": [
-        -4.1,
-        0,
-        -3.4
-      ],
-      "yaw_degrees": 0,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "charging-stand",
-      "position_m": [
-        -4.8,
-        0,
-        1.5
-      ],
-      "yaw_degrees": 20,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "lectern",
-      "position_m": [
-        -3.4,
-        0,
-        -1.8
-      ],
-      "yaw_degrees": 90,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "waste-bin",
-      "position_m": [
-        -3.35,
-        0,
-        2.4
-      ],
-      "yaw_degrees": 0,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "square-planter",
-      "position_m": [
-        -9.4,
-        0,
-        -4.55
-      ],
-      "yaw_degrees": 0,
-      "scale": 0.63,
-      "floor": 2,
-      "zone": "Lounge suite"
-    },
-    {
-      "asset": "waste-bin",
-      "position_m": [
-        -13.2,
-        0,
-        4.6
-      ],
-      "yaw_degrees": 0,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Seating concourse"
-    },
-    {
-      "asset": "square-planter",
-      "position_m": [
-        -27.9,
-        0,
-        7.8
-      ],
-      "yaw_degrees": 0,
-      "scale": 0.77,
-      "floor": 2,
-      "zone": "Seating concourse"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -27.8,
-        0,
-        0.7
-      ],
-      "yaw_degrees": -90,
-      "scale": 0.91,
-      "floor": 2,
-      "zone": "Windowed desk area"
-    },
-    {
-      "asset": "lounge-chair",
-      "position_m": [
-        -27.8,
-        0,
-        -1.0
-      ],
-      "yaw_degrees": -90,
-      "scale": 0.91,
-      "floor": 2,
-      "zone": "Windowed desk area"
-    },
-    {
-      "asset": "small-drum-table",
-      "position_m": [
-        -27.25,
-        0,
-        -0.2
-      ],
-      "yaw_degrees": 0,
-      "scale": 1,
-      "floor": 2,
-      "zone": "Windowed desk area"
-    },
-    {
-      "asset": "waste-bin",
-      "position_m": [
-        -40.6,
-        0,
-        6.8
-      ],
-      "yaw_degrees": 0,
-      "scale": 0.8,
-      "floor": 2,
-      "zone": "Interior gallery corridor"
-    },
-    {
-      "asset": "square-planter",
-      "position_m": [
-        -26.7,
-        0,
-        11.4
-      ],
-      "yaw_degrees": 0,
-      "scale": 0.68,
-      "floor": 2,
-      "zone": "Restroom passage"
-    },
-    {
       "asset": "waste-bin",
       "position_m": [
         2.77,
@@ -588,54 +300,189 @@
       "scale": 0.7,
       "floor": 3,
       "zone": "Restroom and gallery passage"
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        10.038923173222393,
+        0,
+        -13.106006475251915
+      ],
+      "yaw_degrees": -9.60931899639211,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-54",
+      "measured_dimensions_m": [
+        2.3833196,
+        0.8425292,
+        0.7689429
+      ]
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        7.144692719528947,
+        0,
+        -13.55031321312449
+      ],
+      "yaw_degrees": -9.60931899639211,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-55",
+      "measured_dimensions_m": [
+        1.7949412,
+        0.76604056,
+        0.88129824
+      ]
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        11.176448416969942,
+        0,
+        -10.863970147281728
+      ],
+      "yaw_degrees": -237.53419308272433,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-57",
+      "measured_dimensions_m": [
+        0.87746096,
+        0.82953644,
+        0.9052924
+      ]
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        8.47600809290398,
+        0,
+        -7.689955002905151
+      ],
+      "yaw_degrees": -99.60934725496298,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-58",
+      "measured_dimensions_m": [
+        0.8291147,
+        0.7950381,
+        0.9641305
+      ]
+    },
+    {
+      "asset": "large-drum-table",
+      "position_m": [
+        7.076088031612876,
+        0,
+        -9.116348048714382
+      ],
+      "yaw_degrees": -279.60934303857846,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-59",
+      "measured_dimensions_m": [
+        1.223094,
+        0.44625247,
+        1.2178975
+      ]
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        12.761267177808042,
+        0,
+        -13.8708980183615
+      ],
+      "yaw_degrees": -99.60933866059605,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-61",
+      "measured_dimensions_m": [
+        0.8405951,
+        0.8493204,
+        0.88307583
+      ]
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        12.346853409738497,
+        0,
+        -12.616459006961797
+      ],
+      "yaw_degrees": -40.64506193034255,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-62",
+      "measured_dimensions_m": [
+        0.7712598,
+        0.7957325,
+        0.90749043
+      ]
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        8.197512503145962,
+        0,
+        -9.789617284458595
+      ],
+      "yaw_degrees": -52.82489331499928,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-63",
+      "measured_dimensions_m": [
+        0.7773633,
+        0.8249531,
+        0.84962904
+      ]
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        7.713228949927833,
+        0,
+        -11.569838900293744
+      ],
+      "yaw_degrees": -141.6711461482749,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-64",
+      "measured_dimensions_m": [
+        0.73903316,
+        0.8169,
+        0.85841805
+      ]
+    },
+    {
+      "asset": "large-drum-table",
+      "position_m": [
+        9.319751108543564,
+        0,
+        -12.191752894146594
+      ],
+      "yaw_degrees": -9.609341914703917,
+      "scale": 1,
+      "floor": 2,
+      "zone": "Scanned lounge",
+      "source_id": "obstacle-65",
+      "measured_dimensions_m": [
+        0.8960882,
+        0.44157588,
+        0.8499097
+      ]
     }
   ],
   "labels": [
-    {
-      "floor": 2,
-      "title": "Lounge",
-      "position": [
-        -7.1,
-        0.6,
-        -1.4
-      ]
-    },
-    {
-      "floor": 2,
-      "title": "Lifts",
-      "position": [
-        -0.2,
-        0.6,
-        7.5
-      ]
-    },
-    {
-      "floor": 2,
-      "title": "Seating concourse",
-      "position": [
-        -17.6,
-        0.6,
-        6.5
-      ]
-    },
-    {
-      "floor": 2,
-      "title": "Desk area",
-      "position": [
-        -25.7,
-        0.6,
-        -1.0
-      ]
-    },
-    {
-      "floor": 2,
-      "title": "Gallery",
-      "position": [
-        -36.2,
-        0.6,
-        6.1
-      ]
-    },
     {
       "floor": 3,
       "title": "Main stair",
@@ -683,39 +530,46 @@
     },
     {
       "floor": 2,
-      "title": "Restrooms",
+      "title": "Lounge",
       "position": [
-        -10.1,
-        0.6,
-        10.6
+        9.422873861650702,
+        0.4812640324772061,
+        -11.727271789237028
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Lifts",
+      "position": [
+        -0.11499999999999924,
+        0.4812640324772061,
+        8.819999999999999
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Balcony",
+      "position": [
+        2.809627582757055,
+        0.4812640324772061,
+        -3.0831241434161454
+      ]
+    },
+    {
+      "floor": 2,
+      "title": "Restroom passage",
+      "position": [
+        19.930501893027436,
+        0.4812640324772061,
+        12.949382710658147
       ]
     }
   ],
   "observed": [
     {
       "floor": 2,
-      "time": "0:00\u20130:24",
-      "area": "Carpeted lounge and internal room passage"
-    },
-    {
-      "floor": 2,
-      "time": "0:28\u20131:04",
-      "area": "Atrium balcony, room 203, end doors marked 200, lift bank and stairs"
-    },
-    {
-      "floor": 2,
-      "time": "1:08\u20131:28",
-      "area": "Modular seating, second railed opening, windowed desk area"
-    },
-    {
-      "floor": 2,
-      "time": "1:32\u20132:24",
-      "area": "Gallery corridor branch, room recesses, art and benches"
-    },
-    {
-      "floor": 2,
-      "time": "2:28\u20132:51",
-      "area": "Restroom passage, paired fountains, elevators marked 2"
+      "area": "Earlier lounge scan and registered balcony-to-restroom scan",
+      "source": "E3CF408C-680C-4ECF-B9EB-F09117308BD3"
     },
     {
       "floor": 3,
@@ -734,19 +588,26 @@
     }
   ],
   "estimated": [
-    "Every length, width, floor height, and furniture spacing",
-    "The footprints and relative orientation of the two railed openings",
-    "The turns and connection back from the gallery/restroom passages",
-    "The mural corridor's return shape and its exact alignment over floor 2",
-    "The alignment and riser count of the connecting main stair"
+    "Furniture silhouettes, cutaway heights, and the unreviewed exterior floor envelope",
+    "Floor 3 lengths, furniture spacing and elevation",
+    "Inter-floor placement; no measured connection is established"
   ],
   "not_modeled": [
-    "Closed room interiors not entered in the video",
-    "Unfilmed building wings",
+    "Unscanned Floor 2 wings and closed room interiors",
     "Ground floor",
     "Photographic murals, faces, and personal belongings"
   ],
   "video_discontinuity": "The footage cuts from lifts marked 2 at about 2:51 to the mural corridor at about 2:52. The ride/ascent is not shown; the floor-3 plaque is visible around 3:44.",
-  "gallery_topology": "Modeled as a branch. The footage may retrace it; no additional through-connection is claimed.",
-  "display_conventions": "Roofless cutaway walls and shortened glazing; split stair flights belong to their adjacent floor; separated preview adds a display-only vertical offset."
+  "gallery_topology": "The revised Floor 2 asset follows supplied scan structure. Unscanned video branches are retained in the earlier video-model archive, not placed into measured structure.",
+  "display_conventions": "Roofless cutaway walls and shortened glazing; split stair flights belong to their adjacent floor; separated preview adds a display-only vertical offset.",
+  "floor_2_source": {
+    "scan_id": "E3CF408C-680C-4ECF-B9EB-F09117308BD3",
+    "map_sha256": "a2c0993c064ab9d664b3e4db2fef64bbb06c34268a89ee1c2f29ea3fdbb9e473",
+    "display_floors_sha256": "f19f9ba0f78aa327030fc347f013785b3319b1fa9206e9c50065e6fb4a5a48bd",
+    "source": "registered supplied scans",
+    "routing_floor_polygons": 12,
+    "new_floor_envelope": "native RoomPlan only, display-only, not reviewed routing coverage",
+    "registration": "rigid fit from shared balcony corner; source coordinates preserved in evidence archive",
+    "asset_frame": "inverse of existing app elevator registration; Floor 3 retained from video archive"
+  }
 }

@@ -373,15 +373,19 @@ def third_floor():
     poi("Restrooms",-15.3,-10.15)
 
 
-def exports():
+def exports(floors=(2, 3), floor_2_source=None):
     bpy.context.view_layer.update()
     for obj in B.MODEL:
         bpy.context.view_layer.objects.active=obj
         for mod in list(obj.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)
     spec=importlib.util.spec_from_file_location("usd_check",ROOT/"scripts/render-photo-furniture.py")
     checker=importlib.util.module_from_spec(spec);spec.loader.exec_module(checker)
+    previous_validation = json.loads((OUT/"validation.json").read_text()) if (OUT/"validation.json").exists() else {}
     records=[]
     for name,objects in [("building",B.MODEL),("floor-2",[o for o in B.MODEL if o["floor"]==2]),("floor-3",[o for o in B.MODEL if o["floor"]==3])]:
+        if name.startswith("floor-") and int(name[-1]) not in floors:
+            records.extend(record for record in previous_validation.get("native_packages", []) if Path(record["file"]).stem == name)
+            continue
         bpy.ops.object.select_all(action="DESELECT")
         for obj in objects: obj.select_set(True)
         bpy.context.view_layer.objects.active=objects[0]
@@ -415,6 +419,13 @@ def exports():
         "video_discontinuity":"The footage cuts from lifts marked 2 at about 2:51 to the mural corridor at about 2:52. The ride/ascent is not shown; the floor-3 plaque is visible around 3:44.",
         "gallery_topology":"Modeled as a branch. The footage may retrace it; no additional through-connection is claimed.",
         "display_conventions":"Roofless cutaway walls and shortened glazing; split stair flights belong to their adjacent floor; separated preview adds a display-only vertical offset."}
+    if floor_2_source is not None:
+        layout["floor_2_source"] = floor_2_source
+        layout["observed"] = [item for item in layout["observed"] if item["floor"] != 2]
+        layout["observed"].insert(0, {"floor": 2, "area": "Earlier lounge scan and registered balcony-to-restroom scan", "source": floor_2_source["scan_id"]})
+        layout["estimated"] = ["Furniture silhouettes, cutaway heights, and the unreviewed exterior floor envelope", "Floor 3 lengths, furniture spacing and elevation", "Inter-floor placement; no measured connection is established"]
+        layout["not_modeled"] = ["Unscanned Floor 2 wings and closed room interiors", "Ground floor", "Photographic murals, faces, and personal belongings"]
+        layout["gallery_topology"] = "The revised Floor 2 asset follows supplied scan structure. Unscanned video branches are retained in the earlier video-model archive, not placed into measured structure."
     (OUT/"layout.json").write_text(json.dumps(layout,indent=2)+"\n")
     print("MODEL_READY "+json.dumps({"meshes":len(meshes),"triangles":counts,"furniture":len(B.FURNITURE)}),flush=True)
 
@@ -432,7 +443,7 @@ def frame_camera(camera,objects,width,height,direction=(.62,.82,.86),margin=1.14
     camera.data.ortho_scale=max(max(hx)-min(hx),(max(vy)-min(vy))*width/height)*margin
 
 
-def renders(samples):
+def renders(samples, floors=(2, 3)):
     scene=bpy.context.scene
     ground=B.box("Studio ground",(-16,-2,-.41),(260,260,.1),"#e9ede7",0);B.MODEL.remove(ground)
     world=bpy.data.worlds.new("Soft daylight");world.use_nodes=True
@@ -455,7 +466,7 @@ def renders(samples):
     # Save the source at true elevations, with all floors available as collections.
     frame_camera(camera,B.MODEL,2300,1700)
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT/"building.blend"))
-    for floor in (2,3):
+    for floor in floors:
         for obj in B.MODEL: obj.hide_render=obj["floor"]!=floor
         ground.location.z=(-.41 if floor==2 else HEIGHT-2.31)
         render(f"floor-{floor}",by_floor[floor])
