@@ -8,6 +8,13 @@ import Vision
 /// `text-observations.json` for the backend to place in the map. Optional evidence: work is bounded
 /// in images and time, never runs on the main thread, and any failure yields fewer observations.
 enum TextRecognizer {
+    struct Calibration: Sendable {
+        var frame: CaptureDepthFrame
+        var floorID: String?
+        var floorY: Float?
+        var environment: CaptureEnvironmentSample?
+        var reference: BuildingMapReference? = nil
+    }
     /// One upright JPEG paired with the depth frame whose pose and intrinsics describe it.
     struct Image: Sendable {
         var frameID: String
@@ -16,6 +23,7 @@ enum TextRecognizer {
         var jpeg: Data?
         var url: URL?
         var sensorNative = false
+        var calibration: Calibration? = nil
     }
 
     struct Limits: Sendable {
@@ -32,11 +40,14 @@ enum TextRecognizer {
         /// Streamed keyframes are encoded sensor-native (landscape). Vision reads them rotated
         /// upright and reports boxes in that upright image, the package's keyframe convention.
         var sensorNative = false
+        var calibration: Calibration? = nil
     }
 
     /// High-resolution stills (`<frame-id>.ocr.jpg`) come first: they were taken for reading text.
     /// Then the capture's color keyframes.
     static func images(keyframes: [Source], captureDirectory: URL?) -> [Image] {
+        let calibrations = Dictionary(keyframes.compactMap { source in source.calibration.map { (source.frameID, $0) } },
+                                      uniquingKeysWith: { first, _ in first })
         var stills: [Image] = []
         if let captureDirectory,
            let files = try? FileManager.default.contentsOfDirectory(
@@ -45,10 +56,12 @@ enum TextRecognizer {
             let suffix = ".ocr.jpg"
             stills = files.map(\.lastPathComponent).filter { $0.hasSuffix(suffix) && $0.count > suffix.count }.sorted()
                 .map { Image(frameID: String($0.dropLast(suffix.count)), asset: $0, jpeg: nil,
-                             url: captureDirectory.appending(path: $0)) }
+                             url: captureDirectory.appending(path: $0),
+                             calibration: calibrations[String($0.dropLast(suffix.count))]) }
         }
         let colors = keyframes.map {
-            Image(frameID: $0.frameID, asset: $0.filename, jpeg: $0.jpeg, url: nil, sensorNative: $0.sensorNative)
+            Image(frameID: $0.frameID, asset: $0.filename, jpeg: $0.jpeg, url: nil, sensorNative: $0.sensorNative,
+                  calibration: $0.calibration)
         }
         return stills + colors
     }
@@ -74,7 +87,8 @@ enum TextRecognizer {
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return [] }
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
+        // Room identifiers must not be autocorrected into dictionary words.
+        request.usesLanguageCorrection = false
         request.automaticallyDetectsLanguage = true
         // Skip text too small to be a readable sign at keyframe resolution.
         request.minimumTextHeight = 0.015
@@ -96,12 +110,18 @@ enum TextRecognizer {
         return (request.results ?? []).compactMap { result in
             guard let candidate = result.topCandidates(1).first else { return nil }
             let box = result.boundingBox
-            return CaptureTextObservation.make(
+            guard var observation = CaptureTextObservation.make(
                 frameID: image.frameID, imageAsset: image.asset, imageWidth: uprightWidth, imageHeight: uprightHeight,
                 text: candidate.string, confidence: candidate.confidence,
                 visionBox: (x: box.origin.x, y: box.origin.y, width: box.width, height: box.height),
                 languages: languages(of: candidate.string)
-            )
+            ) else { return nil }
+            if let calibration = image.calibration {
+                observation.spatial = SignLocalizer.locate(observation, frame: calibration.frame,
+                    floorID: calibration.floorID, floorY: calibration.floorY,
+                    environment: calibration.environment, reference: calibration.reference)
+            }
+            return observation
         }
     }
 

@@ -20,6 +20,8 @@ struct RawScanSnapshot: Codable, Sendable {
     /// Optional evidence is bounded with its calibrated depth frame and survives offline export.
     var colorKeyframes: [RawColorKeyframe]? = nil
     var cameraTrack: CameraTrack? = nil
+    /// OCR with calibrated metric sign centers, retained with its evidence frames.
+    var textObservations: [CaptureTextObservation]? = nil
 }
 
 struct RawColorKeyframe: Codable, Sendable {
@@ -77,6 +79,9 @@ final class RawScanCapture {
     private var frames: [CaptureDepthFrame] = []
     private var depthBuffers: [RawDepthBuffers] = []
     private var colorKeyframes: [RawColorKeyframe] = []
+    private var textObservations: [CaptureTextObservation] = []
+    var onTextObservations: (([CaptureTextObservation]) -> Void)?
+    var floorID: String?
     private var meshBuffers: [RawMeshBuffers] = []
     private let trackRecorder = CameraTrackRecorder()
     private let contextTracker = CaptureContextTracker()
@@ -205,6 +210,7 @@ final class RawScanCapture {
         depthBuffers.removeAll(keepingCapacity: false)
         frameCosts.removeAll(keepingCapacity: false)
         colorKeyframes.removeAll(keepingCapacity: false)
+        textObservations.removeAll(keepingCapacity: false)
         meshBuffers.removeAll(keepingCapacity: false)
         lastDepthTimestamp = nil
         lastDepthPosition = nil
@@ -248,7 +254,8 @@ final class RawScanCapture {
                 "camera_track_pose_count": .number(Double(trackRecorder.count)),
                 "native_buffer_archive": .string("local_only_includes_row_stride_and_original_float_bits"),
             ]), observedFootprints: observedSurfaces.snapshot() + smallObstacles.snapshot(),
-            walkTrace: walkRecorder.trace, colorKeyframes: colorKeyframes, cameraTrack: trackRecorder.track
+            walkTrace: walkRecorder.trace, colorKeyframes: colorKeyframes, cameraTrack: trackRecorder.track,
+            textObservations: textObservations
         )
     }
 
@@ -286,6 +293,7 @@ final class RawScanCapture {
             return
         }
         let sampleGeneration = generation
+        let sampleFloorID = floorID
         // The same copied observation feeds depth and OCR. There is still only one worker,
         // and color is optional when the camera copy or bounded encoding cannot be produced.
         let pixels = keepArchive ? FrameEncoder.snapshot(frame.capturedImage) : nil
@@ -298,6 +306,14 @@ final class RawScanCapture {
                     decoded.color = RawColorKeyframe(frameID: decoded.frame.id,
                                                      width: size.width, height: size.height, jpeg: jpeg)
                     decoded.frame.colorAsset = decoded.color?.filename
+                    if let color = decoded.color, !Task.isCancelled {
+                        let calibration = TextRecognizer.Calibration(frame: decoded.frame, floorID: sampleFloorID,
+                            floorY: copied.floorY, environment: copied.raw.environment)
+                        let image = TextRecognizer.Image(frameID: color.frameID, asset: color.filename,
+                            jpeg: jpeg, url: nil, calibration: calibration)
+                        decoded.text = Array(TextRecognizer.recognize([image], limits: .init(maximumImages: 1, timeBudget: 0.8))
+                            .observations.prefix(32))
+                    }
                 }
                 if let floorY = copied.floorY {
                     decoded.obstacles = try DepthObstacleEvidence.samples(from: decoded.frame, floorY: floorY)
@@ -323,6 +339,7 @@ final class RawScanCapture {
             }
             guard sample.keepsArchive else { return }
             frames.append(decoded.frame)
+            textObservations.append(contentsOf: decoded.text)
             depthBuffers.append(decoded.buffer)
             if let color = decoded.color { colorKeyframes.append(color) }
             frameCosts.append(sample.cost + (decoded.color?.jpeg.count ?? 0))
@@ -334,8 +351,10 @@ final class RawScanCapture {
                 depthBuffers.remove(at: index)
                 frameCosts.remove(at: index)
                 colorKeyframes.removeAll { $0.frameID == removed.id }
+                textObservations.removeAll { $0.frameID == removed.id }
                 evictedDepthFrames += 1
             }
+            onTextObservations?(textObservations)
             lastDepthTimestamp = sample.timestamp
             lastDepthPosition = sample.position
             lastDepthDirection = sample.direction
@@ -645,6 +664,7 @@ final class RawScanCapture {
         var buffer: RawDepthBuffers
         var obstacles: [DepthObstacleEvidence.Sample] = []
         var color: RawColorKeyframe? = nil
+        var text: [CaptureTextObservation] = []
     }
 
     private enum DecodeResult: Sendable {

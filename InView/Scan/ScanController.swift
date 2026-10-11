@@ -61,6 +61,7 @@ final class ScanController: ObservableObject {
     @Published private(set) var captureView: ScanPreviewCameraView?
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
+    @Published private(set) var signObservations: [CaptureTextObservation] = []
     @Published private(set) var currentFloor: ScanFloorIdentity?
     @Published private(set) var buildingName = "Building"
     @Published private(set) var isChangingFloors = false
@@ -235,6 +236,13 @@ final class ScanController: ObservableObject {
         isActive = true
         detailRequested = AppConfig.detailedScanning
         rawCapture = RawScanCapture(reconstructsMesh: detailRequested)
+        rawCapture.floorID = currentFloor?.id.uuidString ?? "ground"
+        signObservations = []
+        let captureID = scanID
+        rawCapture.onTextObservations = { [weak self] observations in
+            guard let self, self.scanID == captureID else { return }
+            self.signObservations = observations
+        }
         captureView = makeCaptureView()
         beginSection()
         beginResourceMonitoring()
@@ -506,6 +514,8 @@ final class ScanController: ObservableObject {
         try await ScanWork.run {
             try SemanticExport.stageSemantics(map: map, rooms: rooms, capture: info,
                                                captureID: bundle.id, measurementTimestamps: timestamps)
+            let raw = try CaptureStore.loadRawSnapshot(id: bundle.id)
+            SemanticExport.stageCapturedText(raw: raw, captureID: bundle.id, reference: map.geographicReference)
         }
     }
 
@@ -541,9 +551,7 @@ final class ScanController: ObservableObject {
                         try SemanticExport.stageSemantics(map: map, rooms: sourceRooms, capture: info,
                             captureID: bundle.id, measurementTimestamps: timestamps)
                         let raw = try CaptureStore.loadRawSnapshot(id: bundle.id)
-                        SemanticExport.stageTextObservations(keyframes: (raw.colorKeyframes ?? []).map {
-                            TextRecognizer.Source(frameID: $0.frameID, filename: $0.filename, jpeg: $0.jpeg)
-                        }, captureID: bundle.id)
+                        SemanticExport.stageTextObservations(raw: raw, map: map, floorID: bundle.floorID, captureID: bundle.id)
                         return try CaptureStore.makeAnalysisPackage(bundle)
                     }
                     defer { try? FileManager.default.removeItem(at: package.archiveURL.deletingLastPathComponent()) }
@@ -957,6 +965,7 @@ final class ScanController: ObservableObject {
                 let nativeArchiveWarning = try await ScanWork.run { () -> String? in
                     let rawData = try ScanExporter.rawSnapshotData(raw)
                     try CaptureStore.stageRawSnapshot(id: id.uuidString, data: rawData)
+                    SemanticExport.stageCapturedText(raw: raw, captureID: id.uuidString)
                     do {
                         try CaptureStore.stageNativeRooms(id: id.uuidString, rooms: sourceRooms)
                         return nil

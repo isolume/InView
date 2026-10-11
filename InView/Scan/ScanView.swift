@@ -69,7 +69,7 @@ struct ScanView: View {
                 Color(.systemBackground).ignoresSafeArea()
             }
             if controller.phase == .scanning {
-                DetectionOverlay(detector: controller.detector, session: controller.session)
+                DetectionOverlay(detector: controller.detector, session: controller.session, signs: controller.signObservations)
                     .ignoresSafeArea()
                 Crosshair()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

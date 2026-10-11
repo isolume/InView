@@ -8,15 +8,18 @@ public struct TextObservationsDocument: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var engine: String
     public var observations: [CaptureTextObservation]
+    /// Identifies the local metric frame; coordinates from different captures cannot be mixed without alignment.
+    public var captureID: String?
 
-    public init(schemaVersion: Int = 1, engine: String = "apple_vision", observations: [CaptureTextObservation]) {
+    public init(schemaVersion: Int = 1, engine: String = "apple_vision", observations: [CaptureTextObservation], captureID: String? = nil) {
         self.schemaVersion = schemaVersion
         self.engine = engine
         self.observations = observations
+        self.captureID = captureID
     }
 
     enum CodingKeys: String, CodingKey {
-        case schemaVersion = "schema_version", engine, observations
+        case schemaVersion = "schema_version", engine, observations, captureID = "capture_id"
     }
 
     /// Stable, compact JSON: the same recognitions always produce the same bytes.
@@ -47,6 +50,8 @@ public struct CaptureTextObservation: Codable, Equatable, Sendable {
     public var bboxSensorNorm: [Double]
     /// BCP 47 language codes, most likely first; empty when the text is too short to tell.
     public var languages: [String]
+    /// Measured sign center; nil when depth or recognition is insufficient. Additive schema-1 field.
+    public var spatial: SpatialSign? = nil
 
     public init(frameID: String, imageAsset: String, imageSizePx: [Int], text: String, confidence: Double,
                 bboxNorm: [Double], languages: [String],
@@ -64,7 +69,7 @@ public struct CaptureTextObservation: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case frameID = "frame_id", imageAsset = "image_asset", imageSizePx = "image_size_px", text, confidence
-        case imageOrientation = "image_orientation", bboxNorm = "bbox_norm", bboxSensorNorm = "bbox_sensor_norm", languages
+        case imageOrientation = "image_orientation", bboxNorm = "bbox_norm", bboxSensorNorm = "bbox_sensor_norm", languages, spatial
     }
 
     /// Normalizes one recognition, or rejects it when it carries nothing usable.

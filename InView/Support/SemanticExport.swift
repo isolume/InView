@@ -94,14 +94,56 @@ enum SemanticExport {
                              measurementTimestamps: measurementTimestamps).encoded()
     }
 
+    /// Saves the live OCR result even when the user never asks a server to find places.
+    static func stageCapturedText(raw: RawScanSnapshot, captureID: String, reference: BuildingMapReference? = nil) {
+        let existingURL = (try? CaptureStore.captureDirectory(for: captureID))?.appending(path: TextObservationsDocument.filename)
+        let existing = existingURL.flatMap { try? Data(contentsOf: $0) }
+            .flatMap { try? JSONDecoder().decode(TextObservationsDocument.self, from: $0) }
+        // A later Save must not discard the high-resolution pass performed by Find places.
+        var observations = existing?.observations ?? raw.textObservations ?? []
+        for index in observations.indices { observations[index].spatial?.apply(reference: reference) }
+        do {
+            try CaptureStore.stageSidecar(TextObservationsDocument(observations: CaptureTextObservation.sorted(observations), captureID: captureID).encoded(),
+                                          named: TextObservationsDocument.filename, id: captureID)
+        } catch { Log.scan.error("couldn't save spatial signs: \(error.localizedDescription, privacy: .public)") }
+    }
+
+    static func stageTextObservations(raw: RawScanSnapshot, map: VenueMap, floorID: String, captureID: String) {
+        let frames = Dictionary(raw.frames.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let buffers = Dictionary(raw.depthBuffers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let sources = (raw.colorKeyframes ?? []).map { color in
+            let calibration = frames[color.frameID].map {
+                TextRecognizer.Calibration(frame: $0, floorID: floorID, floorY: map.floorY,
+                    environment: buffers[color.frameID]?.environment, reference: map.geographicReference)
+            }
+            return TextRecognizer.Source(frameID: color.frameID, filename: color.filename, jpeg: color.jpeg,
+                                         calibration: calibration)
+        }
+        stageTextObservations(keyframes: sources, captureID: captureID)
+    }
+
     /// Reads text in the keyframes and any high-resolution OCR stills already staged for the capture.
     /// Optional evidence: a failure is logged and the capture continues without it.
     static func stageTextObservations(keyframes: [TextRecognizer.Source], captureID: String) {
         let directory = try? CaptureStore.captureDirectory(for: captureID)
         let images = TextRecognizer.images(keyframes: keyframes, captureDirectory: directory)
         guard !images.isEmpty else { return }
-        let document = TextRecognizer.recognize(images)
+        var document = TextRecognizer.recognize(images)
         guard !Task.isCancelled else { return }
+        document.captureID = captureID
+        // Preserve live evidence if the bounded finish-time pass timed out on a later image.
+        if let directory, let bytes = try? Data(contentsOf: directory.appending(path: TextObservationsDocument.filename)),
+           let existing = try? JSONDecoder().decode(TextObservationsDocument.self, from: bytes) {
+            for var observation in existing.observations {
+                guard !document.observations.contains(where: {
+                    $0.frameID == observation.frameID && $0.imageAsset == observation.imageAsset
+                        && $0.text == observation.text && $0.bboxNorm == observation.bboxNorm
+                }) else { continue }
+                observation.spatial?.apply(reference: keyframes.first?.calibration?.reference)
+                document.observations.append(observation)
+            }
+            document.observations = CaptureTextObservation.sorted(document.observations)
+        }
         do {
             try CaptureStore.stageSidecar(document.encoded(), named: TextObservationsDocument.filename, id: captureID)
         } catch {

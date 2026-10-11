@@ -11,6 +11,8 @@ final class CaptureContextTracker: NSObject, @preconcurrency CLLocationManagerDe
     private var heading: CLHeading?
     private var relativeAltitude: Double?
     private var pressureKPa: Double?
+    private var altitudeUpdatedAt: Date?
+    private var generation = 0
     private(set) var isRunning = false
 
     override init() {
@@ -24,6 +26,9 @@ final class CaptureContextTracker: NSObject, @preconcurrency CLLocationManagerDe
     func start() {
         guard !isRunning else { return }
         isRunning = true
+        generation += 1
+        let request = generation
+        relativeAltitude = nil; pressureKPa = nil; altitudeUpdatedAt = nil
         switch locationManager.authorizationStatus {
         case .notDetermined:
             locationManager.requestWhenInUseAuthorization()
@@ -36,8 +41,10 @@ final class CaptureContextTracker: NSObject, @preconcurrency CLLocationManagerDe
         altimeter.startRelativeAltitudeUpdates(to: .main) { [weak self] data, _ in
             guard let data else { return }
             Task { @MainActor in
-                self?.relativeAltitude = data.relativeAltitude.doubleValue
-                self?.pressureKPa = data.pressure.doubleValue
+                guard let self, self.isRunning, self.generation == request else { return }
+                self.relativeAltitude = data.relativeAltitude.doubleValue
+                self.pressureKPa = data.pressure.doubleValue
+                self.altitudeUpdatedAt = Date()
             }
         }
     }
@@ -45,6 +52,7 @@ final class CaptureContextTracker: NSObject, @preconcurrency CLLocationManagerDe
     func stop() {
         guard isRunning else { return }
         isRunning = false
+        generation += 1
         locationManager.stopUpdatingLocation()
         locationManager.stopUpdatingHeading()
         altimeter.stopRelativeAltitudeUpdates()
@@ -52,9 +60,10 @@ final class CaptureContextTracker: NSObject, @preconcurrency CLLocationManagerDe
 
     func sample() -> CaptureEnvironmentSample? {
         guard isRunning else { return nil }
-        let validLocation = location.flatMap { $0.horizontalAccuracy >= 0 ? $0 : nil }
-        let validHeading = heading.flatMap { $0.headingAccuracy >= 0 ? $0 : nil }
-        guard validLocation != nil || validHeading != nil || relativeAltitude != nil else { return nil }
+        let validLocation = location.flatMap { $0.horizontalAccuracy >= 0 && abs($0.timestamp.timeIntervalSinceNow) < 5 ? $0 : nil }
+        let validHeading = heading.flatMap { $0.headingAccuracy >= 0 && abs($0.timestamp.timeIntervalSinceNow) < 5 ? $0 : nil }
+        let altitudeIsFresh = altitudeUpdatedAt.map { abs($0.timeIntervalSinceNow) < 5 } ?? false
+        guard validLocation != nil || validHeading != nil || altitudeIsFresh else { return nil }
         let altitude = validLocation.flatMap { $0.verticalAccuracy >= 0 ? $0.altitude : nil }
         let course = validLocation.flatMap { $0.course >= 0 ? $0.course : nil }
         let speed = validLocation.flatMap { $0.speed >= 0 ? $0.speed : nil }
@@ -70,8 +79,8 @@ final class CaptureContextTracker: NSObject, @preconcurrency CLLocationManagerDe
             speedMps: speed,
             headingDegrees: headingDegrees,
             headingAccuracyDegrees: validHeading?.headingAccuracy,
-            relativeAltitudeM: relativeAltitude,
-            pressureKPa: pressureKPa
+            relativeAltitudeM: altitudeIsFresh ? relativeAltitude : nil,
+            pressureKPa: altitudeIsFresh ? pressureKPa : nil
         )
     }
 

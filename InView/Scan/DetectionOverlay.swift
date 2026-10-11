@@ -9,6 +9,7 @@ import SwiftUI
 struct DetectionOverlay: View {
     @ObservedObject var detector: AccessibilityDetector
     let session: ARSession
+    var signs: [CaptureTextObservation] = []
 
     /// Tags sit this far above the floor spot, so they don't cover the find itself.
     private static let tagHeight: Float = 0.3
@@ -20,6 +21,22 @@ struct DetectionOverlay: View {
         GeometryReader { geometry in
             TimelineView(.periodic(from: .now, by: Self.refreshInterval)) { _ in
                 ZStack(alignment: .topLeading) {
+                    ForEach(signPlacements(in: geometry.size)) { placement in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(placement.observation.text).font(.caption.weight(.bold)).lineLimit(2)
+                            Text("\(placement.spatial.meaning.kind.rawValue.capitalized) sign · unverified destination")
+                                .font(.system(size: 9))
+                            Text(String(format: "x %.2f  y %.2f  z %.2f m", placement.spatial.x, placement.spatial.y, placement.spatial.z))
+                                .font(.system(size: 9, design: .monospaced))
+                            if let height = placement.spatial.heightAboveFloorM {
+                                Text(String(format: "%.2f m above measured floor", height)).font(.system(size: 9))
+                            }
+                        }
+                        .foregroundStyle(.white).padding(7).frame(maxWidth: 215)
+                        .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.mint.opacity(0.8)))
+                        .position(placement.point)
+                    }
                     ForEach(placements(in: geometry.size)) { placement in
                         FindTag(sighting: placement.sighting)
                             // The tag's dot, at the bottom of its fixed frame, lands on the find.
@@ -32,6 +49,35 @@ struct DetectionOverlay: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private struct SignPlacement: Identifiable {
+        let id: Int
+        let observation: CaptureTextObservation
+        let spatial: SpatialSign
+        let point: CGPoint
+    }
+
+    private func signPlacements(in size: CGSize) -> [SignPlacement] {
+        guard size.width > 0, size.height > 0, let frame = session.currentFrame,
+              case .normal = frame.camera.trackingState,
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return [] }
+        let camera = frame.camera
+        let inverse = camera.transform.inverse
+        var result: [SignPlacement] = []
+        let recent = signs.enumerated().reversed()
+        for (index, observation) in recent {
+            guard let spatial = observation.spatial,
+                  simd_distance(camera.transform.translation, spatial.position) < 15,
+                  (inverse * SIMD4(spatial.position, 1)).z < -0.1,
+                  !result.contains(where: { $0.observation.text.caseInsensitiveCompare(observation.text) == .orderedSame
+                      && simd_distance($0.spatial.position, spatial.position) < 1 }) else { continue }
+            let point = camera.projectPoint(spatial.position, orientation: .portrait, viewportSize: size)
+            guard point.x.isFinite, point.y.isFinite, CGRect(origin: .zero, size: size).contains(point) else { continue }
+            result.append(SignPlacement(id: index, observation: observation, spatial: spatial, point: point))
+            if result.count == 10 { break }
+        }
+        return result
     }
 
     private struct Placement: Identifiable {
