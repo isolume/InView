@@ -101,9 +101,9 @@ final class ScanController: ObservableObject {
     private func makeCaptureView() -> RoomCaptureView {
         rawCapture.prepare(session: session)
         let view = RoomCaptureView(frame: .zero, arSession: session)
-        // Camera outlines still show scan coverage; avoid drawing the growing room a second time
-        // in a miniature preview hidden behind our controls. Navigation renders it after capture.
-        view.isModelEnabled = false
+        // RoomPlan's live outlines of walls, doors and furniture over the camera are the volunteer's
+        // feedback that the room is being picked up; navigation renders the processed room later.
+        view.isModelEnabled = true
         view.delegate = captureDelegate
         // Live updates too, as Apple's RoomPlan sample does alongside the view's own delegate.
         let id = scanID
