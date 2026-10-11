@@ -16,9 +16,11 @@ struct BackendSettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("Find me when a map opens", isOn: $findsMeAutomatically)
+                    Toggle("Find me automatically", isOn: $findsMeAutomatically)
+                } header: {
+                    Text("Navigation")
                 } footer: {
-                    Text("Uses the camera to show where you are on a saved map.")
+                    Text("Turn off to browse with the camera off. You can still choose live location, directions or AR.")
                 }
                 Section {
                     Text("Maps are built on this device.")
@@ -70,7 +72,7 @@ struct BackendSettingsView: View {
                     token = AppConfig.backendToken(for: newValue) ?? ""
                 }
             }
-            .navigationTitle("Scanning")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

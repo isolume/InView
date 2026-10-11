@@ -221,6 +221,20 @@ final class NavigationController: ObservableObject {
         beginGuidance(thenRoute: false)
     }
 
+    /// Applies the browsing preference immediately without interrupting requested directions or AR.
+    func setAutomaticLocationEnabled(_ enabled: Bool, keepingARActive: Bool = false) {
+        guard !isDemo else { return }
+        locatesAutomatically = enabled
+        if enabled {
+            if phase == .browsing { findRider() }
+        } else {
+            locatesWhenLoaded = false
+            if !keepingARActive, !routesWhenLocated, [.locating, .ready, .arrived, .noRoute].contains(phase) {
+                endGuidance()
+            }
+        }
+    }
+
     /// Turns the camera on and finds the rider in the scanned space; then routes, when `thenRoute`.
     func beginGuidance(thenRoute: Bool) {
         guard !isDemo, !isSavingPlaces, isActive, canGuide, map?.requiresOptimizedLocalization != true,

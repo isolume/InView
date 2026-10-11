@@ -335,8 +335,7 @@ struct MapScreen: View {
             if InViewIntents.takeNearestElevatorRequest() { showNearestElevator() }
         }
         .onChange(of: findsMeAutomatically) { _, automatic in
-            controller.locatesAutomatically = automatic && !isDemo
-            if automatic, !isDemo, controller.canGuide, controller.phase == .browsing { controller.findRider() }
+            controller.setAutomaticLocationEnabled(automatic, keepingARActive: showsAR)
         }
         // Scanning and the demo need the camera to themselves; finding the person resumes afterwards.
         .onChange(of: modal) { old, new in
