@@ -236,6 +236,29 @@ pub fn app(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(4 * 1024)),
         )
         .route(
+            "/api/people/shares",
+            get(product_api::list_shares)
+                .post(product_api::start_share)
+                .layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
+            "/api/people/shares/{id}/respond",
+            axum::routing::post(product_api::respond_share).layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
+            "/api/people/shares/{id}",
+            axum::routing::delete(product_api::end_share),
+        )
+        .route(
+            "/api/accounts/me/position",
+            axum::routing::put(product_api::publish_position)
+                .layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
+            "/api/people/{person}/location",
+            get(product_api::person_location),
+        )
+        .route(
             "/api/people/match",
             axum::routing::post(product_api::match_contacts)
                 .layer(DefaultBodyLimit::max(48 * 1024)),

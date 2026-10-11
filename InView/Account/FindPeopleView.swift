@@ -13,6 +13,8 @@ struct FindPeopleView: View {
     @State private var contactsChecked = false
     @State private var busy = false
     @State private var message: String?
+    @State private var shares: [PersonShare] = []
+    @ObservedObject private var location = PeopleLocationService.shared
 
     var body: some View {
         Form {
@@ -37,7 +39,10 @@ struct FindPeopleView: View {
                     .submitLabel(.search).onSubmit { Task { await search() } }
                 Button("Search") { Task { await search() } }
                     .disabled(busy || query.trimmingCharacters(in: .whitespaces).count < 3)
-                if let found { PersonRow(title: found.name, subtitle: found.handle.map { "@\($0)" }) }
+                if let found {
+                    PersonRow(title: found.name, subtitle: found.handle.map { "@\($0)" })
+                    shareButtons(for: found)
+                }
             } header: { Text("Find someone") } footer: {
                 Text("Only people who turned on “Let people find me” can be found, and only by their exact email or handle.")
             }
@@ -48,6 +53,7 @@ struct FindPeopleView: View {
                 }.disabled(busy)
                 ForEach(contactMatches, id: \.match.id) { item in
                     PersonRow(title: item.contact, subtitle: item.match.name == item.contact ? nil : "On InView as \(item.match.name)")
+                    shareButtons(for: item.match)
                 }
                 if contactsChecked && contactMatches.isEmpty {
                     Text("None of your contacts have chosen to be found yet.").foregroundStyle(.secondary)
@@ -56,11 +62,89 @@ struct FindPeopleView: View {
                 Text("InView turns each contact’s email into a one-way code on your phone and sends only those codes. Nothing is stored, and people only appear if they chose to be found.")
             }
 
+            if !shares.isEmpty {
+                Section {
+                    ForEach(shares) { share in shareRow(share) }
+                } header: { Text("Location sharing") } footer: {
+                    Text("Sharing is always your choice, ends on its own, and you can stop it at any time. Your position is only sent while someone you chose can see it, and only when you’re located on the shared map.")
+                }
+            }
+
             if let message { Section { Text(message).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) } }
         }
         .navigationTitle("Find people")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+    }
+
+    @ViewBuilder private func shareButtons(for person: PersonMatch) -> some View {
+        HStack {
+            Button("Share my location") { Task { await startShare(person, offering: true) } }
+            Spacer()
+            Button("Ask for theirs") { Task { await startShare(person, offering: false) } }
+        }
+        .buttonStyle(.bordered).controlSize(.small).disabled(busy)
+    }
+
+    @ViewBuilder private func shareRow(_ share: PersonShare) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(shareTitle(share)).font(.body.weight(.medium))
+            if let detail = shareDetail(share) { Text(detail).font(.subheadline).foregroundStyle(.secondary) }
+            HStack {
+                if share.needsMyAnswer {
+                    Button("Share for 1 hour") { Task { await respond(share, accept: true) } }
+                    Button("Decline", role: .destructive) { Task { await respond(share, accept: false) } }
+                } else if share.canFollow {
+                    Button("Directions to them", systemImage: "location.fill") {
+                        location.follow(share.person)
+                        message = "Open the map to follow \(share.person.name)."
+                    }
+                    Button("Stop", role: .destructive) { Task { await end(share) } }
+                } else if share.state == .active || share.state == .requested {
+                    Button(share.direction == .outgoing ? "Stop sharing" : "Cancel", role: .destructive) { Task { await end(share) } }
+                }
+            }
+            .buttonStyle(.bordered).controlSize(.small).disabled(busy)
+        }
+    }
+
+    private func shareTitle(_ share: PersonShare) -> String {
+        switch (share.direction, share.state) {
+        case (.outgoing, .requested) where !share.startedByMe: "\(share.person.name) wants to see where you are"
+        case (.outgoing, .requested): "Waiting for \(share.person.name)"
+        case (.outgoing, .active): "You’re sharing your location with \(share.person.name)"
+        case (.incoming, .requested): "Waiting for \(share.person.name) to accept"
+        case (.incoming, .active): "\(share.person.name) is sharing their location"
+        default: share.person.name
+        }
+    }
+
+    private func shareDetail(_ share: PersonShare) -> String? {
+        guard share.state == .active, let end = share.expiresAt else { return nil }
+        return "Until \(end.formatted(date: .omitted, time: .shortened))"
+    }
+
+    private func startShare(_ person: PersonMatch, offering: Bool) async {
+        await run { client, token in
+            _ = try await client.startShare(personID: person.personID, offering: offering, token: token)
+            shares = try await client.shares(token: token).filter(\.isVisibleHere)
+            message = offering ? "Sharing your location with \(person.name) for 1 hour." : "Asked \(person.name) to share. You’ll see directions once they accept."
+        }
+    }
+
+    private func respond(_ share: PersonShare, accept: Bool) async {
+        await run { client, token in
+            _ = try await client.respondToShare(id: share.id, accept: accept, token: token)
+            shares = try await client.shares(token: token).filter(\.isVisibleHere)
+        }
+    }
+
+    private func end(_ share: PersonShare) async {
+        await run { client, token in
+            try await client.endShare(id: share.id, token: token)
+            if location.followed?.personID == share.person.personID { location.stopFollowing() }
+            shares = try await client.shares(token: token).filter(\.isVisibleHere)
+        }
     }
 
     private var footer: String {
@@ -79,6 +163,7 @@ struct FindPeopleView: View {
         await run { client, token in
             settings = try await client.discovery(token: token)
             handle = settings?.handle ?? ""
+            shares = try await client.shares(token: token).filter(\.isVisibleHere)
         }
     }
 
@@ -140,4 +225,9 @@ private struct PersonRow: View {
         }
         .accessibilityElement(children: .combine)
     }
+}
+
+private extension PersonShare {
+    /// Ended and declined shares are history; the screen only lists what is open.
+    var isVisibleHere: Bool { state == .requested || state == .active }
 }

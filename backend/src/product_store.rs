@@ -19,6 +19,7 @@ use std::{
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
+pub mod people;
 pub const VENUE_ID: &str = "student-center-east";
 const SESSION_SECONDS: u64 = 14 * 24 * 60 * 60;
 /// Administrators sign in again daily; their rights come from Auth0 at each sign-in.
@@ -131,6 +132,8 @@ struct Database {
     submissions: BTreeMap<String, Submission>,
     retries: BTreeMap<String, RetryRecord>,
     releases: Vec<PublishedMap>,
+    #[serde(default)]
+    shares: Vec<people::LocationShare>,
 }
 impl Default for Database {
     fn default() -> Self {
@@ -141,6 +144,7 @@ impl Default for Database {
             submissions: BTreeMap::new(),
             retries: BTreeMap::new(),
             releases: vec![],
+            shares: vec![],
         }
     }
 }
@@ -151,6 +155,8 @@ struct Inner {
     temporary: bool,
     dummy_hash: String,
     attempts: Mutex<BTreeMap<String, (u64, u8)>>,
+    /// Latest shared positions by account id. Memory only: never persisted.
+    positions: Mutex<BTreeMap<String, people::Position>>,
 }
 impl Drop for Inner {
     fn drop(&mut self) {
@@ -375,6 +381,7 @@ impl ProductStore {
                 temporary,
                 dummy_hash,
                 attempts: Mutex::new(BTreeMap::new()),
+                positions: Mutex::new(BTreeMap::new()),
             }),
             auth_workers: Arc::new(Semaphore::new(2)),
         })

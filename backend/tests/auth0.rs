@@ -1257,3 +1257,308 @@ async fn contact_batches_are_validated_bounded_and_rate_limited() {
     }
     assert!(limited, "contact matching is rate limited");
 }
+
+// --- live location sharing -----------------------------------------------------------------------------
+
+async fn person_id_of(router: &Router, bearer: &str, query: &str) -> String {
+    let (status, person) = find(router, bearer, query).await;
+    assert_eq!(status, StatusCode::OK, "{query}: {person}");
+    person["person_id"].as_str().unwrap().to_owned()
+}
+
+async fn put_position(router: &Router, bearer: &str, body: Value) -> (StatusCode, Value) {
+    let (status, _, value) = call(
+        router,
+        "PUT",
+        "/api/accounts/me/position",
+        Some(bearer),
+        Some(body),
+    )
+    .await;
+    (status, value)
+}
+
+async fn locate(router: &Router, bearer: &str, person: &str) -> (StatusCode, Value) {
+    let (status, _, value) = call(
+        router,
+        "GET",
+        &format!("/api/people/{person}/location"),
+        Some(bearer),
+        None,
+    )
+    .await;
+    (status, value)
+}
+
+fn spot() -> Value {
+    json!({"venue_id": "student-center-east", "floor": 2, "x": 4.5, "z": -12.25, "heading_deg": 90.0, "accuracy_m": 1.5})
+}
+
+/// Ada and Ben, both discoverable, plus a bystander.
+async fn trio(router: &Router) -> (String, String, String) {
+    let ada = sign_in(router, "apple|ada", "ada@example.test", "Ada").await;
+    let ben = sign_in(router, "apple|ben", "ben@example.test", "Ben").await;
+    let eve = sign_in(router, "apple|eve", "eve@example.test", "Eve").await;
+    for (token, handle) in [(&ada, "ada_l"), (&ben, "ben_k"), (&eve, "eve_x")] {
+        discover(
+            router,
+            token,
+            json!({"discoverable": true, "handle": handle}),
+        )
+        .await;
+    }
+    (ada, ben, eve)
+}
+
+#[tokio::test]
+async fn an_offer_shares_a_live_position_only_with_that_person() {
+    let (_, router) = setup(&[]);
+    let (ada, ben, eve) = trio(&router).await;
+    let ben_id = person_id_of(&router, &ada, "ben_k").await;
+    let ada_id = person_id_of(&router, &ben, "ada_l").await;
+
+    // Nothing is stored or visible before sharing.
+    assert_eq!(put_position(&router, &ada, spot()).await.1["shared"], false);
+    assert_eq!(
+        locate(&router, &ben, &ada_id).await.0,
+        StatusCode::NOT_FOUND
+    );
+
+    let (status, _, share) = call(
+        &router,
+        "POST",
+        "/api/people/shares",
+        Some(&ada),
+        Some(json!({"person_id": ben_id, "mode": "offer", "minutes": 30})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{share}");
+    assert_eq!(
+        (share["state"].clone(), share["direction"].clone()),
+        (json!("active"), json!("outgoing"))
+    );
+    let expiry = share["expires_at"].as_u64().unwrap() - now();
+    assert!((29 * 60..=30 * 60).contains(&expiry), "{expiry}");
+
+    assert_eq!(put_position(&router, &ada, spot()).await.1["shared"], true);
+    let (status, here) = locate(&router, &ben, &ada_id).await;
+    assert_eq!(status, StatusCode::OK, "{here}");
+    assert_eq!(
+        (here["venue_id"].clone(), here["floor"].clone()),
+        (json!("student-center-east"), json!(2))
+    );
+    assert_eq!(
+        (here["x"].clone(), here["z"].clone()),
+        (json!(4.5), json!(-12.25))
+    );
+    assert_eq!(here["person"]["name"], "Ada");
+    assert!(here["age_seconds"].as_u64().unwrap() < 5);
+    assert!(!here.to_string().contains("example.test"));
+
+    // Nobody else sees it: not the bystander, not Ada's own lookup of Ben, not a stranger id.
+    assert_eq!(
+        locate(&router, &eve, &ada_id).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        locate(&router, &ada, &ben_id).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        locate(&router, &ben, "doesnotexist0000000000").await.0,
+        StatusCode::NOT_FOUND
+    );
+
+    // Both sides see the share in their list with the right direction.
+    let (_, _, ada_list) = call(&router, "GET", "/api/people/shares", Some(&ada), None).await;
+    let (_, _, ben_list) = call(&router, "GET", "/api/people/shares", Some(&ben), None).await;
+    assert_eq!(ada_list["shares"][0]["direction"], "outgoing");
+    assert_eq!(ben_list["shares"][0]["direction"], "incoming");
+    assert_eq!(ben_list["shares"][0]["person"]["name"], "Ada");
+}
+
+#[tokio::test]
+async fn a_request_needs_the_sharer_to_accept_and_either_side_can_end_it() {
+    let (_, router) = setup(&[]);
+    let (ada, ben, _) = trio(&router).await;
+    let ada_id = person_id_of(&router, &ben, "ada_l").await;
+
+    // Ben asks to see Ada. Until Ada accepts, nothing is visible even if she is publishing.
+    let (status, _, share) = call(
+        &router,
+        "POST",
+        "/api/people/shares",
+        Some(&ben),
+        Some(json!({"person_id": ada_id, "mode": "request"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{share}");
+    assert_eq!(
+        (share["state"].clone(), share["direction"].clone()),
+        (json!("requested"), json!("incoming"))
+    );
+    let id = share["id"].as_str().unwrap();
+    assert_eq!(put_position(&router, &ada, spot()).await.1["shared"], false);
+    assert_eq!(
+        locate(&router, &ben, &ada_id).await.0,
+        StatusCode::NOT_FOUND
+    );
+
+    // Only the sharer can answer; the requester cannot approve their own request.
+    let respond = |token: &str, accept: bool| {
+        let router = router.clone();
+        let token = token.to_owned();
+        let path = format!("/api/people/shares/{id}/respond");
+        async move {
+            call(
+                &router,
+                "POST",
+                &path,
+                Some(&token),
+                Some(json!({"accept": accept, "minutes": 15})),
+            )
+            .await
+        }
+    };
+    assert_eq!(respond(&ben, true).await.0, StatusCode::NOT_FOUND);
+    let (status, _, accepted) = respond(&ada, true).await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+    assert_eq!(accepted["state"], "active");
+    assert_eq!(put_position(&router, &ada, spot()).await.1["shared"], true);
+    assert_eq!(locate(&router, &ben, &ada_id).await.0, StatusCode::OK);
+
+    // The viewer can stop watching; the position is dropped and nothing is visible.
+    let (status, _, _) = call(
+        &router,
+        "DELETE",
+        &format!("/api/people/shares/{id}"),
+        Some(&ben),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        locate(&router, &ben, &ada_id).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(put_position(&router, &ada, spot()).await.1["shared"], false);
+    // Ending twice, or someone else ending it, finds nothing.
+    let (status, _, _) = call(
+        &router,
+        "DELETE",
+        &format!("/api/people/shares/{id}"),
+        Some(&ada),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn declining_keeps_everything_private_and_sharing_requires_discoverability() {
+    let (_, router) = setup(&[]);
+    let (ada, ben, _) = trio(&router).await;
+    let ada_id = person_id_of(&router, &ben, "ada_l").await;
+    let (_, _, share) = call(
+        &router,
+        "POST",
+        "/api/people/shares",
+        Some(&ben),
+        Some(json!({"person_id": ada_id, "mode": "request"})),
+    )
+    .await;
+    let id = share["id"].as_str().unwrap();
+    let (status, _, declined) = call(
+        &router,
+        "POST",
+        &format!("/api/people/shares/{id}/respond"),
+        Some(&ada),
+        Some(json!({"accept": false})),
+    )
+    .await;
+    assert_eq!(
+        (status, declined["state"].clone()),
+        (StatusCode::OK, json!("declined"))
+    );
+    assert_eq!(put_position(&router, &ada, spot()).await.1["shared"], false);
+
+    // Someone who is not discoverable cannot be asked, and looks the same as a stranger.
+    discover(&router, &ada, json!({"discoverable": false})).await;
+    let (status, body, _) = {
+        let (s, _, b) = call(
+            &router,
+            "POST",
+            "/api/people/shares",
+            Some(&ben),
+            Some(json!({"person_id": ada_id, "mode": "request"})),
+        )
+        .await;
+        (s, b, ())
+    };
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (StatusCode::NOT_FOUND, json!("person_not_found"))
+    );
+}
+
+#[tokio::test]
+async fn positions_are_validated_and_go_stale() {
+    let (_, router) = setup(&[]);
+    let (ada, ben, _) = trio(&router).await;
+    let ben_id = person_id_of(&router, &ada, "ben_k").await;
+    call(
+        &router,
+        "POST",
+        "/api/people/shares",
+        Some(&ada),
+        Some(json!({"person_id": ben_id, "mode": "offer"})),
+    )
+    .await;
+    for bad in [
+        json!({"venue_id": "", "floor": 2, "x": 1.0, "z": 1.0}),
+        json!({"venue_id": "Bad Venue!", "floor": 2, "x": 1.0, "z": 1.0}),
+        json!({"venue_id": "ok", "floor": 999, "x": 1.0, "z": 1.0}),
+        json!({"venue_id": "ok", "floor": 2, "x": 1e9, "z": 1.0}),
+        json!({"venue_id": "ok", "floor": 2, "x": 1.0, "z": 1.0, "accuracy_m": -5.0}),
+        json!({"venue_id": "ok", "floor": 2, "x": 1.0}),
+    ] {
+        let (status, body) = put_position(&router, &ada, bad.clone()).await;
+        assert!(
+            status == StatusCode::UNPROCESSABLE_ENTITY || status == StatusCode::BAD_REQUEST,
+            "{bad}: {status} {body}"
+        );
+    }
+    // A client cannot set its own timestamp.
+    let mut forged = spot();
+    forged["updated_at"] = json!(1);
+    let (status, _) = put_position(&router, &ada, forged).await;
+    assert!(status.is_success() || status == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(put_position(&router, &ada, spot()).await.0, StatusCode::OK);
+    let ada_id = person_id_of(&router, &ben, "ada_l").await;
+    let (_, here) = locate(&router, &ben, &ada_id).await;
+    assert!(here["age_seconds"].as_u64().unwrap() < 5, "{here}");
+}
+
+#[tokio::test]
+async fn sharing_endpoints_need_a_session() {
+    let (_, router) = setup(&[]);
+    for (method, path, body) in [
+        ("GET", "/api/people/shares", None),
+        (
+            "POST",
+            "/api/people/shares",
+            Some(json!({"person_id": "x", "mode": "offer"})),
+        ),
+        (
+            "POST",
+            "/api/people/shares/abc/respond",
+            Some(json!({"accept": true})),
+        ),
+        ("DELETE", "/api/people/shares/abc", None),
+        ("PUT", "/api/accounts/me/position", Some(spot())),
+        ("GET", "/api/people/abcdefghij/location", None),
+    ] {
+        let (status, _, _) = call(&router, method, path, None, body).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}");
+    }
+}
