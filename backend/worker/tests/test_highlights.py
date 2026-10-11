@@ -119,6 +119,19 @@ def test_unreachable_destinations_are_one_finding_per_origin():
     assert item.evidence["unreachable"] == 3 and item.geometry["dashed"]
 
 
+def test_equal_destination_names_are_counted_not_repeated():
+    nodes = [{"id": f"n{i}", "x": float(i), "z": 0.0} for i in range(5)]
+    endpoints = [{"id": "o", "node_id": "n0", "name": "Corridor"}] + [
+        {"id": f"r{i}", "node_id": f"n{i}", "name": "Room"} for i in (1, 2, 3)] + [
+        {"id": "s", "node_id": "n4", "name": "Seating"}]
+    routes = {"endpoints": endpoints, "routes": [], "unreachable": [
+        {"from_place": "o", "to_place": t, "profile": "wheelchair", "limiting_requirements": []}
+        for t in ("r1", "r2", "r3", "s")]}
+    (item,) = collect(routes=routes, nav_graph={"nodes": nodes})
+    assert "Room x3" in item.reason and "Seating" in item.reason
+    assert "Room, Room" not in item.reason
+
+
 def test_filters_and_determinism():
     data = dict(floor_map={"narrow_passages": [passage(1, 1, 0.5)]}, hazards=[hazard("drop_off", rise_m=0.3)],
                 places=[place("exit", 5, 5)])

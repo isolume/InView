@@ -178,7 +178,7 @@ def _render(base_bgra, origin, resolution, scale, highlights, polylines, options
         scene = (scene.astype(np.float32) * (1 - fade) + np.asarray(PAPER, np.float32) * fade).astype(np.uint8)
 
     # Routes sit under the highlights.
-    line = max(2, int(0.16 * px_per_m))
+    line = max(2, int(0.1 * px_per_m))
     for path in polylines:
         points = px(path)
         if len(points) < 2:
@@ -193,7 +193,7 @@ def _render(base_bgra, origin, resolution, scale, highlights, polylines, options
                 length = float(np.linalg.norm(direction)) or 1.0
                 unit = direction / length
                 normal = np.array([-unit[1], unit[0]], np.float32)
-                size = max(7.0, 0.32 * px_per_m)
+                size = max(6.0, min(14.0, 0.2 * px_per_m))
                 tip = b.astype(np.float32)
                 head = np.array([tip, tip - unit * size + normal * size * 0.55, tip - unit * size - normal * size * 0.55])
                 cv2.fillConvexPoly(scene, np.round(head).astype(np.int32), ROUTE_COLOR, cv2.LINE_AA)

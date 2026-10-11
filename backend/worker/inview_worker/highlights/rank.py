@@ -320,7 +320,11 @@ def _routes(routes: dict | None, nav_graph: dict | None) -> list[Highlight]:
             for limit in gap.get("limiting_requirements") or []:
                 if str(limit) not in limits:
                     limits.append(str(limit))
-        names = [name(g.get("to_place")) for g, _ in targets]
+        counts: dict[str, int] = {}
+        for g, _ in targets:
+            counts[name(g.get("to_place"))] = counts.get(name(g.get("to_place")), 0) + 1
+        # "Room x3" rather than "Room, Room, Room": equal names carry no information repeated.
+        names = [f"{n} x{c}" if c > 1 else n for n, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
         shown = ", ".join(names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3 else "")
         label = str(profile or "route").replace("_", " ")
         b = nearest[1]
