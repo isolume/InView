@@ -96,7 +96,7 @@ No scan yet? **Try the navigation demo** runs a sample route, even in Simulator.
 ## Known limits
 
 - Live guidance needs a floor scanned on the same phone; shared maps can be browsed and previewed but not followed in AR.
-- Routes stay on one floor; between-floor directions need published building connections.
+- Destinations can be selected across floors. Switch floors to inspect the preview without clearing directions. Choose a mapped elevator or stair landing to preview each walk. Live directions ask you to confirm the new floor before continuing. Check building signs for which floors a connection serves; unmapped areas use sign-based instructions.
 - Multi-room scans and relocalization need more testing on real devices.
 
 More: [product guide](docs/product-app.md), [scan performance](docs/scan-performance.md), [team plans](larp.md).
