@@ -852,7 +852,11 @@ final class NavigationController: ObservableObject {
             .compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.classification == .floor }
             .map(\.transform.translation.y)
-        if let lowest = floorHeights.min() { renderer?.setFloorHeight(lowest) }
+        // ARKit keeps planes from every level it has seen; only one a phone height below the camera is underfoot.
+        let cameraY = frame.camera.transform.translation.y
+        if let floor = FloorPlaneSelection.floorHeight(cameraY: cameraY, planeHeights: floorHeights) {
+            renderer?.setFloorHeight(floor)
+        }
     }
 
     /// The demo moves along a real planner path and never runs an AR session.
