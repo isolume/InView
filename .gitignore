@@ -24,3 +24,7 @@ __pycache__/
 
 # Local community accounts, sessions, submissions and reviewed releases
 /data/product/
+
+# Local secrets and runtime logs — never commit
+/backend/.secrets/
+/backend/data/*.log
