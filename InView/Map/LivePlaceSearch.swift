@@ -12,6 +12,8 @@ final class LivePlaceSearch: ObservableObject {
     @Published private(set) var pins: [AccessPoint] = []
     @Published private(set) var isLoading = false
     @Published private(set) var message: String?
+    /// The query the current results answer (trimmed; empty when browsing).
+    @Published private(set) var answeredQuery: String?
 
     /// Refresh when the person has moved this far since the last search.
     static let refreshDistance: Float = 3
@@ -41,7 +43,9 @@ final class LivePlaceSearch: ObservableObject {
         if let lastKey, lastKey.scanID == key.scanID, lastKey.query == key.query,
            simd_distance(lastKey.origin, key.origin) < Self.refreshDistance {
             // Same search: only re-filter against the saved map, which may have gained places.
-            pins = pins.filter { pin in !existing.contains { $0.id == pin.id } }
+            // Positions arrive every frame, so publish only when something actually changed.
+            let kept = pins.filter { pin in !existing.contains { $0.id == pin.id } }
+            if kept.count != pins.count { pins = kept }
             return
         }
         task?.cancel()
@@ -74,11 +78,12 @@ final class LivePlaceSearch: ObservableObject {
         task = nil
         lastKey = nil
         results = []; pins = []; resultsByPin = [:]
-        isLoading = false; message = nil
+        isLoading = false; message = nil; answeredQuery = nil
     }
 
     private func apply(_ found: NearbyResults?, scanID: String, existing: [AccessPoint]) {
         isLoading = false
+        answeredQuery = lastKey?.query
         guard let found else {
             results = []; pins = []; resultsByPin = [:]
             message = "Nearby places appear after this scan is processed. Use Find places when reviewing a scan."
