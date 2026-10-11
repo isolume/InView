@@ -137,6 +137,59 @@ def level_changes(hm: HeightMap, edge: np.ndarray, rise: np.ndarray, params: Haz
     return hazards
 
 
+def unprotected_drops(hm: HeightMap, params: HazardParams, suppress: np.ndarray) -> list[dict]:
+    """Walkable edges that end at a lower level which was seen but not walked: balcony and platform
+    edges, stair wells, loading docks. `level_changes` only sees surfaces connected to the floor by
+    small steps, so the lower side of these never reaches it.
+
+    Edges backed by tall geometry (a wall, railing or glass within a cell) are protected and skipped."""
+    lower = hm.lower_seen
+    if lower is None:
+        return []
+    measured = np.isfinite(hm.measured_elevation())
+    seen = np.isfinite(lower)
+    if not measured.any() or not seen.any():
+        return []
+    reach = disk(2)
+    upper = cv2.dilate(np.where(measured, hm.elevation, -np.inf).astype(np.float32), reach)
+    near_walk = cv2.dilate(measured.astype(np.uint8), reach) > 0
+    drop = np.where(np.isfinite(upper), upper - np.where(seen, lower, np.nan), np.nan)
+    below = seen & near_walk & (drop > hm.params.max_step_m)
+    support = cv2.dilate(below.astype(np.uint8), reach) > 0
+    guarded = cv2.dilate((hm.mid > 0).astype(np.uint8), reach) > 0
+    edge = measured & support & ~guarded & (suppress == 0)
+    res = hm.grid.resolution
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(edge.astype(np.uint8), connectivity=8)
+    hazards = []
+    for label in range(1, count):
+        cells = labels == label
+        rows, cols = np.nonzero(cells)
+        length = float(max(cv2.minAreaRect(np.column_stack([cols, rows]).astype(np.float32))[1])) * res + res
+        if length < params.min_edge_length_m:
+            continue
+        window = crop(stats, label, edge.shape, 4)
+        local_lower = below[window] & (cv2.dilate(cells[window].astype(np.uint8), reach) > 0)
+        if local_lower.sum() * res * res < 0.03:  # speckle: a real lower level covers a few dm2 at least
+            continue
+        depth = float(np.median(drop[window][local_lower]))
+        top = float(np.median(hm.elevation[cells]))
+        down = np.array(hm.grid.world(float(np.nonzero(local_lower)[1].mean()) + window[1].start,
+                                      float(np.nonzero(local_lower)[0].mean()) + window[0].start)) \
+            - np.array(hm.grid.world(float(cols.mean()), float(rows.mean())))
+        hazards.append({
+            "kind": "drop_off",
+            "position_m": _position(hm, cells, top),
+            "polygon_xz_m": polygon_xz(hm.grid, cells),
+            "measure": {"rise_m": _r(depth), "length_m": _r(length, 2), "upper_y_m": _r(top),
+                        "lower_y_m": _r(top - depth)},
+            "down_direction_xz": _unit(down),
+            "severity": "barrier",
+            "issues": ["unprotected_drop"],
+            "method": "unreached_lower_surface",
+        })
+    return hazards
+
+
 # --- stairs ----------------------------------------------------------------------------------------
 
 def _risers(mask: np.ndarray, res: float) -> list[dict]:
@@ -456,6 +509,7 @@ def detect(hm: HeightMap, objects: list[Box] = (), params: HazardParams = Hazard
     hazards += found
     if hm.measured:
         hazards += level_changes(hm, edge, rise, params, suppress)
+        hazards += unprotected_drops(hm, params, suppress)
         hazards += ramps(hm, edge, params)
         hazards += overhead(hm, objects, params)
     hazards.sort(key=lambda h: (KIND_ORDER.index(h["kind"]), h["position_m"][0], h["position_m"][2], h["position_m"][1]))

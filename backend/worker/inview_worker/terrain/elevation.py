@@ -32,6 +32,7 @@ class TerrainParams:
     walk_normal_min: float = 0.866        # cos 30 deg: steeper triangles are not walking surfaces
     min_surface_samples: int = 3          # lattice samples a cell needs (stray tilted wall facets have few)
     search_m: float = 3.5                 # walking surfaces within +- this of the floor estimate
+    deep_search_m: float = 30.0           # lower levels (atria, stairwells, balconies) seen below the floor
     max_step_m: float = 0.25              # largest riser a person steps up while staying "connected"
     seed_tolerance_m: float = 0.05        # floor-level seed band
     camera_height_m: tuple[float, float] = (0.9, 2.0)  # phone above the surface the person stands on
@@ -61,6 +62,7 @@ class HeightMap:
     mid: np.ndarray                  # uint8 255: geometry 0.685 .. 2.03 m above the surface
     params: TerrainParams = field(default_factory=TerrainParams)
     measured_mask: np.ndarray | None = None  # excludes inpainted cells; None for explicitly supplied rasters
+    lower_seen: np.ndarray | None = None     # float32 Y of a lower surface seen but not walkable from here
 
     def relative(self) -> np.ndarray:
         return self.elevation - np.float32(self.floor_height)
@@ -185,6 +187,25 @@ def _roomplan_floor(grid: Grid, inputs: ScanInputs) -> np.ndarray:
     return elevation
 
 
+def _lower_levels(grid: Grid, vertices: np.ndarray, triangles: np.ndarray, samples: np.ndarray, owners: np.ndarray,
+                  flat: np.ndarray, inside: np.ndarray, elevation: np.ndarray, floor_y: float,
+                  params: TerrainParams) -> np.ndarray:
+    """Up-facing surfaces well below the walking floor where there is no walking surface: the lower
+    level of an atrium, stairwell, balcony or platform edge. They are not reachable (so they never enter
+    `elevation`), but the walkable cells next to them are an unprotected drop.
+
+    The nearest surface below wins (a per-cell maximum), so a basement seen through a gap does not
+    hide the floor just under the edge."""
+    up = np.abs(_triangle_normals(vertices, triangles)[:, 1]) >= params.walk_normal_min
+    y = samples[:, 1]
+    chosen = inside & up[owners] & (y < floor_y - params.max_step_m) & (y > floor_y - params.deep_search_m)
+    if not chosen.any():
+        return np.full((grid.height, grid.width), np.nan, np.float32)
+    nearest = -cell_min(grid, flat[chosen], -y[chosen])
+    nearest[cell_count(grid, flat[chosen]) < params.min_surface_samples] = np.nan
+    return np.where(np.isnan(elevation), nearest, np.nan).astype(np.float32)
+
+
 def build(inputs: ScanInputs, grid: Grid, floor_y: float, params: TerrainParams = TerrainParams()) -> HeightMap:
     res = grid.resolution
     shape = (grid.height, grid.width)
@@ -222,6 +243,8 @@ def build(inputs: ScanInputs, grid: Grid, floor_y: float, params: TerrainParams 
     walking = reachable(surface, _seeds(grid, surface, floor_y, inputs.camera_positions, params), params.max_step_m)
     elevation = np.where(walking, surface, np.nan).astype(np.float32)
     measured_mask = np.isfinite(elevation)
+    lower_seen = _lower_levels(grid, vertices, triangles, samples, owners, flat, inside, elevation, floor_y, params) \
+        if has_mesh else None
     walking |= fill_small_holes(elevation, int(params.hole_max_area_m2 / res ** 2), np.isfinite(surface))
     known = np.isfinite(elevation)
 
@@ -248,7 +271,7 @@ def build(inputs: ScanInputs, grid: Grid, floor_y: float, params: TerrainParams 
     low = ((cell_count(grid, g_flat[low_band]) >= min_count) * 255).astype(np.uint8)
     mid = ((cell_count(grid, g_flat[mid_band]) >= min_count) * 255).astype(np.uint8)
     return HeightMap(grid, floor_y, "+".join(sources), True, elevation, slope, slope_x, slope_z, ceiling, clearance,
-                     walking.astype(np.uint8) * 255, low, mid, params, measured_mask)
+                     walking.astype(np.uint8) * 255, low, mid, params, measured_mask, lower_seen)
 
 
 def summary(hm: HeightMap, region: np.ndarray | None = None) -> dict:
