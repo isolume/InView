@@ -24,6 +24,10 @@ ELEVENLABS_MODEL = eleven_turbo_v2_5
 INVIEW_BACKEND_URL =
 // Its bearer token (the TF_VAR_api_token used to deploy it). Built into the app, so nobody types it on the phone.
 INVIEW_BACKEND_TOKEN =
+// A backend running on your own Mac (backend/run-local.sh prints the address). Same token as above.
+INVIEW_LOCAL_BACKEND_URL =
+// YES makes new installs use the Mac server by default; the Scanning settings screen can switch either way.
+INVIEW_USE_LOCAL_BACKEND = NO
 
 // Public token for surrounding maps and placement. Override in Secrets.xcconfig.
 MAPBOX_ACCESS_TOKEN =

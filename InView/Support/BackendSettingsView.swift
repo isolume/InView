@@ -6,6 +6,7 @@ struct BackendSettingsView: View {
     @AppStorage("detailedScanning") private var detailedScanning = false
     @State private var address = AppConfig.backendAddress
     @State private var token = AppConfig.backendToken(for: AppConfig.backendAddress) ?? ""
+    @State private var usesLocalBackend = AppConfig.usesLocalBackend
     @State private var message: String?
     @State private var checking = false
 
@@ -17,6 +18,20 @@ struct BackendSettingsView: View {
                     Toggle("Detailed scan", isOn: $detailedScanning)
                 } footer: {
                     Text("Adds surface detail and photo colors to new scans. Uses more battery and storage.")
+                }
+                if AppConfig.hasLocalBackend {
+                    Section {
+                        Toggle("Use the Mac server", isOn: $usesLocalBackend)
+                            .onChange(of: usesLocalBackend) { _, enabled in
+                                AppConfig.setUsesLocalBackend(enabled)
+                                AppConfig.setBackendAddress("")
+                                address = AppConfig.backendAddress
+                                token = AppConfig.backendToken(for: address) ?? ""
+                                message = nil
+                            }
+                    } footer: {
+                        Text("Off: \(AppConfig.hostedBackendAddress.isEmpty ? "no hosted server" : AppConfig.hostedBackendAddress). On: \(AppConfig.localBackendAddress ?? "") on this Wi-Fi, started with backend/run-local.sh.")
+                    }
                 }
                 Section {
                     TextField("Server address", text: $address)

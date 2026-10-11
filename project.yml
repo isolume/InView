@@ -49,6 +49,8 @@ targets:
         ElevenLabsModel: $(ELEVENLABS_MODEL)
         InViewBackendURL: $(INVIEW_BACKEND_URL)
         InViewBackendToken: $(INVIEW_BACKEND_TOKEN)
+        InViewLocalBackendURL: $(INVIEW_LOCAL_BACKEND_URL)
+        InViewUseLocalBackend: $(INVIEW_USE_LOCAL_BACKEND)
         MBXAccessToken: $(MAPBOX_ACCESS_TOKEN)
         NSLocationWhenInUseUsageDescription: InView uses your location to place a scanned building on the map.
         NSMotionUsageDescription: InView uses elevation changes to suggest when you move to another floor while scanning.
