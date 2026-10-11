@@ -4,6 +4,7 @@ import Security
 /// Build-time settings from Config/*.xcconfig, passed through Info.plist.
 enum AppConfig {
     static var detailedScanning: Bool { UserDefaults.standard.bool(forKey: "detailedScanning") }
+    static var recordScanVideo: Bool { UserDefaults.standard.bool(forKey: "recordScanVideo") }
 
     /// The hosted server from Config/Secrets.xcconfig.
     static var hostedBackendAddress: String { value(for: "InViewBackendURL") ?? "" }

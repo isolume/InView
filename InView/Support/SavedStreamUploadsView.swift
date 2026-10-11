@@ -9,6 +9,7 @@ struct SavedStreamUploadsView: View {
         var date: Date
         var hasScene: Bool
         var hasStream: Bool
+        var hasVideo: Bool
         var originalFiles: [URL]
     }
 
@@ -25,7 +26,10 @@ struct SavedStreamUploadsView: View {
     @State private var previewTask: Task<Void, Never>?
     @State private var listingError: String?
     @State private var previewError: String?
+    @State private var errorTitle = "Couldn't open the map"
     @State private var isLoading = true
+    @State private var videoExportURL: URL?
+    @State private var videoExportID: String?
 
     var body: some View {
         List {
@@ -68,7 +72,7 @@ struct SavedStreamUploadsView: View {
         .fullScreenCover(isPresented: Binding(get: { evidenceScanID != nil }, set: { if !$0 { evidenceScanID = nil } })) {
             if let evidenceScanID { RawLidarReviewView(scanID: evidenceScanID) }
         }
-        .alert("Couldn't open the map", isPresented: Binding(
+        .alert(errorTitle, isPresented: Binding(
             get: { previewError != nil }, set: { if !$0 { previewError = nil } }
         )) {
             Button("OK", role: .cancel) {}
@@ -94,6 +98,19 @@ struct SavedStreamUploadsView: View {
                     Label("View scan data", systemImage: "point.3.connected.trianglepath.dotted")
                 }
             }
+            if scan.hasVideo {
+                if videoExportID == scan.id, let videoExportURL {
+                    ShareLink(item: videoExportURL) {
+                        Label("Share video + LiDAR", systemImage: "square.and.arrow.up")
+                    }
+                } else {
+                    Button { exportVideo(scan) } label: {
+                        if busyID == scan.id { ProgressView("Preparing export…") }
+                        else { Label("Export video + LiDAR", systemImage: "video") }
+                    }
+                    .disabled(busyID != nil)
+                }
+            }
             if !scan.originalFiles.isEmpty {
                 ShareLink(items: scan.originalFiles) {
                     Label("Export original scan", systemImage: "square.and.arrow.up")
@@ -116,7 +133,43 @@ struct SavedStreamUploadsView: View {
             } catch is CancellationError {
                 // Closing the list cancels its local reads.
             } catch {
+                errorTitle = "Couldn't open the map"
                 previewError = "The saved map couldn't be read. Your original scan data is still available."
+            }
+        }
+    }
+
+    private func exportVideo(_ scan: SavedScan) {
+        guard busyID == nil else { return }
+        busyID = scan.id
+        let folder = FileManager.default.temporaryDirectory.appending(path: "inview-video-export-\(UUID().uuidString)")
+        previewTask = Task {
+            var completed = false
+            defer {
+                busyID = nil
+                previewTask = nil
+                if !completed { try? FileManager.default.removeItem(at: folder) }
+            }
+            do {
+                let output = try await ScanWork.run(priority: .utility) {
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
+                                                            attributes: [.posixPermissions: 0o700])
+                    let output = folder.appending(path: "\(scan.id).inviewvideo.tar")
+                    try ScanVideoExport.write(captureDirectory: scan.root, to: output)
+                    return output
+                }
+                try Task.checkCancellation()
+                if let previous = videoExportURL {
+                    try? FileManager.default.removeItem(at: previous.deletingLastPathComponent())
+                }
+                videoExportID = scan.id
+                videoExportURL = output
+                completed = true
+            } catch is CancellationError {
+                // Closing the list cancels the streamed export and removes its partial file.
+            } catch {
+                errorTitle = "Couldn't export video"
+                previewError = "The video export couldn't be prepared. \(error.localizedDescription)"
             }
         }
     }
@@ -155,7 +208,8 @@ struct SavedStreamUploadsView: View {
             guard UUID(uuidString: id) != nil else { continue }
             let values = try directory.resourceValues(forKeys: [.creationDateKey, .isDirectoryKey, .isSymbolicLinkKey])
             guard values.isDirectory == true, values.isSymbolicLink != true else { continue }
-            var originalFiles = ["roomplan.json", "roomplan-structure.json", "raw-snapshot.json", "capture.json"]
+            var originalFiles = ["roomplan.json", "roomplan.plist", "roomplan-structure.json", "roomplan-structure.plist",
+                                 "raw-snapshot.json", "capture.json"]
                 .map { directory.appending(path: $0) }
                 .filter { files.fileExists(atPath: $0.path) }
             for name in ["roomplan-source", "roomplan-rooms"] {
@@ -174,11 +228,18 @@ struct SavedStreamUploadsView: View {
                 }
             }
             let hasStream = files.fileExists(atPath: directory.appending(path: "stream/manifest.json").path)
+            let videoURL = directory.appending(path: "video-manifest.json")
+            let hasVideo = (try? Data(contentsOf: videoURL)).flatMap {
+                try? JSONDecoder().decode(ScanVideoManifest.self, from: $0)
+            }.map { manifest in
+                manifest.captureID == id && manifest.status != "recording" && !manifest.segments.isEmpty
+                    && (try? manifest.validate()) != nil
+            } ?? false
             let hasScene = files.fileExists(atPath: directory.appending(path: "scene.json").path)
                 || files.fileExists(atPath: directory.appending(path: "stream/result.json").path)
             guard !originalFiles.isEmpty || hasStream || hasScene else { continue }
             scans.append(SavedScan(id: id, root: directory, date: values.creationDate ?? .distantPast,
-                                   hasScene: hasScene, hasStream: hasStream, originalFiles: originalFiles))
+                                   hasScene: hasScene, hasStream: hasStream, hasVideo: hasVideo, originalFiles: originalFiles))
         }
         return scans.sorted { $0.date > $1.date }
     }

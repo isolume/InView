@@ -1,4 +1,5 @@
 import AccessCore
+import RoomPlan
 import SwiftUI
 
 /// The volunteer flow: scan the floor, save the AR map, review and save.
@@ -89,6 +90,12 @@ struct ScanView: View {
                             .accessibilityLabel("\(floor.name). Change floor")
                         }
                         Spacer()
+                        if controller.videoStatus == "Recording video" {
+                            Label("Recording", systemImage: "record.circle")
+                                .font(.caption.weight(.medium))
+                                .padding(8)
+                                .glassEffect(.regular)
+                        }
                         if controller.phase == .scanning {
                             DetectionStatus(detector: controller.detector)
                         }
@@ -222,6 +229,9 @@ struct ScanView: View {
             Text(controller.trackingNotice ?? controller.scanGuidance)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if let status = controller.videoStatus, status != "Recording video" {
+                Text(status).font(.footnote).foregroundStyle(.secondary)
+            }
             if controller.automaticFloorDetectionUnavailable {
                 Text("Use the floor button when you move to another floor.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -346,6 +356,37 @@ struct MapReviewView: View {
     }
 }
 
+#if DEBUG && targetEnvironment(simulator)
+/// Exercise the production empty-draft review with a failed completed room.
+struct ScanReviewFailurePreview: View {
+    @StateObject private var controller: ScanController
+    private let scanID: UUID
+
+    init() {
+        let id = UUID()
+        scanID = id
+        let data = Data("""
+        {"identifier":"\(UUID().uuidString)","version":3,"story":0,
+         "walls":[],"floors":[],"doors":[],"openings":[],"windows":[],"objects":[],"sections":[]}
+        """.utf8)
+        let rooms = (try? JSONDecoder().decode(CapturedRoom.self, from: data)).map { [$0] } ?? []
+        let raw = RawScanSnapshot(meshes: [], frames: [], meshBuffers: [], depthBuffers: [], metadata: .object([:]))
+        _controller = StateObject(wrappedValue: ScanController(completedRooms: rooms, rawSnapshot: raw, scanID: id,
+            originalWarning: "Some original sensor data is unavailable."))
+    }
+
+    var body: some View {
+        MapReviewView(controller: controller, onClose: {})
+            .onDisappear {
+                controller.stop()
+                if let folder = try? CaptureStore.captureDirectory(for: scanID.uuidString) {
+                    try? FileManager.default.removeItem(at: folder)
+                }
+            }
+    }
+}
+#endif
+
 private struct ScanSceneProgress: View {
     @ObservedObject var controller: ScanController
 
@@ -380,21 +421,26 @@ private struct MapReviewDetailsView: View {
     var body: some View {
         NavigationStack {
             List {
-                if let warning = controller.originalScanWarning {
+                if controller.isProcessingScene {
+                    Section { ScanSceneProgress(controller: controller) }
+                } else if let error = controller.sceneError {
+                    Section {
+                        Text(error).font(.subheadline).foregroundStyle(.secondary)
+                        if controller.canUseLocalScene {
+                            Button("Use local map", action: controller.useLocalScene)
+                        }
+                        if controller.canRetryScene { Button("Try again", action: controller.retryScene) }
+                    }
+                } else if controller.draft == nil {
+                    Section {
+                        Text("This scan has no map to review yet.").foregroundStyle(.secondary)
+                        if controller.canRetryScene { Button("Try again", action: controller.retryScene) }
+                    }
+                }
+                if controller.draft != nil, let warning = controller.originalScanWarning {
                     Section { Text(warning).foregroundStyle(.secondary) }
                 }
                 if let draft = controller.draft {
-                    if controller.isProcessingScene {
-                        Section { ScanSceneProgress(controller: controller) }
-                    } else if let error = controller.sceneError {
-                        Section {
-                            Text(error).font(.subheadline).foregroundStyle(.secondary)
-                            if controller.canUseLocalScene {
-                                Button("Use local map", action: controller.useLocalScene)
-                            }
-                            if controller.canRetryScene { Button("Try again", action: controller.retryScene) }
-                        }
-                    }
                     Section {
                         MapPanel(map: draft, height: 320, onTap: controller.canPlaceReviewPoints ? { pendingPoint = $0 } : nil)
                             .padding(.vertical, 6)

@@ -184,7 +184,7 @@ private struct EvidenceObservation: Encodable {
 
 /// Safe generated paths, ordinary USTAR entries, and a PAX size extension for very large indexes.
 /// The writer has no aggregate scene-size limit and never retains the whole TAR in memory.
-private final class EvidenceTarWriter {
+final class EvidenceTarWriter {
     private let handle: FileHandle
     private var closed = false
     private let block = 512
@@ -205,9 +205,14 @@ private final class EvidenceTarWriter {
     }
 
     func append(file: URL, path: String, bytes: UInt64) throws {
-        try begin(path: path, bytes: bytes)
         let input = try FileHandle(forReadingFrom: file)
         defer { try? input.close() }
+        try append(input: input, path: path, bytes: bytes)
+    }
+
+    /// Callers that validate local assets can supply a descriptor opened without following links.
+    func append(input: FileHandle, path: String, bytes: UInt64) throws {
+        try begin(path: path, bytes: bytes)
         var remaining = bytes
         while remaining > 0 {
             try Task.checkCancellation()

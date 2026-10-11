@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "source_capture_id": "E3CF408C-680C-4ECF-B9EB-F09117308BD3",
+  "input_files": [
+    {
+      "path": "original-floor-2.json",
+      "sha256": "10f1ba7dca22bc0ca79bf61e90bbb9cf437e140cfd16e88cab8c04c7a7ac901c",
+      "bytes": 13945
+    },
+    {
+      "path": "E3CF408C-680C-4ECF-B9EB-F09117308BD3/capture.json",
+      "sha256": "737ec8c29281fc06ad623ddc3a61e5edc7eb3359183d0a3ee01a67948a0aaa81",
+      "bytes": 3487708
+    },
+    {
+      "path": "E3CF408C-680C-4ECF-B9EB-F09117308BD3/raw-snapshot.json",
+      "sha256": "874ffc7dabfea7186b99ed291364f67378da865f629221430be770f02d9db6f3",
+      "bytes": 5538905
+    },
+    {
+      "path": "E3CF408C-680C-4ECF-B9EB-F09117308BD3/roomplan.json",
+      "sha256": "13f0f661273e3d9fa42ef3ce136ddb1bf9368eb6d32484344f5c9a66a0d7e00e",
+      "bytes": 56212
+    },
+    {
+      "path": "E3CF408C-680C-4ECF-B9EB-F09117308BD3/F6CE8D2C-6101-4B12-A7AA-9AC6F1BF584F.plist",
+      "sha256": "42e42a581e0554a755048f4c6c7013f171f0109262f0c005e2c4d308008e8dc1",
+      "bytes": 40483
+    }
+  ],
+  "registration": {
+    "schema_version": 1,
+    "source_capture_id": "E3CF408C-680C-4ECF-B9EB-F09117308BD3",
+    "horizontal_rotation_radians": 1.0397133457616743,
+    "horizontal_rotation_degrees": 59.571186615570014,
+    "translation_xz_m": [
+      15.206638123073265,
+      0.0752186592439541
+    ],
+    "vertical_translation_m": -0.3268484999999999,
+    "source_native_floor_y_m": -1.2667656,
+    "target_floor_y_m": -1.5936141,
+    "uniform_scale": 1,
+    "transform_convention": "target xz = rotate(source xz, yaw) + translation; target y = source y + vertical_translation",
+    "fit_method": "Weighted rigid 2D least squares; the two shared-elbow observations have total weight one",
+    "endpoint_weights": [
+      1,
+      0.5,
+      0.5,
+      1
+    ],
+    "endpoint_residuals_m": [
+      0.020629140925333918,
+      0.044470078647746165,
+      0.02199668739601893,
+      0.033612723090255335
+    ],
+    "endpoint_rms_m": 0.03168918885122487,
+    "endpoint_max_residual_m": 0.044470078647746165,
+    "fitted_features": [
+      {
+        "source_id": "16629B4E-9437-40C7-8494-575BAF475E46",
+        "existing_footprint_index": 3,
+        "source_length_m": 19.596008,
+        "existing_length_m": 19.618677
+      },
+      {
+        "source_id": "892983CB-F859-4BF1-A78D-D2EF6D13B4AF",
+        "existing_footprint_index": 36,
+        "source_length_m": 5.2663655,
+        "existing_length_m": 5.216009
+      }
+    ],
+    "held_out_features": [
+      {
+        "source_id": "2B270E3F-2523-417A-A9D6-71142C67DAE0",
+        "existing_footprint_index": 8,
+        "normal_endpoint_residuals_m": [
+          0.0884444482754346,
+          0.08278828296548743
+        ],
+        "orientation_residual_degrees": 0.2596945966783383,
+        "overlap_m": 1.1783251473146057,
+        "source_length_m": 1.2479101,
+        "existing_length_m": 1.2036469
+      },
+      {
+        "source_id": "4EB2CCB7-107B-4360-A28C-7EE560F19F9F",
+        "existing_footprint_index": 6,
+        "normal_endpoint_residuals_m": [
+          0.06994567917187826,
+          0.06897901207903838
+        ],
+        "orientation_residual_degrees": 0.09888101912546066,
+        "overlap_m": 0.4707180417984187,
+        "source_length_m": 0.56012744,
+        "existing_length_m": 1.5642153
+      }
+    ],
+    "area_confirmation": "Outside main lounge; start far end of balcony opposite elevators, finish near restrooms",
+    "localization_status": "Geometric registration for saved-map import; no new live AR localization is established"
+  },
+  "policy": {
+    "keep_original_measured_floors": true,
+    "raw_observed_walls_objects_and_walk_trace": "registration_and_review_evidence_only",
+    "native_new_floor_polygons": "archived_but_withheld_from_routing",
+    "wall_thickness_m": 0.15,
+    "overhead_clearance_m": 0.7,
+    "deduplicate_same_kind": true,
+    "deduplicate_normal_distance_m": 0.15,
+    "deduplicate_orientation_degrees": 1.0,
+    "deduplicate_endpoint_slack_m": 0.15
+  },
+  "baseline_counts": {
+    "floor": 12,
+    "wall": 36,
+    "door": 14,
+    "opening": 1,
+    "obstacle": 12,
+    "stairs": 2
+  },
+  "merged_counts": {
+    "floor": 12,
+    "wall": 55,
+    "door": 15,
+    "opening": 2,
+    "obstacle": 12,
+    "stairs": 2
+  },
+  "added_footprints": 21,
+  "withheld_floor_regions": 4,
+  "decisions": [
+    {
+      "decision": "added",
+      "source_id": "0224B3CE-3993-4EE7-B056-E2D2267D2317",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "0F40EF9F-D8F7-4B1D-8D19-AF05A9D7E0F9",
+      "kind": "wall"
+    },
+    {
+      "source_id": "103E07FD-1FC6-4F60-8C2C-8C8C49691068",
+      "native_completed_roomplan": true,
+      "projected_area_m2": 239.84656446400191,
+      "decision": "withheld_from_routing",
+      "reason": "Broad inferred coverage does not establish support over the complete polygon; retain original measured floors"
+    },
+    {
+      "decision": "added",
+      "source_id": "182D1FAA-D2C1-461B-887F-1BCF4A63B45D",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "18BC7440-0639-45E0-921B-8B61F4DDD71D",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "18D684F3-8119-40BE-A3E5-FFA78C765298",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "282235BF-3874-43B2-B2AE-4E25FF89B644",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "48BF65AC-B9E3-402B-A7C4-19273AE34C74",
+      "kind": "wall"
+    },
+    {
+      "decision": "deduplicated_keep_existing",
+      "source_id": "51A165C7-2C7D-4F3A-B58F-C52BFEB0B1B5",
+      "kind": "wall",
+      "matches": [
+        {
+          "existing_footprint_index": 36,
+          "source_interval_m": [
+            0.057545980894953636,
+            5.273441831000822
+          ],
+          "normal_distance_m": 0.030802686438720972,
+          "orientation_difference_degrees": 0.3773951592335591
+        }
+      ]
+    },
+    {
+      "decision": "added",
+      "source_id": "5888D46D-A245-48E2-AB40-2589EA2175F4",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "65035842-51B3-4FFB-8A2B-2CF9D4370962",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "65A6E4EF-7B17-4423-97CD-EE984830D01F",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "75269EFD-7B01-4F4F-9AA0-F97AF0047196",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "78AA04BB-3518-4128-8981-9D86A0C33378",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "A3874E3A-EC16-4D0B-B991-F29D79B348CD",
+      "kind": "wall"
+    },
+    {
+      "decision": "deduplicated_keep_existing",
+      "source_id": "A7AAB3EF-7E2C-4276-B714-7B48A39F5207",
+      "kind": "door",
+      "matches": [
+        {
+          "existing_footprint_index": 51,
+          "source_interval_m": [
+            -0.0414219322093995,
+            0.9011714166465323
+          ],
+          "normal_distance_m": 0.003726229899367356,
+          "orientation_difference_degrees": 0.37742470365167097
+        }
+      ]
+    },
+    {
+      "decision": "added",
+      "source_id": "A9F774FE-78D9-41BB-8EA4-D3249429FE11",
+      "kind": "door"
+    },
+    {
+      "decision": "added",
+      "source_id": "AFF78D40-E891-43FE-BF9B-7AAF2F404BA5",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "B774AFC7-D8C8-4D3C-B2DF-64F6FD5D2FEC",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "B863CBB6-57C2-4B66-8670-A84AB84D6713",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "BD8172C9-CBAF-4FCA-86F4-CCF9512B4090",
+      "kind": "wall"
+    },
+    {
+      "decision": "deduplicated_keep_existing",
+      "source_id": "D269A026-5BB1-4195-8F20-74D8F75B04B2",
+      "kind": "wall",
+      "matches": [
+        {
+          "existing_footprint_index": 3,
+          "source_interval_m": [
+            -0.030806532511715015,
+            19.587444866972398
+          ],
+          "normal_distance_m": 0.06971775848555017,
+          "orientation_difference_degrees": 0.37740237572041346
+        }
+      ]
+    },
+    {
+      "decision": "added",
+      "source_id": "D2A4C8E4-9F13-41C0-96FD-A35BE52041FF",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "D4F0FD6E-71FC-493A-9565-A41073206701",
+      "kind": "wall"
+    },
+    {
+      "decision": "added",
+      "source_id": "F4F29A24-A69C-46E7-8572-FCD910F722E4",
+      "kind": "opening"
+    },
+    {
+      "source_id": "observed-0",
+      "native_completed_roomplan": false,
+      "projected_area_m2": 103.43930777780145,
+      "decision": "withheld_from_routing",
+      "reason": "Broad inferred coverage does not establish support over the complete polygon; retain original measured floors"
+    },
+    {
+      "source_id": "observed-1",
+      "native_completed_roomplan": false,
+      "projected_area_m2": 0.9535680888728848,
+      "decision": "withheld_from_routing",
+      "reason": "Broad inferred coverage does not establish support over the complete polygon; retain original measured floors"
+    },
+    {
+      "source_id": "observed-2",
+      "native_completed_roomplan": false,
+      "projected_area_m2": 150.10497766083517,
+      "decision": "withheld_from_routing",
+      "reason": "Broad inferred coverage does not establish support over the complete polygon; retain original measured floors"
+    },
+    {
+      "source_id": "8FE3F636-0E03-43EB-B7DF-BB9E4CCB604A",
+      "kind": "sink",
+      "decision": "excluded_above_overhead_clearance",
+      "bottom_above_floor_m": 0.8314050300000001,
+      "threshold_m": 0.7
+    },
+    {
+      "source_id": "C753B851-BB36-4975-8695-3CC918446260",
+      "kind": "television",
+      "decision": "excluded_above_overhead_clearance",
+      "bottom_above_floor_m": 1.413725925,
+      "threshold_m": 0.7
+    }
+  ],
+  "validation": {
+    "finite_geometry": true,
+    "positive_footprint_dimensions": true,
+    "baseline_footprints_unchanged": true,
+    "points_unchanged": true,
+    "stairs_unchanged": true,
+    "floor_count_unchanged": true,
+    "unique_feature_ids": true
+  },
+  "output_files": [
+    {
+      "path": "merged-floor-2.json",
+      "sha256": "a2c0993c064ab9d664b3e4db2fef64bbb06c34268a89ee1c2f29ea3fdbb9e473"
+    },
+    {
+      "path": "registered-projection.json",
+      "sha256": "c0ef7080034192e73761220ca842b16168a66a09c77c7fbb76a0d8a7529eac27"
+    },
+    {
+      "path": "registration.json",
+      "sha256": "ed8541df9d753c4115d5edfcbe6b4c2712384d2a7a3f6564d4142747ccc218aa"
+    },
+    {
+      "path": "canonical-capture.json",
+      "sha256": "c37651e264e574b2bab24de8eab34d57a19f7b5ceb7b842ce55ec250b1e3d0dc"
+    }
+  ]
+}

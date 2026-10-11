@@ -213,7 +213,13 @@ enum MapStore {
             try archivedWorldMap.write(to: destination.appending(path: "venue.arworldmap"), options: .atomic)
             try encoder.encode(payload.map).write(to: destination.appending(path: "venue-map.json"), options: .atomic)
             try encoder.encode(payload.report).write(to: destination.appending(path: "venue-report.json"), options: .atomic)
-            try encoder.encode(payload.rooms).write(to: destination.appending(path: "captured-rooms.json"), options: .atomic)
+            do {
+                _ = try RoomCaptureArchive.writeJSON(payload.rooms, to: destination.appending(path: "captured-rooms.json"))
+            } catch let failure as RoomCaptureArchive.Failure {
+                guard case .encoding = failure else { throw failure }
+                // Navigation uses the validated map and world map; native rebuild metadata is optional.
+                Log.scan.error("couldn't serialize saved native rooms: \(failure.underlyingError.localizedDescription, privacy: .private)")
+            }
             if let startView = payload.startView {
                 try startView.write(to: destination.appending(path: "start-view.jpg"), options: .atomic)
             }

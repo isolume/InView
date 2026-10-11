@@ -4,6 +4,7 @@ import SwiftUI
 struct BackendSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("detailedScanning") private var detailedScanning = false
+    @AppStorage("recordScanVideo") private var recordScanVideo = false
     @State private var address = AppConfig.backendAddress
     @State private var token = AppConfig.backendToken(for: AppConfig.backendAddress) ?? ""
     @State private var usesLocalBackend = AppConfig.usesLocalBackend
@@ -32,6 +33,11 @@ struct BackendSettingsView: View {
                     } footer: {
                         Text("Off: \(AppConfig.hostedBackendAddress.isEmpty ? "no hosted server" : AppConfig.hostedBackendAddress). On: \(AppConfig.localBackendAddress ?? "") on this Wi-Fi, started with backend/run-local.sh.")
                     }
+                }
+                Section {
+                    Toggle("Record video", isOn: $recordScanVideo)
+                } footer: {
+                    Text("Saves video with matching LiDAR measurements for 3D modeling. No audio. Uses more battery and storage; export it from Saved scans.")
                 }
                 Section {
                     TextField("Server address", text: $address)

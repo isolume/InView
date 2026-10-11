@@ -102,7 +102,6 @@ final class RawScanCapture {
     private var lastObstacleTimestamp: TimeInterval?
     private let obstacleInterval: TimeInterval = 1.5
     private var walkRecorder = ScanWalkTraceRecorder()
-    private var observesFloorOnly = false
     var floorY: Float?
     var hasObservedFloor: Bool { observedSurfaces.snapshot().contains { $0.kind == .floor } }
     /// Pose recording is cheap; floor sampling and depth work keep their own slower limits.
@@ -117,7 +116,7 @@ final class RawScanCapture {
     }
     private let depthInterval: TimeInterval = 2
 
-    /// Call before constructing RoomCaptureView with the custom session. RoomPlan preserves
+    /// Call before constructing RoomCaptureSession with the custom session. RoomPlan preserves
     /// the supplied world-tracking settings. No reset/remove-anchor options are used.
     func prepare(session: ARSession) {
         let configuration: ARWorldTrackingConfiguration
@@ -146,7 +145,6 @@ final class RawScanCapture {
     }
 
     func resume() {
-        observesFloorOnly = false
         guard timer == nil, session != nil else { return }
         if let session { trackRecorder.start(session: session) }
         contextTracker.start()
@@ -166,14 +164,6 @@ final class RawScanCapture {
         worker?.cancel()
         // Keep the worker slot occupied until it releases its immutable snapshot. A quick
         // pause/resume cannot queue another allocation behind a worker still finishing.
-    }
-
-    /// Keep measured floor and the walk in the shared frame while RoomPlan processes a
-    /// normal doorway handoff. Avoid competing depth allocations during RoomBuilder work.
-    func observeFloorDuringHandoff() {
-        observesFloorOnly = true
-        generation += 1
-        worker?.cancel()
     }
 
     func measuredFloorElevation(near position: SIMD3<Float>) -> Float? {
@@ -263,7 +253,6 @@ final class RawScanCapture {
                             trackingIsNormal: normal, frameIsFresh: fresh)
         guard normal, fresh else { return }
         observedSurfaces.update(frame: frame, floorY: floorY)
-        guard !observesFloorOnly else { return }
         let measuredFloor = measuredFloorElevation(near: position)
         let keepArchive = retainsDepthKeyframes ? shouldKeepDepth(frame) : frames.isEmpty
         let measureObstacles = measuredFloor != nil
