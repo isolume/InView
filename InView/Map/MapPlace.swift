@@ -9,6 +9,9 @@ struct MapPlace: Identifiable, Equatable {
     let tint: Color
     /// Floor position as (map x, map z).
     let position: SIMD2<Float>
+    /// The door a sign labeled, and the measured room behind it, lit up on the map.
+    let door: SignTag.Door?
+    let room: [SIMD2<Float>]?
 
     init(_ point: AccessPoint) {
         id = point.id
@@ -16,6 +19,8 @@ struct MapPlace: Identifiable, Equatable {
         symbol = point.symbolName
         tint = point.isTooSteep ? Theme.color(for: .warning) : point.tint
         position = point.floorPoint
+        door = point.sign?.door
+        room = point.sign?.room
     }
 
     static func places(in map: VenueMap?) -> [MapPlace] {
