@@ -44,6 +44,7 @@ final class ScanController: ObservableObject {
     @Published private(set) var detailError: String?
     @Published private(set) var isPreparingDetail = false
     @Published private(set) var analysisCandidates: [ScanAnalysis.Place] = []
+    @Published private(set) var analysisHighlights: ScanHighlights?
     @Published private(set) var analysisStatus: String?
     @Published private(set) var analysisError: String?
     @Published private(set) var isFindingPlaces = false
@@ -593,6 +594,7 @@ final class ScanController: ObservableObject {
                             seen.insert(place.id).inserted && !self.reviewedAnalysisIDs.contains(place.id)
                                 && !(place.sourceAccessPointID.map { existing.contains($0) } ?? false)
                         }
+                        self.analysisHighlights = analysis.highlights.flatMap { $0.items.isEmpty ? nil : $0 }
                         self.analysisStatus = self.analysisCandidates.isEmpty
                             ? "No new places found." : "Review each place before adding it."
                         return
@@ -1157,6 +1159,7 @@ final class ScanController: ObservableObject {
                 detailError = nil
                 isPreparingDetail = false
                 analysisCandidates = []
+                analysisHighlights = nil
                 analysisStatus = nil
                 analysisError = nil
                 isFindingPlaces = false
