@@ -73,8 +73,10 @@ struct StreamAlignmentTests {
         #expect(alignmentNear(alignment.correction(at: 1), alignmentTransform(x: 1, z: 0.5, yaw: .pi * 0.375)))
         let transform = alignment.correction(at: 1)
         #expect(validRigidTransform(alignmentArray(transform)))
-        let correctedPoint = pose.transform * (original * SIMD4<Float>(0, 0, -1, 1))
-        let expectedPoint = (correction * original) * SIMD4<Float>(0, 0, -1, 1)
+        let testPoint = SIMD4<Float>(0, 0, -1, 1)
+        let correctedPoint = pose.transform * (original * testPoint)
+        let expectedTransform = correction * original
+        let expectedPoint = expectedTransform * testPoint
         #expect(simd_length(correctedPoint - expectedPoint) < 0.0001)
     }
 

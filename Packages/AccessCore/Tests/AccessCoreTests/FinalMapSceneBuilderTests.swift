@@ -62,7 +62,10 @@ import simd
 
     private func world(_ point: [Float], surface: SceneSurface) -> SIMD3<Float> {
         let m = surface.mapFromSurface
-        return SIMD3((0..<3).map { m[$0] * point[0] + m[4 + $0] * point[1] + m[8 + $0] * point[2] + m[12 + $0] })
+        let x = m[0] * point[0] + m[4] * point[1] + m[8] * point[2] + m[12]
+        let y = m[1] * point[0] + m[5] * point[1] + m[9] * point[2] + m[13]
+        let z = m[2] * point[0] + m[6] * point[1] + m[10] * point[2] + m[14]
+        return SIMD3(x, y, z)
     }
 
     private func coversFloor(_ scene: ProcessedScene, _ point: SIMD2<Float>, elevation: Float = 0) -> Bool {

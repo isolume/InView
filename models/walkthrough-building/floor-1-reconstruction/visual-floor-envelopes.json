@@ -1,0 +1,1773 @@
+{
+  "schema_version": 1,
+  "coordinate_policy": "Per-capture floor polygons are nativeXZ. Protected void, staircase cut, slope cut and railing segments are registered commonXZ. All displayed asFloor1.",
+  "captures": [
+    {
+      "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+      "coordinates": "native scanXZ meters; common-frame heights are explicit; mapFromScan already includes globalY normalization",
+      "display_floor": 1,
+      "visual_completion": true,
+      "route_authority": false,
+      "method": "Complete native foodcourt envelope and measured branches, fill furniture occlusion, straightened at1.3m/.65m; full terrace is bounded by upper-ground support and completed native perimeter. Keep video-derived descending corridor separate.",
+      "polygons": [
+        {
+          "outer_xz": [
+            [
+              -32.04358,
+              -22.19416
+            ],
+            [
+              -33.94731,
+              -21.17061
+            ],
+            [
+              -34.30045,
+              -19.8889
+            ],
+            [
+              -34.33051,
+              -19.77981
+            ],
+            [
+              -33.12148,
+              -18.64044
+            ],
+            [
+              -33.4735,
+              -19.10959
+            ],
+            [
+              -34.12678,
+              -19.98022
+            ],
+            [
+              -32.04358,
+              -22.19416
+            ]
+          ],
+          "holes_xz": [],
+          "area_m2": 1.3817318013517919
+        },
+        {
+          "outer_xz": [
+            [
+              -31.21103,
+              -14.77893
+            ],
+            [
+              -30.54894,
+              -15.21201
+            ],
+            [
+              -32.86321,
+              -18.29625
+            ],
+            [
+              -34.67283,
+              -17.01073
+            ],
+            [
+              -35.27345,
+              -12.21785
+            ],
+            [
+              -36.21191,
+              -11.65945
+            ],
+            [
+              -35.44775,
+              -10.93932
+            ],
+            [
+              -32.67868,
+              -10.59701
+            ],
+            [
+              -31.21103,
+              -14.77893
+            ]
+          ],
+          "holes_xz": [],
+          "area_m2": 23.699053088403208
+        },
+        {
+          "outer_xz": [
+            [
+              12.70346,
+              -1.01347
+            ],
+            [
+              8.79557,
+              -3.97483
+            ],
+            [
+              7.65676,
+              -6.59386
+            ],
+            [
+              2.62458,
+              -8.10704
+            ],
+            [
+              2.58894,
+              -9.30859
+            ],
+            [
+              -0.36073,
+              -8.58443
+            ],
+            [
+              -12.61001,
+              -17.88067
+            ],
+            [
+              -13.84204,
+              -16.24729
+            ],
+            [
+              -21.17804,
+              -16.0418
+            ],
+            [
+              -23.71599,
+              -19.6702
+            ],
+            [
+              -27.62701,
+              -22.73758
+            ],
+            [
+              -26.91948,
+              -23.9258
+            ],
+            [
+              -28.81705,
+              -30.66073
+            ],
+            [
+              -31.61758,
+              -32.06324
+            ],
+            [
+              -33.75908,
+              -29.13468
+            ],
+            [
+              -33.71192,
+              -27.54438
+            ],
+            [
+              -30.64589,
+              -24.34584
+            ],
+            [
+              -31.37096,
+              -22.55579
+            ],
+            [
+              -31.83349,
+              -22.30711
+            ],
+            [
+              -27.84585,
+              -16.98012
+            ],
+            [
+              -27.57484,
+              -17.15739
+            ],
+            [
+              -7.10475,
+              7.20374
+            ],
+            [
+              -4.13835,
+              10.73401
+            ],
+            [
+              -1.22641,
+              8.73761
+            ],
+            [
+              5.00337,
+              -0.23157
+            ],
+            [
+              5.00337,
+              -0.23157
+            ],
+            [
+              5.60904,
+              -1.10357
+            ],
+            [
+              10.1253,
+              1.50359
+            ],
+            [
+              12.70346,
+              -1.01347
+            ]
+          ],
+          "holes_xz": [
+            [
+              [
+                -6.51429,
+                3.43534
+              ],
+              [
+                -5.008,
+                5.235
+              ],
+              [
+                -7.155,
+                7.032
+              ],
+              [
+                -8.4578,
+                5.47546
+              ],
+              [
+                -16.397,
+                -4.01
+              ],
+              [
+                -14.25,
+                -5.807
+              ],
+              [
+                -6.51429,
+                3.43534
+              ]
+            ]
+          ],
+          "area_m2": 501.81615071925205
+        }
+      ],
+      "height_partition_proposals": [
+        {
+          "id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC-visual-main_lower_foodcourt_and_lobby",
+          "kind": "main_lower_foodcourt_and_lobby",
+          "proposed_height_y_m": -2.4107454419136047,
+          "common_frame_proposed_height_y_m": 0,
+          "polygons": [
+            {
+              "outer_xz": [
+                [
+                  -34.30045,
+                  -19.8889
+                ],
+                [
+                  -33.4735,
+                  -19.10959
+                ],
+                [
+                  -34.12678,
+                  -19.98022
+                ],
+                [
+                  -32.04358,
+                  -22.19416
+                ],
+                [
+                  -33.94731,
+                  -21.17061
+                ],
+                [
+                  -34.30045,
+                  -19.8889
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 1.2418515327475446,
+              "height_y_m": -2.4107454419136047
+            },
+            {
+              "outer_xz": [
+                [
+                  -7.10475,
+                  7.20374
+                ],
+                [
+                  -7.0822,
+                  7.17981
+                ],
+                [
+                  -8.4592,
+                  5.47695
+                ],
+                [
+                  -8.4578,
+                  5.47546
+                ],
+                [
+                  -16.397,
+                  -4.01
+                ],
+                [
+                  -14.25,
+                  -5.807
+                ],
+                [
+                  -6.51429,
+                  3.43534
+                ],
+                [
+                  0.0274,
+                  -2.65363
+                ],
+                [
+                  1.71743,
+                  -2.91598
+                ],
+                [
+                  2.09586,
+                  -2.55935
+                ],
+                [
+                  2.30161,
+                  -2.77768
+                ],
+                [
+                  5.00337,
+                  -0.23157
+                ],
+                [
+                  5.60904,
+                  -1.10357
+                ],
+                [
+                  10.1253,
+                  1.50359
+                ],
+                [
+                  12.70346,
+                  -1.01347
+                ],
+                [
+                  8.79557,
+                  -3.97483
+                ],
+                [
+                  7.65676,
+                  -6.59386
+                ],
+                [
+                  2.62458,
+                  -8.10704
+                ],
+                [
+                  2.58894,
+                  -9.30859
+                ],
+                [
+                  -0.36073,
+                  -8.58443
+                ],
+                [
+                  -12.61001,
+                  -17.88067
+                ],
+                [
+                  -13.84204,
+                  -16.24729
+                ],
+                [
+                  -21.17804,
+                  -16.0418
+                ],
+                [
+                  -23.71599,
+                  -19.6702
+                ],
+                [
+                  -27.62701,
+                  -22.73758
+                ],
+                [
+                  -26.91948,
+                  -23.9258
+                ],
+                [
+                  -28.81705,
+                  -30.66073
+                ],
+                [
+                  -31.61758,
+                  -32.06324
+                ],
+                [
+                  -33.75908,
+                  -29.13468
+                ],
+                [
+                  -33.71192,
+                  -27.54438
+                ],
+                [
+                  -30.64589,
+                  -24.34584
+                ],
+                [
+                  -31.37096,
+                  -22.55579
+                ],
+                [
+                  -31.83349,
+                  -22.30711
+                ],
+                [
+                  -27.84585,
+                  -16.98012
+                ],
+                [
+                  -27.57484,
+                  -17.15739
+                ],
+                [
+                  -7.10475,
+                  7.20374
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 418.8072850065997,
+              "height_y_m": -2.4107454419136047
+            }
+          ],
+          "source_ids": [
+            "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC"
+          ],
+          "visual_completion": true,
+          "route_authority": false,
+          "confidence": "video-confirmed physical height; measured/native outline with plausible architectural completion",
+          "review_note": "Complete native foodcourt envelope and measured branches, fill furniture occlusion, straightened at1.3m/.65m; full terrace is bounded by upper-ground support and completed native perimeter. Keep video-derived descending corridor separate."
+        },
+        {
+          "id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC-visual-upper_entrance_dining_terrace",
+          "kind": "upper_entrance_dining_terrace",
+          "proposed_height_y_m": -1.3107454419136046,
+          "common_frame_proposed_height_y_m": 1.1,
+          "polygons": [
+            {
+              "outer_xz": [
+                [
+                  -1.22641,
+                  8.73761
+                ],
+                [
+                  5.00337,
+                  -0.23157
+                ],
+                [
+                  2.30161,
+                  -2.77768
+                ],
+                [
+                  2.09586,
+                  -2.55935
+                ],
+                [
+                  1.71743,
+                  -2.91598
+                ],
+                [
+                  0.0274,
+                  -2.65363
+                ],
+                [
+                  -6.51429,
+                  3.43534
+                ],
+                [
+                  -5.008,
+                  5.235
+                ],
+                [
+                  -7.155,
+                  7.032
+                ],
+                [
+                  -8.4578,
+                  5.47546
+                ],
+                [
+                  -8.4592,
+                  5.47695
+                ],
+                [
+                  -7.0822,
+                  7.17981
+                ],
+                [
+                  -7.10475,
+                  7.20374
+                ],
+                [
+                  -4.13835,
+                  10.73401
+                ],
+                [
+                  -1.22641,
+                  8.73761
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 83.00886571265235,
+              "height_y_m": -1.3107454419136046
+            }
+          ],
+          "source_ids": [
+            "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC"
+          ],
+          "visual_completion": true,
+          "route_authority": false,
+          "confidence": "video-confirmed physical height; measured/native outline with plausible architectural completion",
+          "review_note": "Complete native foodcourt envelope and measured branches, fill furniture occlusion, straightened at1.3m/.65m; full terrace is bounded by upper-ground support and completed native perimeter. Keep video-derived descending corridor separate."
+        },
+        {
+          "id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC-visual-raised_l_window_lounge",
+          "kind": "raised_l_window_lounge",
+          "proposed_height_y_m": -0.8307454419136047,
+          "common_frame_proposed_height_y_m": 1.58,
+          "polygons": [
+            {
+              "outer_xz": [
+                [
+                  -34.33051,
+                  -19.77981
+                ],
+                [
+                  -33.12148,
+                  -18.64044
+                ],
+                [
+                  -33.4735,
+                  -19.10959
+                ],
+                [
+                  -34.30045,
+                  -19.8889
+                ],
+                [
+                  -34.33051,
+                  -19.77981
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 0.1398802686042471,
+              "height_y_m": -0.8307454419136047
+            },
+            {
+              "outer_xz": [
+                [
+                  -35.44775,
+                  -10.93932
+                ],
+                [
+                  -32.67868,
+                  -10.59701
+                ],
+                [
+                  -31.21103,
+                  -14.77893
+                ],
+                [
+                  -30.54894,
+                  -15.21201
+                ],
+                [
+                  -32.86321,
+                  -18.29625
+                ],
+                [
+                  -34.67283,
+                  -17.01073
+                ],
+                [
+                  -35.27345,
+                  -12.21785
+                ],
+                [
+                  -36.21191,
+                  -11.65945
+                ],
+                [
+                  -35.44775,
+                  -10.93932
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 23.69905308840321,
+              "height_y_m": -0.8307454419136047
+            }
+          ],
+          "source_ids": [
+            "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC"
+          ],
+          "visual_completion": true,
+          "route_authority": false,
+          "confidence": "video-confirmed physical height; measured/native outline with plausible architectural completion",
+          "review_note": "Complete native foodcourt envelope and measured branches, fill furniture occlusion, straightened at1.3m/.65m; full terrace is bounded by upper-ground support and completed native perimeter. Keep video-derived descending corridor separate."
+        }
+      ],
+      "flight_and_slope_removed": true,
+      "protected_void_removed": true,
+      "total_area_m2": 526.8969356090071,
+      "partition_overlap_area_m2": 0.0
+    },
+    {
+      "capture_id": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+      "coordinates": "native scanXZ meters; common-frame heights are explicit; mapFromScan already includes globalY normalization",
+      "display_floor": 1,
+      "visual_completion": true,
+      "route_authority": false,
+      "method": "Whole native raised-lobby envelope plus measured window/elevator branches, furniture/capture gaps filled. Lower landing follows measured landing plus full stair width; exact flight quad removed from every flat surface.",
+      "polygons": [
+        {
+          "outer_xz": [
+            [
+              -5.45552,
+              -7.00713
+            ],
+            [
+              -6.08053,
+              -6.39528
+            ],
+            [
+              -5.38375,
+              -5.20544
+            ],
+            [
+              -2.28546,
+              -5.4106
+            ],
+            [
+              -2.7595,
+              -4.40207
+            ],
+            [
+              -1.95548,
+              -3.16803
+            ],
+            [
+              -0.96478,
+              -1.64748
+            ],
+            [
+              1.32589,
+              -1.51394
+            ],
+            [
+              1.93115,
+              -0.2705
+            ],
+            [
+              4.11462,
+              -0.32001
+            ],
+            [
+              4.30332,
+              -0.74168
+            ],
+            [
+              -1.772,
+              -3.731
+            ],
+            [
+              -1.772,
+              -3.731
+            ],
+            [
+              -0.671,
+              -6.781
+            ],
+            [
+              5.305,
+              -3.849
+            ],
+            [
+              4.57532,
+              -1.34952
+            ],
+            [
+              5.51222,
+              -3.44315
+            ],
+            [
+              6.29151,
+              0.2489
+            ],
+            [
+              12.1512,
+              2.6064
+            ],
+            [
+              13.7801,
+              -0.85914
+            ],
+            [
+              14.71873,
+              -0.68863
+            ],
+            [
+              16.997,
+              -11.04948
+            ],
+            [
+              -2.30221,
+              -15.24707
+            ],
+            [
+              -2.47599,
+              -14.29043
+            ],
+            [
+              -5.54138,
+              -12.61093
+            ],
+            [
+              -6.95629,
+              -9.56988
+            ],
+            [
+              -6.00968,
+              -9.63256
+            ],
+            [
+              -5.45552,
+              -7.00713
+            ]
+          ],
+          "holes_xz": [],
+          "area_m2": 245.36961830086977
+        }
+      ],
+      "height_partition_proposals": [
+        {
+          "id": "081DA781-19B1-4A3F-91BE-8DF0094E5032-visual-raised_l_window_lounge",
+          "kind": "raised_l_window_lounge",
+          "proposed_height_y_m": 0.01750000000000007,
+          "common_frame_proposed_height_y_m": 1.58,
+          "polygons": [
+            {
+              "outer_xz": [
+                [
+                  -6.00968,
+                  -9.63256
+                ],
+                [
+                  -5.45552,
+                  -7.00713
+                ],
+                [
+                  -6.08053,
+                  -6.39528
+                ],
+                [
+                  -5.38375,
+                  -5.20544
+                ],
+                [
+                  -2.28546,
+                  -5.4106
+                ],
+                [
+                  -2.7595,
+                  -4.40207
+                ],
+                [
+                  -1.95548,
+                  -3.16803
+                ],
+                [
+                  -1.772,
+                  -3.731
+                ],
+                [
+                  -1.772,
+                  -3.731
+                ],
+                [
+                  -1.772,
+                  -3.731
+                ],
+                [
+                  -0.671,
+                  -6.781
+                ],
+                [
+                  5.305,
+                  -3.849
+                ],
+                [
+                  4.57532,
+                  -1.34952
+                ],
+                [
+                  5.51222,
+                  -3.44315
+                ],
+                [
+                  6.29151,
+                  0.2489
+                ],
+                [
+                  12.1512,
+                  2.6064
+                ],
+                [
+                  13.7801,
+                  -0.85914
+                ],
+                [
+                  14.71873,
+                  -0.68863
+                ],
+                [
+                  16.997,
+                  -11.04948
+                ],
+                [
+                  -2.30221,
+                  -15.24707
+                ],
+                [
+                  -2.47599,
+                  -14.29043
+                ],
+                [
+                  -5.54138,
+                  -12.61093
+                ],
+                [
+                  -6.95629,
+                  -9.56988
+                ],
+                [
+                  -6.00968,
+                  -9.63256
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 238.44134172406166,
+              "height_y_m": 0.01750000000000007
+            }
+          ],
+          "source_ids": [
+            "081DA781-19B1-4A3F-91BE-8DF0094E5032"
+          ],
+          "visual_completion": true,
+          "route_authority": false,
+          "confidence": "video-confirmed physical height; measured/native outline with plausible architectural completion",
+          "review_note": "Whole native raised-lobby envelope plus measured window/elevator branches, furniture/capture gaps filled. Lower landing follows measured landing plus full stair width; exact flight quad removed from every flat surface."
+        },
+        {
+          "id": "081DA781-19B1-4A3F-91BE-8DF0094E5032-visual-main_lower_stair_landing",
+          "kind": "main_lower_stair_landing",
+          "proposed_height_y_m": -1.5625,
+          "common_frame_proposed_height_y_m": 0,
+          "polygons": [
+            {
+              "outer_xz": [
+                [
+                  -0.96478,
+                  -1.64748
+                ],
+                [
+                  1.32589,
+                  -1.51394
+                ],
+                [
+                  1.93115,
+                  -0.2705
+                ],
+                [
+                  4.11462,
+                  -0.32001
+                ],
+                [
+                  4.30332,
+                  -0.74168
+                ],
+                [
+                  -1.772,
+                  -3.731
+                ],
+                [
+                  -1.772,
+                  -3.731
+                ],
+                [
+                  -1.95548,
+                  -3.16803
+                ],
+                [
+                  -0.96478,
+                  -1.64748
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 6.928276576808116,
+              "height_y_m": -1.5625
+            }
+          ],
+          "source_ids": [
+            "081DA781-19B1-4A3F-91BE-8DF0094E5032"
+          ],
+          "visual_completion": true,
+          "route_authority": false,
+          "confidence": "video-confirmed physical height; measured/native outline with plausible architectural completion",
+          "review_note": "Whole native raised-lobby envelope plus measured window/elevator branches, furniture/capture gaps filled. Lower landing follows measured landing plus full stair width; exact flight quad removed from every flat surface."
+        }
+      ],
+      "flight_and_slope_removed": true,
+      "protected_void_removed": true,
+      "total_area_m2": 245.36961830086977,
+      "partition_overlap_area_m2": 0.0
+    },
+    {
+      "capture_id": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+      "coordinates": "native scanXZ meters; common-frame heights are explicit; mapFromScan already includes globalY normalization",
+      "display_floor": 1,
+      "visual_completion": true,
+      "route_authority": false,
+      "method": "Straight outer-wall-aligned long corridor with depth-supported inner balustrade edge; complete corner lobbies. Explicit atrium opening excluded. Whole native rectangle prohibited.",
+      "polygons": [
+        {
+          "outer_xz": [
+            [
+              -6.94603,
+              -46.49078
+            ],
+            [
+              -8.86322,
+              -51.07928
+            ],
+            [
+              -25.79547,
+              -49.4486
+            ],
+            [
+              -24.30306,
+              -38.14671
+            ],
+            [
+              -21.95426,
+              -14.24853
+            ],
+            [
+              -20.61895,
+              -4.13631
+            ],
+            [
+              -19.13186,
+              -4.33268
+            ],
+            [
+              -15.21128,
+              -0.61393
+            ],
+            [
+              -10.91842,
+              1.3409
+            ],
+            [
+              -7.98174,
+              4.4835
+            ],
+            [
+              -7.73959,
+              4.48182
+            ],
+            [
+              -7.82366,
+              2.355
+            ],
+            [
+              -1.02185,
+              3.26997
+            ],
+            [
+              -1.04852,
+              4.43542
+            ],
+            [
+              -0.72589,
+              4.43318
+            ],
+            [
+              -1.70773,
+              -3.00227
+            ],
+            [
+              -5.47503,
+              -2.5048
+            ],
+            [
+              -12.70648,
+              -6.08896
+            ],
+            [
+              -14.38994,
+              -7.37968
+            ],
+            [
+              -16.64383,
+              -12.22633
+            ],
+            [
+              -14.61413,
+              -18.24383
+            ],
+            [
+              -15.3111,
+              -23.72793
+            ],
+            [
+              -15.33335,
+              -23.69791
+            ],
+            [
+              -15.33415,
+              -23.69649
+            ],
+            [
+              -15.47556,
+              -25.02202
+            ],
+            [
+              -17.19871,
+              -38.58049
+            ],
+            [
+              -16.60985,
+              -38.71549
+            ],
+            [
+              -15.01561,
+              -40.36413
+            ],
+            [
+              -14.26217,
+              -40.13209
+            ],
+            [
+              -14.19077,
+              -40.1786
+            ],
+            [
+              -14.11341,
+              -40.20454
+            ],
+            [
+              -13.65037,
+              -41.61673
+            ],
+            [
+              -13.30511,
+              -40.47559
+            ],
+            [
+              -12.73951,
+              -40.66525
+            ],
+            [
+              -12.21985,
+              -41.16097
+            ],
+            [
+              -11.50292,
+              -41.12693
+            ],
+            [
+              -11.49705,
+              -41.08188
+            ],
+            [
+              -11.48865,
+              -41.0847
+            ],
+            [
+              -11.47486,
+              -40.91144
+            ],
+            [
+              -11.39828,
+              -40.32346
+            ],
+            [
+              -8.22557,
+              -43.19491
+            ],
+            [
+              -6.94603,
+              -46.49078
+            ]
+          ],
+          "holes_xz": [],
+          "area_m2": 514.4385775684727
+        }
+      ],
+      "height_partition_proposals": [
+        {
+          "id": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF-visual-continuous_main_atrium_floor",
+          "kind": "continuous_main_atrium_floor",
+          "proposed_height_y_m": -1.5079931616783142,
+          "common_frame_proposed_height_y_m": 0,
+          "polygons": [
+            {
+              "outer_xz": [
+                [
+                  -6.94603,
+                  -46.49078
+                ],
+                [
+                  -8.86322,
+                  -51.07928
+                ],
+                [
+                  -25.79547,
+                  -49.4486
+                ],
+                [
+                  -24.30306,
+                  -38.14671
+                ],
+                [
+                  -21.95426,
+                  -14.24853
+                ],
+                [
+                  -20.61895,
+                  -4.13631
+                ],
+                [
+                  -19.13186,
+                  -4.33268
+                ],
+                [
+                  -15.21128,
+                  -0.61393
+                ],
+                [
+                  -10.91842,
+                  1.3409
+                ],
+                [
+                  -7.98174,
+                  4.4835
+                ],
+                [
+                  -7.73959,
+                  4.48182
+                ],
+                [
+                  -7.82366,
+                  2.355
+                ],
+                [
+                  -1.02185,
+                  3.26997
+                ],
+                [
+                  -1.04852,
+                  4.43542
+                ],
+                [
+                  -0.72589,
+                  4.43318
+                ],
+                [
+                  -1.70773,
+                  -3.00227
+                ],
+                [
+                  -5.47503,
+                  -2.5048
+                ],
+                [
+                  -12.70648,
+                  -6.08896
+                ],
+                [
+                  -14.38994,
+                  -7.37968
+                ],
+                [
+                  -16.64383,
+                  -12.22633
+                ],
+                [
+                  -14.61413,
+                  -18.24383
+                ],
+                [
+                  -15.3111,
+                  -23.72793
+                ],
+                [
+                  -15.33335,
+                  -23.69791
+                ],
+                [
+                  -15.33415,
+                  -23.69649
+                ],
+                [
+                  -15.47556,
+                  -25.02202
+                ],
+                [
+                  -17.19871,
+                  -38.58049
+                ],
+                [
+                  -16.60985,
+                  -38.71549
+                ],
+                [
+                  -15.01561,
+                  -40.36413
+                ],
+                [
+                  -14.26217,
+                  -40.13209
+                ],
+                [
+                  -14.19077,
+                  -40.1786
+                ],
+                [
+                  -14.11341,
+                  -40.20454
+                ],
+                [
+                  -13.65037,
+                  -41.61673
+                ],
+                [
+                  -13.30511,
+                  -40.47559
+                ],
+                [
+                  -12.73951,
+                  -40.66525
+                ],
+                [
+                  -12.21985,
+                  -41.16097
+                ],
+                [
+                  -11.50292,
+                  -41.12693
+                ],
+                [
+                  -11.49705,
+                  -41.08188
+                ],
+                [
+                  -11.48865,
+                  -41.0847
+                ],
+                [
+                  -11.47486,
+                  -40.91144
+                ],
+                [
+                  -11.39828,
+                  -40.32346
+                ],
+                [
+                  -8.22557,
+                  -43.19491
+                ],
+                [
+                  -6.94603,
+                  -46.49078
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 514.4385775684727,
+              "height_y_m": -1.5079931616783142
+            }
+          ],
+          "source_ids": [
+            "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF"
+          ],
+          "visual_completion": true,
+          "route_authority": false,
+          "confidence": "video-confirmed physical height; measured/native outline with plausible architectural completion",
+          "review_note": "Straight outer-wall-aligned long corridor with depth-supported inner balustrade edge; complete corner lobbies. Explicit atrium opening excluded. Whole native rectangle prohibited."
+        }
+      ],
+      "flight_and_slope_removed": true,
+      "protected_void_removed": true,
+      "total_area_m2": 514.4385775684727,
+      "partition_overlap_area_m2": 0.0
+    },
+    {
+      "capture_id": "3F8FE86D-8F9E-47A8-A010-49417284BD8E",
+      "coordinates": "native scanXZ meters; common-frame heights are explicit; mapFromScan already includes globalY normalization",
+      "display_floor": 1,
+      "visual_completion": true,
+      "route_authority": false,
+      "method": "Principal straight ballroom-front corridor with observed bays; initial loop completed as continuous circulation per video, not cut as a void. Protected upper atrium opening excluded.",
+      "polygons": [
+        {
+          "outer_xz": [
+            [
+              -14.97458,
+              -7.85949
+            ],
+            [
+              -11.87762,
+              7.90672
+            ],
+            [
+              -8.188,
+              7.97287
+            ],
+            [
+              -6.45828,
+              18.22802
+            ],
+            [
+              -7.83878,
+              18.46087
+            ],
+            [
+              -7.43961,
+              20.82744
+            ],
+            [
+              -6.05911,
+              20.59459
+            ],
+            [
+              -5.84289,
+              21.87648
+            ],
+            [
+              -11.3649,
+              22.80787
+            ],
+            [
+              -11.01563,
+              24.87863
+            ],
+            [
+              -6.82423,
+              24.4759
+            ],
+            [
+              -6.62464,
+              25.65919
+            ],
+            [
+              -2.18732,
+              24.91075
+            ],
+            [
+              -0.72603,
+              23.95439
+            ],
+            [
+              -2.60549,
+              21.22902
+            ],
+            [
+              -4.93244,
+              7.43302
+            ],
+            [
+              -4.93405,
+              7.4245
+            ],
+            [
+              -4.93392,
+              7.42428
+            ],
+            [
+              -4.93396,
+              7.42402
+            ],
+            [
+              -7.3771,
+              7.8361
+            ],
+            [
+              -5.13949,
+              7.40798
+            ],
+            [
+              -4.54508,
+              6.7627
+            ],
+            [
+              -0.91564,
+              0.58754
+            ],
+            [
+              -0.80292,
+              1.10928
+            ],
+            [
+              1.00687,
+              -2.14737
+            ],
+            [
+              0.10875,
+              -7.47216
+            ],
+            [
+              -5.79873,
+              -14.53805
+            ],
+            [
+              -7.87125,
+              -15.10119
+            ],
+            [
+              -12.47788,
+              -12.65089
+            ],
+            [
+              -14.97458,
+              -7.85949
+            ]
+          ],
+          "holes_xz": [],
+          "area_m2": 337.89145222587393
+        }
+      ],
+      "height_partition_proposals": [
+        {
+          "id": "3F8FE86D-8F9E-47A8-A010-49417284BD8E-visual-continuous_main_ballroom_front_floor",
+          "kind": "continuous_main_ballroom_front_floor",
+          "proposed_height_y_m": -1.2065155506134033,
+          "common_frame_proposed_height_y_m": 0,
+          "polygons": [
+            {
+              "outer_xz": [
+                [
+                  -14.97458,
+                  -7.85949
+                ],
+                [
+                  -11.87762,
+                  7.90672
+                ],
+                [
+                  -8.188,
+                  7.97287
+                ],
+                [
+                  -6.45828,
+                  18.22802
+                ],
+                [
+                  -7.83878,
+                  18.46087
+                ],
+                [
+                  -7.43961,
+                  20.82744
+                ],
+                [
+                  -6.05911,
+                  20.59459
+                ],
+                [
+                  -5.84289,
+                  21.87648
+                ],
+                [
+                  -11.3649,
+                  22.80787
+                ],
+                [
+                  -11.01563,
+                  24.87863
+                ],
+                [
+                  -6.82423,
+                  24.4759
+                ],
+                [
+                  -6.62464,
+                  25.65919
+                ],
+                [
+                  -2.18732,
+                  24.91075
+                ],
+                [
+                  -0.72603,
+                  23.95439
+                ],
+                [
+                  -2.60549,
+                  21.22902
+                ],
+                [
+                  -4.93244,
+                  7.43302
+                ],
+                [
+                  -4.93405,
+                  7.4245
+                ],
+                [
+                  -4.93392,
+                  7.42428
+                ],
+                [
+                  -4.93396,
+                  7.42402
+                ],
+                [
+                  -7.3771,
+                  7.8361
+                ],
+                [
+                  -5.13949,
+                  7.40798
+                ],
+                [
+                  -4.54508,
+                  6.7627
+                ],
+                [
+                  -0.91564,
+                  0.58754
+                ],
+                [
+                  -0.80292,
+                  1.10928
+                ],
+                [
+                  1.00687,
+                  -2.14737
+                ],
+                [
+                  0.10875,
+                  -7.47216
+                ],
+                [
+                  -5.79873,
+                  -14.53805
+                ],
+                [
+                  -7.87125,
+                  -15.10119
+                ],
+                [
+                  -12.47788,
+                  -12.65089
+                ],
+                [
+                  -14.97458,
+                  -7.85949
+                ]
+              ],
+              "holes_xz": [],
+              "area_m2": 337.89145222587393,
+              "height_y_m": -1.2065155506134033
+            }
+          ],
+          "source_ids": [
+            "3F8FE86D-8F9E-47A8-A010-49417284BD8E"
+          ],
+          "visual_completion": true,
+          "route_authority": false,
+          "confidence": "video-confirmed physical height; measured/native outline with plausible architectural completion",
+          "review_note": "Principal straight ballroom-front corridor with observed bays; initial loop completed as continuous circulation per video, not cut as a void. Protected upper atrium opening excluded."
+        }
+      ],
+      "flight_and_slope_removed": true,
+      "protected_void_removed": true,
+      "total_area_m2": 337.89145222587393,
+      "partition_overlap_area_m2": 0.0
+    }
+  ],
+  "protected_atrium_void_common_xz": [
+    {
+      "outer_xz": [
+        [
+          3.224,
+          26.387
+        ],
+        [
+          -3.279,
+          30.926
+        ],
+        [
+          -5.95,
+          41.65
+        ],
+        [
+          -3.1,
+          41.65
+        ],
+        [
+          0.034,
+          40.837
+        ],
+        [
+          3.224,
+          26.387
+        ]
+      ],
+      "holes_xz": [],
+      "area_m2": 71.90344150000001
+    }
+  ],
+  "main_stair_flight_cut_common_xz": [
+    {
+      "outer_xz": [
+        [
+          -1.772,
+          -3.731
+        ],
+        [
+          4.386,
+          -0.701
+        ],
+        [
+          5.305,
+          -3.849
+        ],
+        [
+          -0.671,
+          -6.781
+        ],
+        [
+          -1.772,
+          -3.731
+        ]
+      ],
+      "holes_xz": [],
+      "area_m2": 21.812443
+    }
+  ],
+  "foodcourt_slope_cut_common_xz": [
+    {
+      "outer_xz": [
+        [
+          -30.98688,
+          -15.68271
+        ],
+        [
+          -32.0848,
+          -13.10718
+        ],
+        [
+          -18.8388,
+          -7.4606
+        ],
+        [
+          -17.74088,
+          -10.03614
+        ],
+        [
+          -30.98688,
+          -15.68271
+        ]
+      ],
+      "holes_xz": [],
+      "area_m2": 40.315048000000004
+    }
+  ],
+  "atrium_railings_common_xz": [
+    {
+      "id": "atrium-visual-balustrade-0",
+      "a_xz": [
+        3.224,
+        26.387
+      ],
+      "b_xz": [
+        -3.279,
+        30.926
+      ],
+      "common_base_y_m": 0,
+      "height_m": 1.02,
+      "kind": "railing",
+      "visual_completion": true,
+      "route_authority": false,
+      "evidence": "Video92EDsegments3/5/9/10 and3Fsegment2; longitudinal edges fitted to floor-depth boundary, end returns are plausible completed continuations."
+    },
+    {
+      "id": "atrium-visual-balustrade-1",
+      "a_xz": [
+        -3.279,
+        30.926
+      ],
+      "b_xz": [
+        -5.95,
+        41.65
+      ],
+      "common_base_y_m": 0,
+      "height_m": 1.02,
+      "kind": "railing",
+      "visual_completion": true,
+      "route_authority": false,
+      "evidence": "Video92EDsegments3/5/9/10 and3Fsegment2; longitudinal edges fitted to floor-depth boundary, end returns are plausible completed continuations."
+    },
+    {
+      "id": "atrium-visual-balustrade-2",
+      "a_xz": [
+        -5.95,
+        41.65
+      ],
+      "b_xz": [
+        -3.1,
+        41.65
+      ],
+      "common_base_y_m": 0,
+      "height_m": 1.02,
+      "kind": "railing",
+      "visual_completion": true,
+      "route_authority": false,
+      "evidence": "Video92EDsegments3/5/9/10 and3Fsegment2; longitudinal edges fitted to floor-depth boundary, end returns are plausible completed continuations."
+    },
+    {
+      "id": "atrium-visual-balustrade-3",
+      "a_xz": [
+        -3.1,
+        41.65
+      ],
+      "b_xz": [
+        0.034,
+        40.837
+      ],
+      "common_base_y_m": 0,
+      "height_m": 1.02,
+      "kind": "railing",
+      "visual_completion": true,
+      "route_authority": false,
+      "evidence": "Video92EDsegments3/5/9/10 and3Fsegment2; longitudinal edges fitted to floor-depth boundary, end returns are plausible completed continuations."
+    },
+    {
+      "id": "atrium-visual-balustrade-4",
+      "a_xz": [
+        0.034,
+        40.837
+      ],
+      "b_xz": [
+        3.224,
+        26.387
+      ],
+      "common_base_y_m": 0,
+      "height_m": 1.02,
+      "kind": "railing",
+      "visual_completion": true,
+      "route_authority": false,
+      "evidence": "Video92EDsegments3/5/9/10 and3Fsegment2; longitudinal edges fitted to floor-depth boundary, end returns are plausible completed continuations."
+    }
+  ],
+  "warnings": [
+    "Apply exact exclusions AFTER any later filled/clean/union operation; otherwise stair flight or atrium void can be filled back in.",
+    "These are visual completions only. Navigation must continue to use measured support and camera path evidence.",
+    "Initial3F U-loop is not a void; completed from video-confirmed continuous circulation."
+  ]
+}

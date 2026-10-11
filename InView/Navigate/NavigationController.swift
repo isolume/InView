@@ -45,6 +45,21 @@ final class NavigationController: ObservableObject {
     @Published private(set) var isPositionReliable = false
     @Published private(set) var routePreference = RoutePreference.stepFree
 
+    /// Only an explicitly requested assistant turn exports a recent camera frame.
+    func assistantEvidence() -> (jpeg: Data?, highlights: [String], hazards: [String]) {
+        var highlights: [String] = []
+        var hazards: [String] = []
+        if let map {
+            highlights = map.points.prefix(20).map { "Saved map: \($0.title)" }
+            hazards = ScanReviewChecks(map: map).items.prefix(20).map { "Saved measurements: \($0.title). \($0.detail)" }
+        }
+        if !obstacles.obstacles.isEmpty { hazards.append("Depth tracker has detected nearby obstacles; positions may have changed.") }
+        guard !isDemo, let frame = arView.session.currentFrame,
+              ProcessInfo.processInfo.systemUptime - frame.timestamp < 2,
+              let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return (nil, highlights, hazards) }
+        return (FrameEncoder.portraitJPEG(from: snapshot, maxDimension: 768), highlights, hazards)
+    }
+
     let isDemo: Bool
     lazy var arView: ARView = {
         let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -111,6 +126,7 @@ final class NavigationController: ObservableObject {
     private var hasRefreshedWorldMap = false
     private static let worldMapRefreshDelay: TimeInterval = 8
     private let relocalizer = SessionRelocalizer()
+    private let haptics = TurnHaptics()
     private var lastFrameTimestamp: TimeInterval = 0
     private var lastFrameChangeAt = Date.now
     private var lastTrackingDescription = ""
@@ -819,6 +835,7 @@ final class NavigationController: ObservableObject {
                 ? "There's no step-free route from here right now."
                 : "There's no route through the mapped floor from here right now."
             say(Narrator.Line(text: message, isUrgent: true))
+            haptics.play(.warning)
             return
         }
         route = newRoute
@@ -826,16 +843,18 @@ final class NavigationController: ObservableObject {
             phase = .arrived
             renderer?.showArrival(at: newRoute.destination)
             say(narrator.arrival(at: newRoute.destination))
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            haptics.play(.arrival)
         } else {
             phase = .navigating
             renderer?.show(newRoute)
+            if case .obstacle = reason { haptics.play(.warning) }
             narrator.lines(for: newRoute, reason: reason).forEach(say)
         }
     }
 
     private func say(_ line: Narrator.Line) {
         caption = line.text
+        if let turn = line.turn { haptics.play(.turn(turn)) }
         voice.say(line.text, interrupting: line.isUrgent)
         if UIAccessibility.isVoiceOverRunning {
             UIAccessibility.post(notification: .announcement, argument: line.text)

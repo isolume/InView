@@ -13,6 +13,8 @@ struct MapPlace: Identifiable, Equatable {
     /// The door a sign labeled, and the measured room behind it, lit up on the map.
     let door: SignTag.Door?
     let room: [SIMD2<Float>]?
+    /// The measured height is retained for maps with more than one level on a display floor.
+    let elevation: Float
 
     init(_ point: AccessPoint) {
         id = point.id
@@ -22,6 +24,7 @@ struct MapPlace: Identifiable, Equatable {
         position = point.floorPoint
         door = point.sign?.door
         room = point.sign?.room
+        elevation = point.position.y
     }
 
     static func places(in map: VenueMap?) -> [MapPlace] {

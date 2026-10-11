@@ -16,6 +16,8 @@ final class Narrator {
     struct Line {
         let text: String
         let isUrgent: Bool
+        /// The turn this line announces, felt as a haptic pattern as well as heard.
+        var turn: Maneuver.Turn? = nil
     }
 
     /// Announce a turn once it is this close.
@@ -63,7 +65,7 @@ final class Narrator {
             let phrase = maneuver.distance < 1.5
                 ? "\(maneuver.turn.phrase.capitalizedFirst) now."
                 : "In \(meters) \(meters == 1 ? "meter" : "meters"), \(maneuver.turn.phrase)."
-            lines.append(Line(text: phrase, isUrgent: false))
+            lines.append(Line(text: phrase, isUrgent: false, turn: maneuver.turn))
         }
         return lines
     }

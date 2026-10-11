@@ -27,6 +27,7 @@ struct MapPreviewView: View {
     @State private var pan: CGSize = .zero
     @GestureState private var pinch: CGFloat = 1
     @GestureState private var drag: CGSize = .zero
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let maximumZoom: CGFloat = 6
 
@@ -45,6 +46,18 @@ struct MapPreviewView: View {
                         .tag(place.id)
                 }
             }
+                .overlay {
+                    // Only the moving parts redraw every frame: dashes flowing toward the goal and the dot's pulse.
+                    if route != nil || userPosition != nil {
+                        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
+                            Canvas { context, _ in
+                                drawMotion(in: &context, projection: projection,
+                                           time: timeline.date.timeIntervalSinceReferenceDate)
+                            }
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { location in
                     // Choosing a start point takes every tap; otherwise a tap picks the pin under it.
@@ -173,9 +186,19 @@ struct MapPreviewView: View {
             context.draw(Text("Scan start").font(.caption2).foregroundStyle(PlanInk.annotation), at: CGPoint(x: start.x, y: start.y + 8), anchor: .top)
         }
         if let route, route.waypoints.count > 1 {
-            let path = Path { $0.addLines(route.waypoints.map(projection.screenPoint)) }
-            context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
-            context.stroke(path, with: .color(Theme.route), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            let points = route.waypoints.map(projection.screenPoint)
+            let path = Path { $0.addLines(points) }
+            context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+            // Green where you start, blue where you're going.
+            context.stroke(path, with: .linearGradient(Gradient(colors: [Theme.routeStart, Theme.route]),
+                                                       startPoint: points.first!, endPoint: points.last!),
+                           style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+            let start = points.first!, end = points.last!
+            context.fill(Path(ellipseIn: CGRect(x: start.x - 8, y: start.y - 8, width: 16, height: 16)), with: .color(.white))
+            context.stroke(Path(ellipseIn: CGRect(x: start.x - 6, y: start.y - 6, width: 12, height: 12)),
+                           with: .color(Theme.routeStart), lineWidth: 4)
+            context.stroke(Path(ellipseIn: CGRect(x: end.x - 19, y: end.y - 19, width: 38, height: 38)),
+                           with: .color(Theme.routeEnd.opacity(0.55)), lineWidth: 3)
         }
         if let userPosition {
             let center = projection.screenPoint(userPosition)
@@ -194,6 +217,23 @@ struct MapPreviewView: View {
 
         drawPlaces(in: &context, projection: projection)
         drawScaleBar(in: &context, size: size, projection: projection)
+    }
+
+    /// The animated layer over the plan: dashes flowing along the route and a pulse around the person.
+    private func drawMotion(in context: inout GraphicsContext, projection: MapProjection, time: TimeInterval) {
+        if let route, route.waypoints.count > 1 {
+            let path = Path { $0.addLines(route.waypoints.map(projection.screenPoint)) }
+            context.stroke(path, with: .color(.white.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round,
+                                              dash: [5, 11], dashPhase: CGFloat(-time * 28)))
+        }
+        if let userPosition {
+            let center = projection.screenPoint(userPosition)
+            let phase = CGFloat(time.truncatingRemainder(dividingBy: 1.8) / 1.8)
+            let radius = 9 + 22 * phase
+            context.fill(Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)),
+                         with: .color(Theme.route.opacity(0.35 * (1 - phase))))
+        }
     }
 
     /// Badges first, then the names that fit, like Apple Maps: a name goes below its badge, or beside or above

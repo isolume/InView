@@ -8,6 +8,7 @@ pub mod display_mesh;
 pub mod error;
 pub mod geometry;
 pub mod graph;
+pub mod highlights_api;
 pub mod map_frame;
 pub mod model_meshes;
 pub mod product_api;
@@ -180,6 +181,11 @@ pub fn app(state: AppState) -> Router {
             get(scan_api::analysis)
                 .put(scan_api::put_analysis)
                 .layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
+        .route("/scans/{scan_id}/highlights", get(highlights_api::get))
+        .route(
+            "/scans/{scan_id}/highlights.png",
+            get(highlights_api::image),
         )
         .route("/scans/{scan_id}/raw-preview", get(raw_lidar::preview))
         .route("/scans/{scan_id}/native-mesh", get(raw_lidar::native_mesh))

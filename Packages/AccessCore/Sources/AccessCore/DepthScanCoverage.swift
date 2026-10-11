@@ -189,26 +189,28 @@ struct CoverageFrameGeometry {
         max(1, Int(ceil(sqrt(Double(image.valuesM.count) / Double(DepthScanCoverage.maximumSampledPixels)))))
     }
 
-    @_optimize(speed)
     init?(_ frame: CaptureDepthFrame) {
-        let image = frame.depth, camera = frame.camera
-        let count = image.width.multipliedReportingOverflow(by: image.height)
+        let image = frame.depth
+        let camera = frame.camera
+        let pixelCountProduct = image.width.multipliedReportingOverflow(by: image.height)
+        guard !pixelCountProduct.overflow else { return nil }
+        let pixelCount = pixelCountProduct.partialValue
         let cameraAspect = camera.imageWidth.multipliedReportingOverflow(by: image.height)
         let depthAspect = camera.imageHeight.multipliedReportingOverflow(by: image.width)
         guard frame.timestampSeconds.isFinite, frame.timestampSeconds >= 0,
               frame.pixelOrientation == "sensor_native", validRigidTransform(frame.mapFromCamera),
               image.width >= 3, image.height >= 3,
               image.width <= DepthScanCoverage.maximumImageDimension,
-              image.height <= DepthScanCoverage.maximumImageDimension, !count.overflow,
-              count.partialValue == image.valuesM.count,
+              image.height <= DepthScanCoverage.maximumImageDimension,
+              pixelCount == image.valuesM.count,
               camera.imageWidth > 0, camera.imageHeight > 0,
               [camera.fx, camera.fy, camera.cx, camera.cy].allSatisfy(\.isFinite),
               camera.fx > 0, camera.fy > 0,
               camera.cx >= 0, camera.cx < Float(camera.imageWidth),
               camera.cy >= 0, camera.cy < Float(camera.imageHeight),
               !cameraAspect.overflow, !depthAspect.overflow,
-              cameraAspect.partialValue == depthAspect.partialValue,
-              let confidence = image.confidence, confidence.count == count.partialValue else { return nil }
+              cameraAspect.partialValue == depthAspect.partialValue else { return nil }
+        guard let confidence = image.confidence, confidence.count == pixelCount else { return nil }
         let pose = frame.mapFromCamera
         transform = simd_float4x4(columns: (SIMD4(pose[0], pose[1], pose[2], pose[3]),
                                           SIMD4(pose[4], pose[5], pose[6], pose[7]),

@@ -151,11 +151,14 @@ public enum LocalSceneBuilder {
     }
 
     private static func mapPoint(_ point: [Double], using matrix: [Float]) throws -> [Float] {
-        let result = (0..<3).map { row in
-            Double(matrix[row]) * point[0] + Double(matrix[4 + row]) * point[1]
-                + Double(matrix[8 + row]) * point[2] + Double(matrix[12 + row])
-        }.map(Float.init)
-        guard result.allSatisfy(\.isFinite) else { throw invalidMeasurements() }
+        let x = Double(matrix[0]) * point[0] + Double(matrix[4]) * point[1]
+            + Double(matrix[8]) * point[2] + Double(matrix[12])
+        let y = Double(matrix[1]) * point[0] + Double(matrix[5]) * point[1]
+            + Double(matrix[9]) * point[2] + Double(matrix[13])
+        let z = Double(matrix[2]) * point[0] + Double(matrix[6]) * point[1]
+            + Double(matrix[10]) * point[2] + Double(matrix[14])
+        let result = [Float(x), Float(y), Float(z)]
+        guard result.allSatisfy({ $0.isFinite }) else { throw invalidMeasurements() }
         return result
     }
 

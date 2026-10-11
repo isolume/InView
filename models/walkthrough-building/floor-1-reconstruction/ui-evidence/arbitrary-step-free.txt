@@ -1,0 +1,56 @@
+Window: "iPhone 17 Pro", App: Device Hub.
+0 standard window iPhone 17 Pro – iOS 27.0, ID: deviceWindow-AppWindow-1, Secondary Actions: Raise
+	1 container
+		2 text iPhone 17 Pro iOS 27.0
+		3 container
+			4 button Description: Sheet Grabber, Help: Double tap to expand the sheet., Value: Half screen, Secondary Actions: Cancel
+			5 button Description: Enter AR mode, Secondary Actions: Cancel
+			6 button Description: Floor 3, Secondary Actions: Cancel
+			7 button Description: Floor 2, Secondary Actions: Cancel
+			8 button (selected) Description: Floor 1, Secondary Actions: Cancel
+			9 pop up button Description: Map appearance, Secondary Actions: Cancel
+			10 button Description: Show 3D map, Secondary Actions: Cancel
+			11 button Description: Fit floor map, ID: arrow.up.left.and.arrow.down.right, Secondary Actions: Cancel
+			12 button Description: Show my location, ID: location, Secondary Actions: Cancel
+			13 element Description: Navigation map, Help: Drag to move, pinch to zoom or twist to rotate, Secondary Actions: Cancel, Rotate left, Rotate right, Zoom in, Zoom out, Reset view
+			14 button Description: Information, Secondary Actions: Cancel
+			15 button Description: Food Court, Secondary Actions: Cancel
+			16 button Description: Atrium, Secondary Actions: Cancel
+			17 button Description: State Ballroom, Secondary Actions: Cancel
+			18 button Description: Court Salon, Secondary Actions: Cancel
+			19 button Description: Auditorium, Secondary Actions: Cancel
+			20 button Description: Window Lounge, Secondary Actions: Cancel
+			21 element Description: Starting point, Secondary Actions: Cancel
+			22 text Description: Point on the map, Secondary Actions: Cancel
+			23 text Description: Directions, Secondary Actions: Cancel
+			24 button Description: Close directions, ID: xmark, Secondary Actions: Cancel
+			25 text Description: Student Center East · Floor 1, Secondary Actions: Cancel
+			26 pop up button Description: From: Point on the map, Secondary Actions: Cancel
+			27 button Description: Swap start and destination, ID: arrow.up.arrow.down, Secondary Actions: Cancel
+			28 pop up button Description: To: Point on the map, Secondary Actions: Cancel
+			29 tab group Secondary Actions: Cancel
+			30 text Description: Avoid stairs and keep wider clearance., Secondary Actions: Cancel
+			31 text Description: ≈1 min · 23 m · Step-free, Secondary Actions: Cancel
+			32 text Description: 1, Head toward Point on the map, 1 m, Secondary Actions: Cancel
+			33 text Description: 2, Turn left, 1 m, Secondary Actions: Cancel
+			34 text Description: 3, Bear left, 22 m, Secondary Actions: Cancel
+			35 text Description: 4, Arrive at Point on the map, Secondary Actions: Cancel
+		36 button Description: Home, ID: app.grid.3x3
+		37 button Description: Screenshot, ID: camera.viewfinder
+		38 button Description: Record, ID: record.circle
+		39 button Rotate Left
+	40 toolbar
+		41 button Description: Show in Device Hub, Help: Expand to view all controls, Secondary Actions: Increment, Decrement, Delete, Cancel, Move previous, Move next, Remove from toolbar
+		42 menu button More, Help: View options, ID: ellipsis
+	43 close button
+	44 zoom button
+	45 minimize button
+46 menu bar
+	47 Device Hub
+	48 File
+	49 Edit
+	50 View
+	51 Device
+	52 Controls
+	53 Window
+	54 Help

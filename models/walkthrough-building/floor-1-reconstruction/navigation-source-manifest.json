@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "generator": "scripts/build-floor-1-navigation.py",
+  "generator_sha256": "b5e51ab9be86bafd48834a9adf8a404e69a5ea3bf492f0ffe5b88796574438d6",
+  "inputs": [
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/registration.json",
+      "sha256": "08be6f3a6d1d55a9ee233cec7d94e8c941e4eca1a11f359d819bc3d81937fe5d"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/navigation-measurements.json",
+      "sha256": "2e0aa587e333bf2380ce929c688df0982f30d2d3cd9fc6ccf3830f05ab820d09"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/navigation-ground-support.json",
+      "sha256": "585072000335ce97456c4ddc96d307576db885bca61b4c50e6b9a7f2ab3410a9"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/reconstruction.json",
+      "sha256": "8992b37572d571e6a9c95e80e947032720e4f7d2f2394bba08b2a426d42ddf1e"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/navigation-limitations.json",
+      "sha256": "e096d1c9d55c13080d370a5a409cf5abe9026e92a4d23cf022d70a5c19b4d9d0"
+    },
+    {
+      "path": "scripts/validate-floor-1-navigation.swift",
+      "sha256": "2501808e4944a0fa7c0d954189f64b4b02473b8b6645498da979e2995e5850b9"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/sources/081DA781-19B1-4A3F-91BE-8DF0094E5032.json",
+      "sha256": "ad3468fd7854d6254ff0ca6545dc17f425b9dbb2b000289d2b98f39511066284"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/sources/3F8FE86D-8F9E-47A8-A010-49417284BD8E.json",
+      "sha256": "ef06271d1012b52f33e7b5d71137ea832c62af98a5743c80ac2e83929df5ab5d"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/sources/611423DC-EDB2-4FCE-91B1-F47573C20F8B.json",
+      "sha256": "dfdabe8d2889a371e2332c7368e43aaf90155cd610426f0e201fa0868daa9cba"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/sources/7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC.json",
+      "sha256": "fffb3ec8eafd1ff4d1fd6b9435ee7acfcf95917400f82df732db67f4ffa9c542"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/sources/785D48F6-4754-46A8-B07D-D001BCAAC621.json",
+      "sha256": "b21a1ca3157f65c6cf2e31b6fa88f6870d05877add59a847665a298a9173ed05"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/sources/92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF.json",
+      "sha256": "abd18ffdf3194208ba8efa19acceb8589c9225e449089c3aa3d7c338a6e14683"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/sources/D598D846-F87F-491F-B446-19BA52295D4D.json",
+      "sha256": "91d3995cdb1ac5d290382485d771f874e366d426f8e774080b537882fc283b95"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "InView/Resources/StudentCenter/student-center-east-floor-1-navigation.json",
+      "sha256": "66b49e9a5e4d98b105f48cd2bf48d3717349bb173686f1b52637db3b3e57624c"
+    },
+    {
+      "path": "InView/Resources/StudentCenter/student-center-east-floor-1-model-layout.json",
+      "sha256": "d8e2226a77a982d2cd64f487821b043e84acca6d9797c8087ce02b4d6361d345"
+    },
+    {
+      "path": "models/walkthrough-building/floor-1-reconstruction/navigation-validation.json",
+      "sha256": "315eeccd1337c2c963623682b3aae3d5c2336545fd9792d870952634062a72bf"
+    }
+  ],
+  "source_policy": "Strict depth support retained separately from visual completion; raw scan metadata and UUIDs preserved in compact sources."
+}

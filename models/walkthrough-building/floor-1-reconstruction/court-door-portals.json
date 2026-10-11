@@ -1,0 +1,196 @@
+{
+  "coordinate_frame": "native D598 and canonical XYZ meters,Yup; registration.json currentmapFromScan",
+  "openings": [
+    {
+      "id": "court-salon-entry",
+      "frame": "video-0000@0/1/2s",
+      "jambs_native_xyz": [
+        [
+          -0.931,
+          -1.45,
+          -1.144
+        ],
+        [
+          0.838,
+          -1.45,
+          -0.631
+        ]
+      ],
+      "post_edges_native_xyz": [
+        [
+          -0.07,
+          -1.45,
+          -0.845
+        ],
+        [
+          -0.017,
+          -1.45,
+          -0.831
+        ]
+      ],
+      "observed_bay_width_ranges_m": [
+        [
+          0.89,
+          0.95
+        ],
+        [
+          0.855,
+          0.898
+        ]
+      ],
+      "width_uncertainty_m": 0.08,
+      "trace_wall_crossing_canonical_xz": [
+        -12.4754,
+        44.6689
+      ],
+      "captureID": "D598D846-F87F-491F-B446-19BA52295D4D",
+      "jambs_canonical_xyz": [
+        [
+          -12.4884,
+          -0.4051,
+          45.8894
+        ],
+        [
+          -11.9192,
+          -0.4051,
+          44.1376
+        ]
+      ],
+      "post_edges_canonical_xyz": [
+        [
+          -12.162,
+          -0.4051,
+          45.0384
+        ],
+        [
+          -12.1463,
+          -0.4051,
+          44.9858
+        ]
+      ],
+      "post_center_canonical_xyz": [
+        -12.1542,
+        -0.4051,
+        45.0121
+      ],
+      "overall_jamb_width_m": 1.842,
+      "physical_post_width_m": 0.055,
+      "bay_center_canonical_xyz": [
+        [
+          -12.3252,
+          -0.4051,
+          45.4639
+        ],
+        [
+          -12.0327,
+          -0.4051,
+          44.5617
+        ]
+      ],
+      "conservative_min_bay_width_m": [
+        0.81,
+        0.775
+      ],
+      "visual_verification": "Two wooden door leaves are already swung fully to sides. Separate silver central mullion runs continuously from frame header to threshold and casts its own floor shadow. It is a real physical obstacle, not the seam between closed leaves. Whether it can be staff-removed is unverified; retain it as present.",
+      "model_cut_note": "Actual jamb threshold is about0.5\u20130.6m inset normal to the simplified completed perimeter; project all jamb/post positions onto that wall axis for its cutouts, or model short jamb returns to this true threshold. Preserve centerpost in both visual and navigation barrier geometry. Do not interpret combined width as one clear opening.",
+      "threshold_y_note": "Native/canonicalY retain captured datum; use parent completed floorY=0 here to handle local drift."
+    },
+    {
+      "id": "court-salon-exit",
+      "frame": "video-0015@2s",
+      "jambs_native_xyz": [
+        [
+          18.123,
+          -1.59,
+          2.821
+        ],
+        [
+          16.365,
+          -1.59,
+          2.428
+        ]
+      ],
+      "post_edges_native_xyz": [
+        [
+          17.255,
+          -1.59,
+          2.6
+        ],
+        [
+          17.184,
+          -1.59,
+          2.581
+        ]
+      ],
+      "observed_bay_width_ranges_m": [
+        [
+          0.896,
+          0.953
+        ],
+        [
+          0.824,
+          0.833
+        ]
+      ],
+      "width_uncertainty_m": 0.08,
+      "trace_wall_crossing_canonical_xz": [
+        -7.4428,
+        27.5088
+      ],
+      "captureID": "D598D846-F87F-491F-B446-19BA52295D4D",
+      "jambs_canonical_xyz": [
+        [
+          -7.9172,
+          -0.5451,
+          26.9716
+        ],
+        [
+          -8.3661,
+          -0.5451,
+          28.7162
+        ]
+      ],
+      "post_edges_canonical_xyz": [
+        [
+          -8.1658,
+          -0.5451,
+          27.8321
+        ],
+        [
+          -8.187,
+          -0.5451,
+          27.9025
+        ]
+      ],
+      "post_center_canonical_xyz": [
+        -8.1764,
+        -0.5451,
+        27.8673
+      ],
+      "overall_jamb_width_m": 1.801,
+      "physical_post_width_m": 0.073,
+      "bay_center_canonical_xyz": [
+        [
+          -8.0415,
+          -0.5451,
+          27.4019
+        ],
+        [
+          -8.2766,
+          -0.5451,
+          28.3094
+        ]
+      ],
+      "conservative_min_bay_width_m": [
+        0.816,
+        0.744
+      ],
+      "visual_verification": "Two wooden door leaves are already swung fully to sides. Separate silver central mullion runs continuously from frame header to threshold and casts its own floor shadow. It is a real physical obstacle, not the seam between closed leaves. Whether it can be staff-removed is unverified; retain it as present.",
+      "model_cut_note": "Actual jamb threshold is about0.5\u20130.6m inset normal to the simplified completed perimeter; project all jamb/post positions onto that wall axis for its cutouts, or model short jamb returns to this true threshold. Preserve centerpost in both visual and navigation barrier geometry. Do not interpret combined width as one clear opening.",
+      "threshold_y_note": "Native/canonicalY retain captured datum; use parent completed floorY=0 here to handle local drift."
+    }
+  ],
+  "width_conclusion": "Observed per-bay width is about0.88\u20130.92m with\u00b1.08m measurement uncertainty. This evidence does not establish any bay>=0.90m conservative clearwidth, and certainly not>=1.0m. Do not round up to pass navigationminimum.",
+  "source_samples": "/private/tmp/inview-floor1-video/court-door-depth-samples.json",
+  "review_contact_sheet": "/private/tmp/inview-floor1-video/D598-doors-sheet.jpg"
+}

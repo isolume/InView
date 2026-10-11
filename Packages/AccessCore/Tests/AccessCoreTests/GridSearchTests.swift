@@ -53,6 +53,37 @@ import Testing
     #expect(!grid.lineOfSight([.greatestFiniteMagnitude, 1.5], [2.5, 1.5]))
 }
 
+@Test func visibilityKeepsCornerClearanceAwayFromTheWorldOrigin() throws {
+    // The Floor 2 gallery turn: subtracting the world origin in Float moves
+    // the segment just across a cell corner and incorrectly permits a shortcut.
+    let obstacle = Footprint(kind: .obstacle, center: [36.792869567871094, -30.11159896850586],
+                             size: [0.001, 0.001], yaw: 0)
+    let bounds = AccessPoint(kind: .destination, position: [-7.057130813598633, 0, -49.36159896850586],
+                             source: .manual, confidence: 1)
+    let grid = OccupancyGrid(map: VenueMap(floorY: 0, footprints: [obstacle], points: [bounds]),
+                             clearance: 0)
+    let a = SIMD2<Float>(36.792869567871094, -29.911598205566406)
+    let b = SIMD2<Float>(36.69287109375, -30.211599349975586)
+    #expect(!grid.isBlocked(try #require(grid.index(containing: a))))
+    #expect(!grid.isBlocked(try #require(grid.index(containing: b))))
+    #expect(grid.isBlocked(try #require(grid.index(containing: (a + b) / 2))))
+    #expect(!grid.lineOfSight(a, b))
+    #expect(!grid.lineOfSight(b, a))
+}
+
+@Test func visibilityToAnExactLandingIsSymmetricAcrossFloatCellBoundaries() throws {
+    let map = VenueMap(floorY: 0, footprints: [
+        Footprint(kind: .floor, center: [0, 0], size: [10, 10], yaw: 0, bottom: 0),
+    ], points: [], requiresMeasuredFloorCoverage: true)
+    let grid = OccupancyGrid(map: map, clearance: 0.45)
+    let landing = SIMD2<Float>(-4, 3)
+    let near = grid.center(of: try #require(grid.nearestFreeIndex(to: landing, within: 0.15)))
+    // The landing's z component is cell 95 in Float but 94.99999858 in Double.
+    // The return trip previously traversed past its goal cell and left the grid.
+    #expect(grid.lineOfSight(landing, near))
+    #expect(grid.lineOfSight(near, landing))
+}
+
 @Test func costOnlyAuditSearchPreservesBlockedAndReachableCellsWithoutParentStorage() throws {
     let map = room([divider, dividerDoor(at: 1.5, width: 0.7)], points: [point(.elevator, 2, -1)])
     let grid = OccupancyGrid(map: map, clearance: 0.45)
