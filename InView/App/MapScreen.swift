@@ -599,6 +599,7 @@ struct MapScreen: View {
                 }
                 .padding(.horizontal, 12).frame(height: 48)
                 .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                if !isDemo { moreMenu }
                 if isDemo {
                     Button { controller.stop(); dismiss() } label: {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 30)).foregroundStyle(.secondary)
@@ -609,7 +610,6 @@ struct MapScreen: View {
             if assistant.phase != .idle {
                 AssistantCard(assistant: assistant, onListen: listen, onShowPlace: showAssistantPlace)
             }
-            if !isDemo { quickActions }
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.title2.bold()).lineLimit(2)
                 Text(showsModel ? "Floor \(selectedLevel)" : "Floor \(selectedLevel) · \(coverageTitle)").font(.subheadline).foregroundStyle(.secondary)
@@ -649,9 +649,9 @@ struct MapScreen: View {
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.indigo)
                     }
-                    if modelAvailable && hasMap {
-                        Button { mapStyle = showsModel ? .scan : .model } label: {
-                            Label(showsModel ? "Floor scan" : "3D model", systemImage: showsModel ? "map" : "cube")
+                    if !isDemo, localFloor == nil {
+                        Button { modal = .buildingDirections } label: {
+                            Label("Between floors", systemImage: "arrow.up.arrow.down")
                                 .font(.subheadline.weight(.medium))
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule)
@@ -659,13 +659,6 @@ struct MapScreen: View {
                 }
             }
             .scrollIndicators(.hidden).scrollClipDisabled()
-            if !isDemo, localFloor == nil {
-                Button { modal = .buildingDirections } label: {
-                    Label("Between floors", systemImage: "arrow.up.arrow.down")
-                        .font(.subheadline.weight(.medium))
-                }
-                .buttonStyle(.bordered).buttonBorderShape(.capsule)
-            }
             if showsModel, illustrationState == .failed {
                 Text(hasMap ? "The 3D model couldn’t be opened. Showing the floor scan." : "The 3D map couldn’t be opened. Choose another floor.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -759,50 +752,27 @@ struct MapScreen: View {
         }
     }
 
-    /// Every account and map tool as its own button: a row on iPhone, a grid in the iPad panel.
-    @ViewBuilder private var quickActions: some View {
-        if usesSidePanel {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4, alignment: .top), count: 4), spacing: 14) {
-                quickActionItems
+    /// Account and mapping tools live behind one button, so the sheet is about finding your way.
+    private var moreMenu: some View {
+        Menu {
+            Button(account.isSignedIn ? "Your account" : "Sign in",
+                   systemImage: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle") { modal = .account }
+            Section {
+                Button("Map a building", systemImage: "viewfinder") { modal = .contribute }
+                Button("Saved maps", systemImage: "map") { modal = .savedMaps }
+                Button("My submissions", systemImage: "tray.full") { modal = .submissions }
             }
-        } else {
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 4) { quickActionItems }
-            }
-            .scrollIndicators(.hidden).scrollClipDisabled()
+            Button("Building details", systemImage: "building.2") { modal = .building }
+            Button("Settings", systemImage: "gearshape") { modal = .settings }
+            #if DEBUG
+            Button("Navigation demo", systemImage: "play.circle") { cover = .demo }
+            #endif
+        } label: {
+            Image(systemName: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
+                .font(.system(size: 30)).foregroundStyle(Color.accentColor)
+                .frame(width: 44, height: 48)
         }
-    }
-
-    @ViewBuilder private var quickActionItems: some View {
-        quickAction(account.isSignedIn ? "Account" : "Sign in",
-                    symbol: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle",
-                    label: account.isSignedIn ? "Your account" : "Sign in") { modal = .account }
-        quickAction("Contribute", symbol: "viewfinder", label: "Contribute a scan") { modal = .contribute }
-        quickAction("Submissions", symbol: "tray.full", label: "My submissions") { modal = .submissions }
-        quickAction("Building", symbol: "building.2", label: "Building details") { modal = .building }
-        quickAction("Saved maps", symbol: "map", label: "Saved maps") { modal = .savedMaps }
-        quickAction("Settings", symbol: "gearshape", label: "Scan settings") { modal = .settings }
-        #if DEBUG
-        quickAction("Demo", symbol: "play.circle", label: "Navigation demo") { cover = .demo }
-        #endif
-    }
-
-    private func quickAction(_ title: String, symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { quickActionLabel(title, symbol: symbol) }
-            .buttonStyle(.plain)
-            .accessibilityLabel(label)
-    }
-
-    private func quickActionLabel(_ title: String, symbol: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 21, weight: .medium)).foregroundStyle(Color.accentColor)
-                .frame(width: 50, height: 50)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
-            Text(title).font(.caption.weight(.medium)).foregroundStyle(.primary)
-                .lineLimit(1).minimumScaleFactor(0.75)
-        }
-        .frame(minWidth: 70).frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
+        .accessibilityLabel("Account and mapping")
     }
 
     /// Finding the person, or the reminder that their position is showing and the camera is on.
