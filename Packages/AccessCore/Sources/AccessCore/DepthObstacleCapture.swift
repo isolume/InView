@@ -150,7 +150,9 @@ public struct DepthObstacleAccumulator: Sendable {
     }
     private struct Observation: Sendable {
         var pending: DepthObstacleEvidence.Sample
+        var first: DepthObstacleEvidence.Sample
         var timestamp: TimeInterval
+        var consistentObservations: Int = 1
         var confirmed: DepthObstacleEvidence.Sample?
     }
     private var cells: [Key: Observation] = [:]
@@ -178,23 +180,24 @@ public struct DepthObstacleAccumulator: Sendable {
             guard seen.insert(key).inserted else { continue }
             if var observation = cells[key] {
                 guard timestamp - observation.timestamp >= 0.5 else { continue }
-                if timestamp - observation.timestamp >= 0.5,
-                   timestamp - observation.timestamp <= 6,
-                   abs(observation.pending.floorY - sample.floorY) <= 0.15,
-                   abs(observation.pending.top - sample.top) <= 0.12,
-                   abs(observation.pending.bottom - sample.bottom) <= 0.12 {
-                    var confirmed = sample
-                    confirmed.lower = simd_min(observation.pending.lower, sample.lower)
-                    confirmed.upper = simd_max(observation.pending.upper, sample.upper)
-                    // Keep one frame's vertical measurements. Combining two flat returns
-                    // at different heights could otherwise invent a vertical obstacle.
-                    confirmed.support += observation.pending.support
-                    observation.confirmed = confirmed
+                if timestamp - observation.timestamp <= 6,
+                   spatiallyConsistent(observation.pending, sample),
+                   spatiallyConsistent(observation.first, sample) {
+                    observation.consistentObservations = min(3, observation.consistentObservations + 1)
+                    if observation.consistentObservations >= 3 {
+                        // Each frame must independently measure a supported vertical side.
+                        // Retain the latest bounds instead of widening them with older noise.
+                        observation.confirmed = sample
+                    }
+                } else {
+                    observation.consistentObservations = 1
+                    observation.confirmed = nil
+                    observation.first = sample
                 }
                 observation.pending = sample; observation.timestamp = timestamp
                 cells[key] = observation
             } else if cells.count < maximumCells {
-                cells[key] = Observation(pending: sample, timestamp: timestamp)
+                cells[key] = Observation(pending: sample, first: sample, timestamp: timestamp)
             }
         }
     }
@@ -249,13 +252,26 @@ public struct DepthObstacleAccumulator: Sendable {
         let values = [sample.lower.x, sample.lower.y, sample.upper.x, sample.upper.y,
                       sample.bottom, sample.top, sample.floorY]
         guard values.allSatisfy(\.isFinite), values.allSatisfy({ abs($0) <= 10_000 }),
-              sample.support > 0, sample.support <= DepthObstacleEvidence.maximumSampledPixels,
+              sample.support >= 4, sample.support <= DepthObstacleEvidence.maximumSampledPixels,
               sample.lower.x <= sample.upper.x, sample.lower.y <= sample.upper.y,
-              sample.bottom <= sample.top, sample.bottom >= sample.floorY + 0.079,
+              sample.top - sample.bottom >= 0.06, sample.bottom >= sample.floorY + 0.079,
               sample.top <= sample.floorY + 0.751 else { return false }
         let lower = SIMD2(Float(sample.cell.x), Float(sample.cell.y)) * DepthObstacleEvidence.cellSize
         let upper = lower + SIMD2(repeating: DepthObstacleEvidence.cellSize)
         return sample.lower.x >= lower.x - 0.001 && sample.lower.y >= lower.y - 0.001
             && sample.upper.x <= upper.x + 0.001 && sample.upper.y <= upper.y + 0.001
+    }
+
+    private func spatiallyConsistent(_ first: DepthObstacleEvidence.Sample,
+                                     _ second: DepthObstacleEvidence.Sample) -> Bool {
+        let firstCenter = (first.lower + first.upper) / 2
+        let secondCenter = (second.lower + second.upper) / 2
+        let firstSize = first.upper - first.lower
+        let secondSize = second.upper - second.lower
+        return abs(first.floorY - second.floorY) <= 0.1
+            && abs(first.top - second.top) <= 0.06
+            && abs(first.bottom - second.bottom) <= 0.06
+            && simd_distance(firstCenter, secondCenter) <= 0.04
+            && simd_distance(firstSize, secondSize) <= 0.06
     }
 }

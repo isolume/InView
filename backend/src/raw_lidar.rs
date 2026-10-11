@@ -21,8 +21,8 @@ use crate::{AppState, error::ApiError, geometry::Transform, scan_package, store:
 
 const FLOAT32_DEPTH: u32 = 1_717_855_600; // CoreVideo kCVPixelFormatType_DepthFloat32 ('fdep')
 const MAX_POINTS: usize = 150_000;
-/// The iPhone keeps up to 32 spatially distributed depth observations across a full walk.
-const MAX_DEPTH_OBSERVATIONS: usize = 64;
+/// Continuous scans retain a bounded selection spanning the walk, including OCR keyframes.
+const MAX_DEPTH_OBSERVATIONS: usize = crate::stream_scan::MAX_OBSERVATIONS;
 const MAX_MESH_ANCHORS: usize = 2048;
 
 type Assets = BTreeMap<String, Vec<u8>>;
@@ -625,9 +625,13 @@ pub async fn native_mesh(
     Path(id): Path<String>,
 ) -> Result<Json<impl Serialize>, ApiError> {
     let scan = scan(&state, &id).await?;
-    let result = tokio::task::spawn_blocking(move || reconstruct_mesh(native_sources(&scan)?))
-        .await
-        .map_err(|e| task_failed(e, "mesh"))?;
+    let permit = state.processing_permit()?;
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        reconstruct_mesh(native_sources(&scan)?)
+    })
+    .await
+    .map_err(|e| task_failed(e, "mesh"))?;
     result.map(Json).map_err(|message| {
         error(
             "native_mesh_unavailable",
@@ -653,7 +657,9 @@ pub async fn preview(
     let scan = scan(&state, &id).await?;
     let mode = mode.to_owned();
     let budget = query.max_points.unwrap_or(80_000);
+    let permit = state.processing_permit()?;
     let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         let assets = scan
             .package_assets
             .as_ref()

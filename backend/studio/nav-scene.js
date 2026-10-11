@@ -26,7 +26,11 @@ export function disposeChildren(parent) {
 
 function floorHeight(model) {
   if (Number.isFinite(model.floor?.height)) return model.floor.height;
-  if (model.graph?.nodes.size) return Math.min(...[...model.graph.nodes.values()].map((node) => node.position[1]));
+  if (model.graph?.nodes.size) {
+    let height = Infinity;
+    for (const node of model.graph.nodes.values()) height = Math.min(height, node.position[1]);
+    return height;
+  }
   return 0;
 }
 
@@ -80,7 +84,7 @@ function ribbon(points, radius, color) {
   return onTop(material, 20, new THREE.Mesh(new THREE.TubeGeometry(curve, Math.min(800, curve.curves.length * 6), radius, 8, false), material));
 }
 
-export function createNavOverlay(root) {
+export function createNavOverlay(root, onChange = () => {}) {
   const layers = Object.fromEntries(OVERLAY_LAYERS.map((name) => { const g = new THREE.Group(); g.name = `nav-${name}`; root.add(g); return [name, g]; }));
   let current = { model: null, floorY: 0, size: .3, lang: 'en' };
 
@@ -171,6 +175,7 @@ export function createNavOverlay(root) {
   return {
     /** Rebuilds the overlay for a model (or clears it with null). */
     setModel(model, lang = 'en') {
+      onChange();
       for (const group of Object.values(layers)) disposeChildren(group);
       current = { model, floorY: 0, size: .3, lang };
       if (!model) return;
@@ -183,10 +188,12 @@ export function createNavOverlay(root) {
     setLanguage(lang) {
       if (!current.model || lang === current.lang) return;
       current.lang = lang;
+      onChange();
       disposeChildren(layers.places);
       drawPlaces(current.model, lang);
     },
     setRoute(route) {
+      onChange();
       disposeChildren(layers.route);
       if (!route || route.path.length < 2) return;
       const points = route.path.map((point) => vec(point, LIFT * 2));
@@ -201,9 +208,10 @@ export function createNavOverlay(root) {
       }
     },
     setVisibility(enabled, layerState) {
+      onChange();
       root.visible = enabled;
       for (const [name, group] of Object.entries(layers)) group.visible = layerState[name] !== false;
     },
-    dispose() { for (const group of Object.values(layers)) disposeChildren(group); current = { model: null, floorY: 0, size: .3, lang: 'en' }; },
+    dispose() { for (const group of Object.values(layers)) disposeChildren(group); current = { model: null, floorY: 0, size: .3, lang: 'en' }; onChange(); },
   };
 }

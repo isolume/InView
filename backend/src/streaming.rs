@@ -218,7 +218,6 @@ pub struct StreamStore {
     recognition: Option<RecognitionService>,
     inner: Arc<Inner>,
     processing: Arc<Semaphore>,
-    pub(crate) response_requests: Arc<Semaphore>,
 }
 
 impl Default for StreamStore {
@@ -319,7 +318,6 @@ impl StreamStore {
                 temporary: false,
             }),
             processing: Arc::new(Semaphore::new(2)),
-            response_requests: Arc::new(Semaphore::new(4)),
             recognition: None,
         })
     }
@@ -474,8 +472,8 @@ impl StreamStore {
         Ok(self.recognition_summary(summary))
     }
 
-    /// Stores a whole-capture attachment (`STREAM_ASSETS`) for a known stream. Re-sending
-    /// replaces it; the per-frame observations themselves remain immutable.
+    /// Stores a whole-capture attachment before finish. After finish only identical retries are
+    /// accepted, so a packaged immutable scan cannot silently diverge from its stream source.
     pub fn put_asset(&self, id: &str, name: &str, bytes: &[u8]) -> Result<(), StreamError> {
         check_id(id)?;
         if !STREAM_ASSETS.contains(&name) {
@@ -490,10 +488,17 @@ impl StreamStore {
             ));
         }
         serde_json::from_slice::<Value>(bytes).map_err(invalid_json)?;
-        if !self.inner.records.lock().unwrap().contains_key(id) {
-            return Err(StreamError::Missing);
-        }
+        let records = self.inner.records.lock().unwrap();
+        let record = records.get(id).ok_or(StreamError::Missing)?;
         let dir = self.inner.root.join(id).join("assets");
+        if record.finished {
+            return match read_bytes(&dir.join(name), MAX_ASSET_BYTES) {
+                Ok(existing) if existing == bytes => Ok(()),
+                _ => Err(StreamError::Conflict(
+                    "This stream is finished. Its attachments cannot change.".into(),
+                )),
+            };
+        }
         if fs::symlink_metadata(&dir).is_err() {
             fs::create_dir(&dir)?;
         }

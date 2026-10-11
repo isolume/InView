@@ -60,9 +60,17 @@ class HeightMap:
     low: np.ndarray                  # uint8 255: geometry a cane detects (surface_eps .. 0.685 m up)
     mid: np.ndarray                  # uint8 255: geometry 0.685 .. 2.03 m above the surface
     params: TerrainParams = field(default_factory=TerrainParams)
+    measured_mask: np.ndarray | None = None  # excludes inpainted cells; None for explicitly supplied rasters
 
     def relative(self) -> np.ndarray:
         return self.elevation - np.float32(self.floor_height)
+
+    def measured_elevation(self) -> np.ndarray:
+        """Walking-surface evidence, excluding floor-plane estimates and interpolated holes."""
+        known = np.isfinite(self.elevation) if self.measured else np.zeros(self.elevation.shape, bool)
+        if self.measured_mask is not None:
+            known &= self.measured_mask
+        return np.where(known, self.elevation, np.nan).astype(np.float32)
 
     def sample(self, raster: np.ndarray, xz: np.ndarray) -> np.ndarray:
         """Nearest-cell values of `raster` at X/Z points (NaN outside the grid)."""
@@ -213,6 +221,7 @@ def build(inputs: ScanInputs, grid: Grid, floor_y: float, params: TerrainParams 
     surface = nan_median(surface, 3)
     walking = reachable(surface, _seeds(grid, surface, floor_y, inputs.camera_positions, params), params.max_step_m)
     elevation = np.where(walking, surface, np.nan).astype(np.float32)
+    measured_mask = np.isfinite(elevation)
     walking |= fill_small_holes(elevation, int(params.hole_max_area_m2 / res ** 2), np.isfinite(surface))
     known = np.isfinite(elevation)
 
@@ -239,12 +248,13 @@ def build(inputs: ScanInputs, grid: Grid, floor_y: float, params: TerrainParams 
     low = ((cell_count(grid, g_flat[low_band]) >= min_count) * 255).astype(np.uint8)
     mid = ((cell_count(grid, g_flat[mid_band]) >= min_count) * 255).astype(np.uint8)
     return HeightMap(grid, floor_y, "+".join(sources), True, elevation, slope, slope_x, slope_z, ceiling, clearance,
-                     walking.astype(np.uint8) * 255, low, mid, params)
+                     walking.astype(np.uint8) * 255, low, mid, params, measured_mask)
 
 
 def summary(hm: HeightMap, region: np.ndarray | None = None) -> dict:
     """Small JSON description of the rasters (the rasters themselves stay in `Product.data`)."""
     known = np.isfinite(hm.elevation)
+    measured = np.isfinite(hm.measured_elevation())
     cell_area = hm.grid.resolution ** 2
     result = {
         "grid": hm.grid.describe(),
@@ -252,6 +262,8 @@ def summary(hm: HeightMap, region: np.ndarray | None = None) -> dict:
         "source": hm.source,
         "measured": hm.measured,
         "known_area_m2": round(float(known.sum() * cell_area), 2),
+        "measured_area_m2": round(float(measured.sum() * cell_area), 2),
+        "measured_coverage": None,
         "coverage": None,
         "min_elevation_m": None, "max_elevation_m": None,
         "min_relative_m": None, "max_relative_m": None,
@@ -264,6 +276,7 @@ def summary(hm: HeightMap, region: np.ndarray | None = None) -> dict:
     }
     if region is not None and region.any():
         result["coverage"] = round(float((known & (region > 0)).sum() / (region > 0).sum()), 3)
+        result["measured_coverage"] = round(float((measured & (region > 0)).sum() / (region > 0).sum()), 3)
     if known.any():
         values = hm.elevation[known]
         low, high = float(values.min()), float(values.max())

@@ -1,0 +1,282 @@
+{
+  "title": "Atrium & lounge",
+  "reference_video": "IMG_5436.MOV",
+  "approximate": true,
+  "units": "meters",
+  "up_axis": "Y",
+  "furniture": [
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        -9.4,
+        0,
+        1.7
+      ],
+      "yaw_degrees": -90,
+      "scale": 1
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        -9.4,
+        0,
+        -1.1
+      ],
+      "yaw_degrees": -90,
+      "scale": 1
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        -6.6,
+        0,
+        -4.6
+      ],
+      "yaw_degrees": 180,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -7.3,
+        0,
+        2.5
+      ],
+      "yaw_degrees": 18,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -5.75,
+        0,
+        2.45
+      ],
+      "yaw_degrees": -18,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -7.3,
+        0,
+        -0.9
+      ],
+      "yaw_degrees": 164,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -5.75,
+        0,
+        -0.9
+      ],
+      "yaw_degrees": 195,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -4.0,
+        0,
+        -2.5
+      ],
+      "yaw_degrees": 65,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        -4.2,
+        0,
+        -4.25
+      ],
+      "yaw_degrees": 105,
+      "scale": 1
+    },
+    {
+      "asset": "large-drum-table",
+      "position_m": [
+        -6.55,
+        0,
+        0.9
+      ],
+      "yaw_degrees": 0,
+      "scale": 1
+    },
+    {
+      "asset": "large-drum-table",
+      "position_m": [
+        -6.6,
+        0,
+        -2.55
+      ],
+      "yaw_degrees": 0,
+      "scale": 1
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -8.65,
+        0,
+        0.2
+      ],
+      "yaw_degrees": 0,
+      "scale": 1
+    },
+    {
+      "asset": "small-drum-table",
+      "position_m": [
+        -4.15,
+        0,
+        -3.45
+      ],
+      "yaw_degrees": 0,
+      "scale": 1
+    },
+    {
+      "asset": "charging-stand",
+      "position_m": [
+        -4.75,
+        0,
+        1.5
+      ],
+      "yaw_degrees": 20,
+      "scale": 1
+    },
+    {
+      "asset": "lectern",
+      "position_m": [
+        -3.4,
+        0,
+        -1.8
+      ],
+      "yaw_degrees": 90,
+      "scale": 1
+    },
+    {
+      "asset": "sign-stand",
+      "position_m": [
+        -3.45,
+        0,
+        -0.7
+      ],
+      "yaw_degrees": 90,
+      "scale": 0.77
+    },
+    {
+      "asset": "waste-bin",
+      "position_m": [
+        -3.4,
+        0,
+        2.6
+      ],
+      "yaw_degrees": 0,
+      "scale": 1
+    },
+    {
+      "asset": "bench",
+      "position_m": [
+        -2.35,
+        0,
+        5.35
+      ],
+      "yaw_degrees": 90,
+      "scale": 1
+    },
+    {
+      "asset": "square-planter",
+      "position_m": [
+        -2.15,
+        0,
+        3.7
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.78
+    },
+    {
+      "asset": "floor-sign",
+      "position_m": [
+        0.04,
+        0,
+        5.8
+      ],
+      "yaw_degrees": 15,
+      "scale": 0.85
+    },
+    {
+      "asset": "square-planter",
+      "position_m": [
+        -9.35,
+        0,
+        -4.57
+      ],
+      "yaw_degrees": 0,
+      "scale": 0.68
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        7.8,
+        -3.15,
+        -2.7
+      ],
+      "yaw_degrees": -90,
+      "scale": 1
+    },
+    {
+      "asset": "modular-sofa",
+      "position_m": [
+        7.8,
+        -3.15,
+        -5.4
+      ],
+      "yaw_degrees": -90,
+      "scale": 1
+    },
+    {
+      "asset": "large-drum-table",
+      "position_m": [
+        6.1,
+        -3.15,
+        -3.9
+      ],
+      "yaw_degrees": 0,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        4.65,
+        -3.15,
+        -3.25
+      ],
+      "yaw_degrees": 80,
+      "scale": 1
+    },
+    {
+      "asset": "lounge-chair",
+      "position_m": [
+        4.65,
+        -3.15,
+        -4.7
+      ],
+      "yaw_degrees": 105,
+      "scale": 1
+    }
+  ],
+  "observed": [
+    "Lounge exits to a straight upper atrium balcony",
+    "Balcony continues in both directions",
+    "Two elevators at one end with adjacent open stairs",
+    "Opposite tall glazing with blue accents",
+    "Seating visible on the floor below"
+  ],
+  "estimated": [
+    "Every dimension and height",
+    "Lounge perimeter and furniture counts",
+    "Unseen stair landing and lower floor extents"
+  ],
+  "navigation_ready": false
+}

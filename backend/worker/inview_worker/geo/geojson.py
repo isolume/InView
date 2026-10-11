@@ -17,11 +17,11 @@ import cv2
 import numpy as np
 
 from .projection import GeoError, LocalProjection, wrap_degrees
+from .routes import surface_legs
 
 COORDINATE_DECIMALS = 7
 SIMPLIFY_EPSILON_M = 0.05
 UNIT_CATEGORY = {"room": "room", "corridor": "walkway", "open_area": "room", "doorway": "opening"}
-WHEELCHAIR_PLACES = {"accessible_restroom", "elevator", "ramp"}
 NOT_STEP_FREE_PLACES = {"stairs", "escalator"}
 NOT_STEP_FREE_HAZARDS = {"step", "stairs", "level_change", "drop_off"}
 
@@ -124,6 +124,7 @@ def _names(item: dict) -> tuple[str | None, dict | None]:
 
 
 def build(projection: LocalProjection, *, scan_id: str = "", level_id: str = "ground", georef: dict | None = None,
+          map_id: str | None = None,
           floor_map: dict | None = None, regions: list | None = None, doors: list | None = None,
           places: list | None = None, hazards: list | None = None, signs: list | None = None,
           nav_graph: dict | None = None, routes: dict | None = None,
@@ -175,8 +176,6 @@ def build(projection: LocalProjection, *, scan_id: str = "", level_id: str = "gr
         if not isinstance(door, dict):
             continue
         accessibility = {key: door[key] for key in ("meets_clear_width", "meets_headroom") if key in door}
-        if "meets_clear_width" in door:
-            accessibility["wheelchair"] = bool(door["meets_clear_width"]) and door.get("meets_headroom", True) is not False
         features.append(_feature(f"opening:{door.get('id', index)}", line(projection, door.get("span_xz_m")), {
             "feature_type": "opening", "category": "pedestrian", "kind": door.get("kind"), "level_id": level_id,
             "source_id": door.get("id"), "width_m": door.get("measured_clear_width_m") or door.get("nominal_width_m"),
@@ -190,8 +189,7 @@ def build(projection: LocalProjection, *, scan_id: str = "", level_id: str = "gr
         name, names = _names(place)
         category = place.get("category", "unknown")
         place_names[place.get("id")] = name
-        accessibility = {"wheelchair": True} if category in WHEELCHAIR_PLACES else \
-            {"step_free": False} if category in NOT_STEP_FREE_PLACES else None
+        accessibility = {"step_free": False} if category in NOT_STEP_FREE_PLACES else None
         xz = _xz(place.get("position_m"))
         features.append(_feature(f"amenity:{place.get('id', index)}", point(projection, xz) if xz else None, {
             "feature_type": "amenity", "category": category, "name": name, "names": names, "level_id": level_id,
@@ -211,7 +209,7 @@ def build(projection: LocalProjection, *, scan_id: str = "", level_id: str = "gr
             "feature_type": "obstruction", "category": kind, "severity": hazard.get("severity"), "level_id": level_id,
             "source_id": hazard.get("id"), "measure": hazard.get("measure"),
             "accessibility": {"barrier": hazard.get("severity") == "barrier",
-                              "step_free": kind not in NOT_STEP_FREE_HAZARDS},
+                              **({"step_free": False} if kind in NOT_STEP_FREE_HAZARDS else {})},
         }))
 
     for index, sign in enumerate(signs or []):
@@ -225,30 +223,30 @@ def build(projection: LocalProjection, *, scan_id: str = "", level_id: str = "gr
                               if sign.get(k) is not None} or None,
         }))
 
-    nodes = {}
-    if isinstance(nav_graph, dict):
-        for node in nav_graph.get("nodes") or []:
-            if isinstance(node, dict) and all(isinstance(node.get(k), (int, float)) for k in ("x", "z")):
-                nodes[node.get("id")] = [float(node["x"]), float(node["z"])]
+    graph = nav_graph if isinstance(nav_graph, dict) else {}
+    nodes = graph.get("nodes") or []
     route_list = (routes or {}).get("routes") if isinstance(routes, dict) else None
     if route_list and not nodes:
         notices.append("routes present but nav_graph has no nodes; route lines were not exported")
     for index, route in enumerate((route_list or []) if nodes else []):
         if not isinstance(route, dict):
             continue
-        ids = route.get("node_ids") or []
-        missing = [n for n in ids if n not in nodes]
-        if missing:
-            notices.append(f"route {index} references {len(missing)} unknown nav_graph node(s); skipped")
-            continue
+        legs, problems = surface_legs(graph, route, map_id)
+        notices.extend(f"route {index} {problem}" for problem in problems)
         from_place, to_place = route.get("from_place"), route.get("to_place")
-        features.append(_feature(f"route:{from_place}:{to_place}:{route.get('profile', index)}",
-                                 line(projection, [nodes[n] for n in ids]), {
-            "feature_type": "route", "category": route.get("profile"), "level_id": level_id,
-            "from_place": from_place, "to_place": to_place,
-            "name": f"{place_names.get(from_place) or from_place} to {place_names.get(to_place) or to_place}",
-            "length_m": route.get("length_m"), "estimated_seconds": route.get("estimated_seconds"), "node_ids": ids,
-        }))
+        route_id = route.get("id") or f"{from_place}:{to_place}:{route.get('profile', index)}"
+        for leg_index, leg in enumerate(legs):
+            leg_map, leg_floor = leg["key"]
+            base = f"route:{route_id}"
+            feature_id = f"{base}:leg:{leg_index}" if len(legs) > 1 else base
+            features.append(_feature(feature_id, line(projection, leg["points"][:, [0, 2]]), {
+                "feature_type": "route", "category": route.get("profile"), "level_id": leg_floor,
+                "map_id": leg_map, "segment_index": leg_index, "edge_ids": leg["edge_ids"],
+                "from_place": from_place, "to_place": to_place,
+                "name": f"{place_names.get(from_place) or from_place} to {place_names.get(to_place) or to_place}",
+                "length_m": round(float(np.linalg.norm(np.diff(leg["points"], axis=0), axis=1).sum()), 3),
+                "route_length_m": route.get("length_m"), "route_estimated_seconds": route.get("estimated_seconds"),
+            }))
 
     kept = [f for f in features if f is not None]
     collection = {

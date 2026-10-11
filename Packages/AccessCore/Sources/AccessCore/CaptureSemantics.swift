@@ -32,11 +32,14 @@ public struct CaptureSemantics: Codable, Equatable, Sendable {
     }
 
     /// Projects a reviewed venue map and RoomPlan's per-section labels into the export.
-    public init(map: VenueMap?, rooms: [RoomPlanSemantics.Room], capture: CaptureInfo) {
+    public init(map: VenueMap?, rooms: [RoomPlanSemantics.Room], capture: CaptureInfo,
+                measurementTimestamps: [UUID: TimeInterval] = [:]) {
         self.init(
             geographicReference: map?.geographicReference.map(GeographicReference.init),
             floorY: map?.floorY,
-            accessPoints: (map?.points ?? []).map(AccessPointRecord.init)
+            accessPoints: (map?.points ?? []).map {
+                AccessPointRecord($0, timestampSeconds: measurementTimestamps[$0.id])
+            }
                 .sorted { ($0.kind, $0.id) < ($1.kind, $1.id) },
             stairsFootprints: (map?.footprints ?? []).filter { $0.kind == .stairs }.map(StairsFootprint.init),
             roomplan: RoomPlanSemantics(rooms: rooms),
@@ -87,8 +90,10 @@ public struct CaptureSemantics: Codable, Equatable, Sendable {
         public var confidence: Float
         public var slopeDegrees: Float?
         public var requiresAssistance: Bool
+        /// The observation's ARKit time, when known. Export time is never substituted.
+        public var timestampSeconds: TimeInterval?
 
-        public init(_ point: AccessPoint) {
+        public init(_ point: AccessPoint, timestampSeconds: TimeInterval? = nil) {
             id = point.id.uuidString
             kind = point.kind.rawValue
             name = point.title
@@ -97,11 +102,13 @@ public struct CaptureSemantics: Codable, Equatable, Sendable {
             confidence = point.confidence
             slopeDegrees = point.slopeDegrees
             requiresAssistance = point.requiresAssistance
+            self.timestampSeconds = timestampSeconds.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
         }
 
         enum CodingKeys: String, CodingKey {
             case id, kind, name, position, source, confidence
             case slopeDegrees = "slope_degrees", requiresAssistance = "requires_assistance"
+            case timestampSeconds = "timestamp_seconds"
         }
     }
 

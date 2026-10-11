@@ -39,29 +39,32 @@ def resolve_pictograms(names, arrow_directions) -> list[str]:
     return sorted(out)
 
 
-def infer_category(pictograms, arrow_directions, color: str | None, text_categories, has_text: bool):
+def infer_category(pictograms, arrow_directions, color: str | None, text_categories, has_text: bool,
+                   excluded_categories=()):
     """Returns (category, confidence, evidence)."""
     pictos = {("stairs" if p.startswith("stairs") else p) for p in pictograms}
     evidence = [f"pictogram:{p}" for p in sorted(pictograms)]
     evidence += [f"text:{c}" for c in sorted(set(text_categories))]
+    excluded = set(excluded_categories)
+    evidence += [f"negated:{c}" for c in sorted(excluded)]
     if color:
         evidence.append(f"plate_color:{color}")
     if arrow_directions:
         evidence.append(f"arrows:{len(arrow_directions)}")
     for name, category in PICTOGRAM_CATEGORY:
-        if name in pictos:
+        if name in pictos and category not in excluded:
             return category, 0.9 if category in text_categories else 0.8, evidence
-    if pictos & RESTROOM_PICTOGRAMS:
+    if pictos & RESTROOM_PICTOGRAMS and not excluded & {"restroom", "accessible_restroom"}:
         accessible = "wheelchair" in pictos or "accessible_restroom" in text_categories
         return (PlaceCategory.ACCESSIBLE_RESTROOM.value if accessible else PlaceCategory.RESTROOM.value), 0.85, evidence
     for category in TEXT_PRIORITY:
-        if category in text_categories:
+        if category in text_categories and category not in excluded:
             if category == "restroom" and "wheelchair" in pictos:
                 return PlaceCategory.ACCESSIBLE_RESTROOM.value, 0.75, evidence
             return category, 0.7, evidence
     if arrow_directions:
         return DIRECTIONAL, 0.7, evidence
-    if color in {"red", "green"} and not pictos:
+    if color in {"red", "green"} and not pictos and "exit" not in excluded:
         # Legacy plate heuristic: a red/green plate with a legend is most often an exit sign.
         return PlaceCategory.EXIT.value, 0.5 if has_text else 0.35, evidence
     return INFORMATIONAL, 0.4 if (has_text or pictos) else 0.2, evidence

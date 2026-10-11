@@ -9,6 +9,11 @@ struct ScanCoverageVertex: Sendable {
     var alpha: SIMD4<Float>
 }
 
+struct ScanCoverageGeometry: Sendable {
+    var vertices: [ScanCoverageVertex] = []
+    var indices: [UInt32] = []
+}
+
 private struct ScanCoverageUniforms {
     var viewProjection: simd_float4x4
     var sensorView: simd_float4x4
@@ -25,7 +30,8 @@ final class ScanCoverageMetalRenderer {
     private let textureCache: CVMetalTextureCache
     private let inFlight = DispatchSemaphore(value: 2)
     private var vertices: MTLBuffer?
-    private var vertexCount = 0
+    private var indices: MTLBuffer?
+    private var indexCount = 0
 
     init?(device: MTLDevice, pixelFormat: MTLPixelFormat) {
         let options = MTLCompileOptions()
@@ -50,17 +56,24 @@ final class ScanCoverageMetalRenderer {
 
     func clearGeometry() {
         vertices = nil
-        vertexCount = 0
+        indices = nil
+        indexCount = 0
         CVMetalTextureCacheFlush(textureCache, 0)
     }
 
-    func setGeometry(_ geometry: [ScanCoverageVertex]) {
-        guard !geometry.isEmpty, geometry.count <= 75_000 else { clearGeometry(); return }
-        vertices = geometry.withUnsafeBytes { bytes in
+    func setGeometry(_ geometry: ScanCoverageGeometry) {
+        guard !geometry.indices.isEmpty, geometry.vertices.count <= 65_536,
+              geometry.indices.count <= 65_536 * 6 else { clearGeometry(); return }
+        vertices = geometry.vertices.withUnsafeBytes { bytes in
             guard let address = bytes.baseAddress else { return nil }
             return device.makeBuffer(bytes: address, length: bytes.count, options: .storageModeShared)
         }
-        vertexCount = vertices == nil ? 0 : geometry.count
+        indices = geometry.indices.withUnsafeBytes { bytes in
+            guard let address = bytes.baseAddress else { return nil }
+            return device.makeBuffer(bytes: address, length: bytes.count, options: .storageModeShared)
+        }
+        guard vertices != nil, indices != nil else { clearGeometry(); return }
+        indexCount = geometry.indices.count
     }
 
     func draw(view: MTKView, frame: ARFrame?, orientation: UIInterfaceOrientation) {
@@ -72,7 +85,7 @@ final class ScanCoverageMetalRenderer {
         var retainedDepth: CoverageDepthTextures?
         if let frame, case .normal = frame.camera.trackingState,
            abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 0.25,
-           let vertices, vertexCount > 0, view.bounds.width > 0, view.bounds.height > 0,
+           let vertices, let indices, indexCount > 0, view.bounds.width > 0, view.bounds.height > 0,
            let depth = frame.sceneDepth, let textures = makeTextures(depth) {
             retainedDepth = textures
             let inverse = frame.displayTransform(for: orientation, viewportSize: view.bounds.size).inverted()
@@ -93,7 +106,8 @@ final class ScanCoverageMetalRenderer {
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<ScanCoverageUniforms>.stride, index: 1)
             encoder.setFragmentTexture(textures.depthTexture, index: 0)
             encoder.setFragmentTexture(textures.confidenceTexture, index: 1)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vertexCount)
+            encoder.drawIndexedPrimitives(type: .triangle, indexCount: indexCount, indexType: .uint32,
+                                          indexBuffer: indices, indexBufferOffset: 0)
         }
         encoder.endEncoding()
         command.present(drawable)
@@ -131,8 +145,10 @@ final class ScanCoverageMetalRenderer {
                      confidenceWrapper: confidenceWrapper, depthTexture: depthTexture, confidenceTexture: confidenceTexture)
     }
 
-    nonisolated static func makeGeometry(frame: CaptureDepthFrame, coverage: DepthScanCoverageSnapshot) -> [ScanCoverageVertex] {
-        guard !Task.isCancelled, let mask = coverage.mask(for: frame), !Task.isCancelled else { return [] }
+    @_optimize(speed)
+    nonisolated static func makeGeometry(frame: CaptureDepthFrame, coverage: DepthScanCoverageSnapshot) -> ScanCoverageGeometry {
+        guard !Task.isCancelled, let evidence = coverage.mask(for: frame), !Task.isCancelled else { return .init() }
+        let mask = evidence.feathered()
         let image = frame.depth, camera = frame.camera, pose = frame.mapFromCamera
         let transform = simd_float4x4(columns: (SIMD4(pose[0], pose[1], pose[2], pose[3]),
                                                SIMD4(pose[4], pose[5], pose[6], pose[7]),
@@ -140,32 +156,46 @@ final class ScanCoverageMetalRenderer {
                                                SIMD4(pose[12], pose[13], pose[14], pose[15])))
         let scaleX = Float(image.width) / Float(camera.imageWidth), scaleY = Float(image.height) / Float(camera.imageHeight)
         let fx = camera.fx * scaleX, fy = camera.fy * scaleY, cx = camera.cx * scaleX, cy = camera.cy * scaleY
-        let step = max(2, Int(ceil(sqrt(Double(image.width * image.height) / 12_500))))
-        var result: [ScanCoverageVertex] = []
-        result.reserveCapacity(75_000)
-        func vertex(_ x: Int, _ y: Int) -> ScanCoverageVertex {
-            let index = y * image.width + x, z = image.valuesM[index]!
-            let point = transform * SIMD4((Float(x) - cx) * z / fx, -(Float(y) - cy) * z / fy, -z, 1)
-            return .init(position: point, alpha: SIMD4(Float(mask.alpha[index]) / 255, 0, 0, 0))
+        // Share vertices instead of duplicating six per coarse cell. Native-depth
+        // triangles preserve soft boundaries with a fixed, small display budget.
+        let step = max(1, Int(ceil(sqrt(Double(image.width * image.height) / 65_536))))
+        let rows = Array(stride(from: 1, to: image.height - 1, by: step))
+        let columns = Array(stride(from: 1, to: image.width - 1, by: step))
+        var result = ScanCoverageGeometry()
+        result.vertices.reserveCapacity(rows.count * columns.count)
+        result.indices.reserveCapacity((rows.count - 1) * (columns.count - 1) * 6)
+        for row in rows {
+            if Task.isCancelled { return .init() }
+            for column in columns {
+                let index = row * image.width + column
+                let measuredDepth = image.valuesM[index] ?? 0
+                let z = measuredDepth.isFinite ? measuredDepth : 0
+                let point = transform * SIMD4((Float(column) - cx) * z / fx, -(Float(row) - cy) * z / fy, -z, 1)
+                result.vertices.append(.init(position: point, alpha: SIMD4(Float(mask.alpha[index]) / 55, 0, 0, 0)))
+            }
         }
-        for row in stride(from: 1, to: image.height - 1 - step, by: step) {
-            if Task.isCancelled { return [] }
-            for column in stride(from: 1, to: image.width - 1 - step, by: step) {
+        for r in 0..<rows.count - 1 {
+            if Task.isCancelled { return .init() }
+            for c in 0..<columns.count - 1 {
+                let row = rows[r], column = columns[c]
+                let a = UInt32(r * columns.count + c), b = a + 1
+                let lower = a + UInt32(columns.count), d = lower + 1
+                guard max(result.vertices[Int(a)].alpha.x, result.vertices[Int(b)].alpha.x,
+                          result.vertices[Int(lower)].alpha.x, result.vertices[Int(d)].alpha.x) > 0 else { continue }
                 var low = Float.greatestFiniteMagnitude, high: Float = 0, supported = true
                 // Checking the entire small cell prevents coarse triangles spanning holes or thin objects.
                 for y in row...(row + step) {
                     for x in column...(column + step) {
                         let index = y * image.width + x
-                        guard mask.alpha[index] > 0, let value = image.valuesM[index], value.isFinite else {
+                        guard image.confidence?[index] == 2, let value = image.valuesM[index],
+                              value.isFinite, (0.2...5).contains(value) else {
                             supported = false; continue
                         }
                         low = min(low, value); high = max(high, value)
                     }
                 }
-                guard supported, high - low <= 0.025 + low * 0.01, result.count <= 75_000 - 6 else { continue }
-                let a = vertex(column, row), b = vertex(column + step, row)
-                let c = vertex(column, row + step), d = vertex(column + step, row + step)
-                result.append(contentsOf: [a, b, c, b, d, c])
+                guard supported, high - low <= 0.025 + low * 0.01 else { continue }
+                result.indices.append(contentsOf: [a, b, lower, b, d, lower])
             }
         }
         return result
@@ -185,6 +215,7 @@ final class ScanCoverageMetalRenderer {
         float4 position [[position]];
         float expectedDepth;
         float alpha;
+        float3 worldPosition;
     };
     vertex CoverageRaster coverageVertex(uint id [[vertex_id]],
         const device CoverageVertex *vertices [[buffer(0)]], constant CoverageUniforms &u [[buffer(1)]]) {
@@ -192,7 +223,17 @@ final class ScanCoverageMetalRenderer {
         out.position = u.viewProjection * vertices[id].position;
         out.expectedDepth = -(u.sensorView * vertices[id].position).z;
         out.alpha = vertices[id].alpha.x;
+        out.worldPosition = vertices[id].position.xyz;
         return out;
+    }
+    // Fine, antialiased surface dots use world metres, so they never swim with
+    // the camera. Triplanar blending keeps walls and floors equally legible.
+    float coverageDots(float2 position) {
+        float2 grid = position / 0.085;
+        float2 footprint = fwidth(grid);
+        float aa = max(length(footprint) * 0.5, 0.012);
+        float dot = 1 - smoothstep(0.065 - aa, 0.065 + aa, length(fract(grid) - 0.5));
+        return dot * (1 - smoothstep(0.25, 0.65, max(footprint.x, footprint.y)));
     }
     fragment float4 coverageFragment(CoverageRaster in [[stage_in]],
         constant CoverageUniforms &u [[buffer(1)]], texture2d<float, access::read> depth [[texture(0)]],
@@ -213,8 +254,18 @@ final class ScanCoverageMetalRenderer {
             if (!isfinite(neighborDepth) || neighborDepth < 0.2 || neighborDepth > 5
                 || neighborLevel < 1.5 || neighborLevel > 2.5 || abs(neighborDepth - live) > 0.015 + live * 0.01) discard_fragment();
         }
-        float alpha = clamp(in.alpha, 0.0f, 55.0f / 255.0f);
-        return float4(float3(35, 215, 105) / 255 * alpha, alpha);
+        float coverage = clamp(in.alpha, 0.0f, 1.0f);
+        float3 normal = abs(cross(dfdx(in.worldPosition), dfdy(in.worldPosition)));
+        float3 weights = pow(normal / max(max(normal.x, normal.y), max(normal.z, 0.000001f)), float3(8));
+        weights /= max(weights.x + weights.y + weights.z, 0.000001f);
+        float dots = dot(weights, float3(coverageDots(in.worldPosition.yz),
+                                        coverageDots(in.worldPosition.xz), coverageDots(in.worldPosition.xy)));
+        float edge = 4 * coverage * (1 - coverage);
+        // Keep the dot grid clearly legible over a bright or textured camera view.
+        float alpha = coverage * (0.16 + dots * 0.64) + edge * 0.14;
+        float3 jade = float3(0.12, 0.72, 0.53);
+        float3 mint = float3(0.48, 0.94, 0.76);
+        return float4(mix(jade, mint, max(dots, edge * 0.6)) * alpha, alpha);
     }
     """
 }

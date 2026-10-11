@@ -111,12 +111,21 @@ class Lexicon:
     room_suffixes: dict[str, tuple[str, ...]]
     room_labels: dict[str, str | None]
 
-    def match(self, text: str) -> list[LexiconMatch]:
-        """Non-vetoed category matches, strongest first; one match per category."""
+    def vetoes(self, text: str) -> set[str]:
+        """Categories explicitly denied by the text, including their more general/specific forms."""
+        normalized = normalize(text)
+        vetoed = {n.category for n in self.negations if n.pattern.search(normalized)}
+        for family in ({"exit", "emergency_exit"}, {"restroom", "accessible_restroom"}):
+            if vetoed & family:
+                vetoed.update(family)
+        return vetoed
+
+    def match_terms(self, text: str) -> list[LexiconMatch]:
+        """Non-vetoed term readings, retaining bilingual evidence for the same category."""
         normalized = normalize(text)
         if not normalized:
             return []
-        vetoed = {n.category for n in self.negations if n.pattern.search(normalized)}
+        vetoed = self.vetoes(text)
         hits: list[tuple[int, int, _Term]] = []
         for term in self.terms:
             if term.category in vetoed:
@@ -130,20 +139,31 @@ class Lexicon:
         # Drop matches strictly inside a longer match of another category or term.
         kept = [h for h in hits if not any(o[0] <= h[0] and h[1] <= o[1] and (o[1] - o[0]) > (h[1] - h[0])
                                            for o in hits)]
-        best: dict[str, LexiconMatch] = {}
         order = {language: index for index, language in enumerate(self.languages)}
+        matches: dict[tuple[str, str, str], LexiconMatch] = {}
         for start, end, term in sorted(kept, key=lambda h: (-h[2].weight, order.get(h[2].language, 99), h[0])):
             exact = start == 0 and end == len(normalized)
-            current = best.get(term.category)
             candidate = LexiconMatch(term.category, term.language, term.term, term.weight, exact)
+            key = (term.category, term.language, term.term)
+            current = matches.get(key)
             if current is None or (candidate.weight, candidate.exact) > (current.weight, current.exact):
-                best[term.category] = candidate
+                matches[key] = candidate
+        return list(matches.values())
+
+    def match(self, text: str) -> list[LexiconMatch]:
+        """Non-vetoed category matches, strongest first; one match per category."""
+        best: dict[str, LexiconMatch] = {}
+        for candidate in self.match_terms(text):
+            category = candidate.category
+            current = best.get(category)
+            if current is None or (candidate.weight, candidate.exact) > (current.weight, current.exact):
+                best[category] = candidate
         return sorted(best.values(), key=lambda m: (-m.weight, -m.exact, m.category))
 
     def languages_of(self, normalized_term: str) -> list[str]:
         """Languages whose vocabulary contains the term, in lexicon order."""
         found = {t.language for t in self.terms if t.term == normalized_term}
-        return [language for language in self.languages if language in found]
+        return [language for language in self.languages if language in found] + sorted(found - set(self.languages))
 
     def display_names(self, category: str) -> dict[str, str]:
         return dict(self.names.get(category, {}))

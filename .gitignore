@@ -21,3 +21,6 @@ __pycache__/
 # Local continuous scan sensor archives
 /backend/data/streams/
 /data/streams/
+
+# Local community accounts, sessions, submissions and reviewed releases
+/data/product/

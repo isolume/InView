@@ -24,6 +24,7 @@ MIN_ROOM_AREA_M2 = 0.5          # smaller floor patches are RoomPlan fragments, 
 SECTION_TOLERANCE_M = 0.3       # a section center this far outside a floor still labels it
 DOOR_PROBE_M = 0.4              # probe distance either side of a door/opening to find its rooms
 DUPLICATE_IOU = 0.6             # overlap above which two floors are one room seen twice
+DUPLICATE_HEIGHT_M = 0.3        # repeated floor measurements, never vertically stacked floors
 STORY_GAP_M = 1.0               # floor heights further apart than this are different stories
 RASTER_M = 0.05
 
@@ -133,6 +134,10 @@ def _drop_duplicates(rooms: list[_Room]) -> list[_Room]:
     for a, b in combinations(range(len(rooms)), 2):
         if a in dropped or b in dropped or not _same_story(rooms[a].story, rooms[b].story):
             continue
+        # Story is optional in native and portable captures. X/Z overlap alone also describes
+        # rooms directly above each other, and story inference runs after deduplication.
+        if abs(rooms[a].floor_y - rooms[b].floor_y) > DUPLICATE_HEIGHT_M:
+            continue
         if _iou(rooms[a].polygon, rooms[b].polygon) > DUPLICATE_IOU:
             dropped.add(a if rooms[a].group <= rooms[b].group else b)
     return [r for i, r in enumerate(rooms) if i not in dropped]
@@ -178,9 +183,21 @@ def _same_story(a: int | None, b: int | None) -> bool:
     return a is None or b is None or a == b
 
 
+def _level_rooms(rooms: list[_Room], story: int | None, floor_y: float | None = None) -> list[_Room]:
+    eligible = [r for r in rooms if _same_story(r.story, story)]
+    if floor_y is None or not eligible:
+        return eligible
+    nearest = min(abs(r.floor_y - floor_y) for r in eligible)
+    return [r for r in eligible if abs(r.floor_y - floor_y) <= nearest + DUPLICATE_HEIGHT_M]
+
+
 def _label(rooms: list[_Room], sections: list[RPSection]) -> None:
+    # Sections from a retained scan group describe that group's level. When their group's floor
+    # was deduplicated, the section's measured height selects the corresponding retained level.
+    levels = [set(_level_rooms([r for r in rooms if r.group == s.group] or rooms, s.story, s.center[1]))
+              for s in sections]
     for room in rooms:
-        hits = [(s, room.distance(s.center[[0, 2]])) for s in sections if _same_story(s.story, room.story)]
+        hits = [(s, room.distance(s.center[[0, 2]])) for s, level in zip(sections, levels) if room in level]
         inside = [(s, d) for s, d in hits if d >= -SECTION_TOLERANCE_M]
         if not inside:
             # A section scan with exactly one floor labels it even if the center sits outside it.
@@ -192,8 +209,9 @@ def _label(rooms: list[_Room], sections: list[RPSection]) -> None:
         room.label = next((s.label for s, _ in inside if s.label != "unidentified"), None)
 
 
-def _room_at(rooms: list[_Room], xz: np.ndarray, story: int | None, tolerance: float = 0.0) -> _Room | None:
-    best = max(((r.distance(xz), r.id, r) for r in rooms if _same_story(r.story, story)),
+def _room_at(rooms: list[_Room], xz: np.ndarray, story: int | None, tolerance: float = 0.0,
+             floor_y: float | None = None) -> _Room | None:
+    best = max(((r.distance(xz), r.id, r) for r in _level_rooms(rooms, story, floor_y)),
                default=None, key=lambda t: (t[0], t[1]))
     return best[2] if best and best[0] >= -tolerance else None
 
@@ -223,7 +241,8 @@ def _passage(surface: RPSurface, rooms: list[_Room], story: int | None) -> dict[
 def _story_of(surface: RPSurface | RPObject, rooms: list[_Room]) -> int | None:
     if surface.story is not None:
         return surface.story
-    room = _room_at(rooms, surface.matrix[:3, 3][[0, 2]], None, tolerance=DOOR_PROBE_M)
+    bottom_y = float(surface.matrix[1, 3] - surface.dimensions[1] / 2)
+    room = _room_at(rooms, surface.matrix[:3, 3][[0, 2]], None, tolerance=DOOR_PROBE_M, floor_y=bottom_y)
     return room.story if room else None
 
 
@@ -302,7 +321,8 @@ def build(capture: Capture) -> dict[str, Any]:
 
     sections = []
     for index, section in enumerate(capture.sections):
-        room = _room_at(rooms, section.center[[0, 2]], section.story, tolerance=SECTION_TOLERANCE_M)
+        room = _room_at(rooms, section.center[[0, 2]], section.story, tolerance=SECTION_TOLERANCE_M,
+                        floor_y=float(section.center[1]))
         sections.append({"label": section.label, "center_m": [_r(v) for v in section.center],
                          "story": section.story, "room_id": room.id if room else None, "index": index})
 

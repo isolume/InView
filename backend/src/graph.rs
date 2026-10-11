@@ -118,6 +118,8 @@ impl Segment {
 #[serde(rename_all = "snake_case")]
 pub enum ConnectorKind {
     Elevator,
+    /// A reviewed ramp crossing between separate map or floor frames.
+    Ramp,
     Stairs,
     Escalator,
 }

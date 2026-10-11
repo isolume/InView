@@ -5,7 +5,7 @@ use axum::{
 };
 use inview_backend::{
     AppState, app,
-    graph::{Availability, Graph, Segment},
+    graph::{Availability, ConnectorKind, Graph, Segment},
     routing::{self, RouteError, RouteRequest},
 };
 use serde_json::{Value, json};
@@ -17,6 +17,40 @@ fn graph() -> Graph {
 
 fn request() -> RouteRequest {
     serde_json::from_str(include_str!("../examples/route.json")).unwrap()
+}
+
+fn graph_with_ramp(ramp_seconds: f64) -> Graph {
+    let mut value = serde_json::to_value(graph()).unwrap();
+    value["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id": "ramp-ground", "map_id": "ground-scan", "floor_id": "ground",
+                "x": 8, "y": 0, "z": 0 }),
+        json!({ "id": "ramp-upper", "map_id": "upper-scan", "floor_id": "upper",
+                "x": -4, "y": 0, "z": 0 }),
+    ]);
+    value["edges"].as_array_mut().unwrap().extend([
+        json!({
+            "id": "ramp-approach", "from": "entrance", "to": "ramp-ground",
+            "step_free": true, "availability": "available",
+            "minimum_clear_width_m": 1.2, "maximum_slope": 0,
+            "segment": { "type": "surface", "map_id": "ground-scan", "floor_id": "ground",
+                "path_points": [{ "x": 0, "y": 0, "z": 0 }, { "x": 8, "y": 0, "z": 0 }] }
+        }),
+        json!({
+            "id": "ramp-a-crossing", "from": "ramp-ground", "to": "ramp-upper",
+            "step_free": true, "availability": "available",
+            "minimum_clear_width_m": 1.2, "maximum_slope": 0.05,
+            "segment": { "type": "transition", "connector_id": "ramp-a", "kind": "ramp",
+                "estimated_seconds": ramp_seconds }
+        }),
+        json!({
+            "id": "ramp-exit", "from": "ramp-upper", "to": "room-204",
+            "step_free": true, "availability": "available",
+            "minimum_clear_width_m": 1.2, "maximum_slope": 0,
+            "segment": { "type": "surface", "map_id": "upper-scan", "floor_id": "upper",
+                "path_points": [{ "x": -4, "y": 0, "z": 0 }, { "x": 4, "y": 0, "z": 0 }] }
+        }),
+    ]);
+    serde_json::from_value(value).unwrap()
 }
 
 #[test]
@@ -46,6 +80,121 @@ fn shortest_route_can_use_stairs_when_permitted() {
     let route = routing::find_route(&graph(), &request).unwrap();
     assert_eq!(route.node_ids, ["entrance", "room-204"]);
     assert_eq!(route.estimated_seconds, 12.0);
+}
+
+#[test]
+fn fastest_route_uses_elevator_when_stairs_are_slower() {
+    let mut graph = graph();
+    if let Segment::Transition {
+        estimated_seconds, ..
+    } = &mut graph.edges[3].segment
+    {
+        *estimated_seconds = 50.0;
+    }
+    graph.validate().unwrap();
+    let mut request = request();
+    request.requirements = Default::default();
+    let route = routing::find_route(&graph, &request).unwrap();
+    assert_eq!(route.estimated_seconds, 34.0);
+    assert_eq!(route.segments[1].edge_id, "elevator-a-ride");
+    assert!(!route.requirements.requires_step_free);
+}
+
+#[test]
+fn step_free_route_uses_suitable_ramp_and_preserves_separate_scan_frames() {
+    let graph = graph_with_ramp(10.0);
+    graph.validate().unwrap();
+    let route = routing::find_route(&graph, &request()).unwrap();
+    assert_eq!(route.estimated_seconds, 26.0);
+    assert_eq!(
+        route.node_ids,
+        ["entrance", "ramp-ground", "ramp-upper", "room-204"]
+    );
+    let body = serde_json::to_value(route).unwrap();
+    let crossing = &body["segments"][1];
+    assert_eq!(crossing["type"], "transition");
+    assert_eq!(crossing["kind"], "ramp");
+    assert_eq!(crossing["connector_id"], "ramp-a");
+    assert_eq!(crossing["from_map_id"], "ground-scan");
+    assert_eq!(crossing["to_map_id"], "upper-scan");
+    assert_eq!(crossing["from_floor_id"], "ground");
+    assert_eq!(crossing["to_floor_id"], "upper");
+    assert!(crossing.get("path_points").is_none());
+    assert_eq!(body["segments"][0]["path_points"][1]["x"], 8.0);
+    assert_eq!(body["segments"][2]["path_points"][0]["x"], -4.0);
+    assert_eq!(body["requirements"]["maximum_slope"], 0.08);
+}
+
+#[test]
+fn step_free_selection_compares_total_ramp_and_elevator_journey_times() {
+    // The ramp crossing itself is faster than the 25-second elevator ride, but its
+    // longer approach and exit make the full trip 36 seconds instead of 34.
+    let graph = graph_with_ramp(20.0);
+    graph.validate().unwrap();
+    let route = routing::find_route(&graph, &request()).unwrap();
+    assert_eq!(route.estimated_seconds, 34.0);
+    assert_eq!(route.segments[1].edge_id, "elevator-a-ride");
+}
+
+#[test]
+fn unknown_narrow_or_steep_ramp_uses_elevator_without_stairs_fallback() {
+    for (step_free, width, slope) in [
+        (None, Some(1.2), Some(0.05)),
+        (Some(false), Some(1.2), Some(0.05)),
+        (Some(true), None, Some(0.05)),
+        (Some(true), Some(0.8), Some(0.05)),
+        (Some(true), Some(1.2), None),
+        (Some(true), Some(1.2), Some(0.1)),
+    ] {
+        let mut graph = graph_with_ramp(10.0);
+        let ramp = graph
+            .edges
+            .iter_mut()
+            .find(|edge| edge.id == "ramp-a-crossing")
+            .unwrap();
+        ramp.step_free = step_free;
+        ramp.minimum_clear_width_m = width;
+        ramp.maximum_slope = slope;
+        graph.validate().unwrap();
+        let route = routing::find_route(&graph, &request()).unwrap();
+        assert_eq!(route.segments[1].edge_id, "elevator-a-ride");
+        graph.edges[1].availability = Availability::Closed;
+        assert_eq!(
+            routing::find_route(&graph, &request()).unwrap_err(),
+            RouteError::NoVerifiedRoute
+        );
+    }
+}
+
+#[test]
+fn closed_or_unknown_ramp_is_excluded_and_never_relaxes_step_free_requirements() {
+    for availability in [Availability::Closed, Availability::Unknown] {
+        let mut graph = graph_with_ramp(10.0);
+        graph
+            .edges
+            .iter_mut()
+            .find(|edge| edge.id == "ramp-a-crossing")
+            .unwrap()
+            .availability = availability;
+        let route = routing::find_route(&graph, &request()).unwrap();
+        assert_eq!(route.segments[1].edge_id, "elevator-a-ride");
+        graph.edges[1].availability = availability;
+        assert_eq!(
+            routing::find_route(&graph, &request()).unwrap_err(),
+            RouteError::NoVerifiedRoute
+        );
+        let mut fastest = request();
+        fastest.requirements = Default::default();
+        assert_eq!(
+            routing::find_route(&graph, &fastest).unwrap().node_ids,
+            ["entrance", "room-204"]
+        );
+        graph.edges[3].availability = Availability::Closed;
+        assert_eq!(
+            routing::find_route(&graph, &fastest).unwrap_err(),
+            RouteError::NoVerifiedRoute
+        );
+    }
 }
 
 #[test]
@@ -335,4 +484,99 @@ async fn api_reports_no_verified_route_and_validates_speed() {
             .1["error"]["code"],
         "invalid_input"
     );
+}
+
+#[tokio::test]
+async fn api_switches_fastest_and_step_free_requests_without_retaining_old_requirements() {
+    let app = app(AppState::default());
+    let mut graph = graph_with_ramp(10.0);
+    assert_eq!(
+        call(
+            &app,
+            "PUT",
+            "/graphs/demo-building",
+            Some(serde_json::to_value(&graph).unwrap())
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let step_free: Value = serde_json::from_str(include_str!("../examples/route.json")).unwrap();
+    let mut gentler = step_free.clone();
+    gentler["requirements"]["maximum_slope"] = json!(0.04);
+    let fastest = json!({
+        "from": "entrance", "to": "room-204",
+        "requirements": { "requires_step_free": false }
+    });
+    for (payload, connector, seconds) in [
+        (step_free.clone(), "ramp", 26.0),
+        (gentler, "elevator", 34.0),
+        (fastest.clone(), "stairs", 12.0),
+        (step_free.clone(), "ramp", 26.0),
+    ] {
+        let (status, body) = call(
+            &app,
+            "POST",
+            "/graphs/demo-building/routes",
+            Some(payload.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["estimated_seconds"], seconds);
+        let transition = body["segments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|segment| segment["type"] == "transition")
+            .unwrap();
+        assert_eq!(transition["kind"], connector);
+        assert_eq!(
+            body["requirements"]["requires_step_free"],
+            payload["requirements"]["requires_step_free"]
+        );
+        assert_eq!(
+            body["requirements"]["minimum_clear_width_m"],
+            payload["requirements"]["minimum_clear_width_m"]
+        );
+        assert_eq!(
+            body["requirements"]["maximum_slope"],
+            payload["requirements"]["maximum_slope"]
+        );
+    }
+
+    for edge in &mut graph.edges {
+        if matches!(
+            edge.segment,
+            Segment::Transition {
+                kind: ConnectorKind::Elevator | ConnectorKind::Ramp,
+                ..
+            }
+        ) {
+            edge.availability = Availability::Closed;
+        }
+    }
+    assert_eq!(
+        call(
+            &app,
+            "PUT",
+            "/graphs/demo-building",
+            Some(serde_json::to_value(graph).unwrap())
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, body) = call(
+        &app,
+        "POST",
+        "/graphs/demo-building/routes",
+        Some(step_free),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "no_verified_route");
+    let (status, body) = call(&app, "POST", "/graphs/demo-building/routes", Some(fastest)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["segments"][0]["kind"], "stairs");
+    assert_eq!(body["requirements"]["requires_step_free"], false);
 }

@@ -93,18 +93,6 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     #expect(snapshot.mask(for: frame) == nil)
 }
 
-@Test func coverageMaskNativeFrameBenchmarkHasBoundedBytesAndAlpha() throws {
-    var coverage = DepthScanCoverage()
-    coverage.recordSavedFrame(coverageMaskFrame())
-    let snapshot = coverage.snapshot()
-    let live = coverageMaskFrame(timestamp: 2)
-    let start = Date()
-    let mask = try #require(snapshot.mask(for: live))
-    print("Coverage 256x192 mask: \(Date().timeIntervalSince(start))s, \(mask.alpha.count) bytes")
-    #expect(mask.alpha.count == 49_152)
-    #expect(mask.alpha.allSatisfy { $0 <= 55 })
-}
-
 @Test func coverageMaskDoesNotMarkTheUnseenOppositeSideOfAThinSurface() throws {
     var coverage = DepthScanCoverage()
     coverage.recordSavedFrame(coverageMaskFrame())
@@ -114,7 +102,7 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     #expect(try #require(coverage.snapshot().mask(for: live)).alpha.allSatisfy { $0 == 0 })
 }
 
-@Test func coverageMaskLargeRetainedSnapshotBenchmarkAndCopyPreserveEvidence() throws {
+@Test func coverageMaskRetainedSnapshotSurvivesCopyAndEviction() throws {
     var coverage = DepthScanCoverage()
     var saved = coverageMaskFrame()
     var index = 0
@@ -127,17 +115,12 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     let snapshot = coverage.snapshot()
     #expect(snapshot.count == 60_000)
     var live = saved; live.timestampSeconds += 1
-    let maskStart = Date()
     let mask = try #require(snapshot.mask(for: live))
-    let maskTime = Date().timeIntervalSince(maskStart)
     #expect(mask.alpha.contains(55))
     #expect(snapshot.count == 60_000 && snapshot.sampleCount <= 240_000)
     saved.mapFromCamera[12] += 3; saved.timestampSeconds += 2
-    let copyStart = Date()
     coverage.recordSavedFrame(saved)
-    let copyTime = Date().timeIntervalSince(copyStart)
     #expect(snapshot.count == 60_000 && coverage.snapshot().count == 60_000)
-    print("Coverage \(snapshot.count) bins / \(snapshot.sampleCount) samples: mask \(maskTime)s, first copy+record \(copyTime)s")
 }
 
 
@@ -155,4 +138,27 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     task.cancel()
     gate.continuation.finish()
     #expect(await task.value == nil)
+}
+
+@Test func coverageMaskHasNoSeedGridGapsOnAContinuouslyMeasuredWall() throws {
+    var coverage = DepthScanCoverage()
+    coverage.recordSavedFrame(coverageMaskFrame())
+    let mask = try #require(coverage.snapshot().mask(for: coverageMaskFrame(timestamp: 2)))
+    for row in 1..<191 { for column in 1..<255 { #expect(mask.alpha[row * 256 + column] == 55) } }
+}
+
+@Test func coverageFeatherSoftensInwardAndPreservesUncapturedHoles() {
+    var alpha = [UInt8](repeating: 55, count: 15 * 15)
+    for i in 0..<15 {
+        alpha[i] = 0; alpha[14 * 15 + i] = 0
+        alpha[i * 15] = 0; alpha[i * 15 + 14] = 0
+    }
+    alpha[7 * 15 + 7] = 0
+    let mask = DepthScanCoverageMask(width: 15, height: 15, alpha: alpha).feathered()
+    #expect(mask.alpha[7 * 15 + 7] == 0)
+    #expect(mask.alpha[7 * 15 + 6] > 0 && mask.alpha[7 * 15 + 6] < mask.alpha[7 * 15 + 5])
+    #expect(mask.alpha[3 * 15 + 3] == 55)
+    #expect(mask.alpha[7 * 15 + 6] == mask.alpha[6 * 15 + 7])
+    #expect(mask.alpha[6 * 15 + 6] == mask.alpha[6 * 15 + 8])
+    for i in alpha.indices { #expect(mask.alpha[i] <= alpha[i]) }
 }

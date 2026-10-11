@@ -29,4 +29,7 @@ public struct CameraTrackSampling: Equatable, Sendable {
     public mutating func decimate() {
         interval *= 2
     }
+
+    /// A new coordinate frame starts at the configured rate, independently of an earlier walk.
+    public mutating func reset() { interval = timerInterval }
 }

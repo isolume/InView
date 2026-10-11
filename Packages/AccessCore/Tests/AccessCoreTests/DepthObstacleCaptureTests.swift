@@ -40,6 +40,8 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
         accumulator.observe(samples, timestamp: 0)
         #expect(accumulator.snapshot().isEmpty)
         accumulator.observe(samples, timestamp: 1)
+        #expect(accumulator.snapshot().isEmpty)
+        accumulator.observe(samples, timestamp: 2)
         let obstacle = try #require(accumulator.snapshot().first)
         #expect(obstacle.kind == .obstacle)
         #expect(obstacle.furniture == nil)
@@ -58,6 +60,8 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     var accumulator = DepthObstacleAccumulator()
     accumulator.observe(samples, timestamp: 0)
     accumulator.observe(samples, timestamp: 1)
+    #expect(accumulator.snapshot().isEmpty)
+    accumulator.observe(samples, timestamp: 2)
     let obstacle = try #require(accumulator.snapshot().first)
     #expect(simd_distance(obstacle.center, SIMD2(1, 4)) < 0.03)
     #expect(obstacle.size.x == 0.1)
@@ -71,6 +75,8 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     var accumulator = DepthObstacleAccumulator()
     accumulator.observe(samples, timestamp: 0)
     accumulator.observe(samples, timestamp: 1)
+    #expect(accumulator.snapshot().isEmpty)
+    accumulator.observe(samples, timestamp: 2)
     var footprint = try #require(accumulator.snapshot().first)
     footprint.yaw = 0.4
     let object = try #require(DepthObstacleEvidence.captureObject(from: footprint, id: "observed-clutter"))
@@ -124,6 +130,7 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     let flat = clutterSample(cell: [0, 0], bottom: 0.18, top: 0.18)
     accumulator.observe([flat], timestamp: 0)
     accumulator.observe([flat], timestamp: 1)
+    accumulator.observe([flat], timestamp: 2)
     #expect(accumulator.snapshot().isEmpty)
 }
 
@@ -174,6 +181,8 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     accumulator.observe([sample], timestamp: 0.25)
     #expect(accumulator.snapshot().isEmpty)
     accumulator.observe([sample], timestamp: 0.75)
+    #expect(accumulator.snapshot().isEmpty)
+    accumulator.observe([sample], timestamp: 1.5)
     #expect(accumulator.snapshot().count == 1)
 }
 
@@ -201,6 +210,8 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     var accumulator = DepthObstacleAccumulator()
     accumulator.observe([lower, upstairs], timestamp: 0)
     accumulator.observe([lower, upstairs], timestamp: 1)
+    #expect(accumulator.snapshot().isEmpty)
+    accumulator.observe([lower, upstairs], timestamp: 2)
     accumulator.observe([], timestamp: 100)
     let obstacles = accumulator.snapshot()
     #expect(obstacles.count == 2)
@@ -212,11 +223,13 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     let flatSamples = (0..<4).map { clutterSample(cell: [$0, 0], bottom: 0.15, top: 0.18) }
     accumulator.observe(flatSamples, timestamp: 0)
     accumulator.observe(flatSamples, timestamp: 1)
+    accumulator.observe(flatSamples, timestamp: 2)
     #expect(accumulator.snapshot().isEmpty)
     var wallAccumulator = DepthObstacleAccumulator()
     let wall = (0..<20).map { clutterSample(cell: [$0, 0]) }
     wallAccumulator.observe(wall, timestamp: 0)
     wallAccumulator.observe(wall, timestamp: 1)
+    wallAccumulator.observe(wall, timestamp: 2)
     #expect(wallAccumulator.snapshot().isEmpty)
 }
 
@@ -225,6 +238,8 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     var accumulator = DepthObstacleAccumulator(maximumCells: 10, maximumClusters: 5)
     accumulator.observe(evidence, timestamp: 0)
     accumulator.observe(evidence, timestamp: 1)
+    #expect(accumulator.snapshot().isEmpty)
+    accumulator.observe(evidence, timestamp: 2)
     #expect(accumulator.retainedCellCount == 10)
     #expect(accumulator.snapshot().count == 5)
     var frame = clutterFrame(width: 1_000, height: 1_000,
@@ -243,6 +258,8 @@ private func clutterSample(cell: SIMD2<Int>, floorY: Float = 0,
     let final = clutterSample(cell: [0, 0])
     accumulator.observe([final], timestamp: 310)
     accumulator.observe([final], timestamp: 311)
+    #expect(accumulator.snapshot().isEmpty)
+    accumulator.observe([final], timestamp: 312)
     #expect(accumulator.snapshot().count == 1)
 }
 

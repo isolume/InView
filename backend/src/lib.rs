@@ -9,6 +9,8 @@ pub mod geometry;
 pub mod graph;
 pub mod map_frame;
 pub mod model_meshes;
+pub mod product_api;
+pub mod product_store;
 pub mod raw_lidar;
 pub mod recognition_service;
 pub mod recognized_objects;
@@ -18,6 +20,7 @@ pub mod scan_package;
 pub mod scene;
 pub mod store;
 pub mod stream_api;
+mod stream_evidence;
 pub mod stream_scan;
 pub mod streaming;
 pub mod studio;
@@ -28,27 +31,60 @@ use axum::{
     middleware,
     routing::{get, post},
 };
+use sqlx::PgPool;
 use std::sync::Arc;
+use store::{GraphStore, ScanStore};
 use tower_http::trace::TraceLayer;
 
-use sqlx::PgPool;
-use store::{GraphStore, ScanStore};
-
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AppState {
+    /// Processing output and candidate graphs. Never the public routing catalog.
     pub graphs: GraphStore,
+    /// Explicitly reviewed snapshots, published through an administrator account.
+    pub published_graphs: GraphStore,
     pub scans: ScanStore,
     pub streams: streaming::StreamStore,
+    pub product: product_store::ProductStore,
     pub maps: Option<PgPool>,
     pub api_token: Option<Arc<str>>,
+    pub processing_requests: Arc<tokio::sync::Semaphore>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            graphs: GraphStore::default(),
+            published_graphs: GraphStore::default(),
+            scans: ScanStore::default(),
+            streams: streaming::StreamStore::default(),
+            product: product_store::ProductStore::default(),
+            maps: None,
+            api_token: None,
+            processing_requests: Arc::new(tokio::sync::Semaphore::new(4)),
+        }
+    }
+}
+
+impl AppState {
+    pub(crate) fn processing_permit(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, error::ApiError> {
+        self.processing_requests
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                error::ApiError::new(
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "processing_busy",
+                    "Scans are already processing. Retry shortly.",
+                )
+            })
+    }
 }
 
 pub fn app(state: AppState) -> Router {
-    let api_token = state.api_token.clone();
-    Router::new()
-        .route("/", get(studio::page))
-        .route("/studio", get(studio::page))
-        .route("/studio/assets/{name}", get(studio::asset))
+    // Processing credentials do not replace account sessions or gate public map browsing.
+    let processing = Router::new()
         .route("/health", get(api::health))
         .route(
             "/streams",
@@ -89,11 +125,7 @@ pub fn app(state: AppState) -> Router {
             get(buildings::overview),
         )
         .route("/graphs", get(api::list_graphs))
-        .route(
-            "/graphs/{graph_id}",
-            get(api::get_graph).put(api::put_graph),
-        )
-        .route("/graphs/{graph_id}/routes", axum::routing::post(api::route))
+        .route("/graphs/{graph_id}", axum::routing::put(api::put_graph))
         .route(
             "/scans",
             get(scan_api::list)
@@ -111,7 +143,6 @@ pub fn app(state: AppState) -> Router {
             "/scans/{scan_id}/process",
             axum::routing::post(scan_api::process),
         )
-        .route("/scans/{scan_id}/preview", get(scan_api::preview))
         .route("/scans/{scan_id}/camera-track", get(scan_api::camera_track))
         .route("/scans/{scan_id}/manifest", get(scan_api::manifest))
         .route("/scans/{scan_id}/assets/{filename}", get(scan_api::asset))
@@ -127,10 +158,64 @@ pub fn app(state: AppState) -> Router {
             "/scans/{scan_id}/color/{filename}",
             get(raw_lidar::color_asset),
         )
+        .route_layer(middleware::from_fn_with_state(
+            state.api_token.clone(),
+            auth::authorize,
+        ));
+    Router::new()
+        .route("/", get(studio::page))
+        .route("/studio", get(studio::page))
+        .route("/studio/assets/{name}", get(studio::asset))
+        .route("/scans/{scan_id}/preview", get(scan_api::preview))
+        .route("/graphs/{graph_id}", get(api::get_graph))
+        .route("/graphs/{graph_id}/routes", post(api::route))
+        .route("/api/admin/graphs/{graph_id}", get(api::review_graph))
+        .route(
+            "/api/admin/graphs/{graph_id}/publish",
+            post(api::publish_graph),
+        )
+        .route("/admin", get(product_api::admin_workspace))
+        .route(
+            "/api/accounts/register",
+            axum::routing::post(product_api::register).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
+        .route(
+            "/api/accounts/login",
+            axum::routing::post(product_api::login).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
+        .route("/api/accounts/me", get(product_api::me))
+        .route(
+            "/api/accounts/logout",
+            axum::routing::post(product_api::logout),
+        )
+        .route(
+            "/api/submissions",
+            get(product_api::list).post(product_api::submit),
+        )
+        .route("/api/submissions/{id}", get(product_api::get))
+        .route(
+            "/api/submissions/{id}/resubmit",
+            axum::routing::post(product_api::resubmit),
+        )
+        .route("/api/admin/submissions", get(product_api::admin_list))
+        .route(
+            "/api/admin/submissions/{id}",
+            axum::routing::patch(product_api::edit),
+        )
+        .route(
+            "/api/admin/submissions/{id}/publish",
+            axum::routing::post(product_api::publish),
+        )
+        .route("/api/venues/{venue}/maps", get(product_api::maps))
+        .route(
+            "/api/venues/{venue}/maps/{floor}/versions/{version}",
+            get(product_api::version),
+        )
+        .merge(processing)
         .fallback(api::not_found)
         .method_not_allowed_fallback(api::method_not_allowed)
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
-        .layer(middleware::from_fn_with_state(api_token, auth::authorize))
+        .layer(middleware::from_fn(product_api::protect_response))
         .with_state(state)
 }

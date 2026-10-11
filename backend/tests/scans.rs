@@ -16,6 +16,43 @@ fn fixture() -> Value {
     serde_json::from_str(include_str!("../examples/scan.json")).unwrap()
 }
 
+#[tokio::test]
+async fn scan_and_native_processing_share_admission_without_blocking_reads() {
+    let state = AppState::default();
+    let router = app(state.clone());
+    assert_eq!(
+        call(&router, "POST", "/scans", Some(fixture())).await.0,
+        StatusCode::CREATED
+    );
+    let permits = state
+        .processing_requests
+        .clone()
+        .acquire_many_owned(4)
+        .await
+        .unwrap();
+    for path in [
+        "/scans/demo-room/scene",
+        "/scans/demo-room/native-mesh",
+        "/scans/demo-room/raw-preview",
+    ] {
+        let (status, error) = call(&router, "GET", path, None).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(error["error"]["code"], "processing_busy");
+    }
+    assert_eq!(
+        call(&router, "GET", "/scans/demo-room", None).await.0,
+        StatusCode::OK
+    );
+    let (status, error) = call_package(&router, Vec::new()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(error["error"]["code"], "processing_busy");
+    drop(permits);
+    assert_eq!(
+        call(&router, "GET", "/scans/demo-room/scene", None).await.0,
+        StatusCode::OK
+    );
+}
+
 fn bundle(value: Value) -> ScanBundle {
     serde_json::from_value(value).unwrap()
 }
@@ -545,11 +582,7 @@ async fn immutable_scan_ids_conflict_and_invalid_uploads_leave_state_unchanged()
 #[tokio::test]
 async fn processing_options_and_missing_scans_return_structured_errors() {
     let app = app(AppState::default());
-    for uri in [
-        "/scans/missing",
-        "/scans/missing/scene",
-        "/scans/missing/preview",
-    ] {
+    for uri in ["/scans/missing", "/scans/missing/scene"] {
         let (status, error) = call(&app, "GET", uri, None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(error["error"]["code"], "scan_not_found");
@@ -582,13 +615,17 @@ async fn processing_options_and_missing_scans_return_structured_errors() {
 }
 
 #[tokio::test]
-async fn preview_is_html_for_an_existing_scan() {
+async fn preview_is_a_static_shell_that_does_not_reveal_scan_existence() {
     let app = app(AppState::default());
     call(&app, "POST", "/scans", Some(fixture())).await;
     let (status, content_type, bytes) =
         call_raw(&app, "GET", "/scans/demo-room/preview", None).await;
     assert_eq!(status, StatusCode::OK);
     assert!(content_type.starts_with("text/html"));
+    let (missing_status, _, missing_bytes) =
+        call_raw(&app, "GET", "/scans/missing/preview", None).await;
+    assert_eq!(missing_status, StatusCode::OK);
+    assert_eq!(missing_bytes, bytes);
     assert!(
         String::from_utf8(bytes)
             .unwrap()

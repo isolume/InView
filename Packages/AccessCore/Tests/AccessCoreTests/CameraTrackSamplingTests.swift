@@ -27,3 +27,13 @@ import Testing
     #expect(!sampling.accepts(timestamp: 5.1, after: 5))
     #expect(sampling.accepts(timestamp: 5.15, after: 5))
 }
+
+@Test func newCoordinateFrameRestoresDenseSampling() throws {
+    var sampling = try #require(CameraTrackSampling(rateHz: 10))
+    sampling.decimate()
+    sampling.decimate()
+    #expect(!sampling.accepts(timestamp: 40.08, after: 40))
+    sampling.reset()
+    #expect(sampling.accepts(timestamp: 40.08, after: 40))
+    #expect(sampling.interval == sampling.timerInterval)
+}

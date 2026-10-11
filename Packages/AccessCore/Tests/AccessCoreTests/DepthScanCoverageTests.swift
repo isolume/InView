@@ -152,21 +152,14 @@ private func coverageFrame(width: Int = 11, height: Int = 11, timestamp: TimeInt
     #expect(coverage.snapshot().sampleCount <= 100 * DepthScanCoverage.maximumSamplesPerCell)
 }
 
-@Test func coverageNativeDepthBenchmarkAndQueriesUseSupportedSamples() {
+@Test func coverageQueriesFindSupportedSamples() {
     var frame = coverageFrame(width: 256, height: 192)
     frame.camera.fx = 200; frame.camera.fy = 200
-    let sampleStart = Date()
     let samples = DepthScanCoverage.samples(from: frame)
-    let sampleDuration = Date().timeIntervalSince(sampleStart)
     var coverage = DepthScanCoverage()
-    let recordStart = Date()
     coverage.recordSavedFrame(frame)
-    let recordDuration = Date().timeIntervalSince(recordStart)
     let snapshot = coverage.snapshot()
-    let queryStart = Date()
     let matched = samples.reduce(0) { $0 + (snapshot.contains(point: $1.point, normal: $1.normal) ? 1 : 0) }
-    let queryDuration = Date().timeIntervalSince(queryStart)
     #expect(matched == samples.count)
     #expect(samples.count <= DepthScanCoverage.maximumSampledPixels)
-    print("Coverage 256x192 (\(samples.count) samples): sample \(sampleDuration)s, record \(recordDuration)s, query \(queryDuration)s")
 }

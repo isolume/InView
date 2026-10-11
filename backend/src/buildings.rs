@@ -538,7 +538,9 @@ pub async fn overview(
             ));
         }
     }
+    let permit = state.processing_permit()?;
     let observations = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         inputs
             .into_iter()
             .map(|(capture_id, status, method, transform, scan)| {

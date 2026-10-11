@@ -36,6 +36,14 @@ public struct StreamEvidenceArchive: Sendable {
         return (0..<count).map { $0 * (frameCount - 1) / (count - 1) }
     }
 
+    /// Up to `maximum` sequences evenly spread over the whole walk, for work that reads every
+    /// chosen chunk once, like coloring the scan's mesh.
+    public func sequences(spreadOver maximum: Int) -> [Int] {
+        let count = min(frameCount, max(0, maximum))
+        guard count > 1 else { return count == 1 ? [0] : [] }
+        return (0..<count).map { $0 * (frameCount - 1) / (count - 1) }
+    }
+
     public func readChunk(sequence: Int) throws -> StreamChunk {
         try Task.checkCancellation()
         guard (0..<frameCount).contains(sequence) else { throw StreamingCaptureError.missingChunks }

@@ -6,8 +6,6 @@ import simd
 enum MapBuilder {
     /// Stairs the camera spotted that overlap stairs RoomPlan found (allowing this much slack) are the same stairs.
     private static let sameStairsSlack: Float = 1
-    /// A remembered surface or object this close to one in the processed room is the same thing.
-    private static let recoveredSlack: Float = 0.3
 
     /// RoomPlan surfaces have no depth, so walls are treated as this thick.
     private static let wallThickness: Float = 0.15
@@ -17,16 +15,20 @@ enum MapBuilder {
     private static let assumedPhoneHeight: Float = 1.3
 
     /// - Parameters:
-    ///   - rooms: RoomPlan's processed result for each section.
-    ///   - recovered: Surfaces and objects RoomPlan reported live during a section but left out of its processed
-    ///     result, usually because the volunteer walked on to another room in the same section. Added where
-    ///     they don't overlap what the processed rooms have.
+    ///   - rooms: RoomPlan's processed results. Multiple rooms should first pass through RoomPlanAssembly.
+    ///   - recovered: Retained for source compatibility; discarded live measurements are evidence only.
     ///   - spottedStairs: Stairs found by the vision model, added where RoomPlan missed them.
     static func build(rooms: [CapturedRoom], recovered: [RoomParts] = [], points: [AccessPoint], spottedStairs: [Footprint] = [], observed: [Footprint] = []) -> VenueMap {
         let merged = mergedParts(rooms: rooms, recovered: recovered, observed: observed)
-        var footprints = flatten(merged.parts, floorY: merged.floorY)
-        footprints.append(contentsOf: observedAdditions(observed, to: merged.parts, floorY: merged.floorY))
-        var map = VenueMap(floorY: merged.floorY, footprints: footprints, points: [], requiresMeasuredFloorCoverage: true)
+        return build(parts: merged.parts, floorY: merged.floorY, points: points, spottedStairs: spottedStairs, observed: observed)
+    }
+
+    /// Routing uses the same canonical parts as the finished scene. Raw walls and obstacle samples
+    /// never change RoomPlan's completed structure; measured floor can extend observed coverage.
+    static func build(parts: RoomParts, floorY: Float, points: [AccessPoint], spottedStairs: [Footprint] = [], observed: [Footprint] = []) -> VenueMap {
+        var footprints = flatten(parts, floorY: floorY)
+        footprints.append(contentsOf: observedAdditions(observed, to: parts, floorY: floorY))
+        var map = VenueMap(floorY: floorY, footprints: footprints, points: [], requiresMeasuredFloorCoverage: true)
         for stairs in spottedStairs { add(spottedStairs: stairs, to: &map) }
         for point in points { add(point, to: &map) }
         return map
@@ -73,79 +75,51 @@ enum MapBuilder {
         return map
     }
 
-    /// Routing and scene export must select the same supplemental measurements.
+    /// Routing and scene export share exact floor selection. Raw walls and obstacle samples
+    /// remain evidence only, including when RoomPlan did not supply any floor surfaces.
     static func observedAdditions(_ observed: [Footprint], to parts: RoomParts, floorY: Float) -> [Footprint] {
-        var kept = flatten(parts, floorY: floorY)
-        var additions: [Footprint] = []
-        for footprint in observed where MeasuredFootprintRecovery.shouldKeep(footprint, alongside: kept) {
-            additions.append(footprint)
-            kept.append(footprint)
-        }
-        return additions
+        RoomPlanFloorCoverage.additions(observed: observed,
+                                       nativeFloors: flatten(parts, floorY: floorY).filter { $0.kind == .floor },
+                                       floorY: floorY)
     }
 
-    /// The same measured components for routing and scene export, with processed rooms taking precedence.
-    /// Overhead objects stay available for display even though they don't obstruct the routing map.
+    /// The compatibility projection keeps only RoomPlan's completed measurements. Never restore
+    /// measurements that its final fitting discarded; original live evidence is archived separately.
     static func mergedParts(rooms: [CapturedRoom], recovered: [RoomParts] = [], observed: [Footprint] = []) -> (parts: RoomParts, floorY: Float) {
-        var parts = latest(rooms.map(RoomParts.init))
-        let recoveredParts = latest(recovered, excluding: parts)
-        let walls = parts.walls + recoveredParts.walls
-        let floorY = median((parts.floors + recoveredParts.floors).map(\.transform.translation.y))
-            ?? median(observed.filter { $0.kind == .floor }.compactMap(\.bottom))
-            ?? median(walls.map { $0.transform.translation.y - $0.dimensions.y / 2 })
-            ?? -assumedPhoneHeight
+        let parts = latest(rooms.map(RoomParts.init))
+        return (parts, floorHeight(parts, observed: observed))
+    }
 
-        var footprints = flatten(parts, floorY: floorY)
-        func accepted<Value>(_ values: [Value], footprint: (Value) -> Footprint?) -> [Value] {
-            values.filter { value in
-                // Non-blocking overhead measurements are kept for the scene without changing routing.
-                guard let candidate = footprint(value) else { return true }
-                if candidate.kind == .obstacle || candidate.kind == .stairs {
-                    guard !footprints.contains(where: { $0.kind == candidate.kind && overlaps($0, candidate, slack: recoveredSlack) }) else { return false }
-                } else {
-                    guard MeasuredFootprintRecovery.shouldKeep(candidate, alongside: footprints) else { return false }
-                }
-                footprints.append(candidate)
-                return true
-            }
+    static func floorHeight(_ parts: RoomParts, observed: [Footprint] = []) -> Float {
+        if let native = median(parts.floors.map(\.transform.translation.y).filter(\.isFinite)) { return native }
+        let wallBase = median(parts.walls.map { $0.transform.translation.y - $0.dimensions.y / 2 }.filter(\.isFinite))
+        let measured = observed.filter { $0.kind == .floor }.compactMap(\.bottom).filter(\.isFinite)
+        if let wallBase {
+            // Confirmed AR floors refine the wall base only at the same level. Floors visible
+            // through an atrium must not shift an otherwise floorless room to another story.
+            return median(measured.filter { abs($0 - wallBase) < 0.3 }) ?? wallBase
         }
-        parts.floors.append(contentsOf: accepted(recoveredParts.floors) {
-            Footprint(floor: outline(of: $0), bottom: $0.transform.translation.y)
-        })
-        parts.walls.append(contentsOf: accepted(recoveredParts.walls) {
-            Footprint(kind: .wall, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
-        })
-        parts.doors.append(contentsOf: accepted(recoveredParts.doors) {
-            Footprint(kind: .door, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
-        })
-        parts.openings.append(contentsOf: accepted(recoveredParts.openings) {
-            Footprint(kind: .opening, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
-        })
-        parts.windows.append(contentsOf: accepted(recoveredParts.windows) {
-            Footprint(kind: .window, transform: $0.transform, dimensions: $0.dimensions, depth: wallThickness)
-        })
-        parts.objects.append(contentsOf: accepted(recoveredParts.objects) { objectFootprint($0, floorY: floorY) })
-        return (parts, floorY)
+        return median(measured) ?? -assumedPhoneHeight
     }
 
     /// A later section may refine a component already scanned. Keep one current obstacle.
-    private static func latest<Value>(_ values: [Value], identifier: KeyPath<Value, UUID>, excluding: Set<UUID> = []) -> [Value] {
+    private static func latest<Value>(_ values: [Value], identifier: KeyPath<Value, UUID>) -> [Value] {
         var result: [UUID: Value] = [:]
-        for value in values where !excluding.contains(value[keyPath: identifier]) {
+        for value in values {
             result[value[keyPath: identifier]] = value
         }
         return result.sorted { $0.key.uuidString < $1.key.uuidString }.map(\.value)
     }
 
-    /// Processed components take precedence over remembered versions; later sections refine earlier ones.
-    private static func latest(_ parts: [RoomParts], excluding kept: RoomParts = RoomParts()) -> RoomParts {
+    /// Latest completed versions by identifier; cross-room fitting belongs to StructureBuilder.
+    private static func latest(_ parts: [RoomParts]) -> RoomParts {
         var result = RoomParts()
-        result.walls = latest(parts.flatMap(\.walls), identifier: \.identifier, excluding: Set(kept.walls.map(\.identifier)))
-        result.doors = latest(parts.flatMap(\.doors), identifier: \.identifier, excluding: Set(kept.doors.map(\.identifier)))
-        result.openings = latest(parts.flatMap(\.openings), identifier: \.identifier, excluding: Set(kept.openings.map(\.identifier)))
-        result.windows = latest(parts.flatMap(\.windows), identifier: \.identifier, excluding: Set(kept.windows.map(\.identifier)))
-        result.floors = latest(parts.flatMap(\.floors), identifier: \.identifier, excluding: Set(kept.floors.map(\.identifier)))
-        result.objects = latest(parts.flatMap(\.objects), identifier: \.identifier, excluding: Set(kept.objects.map(\.identifier)))
+        result.walls = latest(parts.flatMap(\.walls), identifier: \.identifier)
+        result.doors = latest(parts.flatMap(\.doors), identifier: \.identifier)
+        result.openings = latest(parts.flatMap(\.openings), identifier: \.identifier)
+        result.windows = latest(parts.flatMap(\.windows), identifier: \.identifier)
+        result.floors = latest(parts.flatMap(\.floors), identifier: \.identifier)
+        result.objects = latest(parts.flatMap(\.objects), identifier: \.identifier)
         return result
     }
 
@@ -185,6 +159,11 @@ enum MapBuilder {
             if let footprint = objectFootprint(object, floorY: floorY) { footprints.append(footprint) }
         }
         return footprints
+    }
+
+    /// Live measured outlines for capture feedback; these are not finished routing geometry.
+    static func floorFootprints(in room: CapturedRoom) -> [Footprint] {
+        room.floors.map { Footprint(floor: outline(of: $0), bottom: $0.transform.translation.y) }
     }
 
     private static func objectFootprint(_ object: CapturedRoom.Object, floorY: Float) -> Footprint? {
@@ -241,7 +220,7 @@ enum MapBuilder {
 }
 
 /// The surfaces and objects of a room, in the pieces MapBuilder flattens.
-struct RoomParts {
+struct RoomParts: Sendable {
     var walls: [CapturedRoom.Surface] = []
     var doors: [CapturedRoom.Surface] = []
     var openings: [CapturedRoom.Surface] = []
@@ -260,6 +239,24 @@ struct RoomParts {
         objects = room.objects
     }
 
+    /// Apple's aggregate components resolve shared walls and duplicate objects across rooms.
+    /// Floors come from the canonical rooms so their measured polygon outlines are retained.
+    init(_ structure: CapturedStructure) {
+        walls = structure.walls
+        doors = structure.doors
+        openings = structure.openings
+        windows = structure.windows
+        objects = structure.objects
+        var floorByID: [UUID: CapturedRoom.Surface] = [:]
+        for floor in structure.rooms.flatMap(\.floors) {
+            if let previous = floorByID[floor.identifier], previous.polygonCorners.count >= 3,
+               floor.polygonCorners.count < 3 { continue }
+            floorByID[floor.identifier] = floor
+        }
+        floors = floorByID.sorted { $0.key.uuidString < $1.key.uuidString }.map(\.value)
+        if floors.isEmpty { floors = structure.floors }
+    }
+
     var isEmpty: Bool {
         walls.isEmpty && doors.isEmpty && openings.isEmpty && windows.isEmpty && floors.isEmpty && objects.isEmpty
     }
@@ -271,9 +268,8 @@ struct RoomParts {
 
 /// Everything RoomPlan reported while a section was live, by identifier, with the latest version of each.
 ///
-/// RoomPlan models one room at a time. When the volunteer walks on into another room without starting a new
-/// section, its processed result re-fits to where they ended up and drops the first room. The live updates
-/// still described that room, so this remembers them, and `missing(from:)` is what the result left out.
+/// Live measurements are evidence only. The completed map uses RoomPlan's finalized rooms and native
+/// structure merging, rather than restoring components discarded by the room-fitting process.
 struct RoomMemory {
     private var walls: [UUID: CapturedRoom.Surface] = [:]
     private var doors: [UUID: CapturedRoom.Surface] = [:]

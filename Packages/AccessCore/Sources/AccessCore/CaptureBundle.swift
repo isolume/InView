@@ -152,14 +152,17 @@ public struct CaptureMesh: Codable, Equatable, Sendable {
     public var vertices: [[Float]]
     public var triangles: [[Int]]
     public var classifications: [String]?
+    /// One sRGB color per vertex, packed as 0xRRGGBB, sampled from the scan's photos.
+    public var colors: [UInt32]?
 
     public init(id: String, mapFromAnchor: [Float], vertices: [[Float]], triangles: [[Int]],
-                classifications: [String]? = nil) {
+                classifications: [String]? = nil, colors: [UInt32]? = nil) {
         self.id = id; self.mapFromAnchor = mapFromAnchor; self.vertices = vertices
-        self.triangles = triangles; self.classifications = classifications
+        self.triangles = triangles; self.classifications = classifications; self.colors = colors
     }
     enum CodingKeys: String, CodingKey {
         case id, mapFromAnchor = "map_from_anchor", vertices, triangles, classifications
+        case colors = "vertex_colors"
     }
 }
 
@@ -249,7 +252,8 @@ extension CaptureBundle {
             try requireCapture(validRigidTransform(mesh.mapFromAnchor) && !mesh.vertices.isEmpty
                                && mesh.vertices.allSatisfy(validVector)
                                && validTriangles(mesh.triangles, count: mesh.vertices.count)
-                               && (mesh.classifications == nil || mesh.classifications?.count == mesh.triangles.count),
+                               && (mesh.classifications == nil || mesh.classifications?.count == mesh.triangles.count)
+                               && validVertexColors(mesh.colors, count: mesh.vertices.count),
                                "A mesh has invalid geometry.")
         }
         for frame in frames {
@@ -306,6 +310,11 @@ func validRigidTransform(_ matrix: [Float]) -> Bool {
     let cross = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]]
     return near(dot(x, x), 1) && near(dot(y, y), 1) && near(dot(z, z), 1)
         && near(dot(x, y), 0) && near(dot(x, z), 0) && near(dot(y, z), 0) && near(dot(cross, z), 1)
+}
+
+func validVertexColors(_ colors: [UInt32]?, count: Int) -> Bool {
+    guard let colors else { return true }
+    return colors.count == count && colors.allSatisfy { $0 <= 0xFF_FFFF }
 }
 
 func validTriangles(_ triangles: [[Int]], count: Int) -> Bool {

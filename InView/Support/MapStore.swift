@@ -50,12 +50,38 @@ enum MapStore {
         }
     }
 
-    /// Nil unless the AR world map is saved too, since navigation can't line up without it.
+    /// Map browsing is independent of the optional assets needed for live AR positioning.
     static func load() -> VenueMap? {
         let selected = selectedDirectory
-        guard FileManager.default.fileExists(atPath: selected.appending(path: "venue.arworldmap").path()),
-              let data = try? Data(contentsOf: selected.appending(path: "venue-map.json")) else { return nil }
+        guard let data = try? Data(contentsOf: selected.appending(path: "venue-map.json")) else { return nil }
         return try? decoder.decode(VenueMap.self, from: data)
+    }
+
+    /// Captured with the exact local map, before report/planner work can suspend its caller.
+    struct PlaceEditSource: Sendable, Equatable {
+        fileprivate var directory: URL
+        fileprivate var storageID: UUID?
+        fileprivate var mapData: Data
+    }
+
+    static func loadEditableMap() -> (map: VenueMap, source: PlaceEditSource)? {
+        publicationLock.withLock {
+            let selected = resolvedSelection()
+            let folder = selected?.directory ?? directory
+            guard let data = try? Data(contentsOf: folder.appending(path: "venue-map.json")),
+                  let map = try? decoder.decode(VenueMap.self, from: data) else { return nil }
+            return (map, PlaceEditSource(directory: folder, storageID: selected?.floor.storageID, mapData: data))
+        }
+    }
+
+    /// Refreshes a source after a synchronous edit only when the controller still shows that map.
+    static func placeEditSource(matching map: VenueMap) -> PlaceEditSource? {
+        guard let saved = loadEditableMap() else { return nil }
+        let encoder = encoder
+        encoder.outputFormatting = [.sortedKeys]
+        guard let expected = try? encoder.encode(map), let actual = try? encoder.encode(saved.map),
+              expected == actual else { return nil }
+        return saved.source
     }
 
     static func loadWorldMap() -> ARWorldMap? {
@@ -67,28 +93,73 @@ enum MapStore {
         UIImage(contentsOfFile: startViewURL.path())
     }
 
+    /// Keep the map, relocalization archive, and start photo on the same selected floor.
+    static func loadNavigationAssets() -> (map: VenueMap?, worldMap: ARWorldMap?, startView: UIImage?) {
+        publicationLock.withLock { (load(), loadWorldMap(), loadStartView()) }
+    }
+
+    /// Editable navigation uses the same floor snapshot for geometry, place edits and AR evidence.
+    static func loadEditableNavigationAssets() -> (map: VenueMap?, worldMap: ARWorldMap?, startView: UIImage?, source: PlaceEditSource?) {
+        publicationLock.withLock {
+            let saved = loadEditableMap()
+            return (saved?.map, loadWorldMap(), loadStartView(), saved?.source)
+        }
+    }
+
     static func updateGeographicReference(_ reference: BuildingMapReference) throws {
         try reference.validate()
+        _ = try republish(notifies: true) { $0.geographicReference = reference }
+    }
+
+    /// The report and new places belong to the expected original, never to a newly selected floor.
+    @discardableResult
+    static func updatePoints(_ points: [AccessPoint], report: AccessibilityReport,
+                             expected source: PlaceEditSource) throws -> PlaceEditSource {
+        try republish(notifies: false, report: report, expected: source) { $0.points = points }
+    }
+
+    /// Publish a new saved revision while preserving the prior floor and its original scan assets.
+    private static func republish(notifies: Bool, report: AccessibilityReport? = nil,
+                                  expected: PlaceEditSource? = nil,
+                                  _ edit: (inout VenueMap) -> Void) throws -> PlaceEditSource {
         try publicationLock.withLock {
+            try Task.checkCancellation()
             let selected = resolvedSelection()
             let source = selected?.directory ?? directory
-            var map = try decoder.decode(VenueMap.self, from: Data(contentsOf: source.appending(path: "venue-map.json")))
-            map.geographicReference = reference
-            guard let selected else {
-                try encoder.encode(map).write(to: source.appending(path: "venue-map.json"), options: .atomic)
-                return
+            let originalData = try Data(contentsOf: source.appending(path: "venue-map.json"))
+            if let expected {
+                guard expected.directory == source, expected.storageID == selected?.floor.storageID,
+                      expected.mapData == originalData else {
+                    throw CaptureValidationError.invalid("The saved map changed. Open it again before editing places.")
+                }
             }
-            // Keep prior saves intact when geographic placement is edited too.
+            var map = try decoder.decode(VenueMap.self, from: originalData)
+            edit(&map)
+            let editedData = try encoder.encode(map)
+            let reportData = try report.map { try encoder.encode($0) }
+            func write(into folder: URL) throws {
+                try Task.checkCancellation()
+                try editedData.write(to: folder.appending(path: "venue-map.json"), options: .atomic)
+                if let reportData {
+                    try reportData.write(to: folder.appending(path: "venue-report.json"), options: .atomic)
+                }
+            }
+            guard let selected else {
+                try write(into: source)
+                return PlaceEditSource(directory: source, storageID: nil, mapData: editedData)
+            }
             let storageID = UUID()
             let destination = floorDirectory(identity: selected.floor.identity, storageID: storageID)
             do {
                 try FileManager.default.copyItem(at: source, to: destination)
-                try encoder.encode(map).write(to: destination.appending(path: "venue-map.json"), options: .atomic)
+                try write(into: destination)
                 var registry = selected.registry
                 try registry.record(selected.floor.identity, storageID: storageID,
                                     captureID: selected.floor.captureID)
+                try Task.checkCancellation()
                 try encoder.encode(registry).write(to: registryURL, options: .atomic)
-                notifySelectionChanged()
+                if notifies { notifySelectionChanged() }
+                return PlaceEditSource(directory: destination, storageID: storageID, mapData: editedData)
             } catch {
                 try? FileManager.default.removeItem(at: destination)
                 throw error
@@ -201,9 +272,7 @@ enum MapStore {
 
     private static func isCompleteFloor(_ floor: SavedFloor) -> Bool {
         let location = floorDirectory(identity: floor.identity, storageID: floor.storageID)
-        guard ["venue.arworldmap", "venue-map.json", "venue-report.json", "captured-rooms.json"].allSatisfy({
-            FileManager.default.fileExists(atPath: location.appending(path: $0).path())
-        }), let data = try? Data(contentsOf: location.appending(path: "venue-map.json")),
+        guard let data = try? Data(contentsOf: location.appending(path: "venue-map.json")),
             (try? decoder.decode(VenueMap.self, from: data)) != nil else { return false }
         return true
     }

@@ -23,10 +23,14 @@ import Testing
 @Test func aWellLaidOutFloorScoresFull() {
     var ramp = point(.ramp, 2, 1)
     ramp.slopeDegrees = 3.5
-    let report = AccessibilityReport(map: room(points: [point(.elevator, -2, 1), ramp]))
+    let report = AccessibilityReport(map: room([
+        Footprint(floor: [[-4, -3], [4, -3], [4, 3], [-4, 3]], bottom: 0),
+        Footprint(kind: .door, center: [-4, 0], size: [1, 0.15], yaw: .pi / 2),
+    ], points: [point(.elevator, -2, 1), ramp]))
     #expect(report.score == 100)
     #expect(report.grade == "A")
     #expect(report.findings.allSatisfy { $0.severity == .good })
+    #expect(report.summary == "No barriers found in measurements")
 }
 
 @Test func flagsNarrowDoorsSteepRampsAndUnreachablePoints() {
@@ -109,5 +113,88 @@ import Testing
     #expect(report.findings.contains { $0.title == "1 door is too narrow" && $0.severity == .barrier })
     #expect(report.findings.contains { $0.title == "Stairs with no step-free alternative" && $0.severity == .barrier })
     #expect(report.findings.contains { $0.title == "No elevator mapped" && $0.severity == .warning })
-    #expect(report.score == 53)
+    #expect(report.score == 39)
+}
+
+@Test func aSparseScanPromptsMeasurementsInsteadOfClaimingAccessibility() {
+    let map = VenueMap(floorY: 0, footprints: [], points: [])
+    let checks = ScanReviewChecks(map: map)
+    #expect(checks.items.map(\.id) == [.floorCoverage, .doorwayWidths, .destinations])
+    #expect(checks.needsReview)
+    #expect(checks.doorwayMeasurementCount == 0)
+    #expect(!checks.hasRoutingDestinations)
+
+    let report = AccessibilityReport(map: map)
+    #expect(report.summary == "Measurements to review")
+    #expect(report.findings.allSatisfy { $0.severity == .warning })
+    #expect(report.findings.contains { $0.title == "No doorway widths measured" })
+    #expect(report.findings.contains { $0.title == "Floor coverage not captured" })
+}
+
+@Test func doorAndOpeningWidthsBothParticipateInTheMeasurementReview() {
+    let map = room([
+        Footprint(kind: .door, center: [-4, 0], size: [1, 0.15], yaw: .pi / 2),
+        Footprint(kind: .opening, center: [4, 0], size: [0.7, 0.15], yaw: .pi / 2),
+    ], points: [])
+    let checks = ScanReviewChecks(map: map)
+    #expect(checks.doorwayMeasurementCount == 2)
+    #expect(!checks.items.contains { $0.id == .doorwayWidths })
+    let report = AccessibilityReport(map: map)
+    #expect(report.findings.contains { $0.title == "1 opening is too narrow" && $0.severity == .barrier })
+    #expect(report.findings.contains { $0.title == "Door widths meet the guide" && $0.severity == .good })
+}
+
+@Test func invalidDoorwayWidthsAreMissingEvidenceRatherThanPassingOrCrashing() {
+    let invalidWidths: [Float] = [0, -0.2, .nan, .infinity, -.infinity]
+    let map = VenueMap(floorY: 0, footprints: invalidWidths.map {
+        Footprint(kind: .door, center: .zero, size: [$0, 0.15], yaw: 0)
+    } + [Footprint(kind: .opening, center: [2, 0], size: [1, 0.15], yaw: 0)], points: [])
+    let checks = ScanReviewChecks(map: map)
+    #expect(checks.doorwayMeasurementCount == 1)
+    #expect(checks.unmeasuredDoorwayCount == invalidWidths.count)
+    #expect(checks.items.contains { $0.id == .doorwayWidths })
+    let report = AccessibilityReport(map: map)
+    #expect(!report.findings.contains { $0.title == "Door widths meet the guide" })
+    #expect(report.findings.contains { $0.title == "5 doorway widths need another look" && $0.severity == .warning })
+}
+
+@Test func unknownOrInvalidRampSlopesNeverEstablishAStairsAlternative() {
+    let invalidSlopes: [Float?] = [nil, -.infinity, .infinity, .nan, -1, 90]
+    for slope in invalidSlopes {
+        var ramp = point(.ramp, 2, 1)
+        ramp.slopeDegrees = slope
+        let map = room([Footprint(kind: .stairs, center: [-2, -1], size: [1, 1], yaw: 0)], points: [ramp])
+        let checks = ScanReviewChecks(map: map)
+        #expect(checks.unmeasuredRampCount == 1)
+        #expect(checks.items.contains { $0.id == .rampSlopes })
+        let report = AccessibilityReport(map: map)
+        #expect(report.findings.contains { $0.title == "Ramp: slope not measured" && $0.severity == .warning })
+        #expect(report.findings.contains { $0.title == "Stairs with no step-free alternative" && $0.severity == .barrier })
+        #expect(!report.findings.contains { $0.title == "Check the mapped stairs alternative" })
+        #expect(!report.findings.contains { $0.severity == .good && $0.title.contains("slope") })
+    }
+}
+
+@Test func aMeasuredRampStillRequiresCheckingThatItBypassesTheStairs() {
+    var ramp = point(.ramp, 2, 1)
+    ramp.slopeDegrees = 3
+    let map = room([Footprint(kind: .stairs, center: [-2, -1], size: [1, 1], yaw: 0)], points: [ramp])
+    let report = AccessibilityReport(map: map)
+    #expect(!report.findings.contains { $0.title == "Stairs with no step-free alternative" })
+    #expect(report.findings.contains { $0.title == "Check the mapped stairs alternative" && $0.severity == .warning })
+}
+
+@Test func scanChecksRequireFloorMeasurementsAtTheCurrentLevel() {
+    var map = room([
+        Footprint(floor: [[-4, -3], [4, -3], [4, 3], [-4, 3]], bottom: 4),
+    ], points: [])
+    #expect(ScanReviewChecks(map: map).items.contains { $0.id == .floorCoverage })
+    map.footprints.append(Footprint(floor: [[-4, -3], [4, -3], [4, 3], [-4, 3]], bottom: 0))
+    #expect(!ScanReviewChecks(map: map).items.contains { $0.id == .floorCoverage })
+}
+
+@Test func legacyReportScoresDoNotTurnIntoAccessibilityVerdicts() throws {
+    let report = try JSONDecoder().decode(AccessibilityReport.self, from: Data(#"{"score":100,"findings":[]}"#.utf8))
+    #expect(report.score == 100)
+    #expect(report.summary == "No measurements yet")
 }

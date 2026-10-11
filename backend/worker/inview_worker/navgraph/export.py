@@ -84,23 +84,32 @@ def _assign_node_ids(graph: PixelGraph) -> dict[int, str]:
 
 def build_graph_json(graph: PixelGraph, attributes: dict[int, EdgeAttributes], *, graph_id: str, map_id: str,
                      floor_id: str, grid, floor_y: float, walkable: np.ndarray, epsilon_px: float,
-                     metadata: dict) -> tuple[dict, NavGraph, dict[int, str]]:
+                     metadata: dict, elevation: np.ndarray | None = None) -> tuple[dict, NavGraph, dict[int, str]]:
     res = grid.resolution
 
     def world(p) -> tuple[float, float]:
         return round(grid.x0 + float(p[0]) * res, 3), round(grid.z0 + float(p[1]) * res, 3)
 
     y = round(float(floor_y), 3)
+
+    def height(p) -> float:
+        if elevation is not None:
+            rows, cols, inside = measure.cells(np.asarray([p]), elevation.shape)
+            if inside[0] and np.isfinite(elevation[rows[0], cols[0]]):
+                return round(float(elevation[rows[0], cols[0]]), 3)
+        return y
+
     node_ids = _assign_node_ids(graph)
     nodes_json, nav = [], NavGraph(graph_id)
     for n in sorted(graph.nodes, key=lambda n: node_ids[n]):
         node = graph.nodes[n]
         x, z = world(node.pos)
-        entry = {"id": node_ids[n], "map_id": map_id, "floor_id": floor_id, "x": x, "y": y, "z": z}
+        node_y = height(node.pos)
+        entry = {"id": node_ids[n], "map_id": map_id, "floor_id": floor_id, "x": x, "y": node_y, "z": z}
         if node.label:
             entry["label"] = node.label
         nodes_json.append(entry)
-        nav.nodes[node_ids[n]] = {"kind": node.kind, "position_m": [x, y, z], "label": node.label, "key": node.key}
+        nav.nodes[node_ids[n]] = {"kind": node.kind, "position_m": [x, node_y, z], "label": node.label, "key": node.key}
         nav.adjacency[node_ids[n]] = []
 
     def undirected_key(e):
@@ -108,15 +117,20 @@ def build_graph_json(graph: PixelGraph, attributes: dict[int, EdgeAttributes], *
         a, b = sorted((node_ids[edge.u], node_ids[edge.v]))
         return a, b, attributes[e].length_m, e
 
-    edges_json, details = [], {}
+    edges_json, details, lengths = [], {}, {}
     for index, e in enumerate(sorted(graph.edges, key=undirected_key)):
         edge, attr = graph.edges[e], attributes[e]
         source, target = node_ids[edge.u], node_ids[edge.v]
         path = edge.path if source <= target else edge.path[::-1]
         if source > target:
             source, target = target, source
-        simple = simplify(path, walkable, epsilon_px) if edge.kind == "skeleton" else np.vstack((path[0], path[-1]))
-        points = [world(p) for p in simple]
+        # X/Z-only simplification can erase a ramp or landing. Keep cell-spaced samples when a
+        # surface model is present so the exported path preserves the measured elevation changes.
+        simple = (measure.dense(path, 1.0) if elevation is not None else
+                  simplify(path, walkable, epsilon_px) if edge.kind == "skeleton" else np.vstack((path[0], path[-1])))
+        points = [(world(p)[0], height(p), world(p)[1]) for p in simple]
+        length_m = round(float(np.linalg.norm(np.diff(points, axis=0), axis=1).sum()), 3)
+        lengths[e] = length_m
         base = f"e{index:04d}"
         for suffix, a, b, pts in (("f", source, target, points), ("r", target, source, points[::-1])):
             edge_id = f"{base}{suffix}"
@@ -125,18 +139,18 @@ def build_graph_json(graph: PixelGraph, attributes: dict[int, EdgeAttributes], *
             if attr.maximum_slope is not None:
                 item["maximum_slope"] = attr.maximum_slope
             item["segment"] = {"type": "surface", "map_id": map_id, "floor_id": floor_id,
-                               "path_points": [{"x": px, "y": y, "z": pz} for px, pz in pts]}
+                               "path_points": [{"x": px, "y": py, "z": pz} for px, py, pz in pts]}
             edges_json.append(item)
-            nav.adjacency[a].append(NavEdge(edge_id, a, b, attr.length_m, attr.clear_width_m, attr.maximum_slope,
-                                            attr.step_free, edge.kind, tuple(pts)))
-        details[base] = {"kind": edge.kind, "length_m": attr.length_m, "walked_fraction": attr.walked_fraction,
+            nav.adjacency[a].append(NavEdge(edge_id, a, b, length_m, attr.clear_width_m, attr.maximum_slope,
+                                            attr.step_free, edge.kind, tuple((px, pz) for px, _, pz in pts)))
+        details[base] = {"kind": edge.kind, "length_m": length_m, "walked_fraction": attr.walked_fraction,
                          "step_free_basis": attr.step_free_basis, "hazards": attr.hazards}
 
     components = []
     for i, component in enumerate(graph.components()):
         members = set(component)
         names = sorted(node_ids[n] for n in component)
-        length = sum(attributes[e].length_m for e, edge in graph.edges.items() if edge.u in members)
+        length = sum(lengths[e] for e, edge in graph.edges.items() if edge.u in members)
         components.append({"id": f"c{i}", "node_count": len(component),
                            "edge_count": sum(edge.u in members for edge in graph.edges.values()),
                            "length_m": round(length, 2), "nodes": names})

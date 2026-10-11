@@ -41,7 +41,7 @@ class NavGraphConfig:
     hazard_radius_m: float = 0.3
     # Perpendicular cross-section rays used for connector clear widths stop after this distance.
     cross_section_max_m: float = 3.0
-    # Backend map/floor identifiers; default to the package manifest, then scan id / "ground".
+    # Backend map/floor identifiers; default to the manifest, then scan id / "unassigned".
     map_id: str | None = None
     floor_id: str | None = None
 

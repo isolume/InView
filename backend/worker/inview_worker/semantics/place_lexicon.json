@@ -36,7 +36,10 @@
         "ja": ["出口"],
         "ko": ["출구", "나가는 곳"],
         "ar": ["مخرج", "خروج"],
-        "hi": ["निकास", ["बाहर", 0.6]]
+        "hi": ["निकास", ["बाहर", 0.6]],
+        "nl": ["uitgang"],
+        "ru": ["выход"],
+        "he": ["יציאה"]
       },
       "negations": {
         "en": ["no exit", "not an exit", "not exit"],
@@ -100,8 +103,8 @@
     "restroom": {
       "names": {"en": "Restroom", "es": "Baños", "fr": "Toilettes", "de": "Toiletten", "pt": "Banheiros", "it": "Bagni", "zh": "卫生间", "ja": "トイレ", "ko": "화장실", "ar": "دورات المياه", "hi": "शौचालय"},
       "terms": {
-        "en": ["restroom", "restrooms", "toilet", "toilets", "washroom", "washrooms", "lavatory", "lavatories", "wc", "w.c.", ["bathroom", 0.8], ["men", 0.6], ["women", 0.6], ["ladies", 0.7], ["gentlemen", 0.7], ["gents", 0.7]],
-        "es": ["bano", "banos", "aseo", "aseos", "servicios", "sanitarios", ["damas", 0.6], ["caballeros", 0.6]],
+        "en": ["restroom", "restrooms", "toilet", "toilets", "washroom", "washrooms", "lavatory", "lavatories", "wc", "w.c.", "all gender", ["bathroom", 0.8], ["men", 0.6], ["women", 0.6], ["ladies", 0.7], ["gentlemen", 0.7], ["gents", 0.7]],
+        "es": ["bano", "banos", "aseo", "aseos", "servicios", "sanitarios", ["damas", 0.6], ["caballeros", 0.6], ["hombres", 0.6], ["mujeres", 0.6]],
         "fr": ["toilettes", "toilette", "lavabos", ["dames", 0.6], ["messieurs", 0.6], ["hommes", 0.6], ["femmes", 0.6]],
         "de": ["toiletten", "toilette", ["damen", 0.6], ["herren", 0.6]],
         "pt": ["banheiro", "banheiros", "casa de banho", "sanitarios", ["homens", 0.6], ["mulheres", 0.6]],
@@ -110,7 +113,8 @@
         "ja": ["トイレ", "お手洗い", "化粧室", "便所"],
         "ko": ["화장실"],
         "ar": ["دورات المياه", "دورة مياه", "دورة المياه", "حمام", "حمامات", "مرحاض"],
-        "hi": ["शौचालय", "प्रसाधन", ["पुरुष", 0.6], ["महिला", 0.6]]
+        "hi": ["शौचालय", "प्रसाधन", ["पुरुष", 0.6], ["महिला", 0.6]],
+        "ru": ["туалет"]
       }
     },
     "elevator": {
@@ -126,7 +130,8 @@
         "ja": ["エレベーター", "エレベータ"],
         "ko": ["엘리베이터", "승강기"],
         "ar": ["مصعد", "المصعد", "مصاعد"],
-        "hi": ["लिफ़्ट", "लिफ्ट", "एलिवेटर"]
+        "hi": ["लिफ़्ट", "लिफ्ट", "एलिवेटर"],
+        "ru": ["лифт"]
       },
       "negations": {
         "en": ["elevator out of service", "lift out of order"],
@@ -164,7 +169,8 @@
         "ja": ["階段"],
         "ko": ["계단"],
         "ar": ["درج", "سلالم", "الدرج"],
-        "hi": ["सीढ़ी", "सीढ़ियाँ", "सीढ़ियां"]
+        "hi": ["सीढ़ी", "सीढ़ियाँ", "सीढ़ियां"],
+        "ru": ["лестница"]
       }
     },
     "ramp": {
@@ -186,7 +192,7 @@
     "information": {
       "names": {"en": "Information", "es": "Información", "fr": "Information", "de": "Information", "pt": "Informações", "it": "Informazioni", "zh": "问讯处", "ja": "案内所", "ko": "안내", "ar": "استعلامات", "hi": "सूचना"},
       "terms": {
-        "en": ["information", "info desk", "information desk", "help desk", "help point"],
+        "en": ["information", ["info", 0.7], "info desk", "information desk", "help desk", "help point"],
         "es": ["informacion", "punto de informacion"],
         "fr": ["information", "informations", "accueil information"],
         "de": ["information", "auskunft", "infopunkt"],
