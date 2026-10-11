@@ -13,6 +13,7 @@ struct ScanFloorPicker: View {
     @State private var buildingName: String
     @State private var level: Int
     @State private var floorName: String
+    @AppStorage("recordScanVideo") private var recordScanVideo = false
 
     init(currentFloor: ScanFloorIdentity? = nil, suggestedLevel: Int? = nil,
          isDetectedChange: Bool = false, onCancel: @escaping () -> Void,
@@ -52,6 +53,13 @@ struct ScanFloorPicker: View {
                     Stepper("Floor \(level)", value: $level, in: -20...300)
                     TextField("Floor name", text: $floorName)
                         .textInputAutocapitalization(.words)
+                }
+                if currentFloor == nil {
+                    Section {
+                        Toggle("Record video", isOn: $recordScanVideo)
+                    } footer: {
+                        Text("Keeps video and matching LiDAR data on this phone for 3D modeling. No audio.")
+                    }
                 }
                 Section {
                     Button(currentFloor == nil ? "Start scanning" : "Switch floor", role: .confirm, action: select)

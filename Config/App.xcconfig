@@ -22,6 +22,8 @@ ELEVENLABS_MODEL = eleven_turbo_v2_5
 // Community account, submission and published-map service; blank keeps browsing local.
 // Write URLs as http:/$()/host:3000 so xcconfig does not treat // as a comment.
 INVIEW_BACKEND_URL =
+// Its bearer token (the TF_VAR_api_token used to deploy it). Built into the app, so nobody types it on the phone.
+INVIEW_BACKEND_TOKEN =
 
 // Public token for surrounding maps and placement. Override in Secrets.xcconfig.
 MAPBOX_ACCESS_TOKEN =

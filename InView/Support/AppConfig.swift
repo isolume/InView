@@ -4,9 +4,18 @@ import Security
 /// Build-time settings from Config/*.xcconfig, passed through Info.plist.
 enum AppConfig {
     static var detailedScanning: Bool { UserDefaults.standard.bool(forKey: "detailedScanning") }
+    static var recordScanVideo: Bool { UserDefaults.standard.bool(forKey: "recordScanVideo") }
 
+    /// The build's server, unless one was typed into settings for this same build. A new build that
+    /// points somewhere else wins over an old override, so a phone never sticks to a retired server.
     static var backendAddress: String {
-        UserDefaults.standard.string(forKey: "roomProcessingAddress") ?? value(for: "InViewBackendURL") ?? ""
+        let defaults = UserDefaults.standard
+        let builtIn = value(for: "InViewBackendURL") ?? ""
+        if let saved = defaults.string(forKey: "roomProcessingAddress"), !saved.isEmpty,
+           (defaults.string(forKey: "roomProcessingBuiltInAddress") ?? "") == builtIn {
+            return saved
+        }
+        return builtIn
     }
 
     static var backendURL: URL? { validatedBackendURL(backendAddress) }
@@ -20,7 +29,16 @@ enum AppConfig {
     }
 
     static func setBackendAddress(_ address: String) {
-        UserDefaults.standard.set(address.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "roomProcessingAddress")
+        let defaults = UserDefaults.standard
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let builtIn = value(for: "InViewBackendURL") ?? ""
+        if trimmed.isEmpty || trimmed == builtIn {
+            defaults.removeObject(forKey: "roomProcessingAddress")
+            defaults.removeObject(forKey: "roomProcessingBuiltInAddress")
+        } else {
+            defaults.set(trimmed, forKey: "roomProcessingAddress")
+            defaults.set(builtIn, forKey: "roomProcessingBuiltInAddress")
+        }
     }
 
     private static let tokenService = "org.inview.scan-backend"
@@ -33,8 +51,19 @@ enum AppConfig {
     }
 
     /// This processing credential is deliberately separate from the signed-in account session.
-    static var backendToken: String? { backendToken(for: backendAddress) }
+    /// A token entered in settings wins; otherwise the one built in from Config/Secrets.xcconfig,
+    /// which is only ever sent to the build's own server.
+    static var backendToken: String? {
+        if let entered = backendToken(for: backendAddress) { return entered }
+        guard let builtIn = value(for: "InViewBackendToken"),
+              let origin = backendOrigin(backendAddress),
+              origin == backendOrigin(value(for: "InViewBackendURL") ?? "") else { return nil }
+        return builtIn
+    }
 
+    static var hasBuiltInBackendToken: Bool { value(for: "InViewBackendToken") != nil }
+
+    /// Only what was typed in settings for this server, so the field never reveals the built-in token.
     static func backendToken(for address: String) -> String? {
         guard let origin = backendOrigin(address) else { return nil }
         let query: [String: Any] = [

@@ -3,7 +3,7 @@ plan             = "vc2-1c-1gb"
 ssh_public_key   = "ssh-ed25519 AAAA... you@example.com"
 allowed_ssh_cidr = "203.0.113.4/32" # your IP; find it with `curl ifconfig.me`
 backend_image    = "ghcr.io/youruser/inview-backend:latest"
-backend_domain   = "scans.example.com" # create an A record pointing to instance_ip
+backend_domain   = "" # optional; empty uses https://<instance-ip>.sslip.io, no DNS record needed
 
 # Set the API key via environment instead of this file:
 #   export TF_VAR_vultr_api_key="..."

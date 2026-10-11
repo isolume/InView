@@ -4,8 +4,9 @@ import SwiftUI
 struct BackendSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("detailedScanning") private var detailedScanning = false
+    @AppStorage("recordScanVideo") private var recordScanVideo = false
     @State private var address = AppConfig.backendAddress
-    @State private var token = AppConfig.backendToken ?? ""
+    @State private var token = AppConfig.backendToken(for: AppConfig.backendAddress) ?? ""
     @State private var message: String?
     @State private var checking = false
 
@@ -19,9 +20,15 @@ struct BackendSettingsView: View {
                     Text("Adds surface detail and photo colors to new scans. Uses more battery and storage.")
                 }
                 Section {
+                    Toggle("Record video", isOn: $recordScanVideo)
+                } footer: {
+                    Text("Saves video with matching LiDAR measurements for 3D modeling. No audio. Uses more battery and storage; export it from Saved scans.")
+                }
+                Section {
                     TextField("Server address", text: $address)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    SecureField("Access token", text: $token)
+                    SecureField(AppConfig.hasBuiltInBackendToken ? "Access token (built in; enter to override)" : "Access token",
+                                text: $token)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button(checking ? "Checking…" : "Save settings", action: saveSettings)
                         .disabled(checking)

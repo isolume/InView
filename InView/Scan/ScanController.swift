@@ -56,7 +56,8 @@ final class ScanController: ObservableObject {
     @Published private(set) var walkTrace: ScanWalkTrace?
     @Published private(set) var walkCoverage: ScanWalkFloorCoverage.Assessment?
     @Published private(set) var originalScanWarning: String?
-    @Published private(set) var captureView: RoomCaptureView?
+    @Published private(set) var videoStatus: String?
+    @Published private(set) var captureView: ScanPreviewCameraView?
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
     @Published private(set) var currentFloor: ScanFloorIdentity?
@@ -68,6 +69,7 @@ final class ScanController: ObservableObject {
     private(set) var session = ARSession()
     private(set) var detector = AccessibilityDetector()
     private var rawCapture = RawScanCapture()
+    private var videoCapture: ScanVideoCapture?
     private lazy var splatCapture = SplatCapture(scanID: scanID)
     private var scanID = UUID()
     private let elevationMonitor = FloorElevationMonitor()
@@ -98,20 +100,15 @@ final class ScanController: ObservableObject {
         scene != nil && !isProcessingScene
     }
 
-    private func makeCaptureView() -> RoomCaptureView {
+    private var captureSession: RoomCaptureSession?
+
+    private func makeCaptureView() -> ScanPreviewCameraView {
         rawCapture.prepare(session: session)
-        let view = RoomCaptureView(frame: .zero, arSession: session)
-        // Camera outlines still show scan coverage; avoid drawing the growing room a second time
-        // in a miniature preview hidden behind our controls. Navigation renders it after capture.
-        view.isModelEnabled = false
-        view.delegate = captureDelegate
-        // Live updates too, as Apple's RoomPlan sample does alongside the view's own delegate.
+        // Capture the complete room without RoomCaptureView's growing visualization.
+        // The camera renderer loads only nearby measured edges, with a fixed display budget.
+        let capture = RoomCaptureSession(arSession: session)
         let id = scanID
         sessionDelegate = CaptureSessionDelegate(
-            onUpdate: { [weak self] room in
-                guard self?.scanID == id else { return }
-                self?.liveRoomUpdated(room)
-            },
             onEnd: { [weak self] data, error in
                 guard self?.scanID == id else { return }
                 self?.sectionEnded(data, error: error)
@@ -121,11 +118,16 @@ final class ScanController: ObservableObject {
                 self?.updateInstruction(instruction)
             }
         )
-        view.captureSession.delegate = sessionDelegate
+        capture.delegate = sessionDelegate
+        captureSession = capture
+        let view = ScanPreviewCameraView(session: session)
+        view.onMeasurementsReady = { [weak self] measurements in
+            guard self?.scanID == id else { return }
+            self?.applyLiveRoomMeasurements(measurements)
+        }
         return view
     }
 
-    private let captureDelegate = CaptureViewDelegate()
     private var sessionDelegate: CaptureSessionDelegate?
     private var sectionTask: Task<Void, Never>?
     private var sectionRequestID = UUID()
@@ -174,6 +176,10 @@ final class ScanController: ObservableObject {
     func setAppIsActive(_ active: Bool) {
         appIsActive = active
         updateIdleTimer()
+        if !active { videoCapture?.pause() }
+        else if phase == .scanning || (phase == .processing && !pauseAfterProcessing && !finishAfterProcessing) {
+            videoCapture?.resume()
+        }
     }
 
     private func updateIdleTimer() {
@@ -214,6 +220,17 @@ final class ScanController: ObservableObject {
         beginSection()
         beginResourceMonitoring()
         rawCapture.start(session: session)
+        if AppConfig.recordScanVideo {
+            let video = ScanVideoCapture()
+            let id = scanID
+            video.onStatus = { [weak self] status in
+                guard self?.scanID == id else { return }
+                self?.videoStatus = status
+            }
+            videoCapture = video
+            do { try video.start(session: session, captureID: scanID, floor: currentFloor) }
+            catch { videoStatus = "Video couldn't start. Scanning can continue." }
+        }
         if detailRequested { splatCapture.start(session: session) }
         detector.start(session: session)
         elevationMonitor.start()
@@ -303,6 +320,7 @@ final class ScanController: ObservableObject {
         isChangingFloors = true
         if phase == .processing {
             rawCapture.pause()
+            videoCapture?.pause()
             finishAfterProcessing = true
         } else { finish() }
     }
@@ -318,6 +336,7 @@ final class ScanController: ObservableObject {
             // End that evidence immediately when travel to another floor begins.
             rawCapture.pause()
             floorChangePausedCapture = !pauseAfterProcessing
+            videoCapture?.pause()
             pauseAfterProcessing = true
         }
     }
@@ -327,6 +346,7 @@ final class ScanController: ObservableObject {
         guard isActive else { return }
         // Final positioning recovery must not extend the completed floor's recorded walk.
         rawCapture.pause()
+        videoCapture?.pause()
         // A thermal interruption may have paused tracking. Once cooled, let a retry collect
         // more features without moving the saved sections into a new coordinate space.
         if ProcessInfo.processInfo.thermalState != .critical, let configuration = session.configuration {
@@ -365,14 +385,18 @@ final class ScanController: ObservableObject {
         doorMonitor = nil
         detector.pause()
         rawCapture.stop()
+        videoCapture?.stop()
         splatCapture.stop()
         sceneTask?.cancel()
         detailTask?.cancel()
         analysisTask?.cancel()
         reportTask?.cancel()
-        captureView?.delegate = nil
-        captureView?.captureSession.delegate = nil
-        if phase == .scanning || phase == .processing { captureView?.captureSession.stop() }
+        captureSession?.delegate = nil
+        if phase == .scanning || phase == .processing { captureSession?.stop() }
+        captureSession = nil
+        sessionDelegate?.discardRoomUpdates()
+        sessionDelegate = nil
+        captureView?.stop()
         captureView = nil
         roomTransitions.reset()
         livePortals = []
@@ -644,48 +668,58 @@ final class ScanController: ObservableObject {
             rawCapture.observeFloorDuringHandoff()
         } else {
             rawCapture.pause()
+            videoCapture?.pause()
         }
         splatCapture.pause()
         // Keep the AR session running so the next section and the world map share its coordinates.
-        captureView?.captureSession.stop(pauseARSession: false)
+        captureSession?.stop(pauseARSession: false)
+        sessionDelegate?.discardRoomUpdates()
+        captureView?.clearRoom()
     }
 
     /// Runs a RoomPlan capture for a new section and resets what's remembered about the live room.
     private func beginSection() {
-        guard isActive, let captureView else { return }
+        guard isActive, let captureSession else { return }
+        captureView?.clearRoom()
+        sessionDelegate?.discardRoomUpdates()
         livePortals = []
         liveFloors = []
         roomInstruction = nil
         roomTransitions.suspend()
         doorMonitor?.invalidate()
-        captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
+        captureSession.run(configuration: RoomCaptureSession.Configuration())
         doorMonitor = Timer.scheduledTimer(withTimeInterval: Self.doorMonitorInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkDoorways() }
+            MainActor.assumeIsolated {
+                if let room = self?.sessionDelegate?.takeLatestRoom() { self?.liveRoomUpdated(room) }
+                self?.checkDoorways()
+            }
         }
     }
 
     private func liveRoomUpdated(_ room: CapturedRoom) {
         guard isActive, phase == .scanning else { return }
-        let heights = room.floors.map { $0.transform.translation.y }.filter(\.isFinite).sorted()
-        if !heights.isEmpty { rawCapture.floorY = heights[heights.count / 2] }
-        liveFloors = MapBuilder.floorFootprints(in: room)
+        let frame = session.currentFrame
+        let observedAt: TimeInterval?
+        if let frame, case .normal = frame.camera.trackingState,
+           abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 {
+            observedAt = frame.timestamp
+        } else { observedAt = nil }
+        captureView?.update(room: room, observedAt: observedAt)
+    }
+
+    private func applyLiveRoomMeasurements(_ measurements: ScanLiveRoomMeasurements) {
+        guard isActive, phase == .scanning else { return }
+        if let floorY = measurements.floorY { rawCapture.floorY = floorY }
+        liveFloors = measurements.floors
         guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
-              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else {
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1,
+              let observedAt = measurements.observedAt,
+              abs(ProcessInfo.processInfo.systemUptime - observedAt) < 1 else {
             livePortals = []
             roomTransitions.suspend()
             return
         }
-        func portal(_ surface: CapturedRoom.Surface, kind: RoomTransitionPortal.Kind) -> RoomTransitionPortal? {
-            guard surface.confidence != .low else { return nil }
-            let pose = surface.transform
-            return RoomTransitionPortal(id: surface.identifier, kind: kind,
-                center: pose.translation,
-                horizontalAxis: SIMD2(pose.columns.0.x, pose.columns.0.z),
-                width: surface.dimensions.x, height: surface.dimensions.y,
-                observedAt: frame.timestamp)
-        }
-        livePortals = room.doors.compactMap { portal($0, kind: .door) }
-            + room.openings.compactMap { portal($0, kind: .opening) }
+        livePortals = measurements.portals
     }
 
     /// A room handoff requires a stable measured portal and confirmed movement through it.
@@ -744,6 +778,7 @@ final class ScanController: ObservableObject {
                 saveWorldMap()
             } else if pauseAfterProcessing {
                 rawCapture.pause()
+                videoCapture?.pause()
                 phase = .interrupted
                 if ProcessInfo.processInfo.thermalState == .critical { session.pause() }
             } else {
@@ -754,14 +789,15 @@ final class ScanController: ObservableObject {
         }
     }
 
-    /// The session delegate supplies each section once, alongside its live updates. Skip
-    /// RoomCaptureView's additional model rendering and process the immutable section here.
+    /// The session delegate supplies each section once, alongside its live updates.
+    /// Process the immutable section separately from the bounded camera preview.
     private func sectionEnded(_ data: CapturedRoomData, error: Error?) {
         guard isActive, phase == .scanning || phase == .processing, sectionTask == nil else { return }
         doorMonitor?.invalidate()
         doorMonitor = nil
         roomTransitions.suspend()
         livePortals = []
+        captureView?.clearRoom()
         let endedUnexpectedly = phase == .scanning
         if endedUnexpectedly {
             Log.scan.error("RoomPlan ended the active section: \(error?.localizedDescription ?? "no error reported", privacy: .public)")
@@ -770,6 +806,7 @@ final class ScanController: ObservableObject {
             phase = .processing
             detector.pause()
             rawCapture.pause()
+            videoCapture?.pause()
             splatCapture.pause()
             if ProcessInfo.processInfo.thermalState == .critical {
                 session.pause()
@@ -779,6 +816,7 @@ final class ScanController: ObservableObject {
         }
         if let error {
             rawCapture.pause()
+            videoCapture?.pause()
             captureFailed(error)
             pauseAfterProcessing = true
         }
@@ -836,6 +874,7 @@ final class ScanController: ObservableObject {
                 guard !Task.isCancelled, let self, self.isActive, self.sectionRequestID == requestID else { return }
                 self.sectionTask = nil
                 self.rawCapture.pause()
+                self.videoCapture?.pause()
                 self.logRoomFailure(error, stage: failureStage)
                 if let failure = error as? RoomCaptureArchive.Failure, case .storage = failure {
                     self.errorMessage = failure.isOutOfSpace
@@ -872,6 +911,7 @@ final class ScanController: ObservableObject {
         beginSection()
         detector.resume()
         rawCapture.resume()
+        if appIsActive { videoCapture?.resume() }
         if detailRequested { splatCapture.resume() }
     }
 
@@ -888,8 +928,11 @@ final class ScanController: ObservableObject {
         startViewTimer = nil
         rawCapture.captureReconstructedMesh(from: session)
         session.pause()
-        captureView?.delegate = nil
-        captureView?.captureSession.delegate = nil
+        captureSession?.delegate = nil
+        captureSession = nil
+        sessionDelegate?.discardRoomUpdates()
+        sessionDelegate = nil
+        captureView?.stop()
         captureView = nil
         resourceTimer?.invalidate()
         resourceTimer = nil
@@ -914,6 +957,7 @@ final class ScanController: ObservableObject {
             defer { self?.isProcessingScene = false }
             do {
                 guard let self else { return }
+                await videoCapture?.finish()
                 let raw: RawScanSnapshot
                 if let retained = finishedRawSnapshot { raw = retained }
                 else if rawArchived {
@@ -998,6 +1042,8 @@ final class ScanController: ObservableObject {
                 detailTask?.cancel()
                 detector.pause()
                 rawCapture.stop()
+                videoCapture = nil
+                videoStatus = nil
                 splatCapture.stop()
                 trackingNotice = nil
                 scanGuidance = "Move slowly and include the floor as you scan."
@@ -1175,35 +1221,35 @@ final class ScanController: ObservableObject {
     }
 }
 
-/// Forwards RoomPlan's live session updates to closures on the main actor.
+/// Coalesces live measurements instead of queuing a main-actor task for every growing room.
+/// Final capture data is forwarded separately and is never dropped by preview throttling.
 final class CaptureSessionDelegate: NSObject, RoomCaptureSessionDelegate {
-    private let onUpdate: @MainActor (CapturedRoom) -> Void
+    private let roomLock = NSLock()
+    private var latestRoom: CapturedRoom?
     private let onEnd: @MainActor (CapturedRoomData, Error?) -> Void
     private let onInstruction: @MainActor (RoomCaptureSession.Instruction) -> Void
 
-    init(onUpdate: @escaping @MainActor (CapturedRoom) -> Void,
-         onEnd: @escaping @MainActor (CapturedRoomData, Error?) -> Void,
+    init(onEnd: @escaping @MainActor (CapturedRoomData, Error?) -> Void,
          onInstruction: @escaping @MainActor (RoomCaptureSession.Instruction) -> Void) {
-        self.onUpdate = onUpdate
         self.onEnd = onEnd
         self.onInstruction = onInstruction
     }
 
     func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
-        Task { @MainActor in onUpdate(room) }
+        roomLock.withLock { latestRoom = room }
     }
 
-    func captureSession(_ session: RoomCaptureSession, didAdd room: CapturedRoom) {
-        Task { @MainActor in onUpdate(room) }
+    // didAdd/didChange/didRemove contain partial changes. Only didUpdate supplies a
+    // complete room snapshot that can safely replace the pending display measurements.
+
+    func takeLatestRoom() -> CapturedRoom? {
+        roomLock.withLock {
+            defer { latestRoom = nil }
+            return latestRoom
+        }
     }
 
-    func captureSession(_ session: RoomCaptureSession, didChange room: CapturedRoom) {
-        Task { @MainActor in onUpdate(room) }
-    }
-
-    func captureSession(_ session: RoomCaptureSession, didRemove room: CapturedRoom) {
-        Task { @MainActor in onUpdate(room) }
-    }
+    func discardRoomUpdates() { roomLock.withLock { latestRoom = nil } }
 
     func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
         Task { @MainActor in onInstruction(instruction) }
@@ -1211,18 +1257,5 @@ final class CaptureSessionDelegate: NSObject, RoomCaptureSessionDelegate {
 
     func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
         Task { @MainActor in onEnd(data, error) }
-    }
-}
-
-/// RoomCaptureView requires an NSCoding delegate. Its preview processing is disabled because
-/// the session delegate already supplies the data to our cancellable RoomBuilder task.
-final class CaptureViewDelegate: NSObject, RoomCaptureViewDelegate {
-    override init() { super.init() }
-    required init?(coder: NSCoder) { nil }
-
-    func encode(with coder: NSCoder) {}
-
-    func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
-        return false
     }
 }

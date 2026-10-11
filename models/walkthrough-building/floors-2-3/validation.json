@@ -2,8 +2,8 @@
   "native_packages": [
     {
       "file": "building.usdz",
-      "bytes": 2287718,
-      "mesh_count": 986,
+      "bytes": 3000928,
+      "mesh_count": 693,
       "up_axis": "Y",
       "meters_per_unit": 1,
       "entries": [
@@ -12,8 +12,8 @@
     },
     {
       "file": "floor-2.usdz",
-      "bytes": 2035282,
-      "mesh_count": 585,
+      "bytes": 1943702,
+      "mesh_count": 292,
       "up_axis": "Y",
       "meters_per_unit": 1,
       "entries": [
@@ -32,18 +32,18 @@
     }
   ],
   "triangles_by_floor": {
-    "2": 115582,
+    "2": 134236,
     "3": 90552
   },
-  "mesh_count": 986,
+  "mesh_count": 693,
   "bounds_y_up_m": {
     "min": [
-      -42.099,
-      -0.24,
-      -10.899
+      -32.099,
+      -0.12032,
+      -25.83336
     ],
     "max": [
-      9.2125,
+      26.30465,
       5.6,
       16.199
     ]

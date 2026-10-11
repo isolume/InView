@@ -89,6 +89,12 @@ struct ScanView: View {
                             .accessibilityLabel("\(floor.name). Change floor")
                         }
                         Spacer()
+                        if controller.videoStatus == "Recording video" {
+                            Label("Recording", systemImage: "record.circle")
+                                .font(.caption.weight(.medium))
+                                .padding(8)
+                                .glassEffect(.regular)
+                        }
                         if controller.phase == .scanning {
                             DetectionStatus(detector: controller.detector)
                         }
@@ -222,6 +228,9 @@ struct ScanView: View {
             Text(controller.trackingNotice ?? controller.scanGuidance)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if let status = controller.videoStatus, status != "Recording video" {
+                Text(status).font(.footnote).foregroundStyle(.secondary)
+            }
             if controller.automaticFloorDetectionUnavailable {
                 Text("Use the floor button when you move to another floor.")
                     .font(.footnote).foregroundStyle(.secondary)

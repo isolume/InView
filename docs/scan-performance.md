@@ -1,5 +1,55 @@
 # Scan performance
 
+## Large-room camera preview
+
+The live camera now uses a separate, bounded renderer with a standalone
+`RoomCaptureSession`. The former `RoomCaptureView` had its miniature model disabled,
+but its camera outlines remained framework-managed; the app had no distance-based
+unloading policy. That alone did not establish how much of a particular slowdown
+came from Apple's renderer.
+
+- Only measured edge pieces within 6 m of the camera enter the rendering buffer,
+  with a maximum of 1,536 pieces. Leaving an area releases its display geometry;
+  returning restores outlines from compact measurements. Long walls are indexed
+  by their extent so nearby ends remain visible even when their center is distant.
+- Camera frames render at 30 Hz, with at most two GPU submissions in flight.
+  Nearby selection refreshes every 0.2 seconds and after measurement updates through
+  a spatial index on a background worker, which also prepares the Metal line buffer.
+  The main actor publishes the prepared
+  buffer without traversing the room or building geometry. Current confident depth
+  hides edges behind nearer surfaces. Camera projection follows the latest pose.
+- Complete RoomPlan updates replace one pending room snapshot. Partial addition,
+  change and removal callbacks do not replace the full snapshot. At most one room
+  worker prepares floor elevations, floor polygons, doorways and the preview index
+  off the main thread, keeping only the newest waiting snapshot. A separate bounded
+  worker selects nearby edges. Generation/revision checks reject old results after
+  a section change; camera freshness checks reject delayed selections. Full final
+  room data still follows the existing archive and builder
+  paths, independent of the display radius and limits.
+- No AR anchors or captured room measurements are deleted to unload the preview.
+  New rooms clear the display index while preserving the shared AR session and
+  completed room archives.
+
+Synthetic regression tests cover distant geometry, revisits, updates/removals,
+long walls, 3D clipping and dense rooms. Adding 10,000 distant components leaves
+the nearby query examining the same single local edge piece. All 496 AccessCore
+tests pass. iPhone and Simulator builds pass, as do four native preview tests,
+including runtime compilation of the camera and outline shaders, GPU-buffer
+limits, background buffer preparation, and rejecting an old worker after a room
+reset. These checks do not measure physical-device frame rate. A large-room
+phone scan must still verify
+camera alignment, outline occlusion, revisits, room handoffs and Finish, including
+the saved geometry outside the preview radius. RoomPlan's own processing,
+tracking and thermal costs can still grow during capture.
+
+The custom capture/display separation uses Apple's documented
+[RoomCaptureSession](https://developer.apple.com/documentation/roomplan/roomcapturesession)
+API. Apple's [complete-room callback](https://developer.apple.com/documentation/roomplan/roomcapturesessiondelegate/capturesession(_:didupdate:))
+provides the full measurement snapshot for coalescing. The measurements below describe the earlier optimization, before this
+preview change.
+
+## Earlier device measurements
+
 Measured on 2026-10-10 with an iPhone 15 Pro Max running iOS 27.0.1,
 using Debug builds and two 45-second user-operated scans of roughly the same area.
 These are observations from short scans, not a controlled FPS benchmark or proof

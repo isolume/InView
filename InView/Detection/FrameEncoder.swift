@@ -112,6 +112,21 @@ enum FrameEncoder {
         }
     }
 
+    /// Video uses the calibrated sensor orientation. Playback rotation belongs to the
+    /// movie track, so depth projection never depends on a display-sized portrait image.
+    static func renderSensorVideo(_ snapshot: Snapshot, to buffer: CVPixelBuffer) {
+        autoreleasepool {
+            let source = CIImage(cvPixelBuffer: snapshot.pixelBuffer)
+            let width = CGFloat(CVPixelBufferGetWidth(buffer))
+            let height = CGFloat(CVPixelBufferGetHeight(buffer))
+            let image = source.transformed(by: CGAffineTransform(
+                scaleX: width / source.extent.width, y: height / source.extent.height
+            ))
+            context.render(image, to: buffer, bounds: CGRect(x: 0, y: 0, width: width, height: height),
+                           colorSpace: colorSpace)
+        }
+    }
+
     /// Maps a normalized point in the portrait JPEG back to the captured (landscape) image.
     static func capturedImagePoint(fromPortrait point: CGPoint) -> CGPoint {
         CGPoint(x: point.y, y: 1 - point.x)

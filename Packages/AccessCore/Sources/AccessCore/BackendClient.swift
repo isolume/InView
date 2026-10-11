@@ -24,6 +24,8 @@ public enum BackendRequestStage: Equatable, Sendable {
 
 public enum BackendClientError: Error, LocalizedError, Equatable {
     case invalidURL
+    /// A bearer token is configured but the address is plain http:// to a remote host.
+    case insecureTokenTransport
     case invalidCapture(String)
     case connection(stage: BackendRequestStage, code: URLError.Code)
     case http(status: Int, code: String?, message: String)
@@ -34,6 +36,8 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .invalidURL: return "Enter a backend address beginning with http:// or https://."
+        case .insecureTokenTransport:
+            return "The scan server address must use https:// so the access token isn't sent in the clear."
         case .invalidCapture(let message): return message
         case .connection(let stage, let code):
             switch code {
@@ -50,7 +54,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
             case .notConnectedToInternet: return "Could not connect to the scan server. Check your connection."
             case .networkConnectionLost: return "The connection to the scan server was lost. Try again."
             case .appTransportSecurityRequiresSecureConnection:
-                return "Use a secure address for the scan server."
+                return "The scan server address must start with https:// unless the server is on your local network."
             case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
                  .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
                 return "Could not make a secure connection to the scan server. Check its address."
@@ -242,10 +246,12 @@ public struct BackendClient: Sendable {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = components.host, !host.isEmpty,
-              (accessToken == nil || accessToken?.isEmpty == true || scheme == "https" ||
-               ["localhost", "127.0.0.1", "::1"].contains(host.lowercased())),
               components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil else { throw BackendClientError.invalidURL }
+        if let accessToken, !accessToken.isEmpty, scheme != "https",
+           !["localhost", "127.0.0.1", "::1"].contains(host.lowercased()) {
+            throw BackendClientError.insecureTokenTransport
+        }
         let safeCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_~")
         var basePath = components.percentEncodedPath
         while basePath.hasSuffix("/") { basePath.removeLast() }
