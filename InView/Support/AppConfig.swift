@@ -1,3 +1,4 @@
+import AccessCore
 import Foundation
 import Security
 
@@ -134,6 +135,12 @@ enum AppConfig {
     static var mapboxAccessToken: String? {
         guard let token = value(for: "MBXAccessToken"), token.hasPrefix("pk.") else { return nil }
         return token
+    }
+
+    /// The Auth0 tenant for Apple and email sign-in; nil keeps email and password.
+    static var auth0: Auth0Settings? {
+        Auth0Settings(domain: value(for: "InViewAuth0Domain"), clientID: value(for: "InViewAuth0ClientID"),
+                      callback: value(for: "InViewAuth0Callback"), bundleIdentifier: Bundle.main.bundleIdentifier)
     }
 
     private static func value(for key: String) -> String? {

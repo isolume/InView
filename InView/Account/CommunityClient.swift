@@ -1,3 +1,4 @@
+import AccessCore
 import Foundation
 
 struct CommunityAccount: Codable, Identifiable, Equatable {
@@ -110,12 +111,86 @@ struct CommunityClient {
         return try await request(registering ? "api/accounts/register" : "api/accounts/login", method: "POST", body: JSONSerialization.data(withJSONObject: body))
     }
 
+    /// Trades the ID token Auth0 issued after Universal Login for this server's own session.
+    func authenticateWithAuth0(idToken: String) async throws -> CommunityAuthentication {
+        try await request("api/accounts/auth0", method: "POST",
+                          body: JSONSerialization.data(withJSONObject: ["id_token": idToken]))
+    }
+
     func account(token: String) async throws -> CommunityAccount {
         try await request("api/accounts/me", token: token)
     }
 
     func logout(token: String) async throws {
         _ = try await response("api/accounts/logout", method: "POST", token: token)
+    }
+
+    // MARK: People
+
+    func discovery(token: String) async throws -> DiscoverySettings {
+        try await request("api/accounts/me/discovery", token: token)
+    }
+
+    /// `handle` nil leaves it alone; `clearHandle` removes it.
+    func setDiscovery(discoverable: Bool? = nil, handle: String? = nil, clearHandle: Bool = false,
+                      token: String) async throws -> DiscoverySettings {
+        var body: [String: Any] = [:]
+        if let discoverable { body["discoverable"] = discoverable }
+        if let handle { body["handle"] = handle }
+        if clearHandle { body["clear_handle"] = true }
+        return try await request("api/accounts/me/discovery", method: "PUT", token: token,
+                                 body: JSONSerialization.data(withJSONObject: body))
+    }
+
+    /// One person by exact email or handle; throws `CommunityError.server` when nobody can be found.
+    func findPerson(_ query: String, token: String) async throws -> PersonMatch {
+        try await request("api/people/find", method: "POST", token: token,
+                          body: JSONSerialization.data(withJSONObject: ["query": query]))
+    }
+
+    /// Which of these contact hashes belong to people who chose to be found.
+    func matchContacts(hashes: [String], token: String) async throws -> [PersonMatch] {
+        struct Reply: Decodable { var matches: [PersonMatch] }
+        let reply: Reply = try await request("api/people/match", method: "POST", token: token,
+                                             body: JSONSerialization.data(withJSONObject: ["hashes": hashes]))
+        return reply.matches
+    }
+
+    // MARK: Live location
+
+    func shares(token: String) async throws -> [PersonShare] {
+        struct Reply: Decodable { var shares: [PersonShare] }
+        let reply: Reply = try await request("api/people/shares", token: token)
+        return reply.shares
+    }
+
+    /// `offer`: you let them see you. `request`: you ask to see them (they must accept).
+    func startShare(personID: String, offering: Bool, minutes: Int = 60, token: String) async throws -> PersonShare {
+        try await request("api/people/shares", method: "POST", token: token,
+                          body: JSONSerialization.data(withJSONObject: [
+                              "person_id": personID, "mode": offering ? "offer" : "request", "minutes": minutes] as [String: Any]))
+    }
+
+    func respondToShare(id: String, accept: Bool, minutes: Int = 60, token: String) async throws -> PersonShare {
+        try await request("api/people/shares/\(id)/respond", method: "POST", token: token,
+                          body: JSONSerialization.data(withJSONObject: ["accept": accept, "minutes": minutes] as [String: Any]))
+    }
+
+    func endShare(id: String, token: String) async throws {
+        _ = try await response("api/people/shares/\(id)", method: "DELETE", token: token)
+    }
+
+    /// Whether the server kept it: false means nobody can currently see your position.
+    @discardableResult
+    func publish(_ position: SharedPosition, token: String) async throws -> Bool {
+        struct Reply: Decodable { var shared: Bool }
+        let reply: Reply = try await request("api/accounts/me/position", method: "PUT", token: token,
+                                             body: JSONEncoder().encode(position))
+        return reply.shared
+    }
+
+    func location(of personID: String, token: String) async throws -> PersonLocation {
+        try await request("api/people/\(personID)/location", token: token)
     }
 
     func submissions(token: String) async throws -> [CommunitySubmission] {
@@ -165,6 +240,33 @@ struct CommunityClient {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw CommunityError.invalidResponse }
+        if path == "api/accounts/auth0" {
+            switch response.statusCode {
+            case 200..<300: return data
+            case 401: throw CommunityError.server("We couldn’t verify that sign-in. Please try again.")
+            case 404: throw CommunityError.server("Sign-in with Apple or email isn’t available on this server yet.")
+            case 409: throw CommunityError.server("This email already belongs to a different sign-in method.")
+            case 429: throw CommunityError.server("Too many attempts. Wait a moment and try again.")
+            default: throw CommunityError.server("Sign-in is unavailable right now. Please try again later.")
+            }
+        }
+        if path.hasPrefix("api/people") || path == "api/accounts/me/discovery" {
+            switch response.statusCode {
+            case 200..<300: return data
+            case 401: throw CommunityError.sessionExpired
+            case 404 where path.hasSuffix("/location"):
+                throw CommunityError.server("They aren’t sharing a live position right now.")
+            case 404 where path.hasPrefix("api/people/shares"):
+                throw CommunityError.server("That location share has ended.")
+            case 404: throw CommunityError.server("No one with that email or handle is available to find.")
+            case 409 where path.hasPrefix("api/people/shares"):
+                throw CommunityError.server("End a location share before starting another.")
+            case 409: throw CommunityError.server("That handle is already in use. Try another.")
+            case 422, 400: throw CommunityError.server("Use 3 to 24 letters, numbers, dots or underscores for a handle.")
+            case 429: throw CommunityError.server("You’ve searched a lot. Wait a few minutes and try again.")
+            default: throw CommunityError.server("People search is unavailable right now.")
+            }
+        }
         switch response.statusCode {
         case 200..<300: return data
         case 401: throw token == nil ? CommunityError.server("The email or password is incorrect.") : CommunityError.sessionExpired

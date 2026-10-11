@@ -12,6 +12,9 @@ packages:
   MetalSplatter:
     url: https://github.com/scier/MetalSplatter.git
     exactVersion: 1.0.1
+  Auth0:
+    url: https://github.com/auth0/Auth0.swift
+    from: 2.22.0
 targets:
   InView:
     type: application
@@ -29,6 +32,7 @@ targets:
     dependencies:
       - package: AccessCore
       - package: MapboxMaps
+      - package: Auth0
       - package: MetalSplatter
         product: MetalSplatter
       - package: MetalSplatter
@@ -58,6 +62,9 @@ targets:
         ElevenLabsVoiceID: $(ELEVENLABS_VOICE_ID)
         ElevenLabsModel: $(ELEVENLABS_MODEL)
         InViewBackendURL: $(INVIEW_BACKEND_URL)
+        InViewAuth0Domain: $(INVIEW_AUTH0_DOMAIN)
+        InViewAuth0ClientID: $(INVIEW_AUTH0_CLIENT_ID)
+        InViewAuth0Callback: $(INVIEW_AUTH0_CALLBACK_URL)
         InViewBackendToken: $(INVIEW_BACKEND_TOKEN)
         InViewLocalBackendURL: $(INVIEW_LOCAL_BACKEND_URL)
         InViewUseLocalBackend: $(INVIEW_USE_LOCAL_BACKEND)
@@ -66,6 +73,7 @@ targets:
         NSMotionUsageDescription: InView uses elevation changes to suggest when you move to another floor while scanning.
         NSMicrophoneUsageDescription: InView listens when you tap the microphone, so you can ask where places are.
         NSSpeechRecognitionUsageDescription: InView turns your spoken question into text to find places in the building.
+        NSContactsUsageDescription: InView matches your contacts’ email addresses, as one-way codes on your phone, to show which people you know chose to be found. Names and emails never leave your phone.
         NSLocalNetworkUsageDescription: InView connects to your optional processing server to build the 3D view of your scan.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

@@ -356,6 +356,68 @@ cargo clippy --all-targets -- -D warnings
 cargo test --test buildings -- --ignored
 ```
 
+## Auth0 sign-in
+
+Setting `INVIEW_AUTH0_DOMAIN` (with `INVIEW_AUTH0_CLIENT_ID`, optionally
+`INVIEW_AUTH0_ADMIN_CLIENT_ID`, `INVIEW_AUTH0_AUDIENCE` and `INVIEW_ADMIN_EMAILS`) makes Auth0 the
+sign-in for accounts and the admin page: passwordless Apple or email code. Clients trade the
+Auth0 ID token for the server's own session at `POST /api/accounts/auth0 {"id_token": ...}`;
+`GET /api/auth/config` publishes the public tenant values. Registration is closed and password login
+remains only for the bootstrapped administrator. Left unset, behaviour is unchanged. See
+[../docs/auth0-setup.md](../docs/auth0-setup.md).
+
+### Finding people
+
+Signed-in people can find each other by exact email or handle. It is **opt-in** and built so the
+directory can't be browsed.
+
+| Endpoint | What it does |
+|----------|--------------|
+| `GET /api/accounts/me/discovery` | `{discoverable, handle, email_searchable}` for the caller. |
+| `PUT /api/accounts/me/discovery` | `{discoverable?: bool, handle?: string, clear_handle?: bool}`. Handles are 3-24 characters of `a-z 0-9 . _`, case-insensitive and unique (`409 handle_taken`). |
+| `POST /api/people/find` | `{query}` with an exact email or handle returns `{person_id, name, handle}`. |
+
+| `POST /api/people/match` | `{hashes: [..]}` (at most 500 lower-case hex SHA-256 digests) returns `{matches: [{hash, person_id, name, handle}]}`: which of a phone's contacts chose to be found. |
+
+**Contacts.** The app hashes each contact email on the device as
+`sha256("inview-contacts-v1:" + trimmed lower-case email)` and sends only the digests; names and
+emails never leave the phone, and the server does not store what it receives. Only accounts that are
+discoverable with a searchable email can match, so a contact who has not opted in looks the same as a
+stranger. Matching is limited to 10 requests per 15 minutes per account. Hashing is not secrecy
+against someone who already guesses the address, which is why matching is opt-in and limited.
+
+- Nobody is findable until they turn `discoverable` on. Turning it off hides them again.
+- Match is exact (after trimming and lower-casing). No partial, prefix or wildcard search.
+- Email lookup only finds accounts whose address Auth0 verified, and never an Apple "Hide My Email"
+  relay (`@privaterelay.appleid.com`); those people can still choose a handle. Password accounts are
+  findable by handle only.
+- Absent, not discoverable, relay-hidden and yourself all return the same `404 person_not_found`.
+  Lookups are limited to 30 per 15 minutes per account.
+- Results never include an email, account id or sign-in method. `person_id` is a stable opaque
+  identifier derived from the account id. A name that looks like an email address is replaced by the
+  handle (or "InView user").
+
+### Live location sharing
+
+People who found each other can share where they are, on the published map, for a bounded time.
+Consent is explicit and either side can end it at any time.
+
+| Endpoint | What it does |
+|----------|--------------|
+| `POST /api/people/shares` | `{person_id, mode: "offer"\|"request", minutes?}`. `offer`: you let them see you (active at once). `request`: you ask to see them (they must accept). 5 minutes to 8 hours, default 60. |
+| `GET /api/people/shares` | Your open and recent shares with `direction` (`outgoing` = you share) and `state` (`requested`, `active`, `declined`, `revoked`, `expired`). |
+| `POST /api/people/shares/{id}/respond` | `{accept, minutes?}`, only by the person being asked to share. |
+| `DELETE /api/people/shares/{id}` | Ends it, by either side. |
+| `PUT /api/accounts/me/position` | `{venue_id, floor, x, z, heading_deg?, accuracy_m?}` in the venue's shared map frame. Kept only while someone can see it; returns `{shared}`. |
+| `GET /api/people/{person_id}/location` | A sharer's latest position, only to a viewer with an active share and only if fresher than 60 s. |
+
+- A share can only start with a **discoverable** person, so absent and hidden people look the same.
+- Positions are held **in memory only** and are dropped when the last active share ends. They are
+  never written to disk or returned to anyone but the viewer of an active share.
+- Coordinates are in a published venue's frame (`venue_id` + `floor`), so only phones located on the
+  same published map can route to each other. A map scanned on one phone has a private frame and is
+  never shared.
+
 ## Accounts and reviewed maps
 
 The user-facing foundation is separate from the original reconstruction API. It
