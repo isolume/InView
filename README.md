@@ -1,11 +1,11 @@
 # InView
 
-GPS stops at the front door. Inside, signs are written for people who can see them and routes assume you can take the stairs. InView turns a building into a map you can hear, follow and roll through, so blind and disabled visitors can find their own way.
+GPS stops at the front door. Inside, routes assume you can take the stairs and nobody tells you which door is too narrow or which ramp is too steep until you're already there. InView turns a building into a measured, step-free map, so wheelchair users can find a route that works for them and roll it. Directions are also spoken and signs read aloud for blind and low-vision visitors.
 
 ## Who it serves
 
+- **Wheelchair users and anyone avoiding stairs (the primary use case):** step-free routes that skip stairs, doors under 81 cm and ramps without a measured safe slope, built from real LiDAR measurements rather than a building's claims. Routes reroute around new obstacles.
 - **Blind and low-vision visitors:** spoken turn-by-turn directions, and signs read aloud with where they are ("Room 204, 12 o'clock, 1 meter"). Works with VoiceOver.
-- **Wheelchair users and anyone avoiding stairs:** step-free routes that skip stairs, doors under 81 cm and ramps without a measured safe slope, and reroute around new obstacles.
 - **Everyone in an emergency:** exits tagged from real exit signs, one tap to the nearest one.
 - **Volunteers and building staff:** map a floor by walking it once with a LiDAR iPhone.
 
@@ -17,6 +17,41 @@ GPS stops at the front door. Inside, signs are written for people who can see th
 4. **Get there.** AR arrows, a 2D or 3D map, and voice guide you to the door. Anyone can tag a sign they pass, so the map improves with each visit.
 
 The app opens on your saved map, or offers to map a building or run the demo.
+
+## What it does
+
+Scan a building once with a LiDAR iPhone, then get step-free routes that avoid stairs, narrow doors and unsafe ramps, guided by AR arrows, a map and voice. Signs are read aloud, and the nearest exit is one tap away.
+
+## How we built it
+
+- An iOS app on RoomPlan and ARKit LiDAR for scanning, relocalization and AR guidance.
+- A vision model proposes elevators, ramps and stairs; LiDAR depth confirms each one.
+- On-device OCR reads signs, which LiDAR places in 3D and binds to the nearest door.
+- Routing and geometry live in a tested Swift package (`AccessCore`); a Rust server handles accounts and map sharing.
+- ElevenLabs for voice, Gemini for voice questions, Mapbox for the outdoor map.
+
+## Challenges we ran into
+
+- Models misread or hallucinate, so every AI detection has to be confirmed by measured depth.
+- Placing signs and obstacles accurately in 3D from a handheld phone.
+- Recognizing a space from the saved scan with no QR codes or beacons.
+
+## Accomplishments that we're proud of
+
+- A reconstructed Floor 1 with measured, elevation-aware routes.
+- Step-free routing based on measured door widths and ramp slopes, not assumptions.
+- Works with VoiceOver, so one map serves wheelchair users and blind visitors.
+
+## What we learned
+
+- For wheelchair users, a door's width or a ramp's slope decides whether a route exists, so measured beats assumed.
+- AI is good at proposing and bad at certifying; pair it with a physical measurement.
+
+## What's next for InView
+
+- Between-floor directions from published building connections.
+- AR guidance on shared maps, not just on the phone that scanned.
+- More real-device testing of multi-room scans and relocalization.
 
 ## Setup
 
