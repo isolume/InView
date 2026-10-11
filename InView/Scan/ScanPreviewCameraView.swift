@@ -409,7 +409,8 @@ final class ScanPreviewRenderer {
         float2 direction = (b.xy/b.w - a.xy/a.w) * u.sizes.xy;
         float length = metal::length(direction);
         if (length < 0.01) return {float4(2, 2, 2, 1), 0};
-        float2 offset = float2(-direction.y, direction.x) / length * 2.0 / u.sizes.xy;
+        // About 2.5 pt wide at the 2x drawable: thick enough to read walls and boxes at a glance.
+        float2 offset = float2(-direction.y, direction.x) / length * 5.0 / u.sizes.xy;
         float2 corner = corners[id % 6];
         float4 p = corner.x < 0 ? a : b;
         p.xy += offset * corner.y * p.w;
@@ -425,7 +426,7 @@ final class ScanPreviewRenderer {
             if (confidence.sample(s, uv).r > 1.5/255.0 && isfinite(measured) && measured > 0
                 && v.depth > measured + 0.2) discard_fragment();
         }
-        return float4(1, 1, 1, 0.85);
+        return float4(1, 1, 1, 0.9);
     }
     """
 }

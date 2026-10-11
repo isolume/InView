@@ -117,7 +117,7 @@ struct MapPreviewView: View {
         for floor in floors {
             let outline = projection.path(floor.corners)
             context.fill(outline, with: .color(PlanInk.floor))
-            context.stroke(outline, with: .color(PlanInk.floorEdge), lineWidth: 1)
+            context.stroke(outline, with: .color(PlanInk.floorEdge), lineWidth: 1.5)
         }
 
         // Rooms named by a sign, tinted under everything else on the floor.
@@ -146,7 +146,10 @@ struct MapPreviewView: View {
             }
         }
         for footprint in map.footprints where footprint.kind == .wall {
-            context.fill(projection.path(footprint.corners), with: .color(PlanInk.wall))
+            // Stroked as well as filled, so thin measured walls still read as walls when zoomed out.
+            let wall = projection.path(footprint.corners)
+            context.fill(wall, with: .color(PlanInk.wall))
+            context.stroke(wall, with: .color(PlanInk.wall), style: StrokeStyle(lineWidth: 2, lineJoin: .round))
         }
         for footprint in map.footprints where footprint.kind == .window {
             FloorPlanSymbol(footprint: footprint, projection: projection).drawWindow(in: &context)
@@ -326,16 +329,16 @@ private struct FloorPlanSymbol {
         switch footprint.furniture {
         case .table:
             context.fill(outline, with: .color(PlanInk.wood))
-            context.stroke(outline, with: ink, lineWidth: 1)
-            context.stroke(rectangle(inset: min(0.1, footprint.size.min() * 0.15)), with: ink, lineWidth: 0.5)
+            context.stroke(outline, with: ink, lineWidth: 1.75)
+            context.stroke(rectangle(inset: min(0.1, footprint.size.min() * 0.15)), with: ink, lineWidth: 1)
         case .chair:
             context.fill(outline, with: .color(PlanInk.fabric))
-            context.stroke(outline, with: ink, lineWidth: 1)
+            context.stroke(outline, with: ink, lineWidth: 1.75)
             // Backrest along the -y edge.
             context.fill(strip(y: -half.y, thickness: min(0.08, footprint.size.y * 0.2)), with: ink)
         case .sofa:
             context.fill(outline, with: .color(PlanInk.fabric))
-            context.stroke(outline, with: ink, lineWidth: 1)
+            context.stroke(outline, with: ink, lineWidth: 1.75)
             let arm = min(0.18, footprint.size.x * 0.15)
             context.fill(strip(y: -half.y, thickness: footprint.size.y * 0.25), with: ink)
             context.fill(strip(x: -half.x, thickness: arm), with: ink)
@@ -344,37 +347,37 @@ private struct FloorPlanSymbol {
             let cushions = max(1, Int((footprint.size.x / 0.7).rounded()))
             for i in 1..<max(2, cushions) {
                 let x = -half.x + arm + (footprint.size.x - 2 * arm) * Float(i) / Float(cushions)
-                context.stroke(line(from: [x, -half.y + footprint.size.y * 0.25], to: [x, half.y]), with: ink, lineWidth: 0.5)
+                context.stroke(line(from: [x, -half.y + footprint.size.y * 0.25], to: [x, half.y]), with: ink, lineWidth: 1)
             }
         case .bed:
             context.fill(outline, with: .color(PlanInk.porcelain))
-            context.stroke(outline, with: ink, lineWidth: 1)
+            context.stroke(outline, with: ink, lineWidth: 1.75)
             let pillow = rectangle(from: [-half.x * 0.8, -half.y * 0.95], to: [half.x * 0.8, -half.y * 0.6])
-            context.stroke(pillow, with: ink, lineWidth: 1)
-            context.stroke(line(from: [-half.x, -half.y * 0.45], to: [half.x, -half.y * 0.45]), with: ink, lineWidth: 0.75)
+            context.stroke(pillow, with: ink, lineWidth: 1.75)
+            context.stroke(line(from: [-half.x, -half.y * 0.45], to: [half.x, -half.y * 0.45]), with: ink, lineWidth: 1.25)
         case .toilet:
             let bowl = ellipse(from: [-half.x * 0.8, -half.y * 0.4], to: [half.x * 0.8, half.y])
             context.fill(bowl, with: .color(PlanInk.porcelain))
-            context.stroke(bowl, with: ink, lineWidth: 1)
+            context.stroke(bowl, with: ink, lineWidth: 1.75)
             let tank = rectangle(from: [-half.x, -half.y], to: [half.x, -half.y * 0.45])
             context.fill(tank, with: .color(PlanInk.porcelain))
-            context.stroke(tank, with: ink, lineWidth: 1)
+            context.stroke(tank, with: ink, lineWidth: 1.75)
         case .sink, .bathtub:
             context.fill(outline, with: .color(PlanInk.porcelain))
-            context.stroke(outline, with: ink, lineWidth: 1)
-            context.stroke(ellipse(from: -half * 0.7, to: half * 0.7), with: ink, lineWidth: 1)
+            context.stroke(outline, with: ink, lineWidth: 1.75)
+            context.stroke(ellipse(from: -half * 0.7, to: half * 0.7), with: ink, lineWidth: 1.75)
         case .appliance:
             context.fill(outline, with: .color(PlanInk.steel))
-            context.stroke(outline, with: ink, lineWidth: 1)
-            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 0.5)
-            context.stroke(line(from: [-half.x, half.y], to: [half.x, -half.y]), with: ink, lineWidth: 0.5)
+            context.stroke(outline, with: ink, lineWidth: 1.75)
+            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 1)
+            context.stroke(line(from: [-half.x, half.y], to: [half.x, -half.y]), with: ink, lineWidth: 1)
         case .television:
             context.fill(outline, with: ink)
         case .storage, .fireplace, nil:
             context.fill(outline, with: .color(PlanInk.wood))
-            context.stroke(outline, with: ink, lineWidth: 1)
-            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 0.5)
-            context.stroke(line(from: [-half.x, half.y], to: [half.x, -half.y]), with: ink, lineWidth: 0.5)
+            context.stroke(outline, with: ink, lineWidth: 1.75)
+            context.stroke(line(from: -half, to: half), with: ink, lineWidth: 1)
+            context.stroke(line(from: [-half.x, half.y], to: [half.x, -half.y]), with: ink, lineWidth: 1)
         }
     }
 
@@ -385,7 +388,7 @@ private struct FloorPlanSymbol {
         context.stroke(outline, with: .color(Theme.stairs), lineWidth: 1.5)
         var y = -half.y + 0.28
         while y < half.y {
-            context.stroke(line(from: [-half.x, y], to: [half.x, y]), with: .color(Theme.stairs.opacity(0.8)), lineWidth: 1)
+            context.stroke(line(from: [-half.x, y], to: [half.x, y]), with: .color(Theme.stairs.opacity(0.8)), lineWidth: 1.75)
             y += 0.28
         }
         // Direction of climb: up the footprint's y axis.
@@ -429,7 +432,7 @@ private struct FloorPlanSymbol {
     /// A pale band in the wall with a centre line, the usual plan symbol for glazing.
     func drawWindow(in context: inout GraphicsContext) {
         context.fill(rectangle(inset: 0), with: .color(PlanInk.window))
-        context.stroke(line(from: [-half.x, 0], to: [half.x, 0]), with: .color(PlanInk.wall), lineWidth: 1)
+        context.stroke(line(from: [-half.x, 0], to: [half.x, 0]), with: .color(PlanInk.wall), lineWidth: 1.75)
     }
 
     private func rectangle(inset: Float) -> Path {
