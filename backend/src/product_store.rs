@@ -48,6 +48,10 @@ struct StoredAccount {
     /// The Auth0 subject (`apple|...`, `email|...`) linked to this account.
     #[serde(default)]
     auth0_sub: Option<String>,
+    /// Only explicit bootstrap configuration grants break-glass password access. Legacy stores
+    /// default to false; restarting with matching bootstrap credentials migrates that account.
+    #[serde(default)]
+    bootstrap_admin: bool,
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Session {
@@ -323,12 +327,28 @@ impl ProductStore {
         validate_password(password)?;
         let password_hash = hash_password(password)?;
         self.transaction(|db| {
-            if let Some(stored)=db.accounts.get(&email) {
-                if stored.account.role==Role::Admin { return Ok(()); }
-                return Err(ApiError::new(StatusCode::CONFLICT,"admin_conflict","Bootstrap email is already a contributor account. Choose a dedicated administrator email."));
+            if let Some(stored) = db.accounts.get_mut(&email) {
+                if stored.account.role != Role::Admin {
+                    return Err(ApiError::new(StatusCode::CONFLICT, "admin_conflict",
+                        "Bootstrap email is already a contributor account. Choose a dedicated administrator email."));
+                }
+                let matches = stored.password_hash.as_deref()
+                    .and_then(|hash| PasswordHash::new(hash).ok())
+                    .is_some_and(|hash| Argon2::default().verify_password(password.as_bytes(), &hash).is_ok());
+                if !matches {
+                    return Err(ApiError::new(StatusCode::CONFLICT, "admin_conflict",
+                        "Bootstrap administrator has no matching password. Supply its existing bootstrap password or choose a dedicated administrator email; credentials were not changed."));
+                }
+                if !stored.bootstrap_admin {
+                    stored.bootstrap_admin = true;
+                    let id = stored.account.id.clone();
+                    db.sessions.retain(|_, session| session.account_id != id);
+                }
+                return Ok(());
             }
-            let account=Account{id:Uuid::new_v4().to_string(),email:email.clone(),name:"Administrator".into(),role:Role::Admin};
-            db.accounts.insert(email,StoredAccount{account,password_hash:Some(password_hash),auth0_sub:None}); Ok(())
+            let account = Account { id: Uuid::new_v4().to_string(), email: email.clone(), name: "Administrator".into(), role: Role::Admin };
+            db.accounts.insert(email, StoredAccount { account, password_hash: Some(password_hash), auth0_sub: None, bootstrap_admin: true });
+            Ok(())
         })
     }
     pub fn register(
@@ -355,6 +375,7 @@ impl ProductStore {
             },
             password_hash: Some(hash_password(password)?),
             auth0_sub: None,
+            bootstrap_admin: false,
         };
         self.transaction(|db| {
             if db.accounts.contains_key(&email) {
@@ -408,7 +429,7 @@ impl ProductStore {
             .is_ok();
         let stored = stored
             .filter(|s| verified && s.password_hash.is_some())
-            .filter(|s| !admin_only || s.account.role == Role::Admin)
+            .filter(|s| !admin_only || (s.bootstrap_admin && s.account.role == Role::Admin))
             .ok_or_else(|| {
                 ApiError::new(
                     StatusCode::UNAUTHORIZED,
@@ -416,7 +437,19 @@ impl ProductStore {
                     "Email or password is incorrect.",
                 )
             })?;
-        self.transaction(|db| create_session(db, stored.account))
+        self.transaction(|db| {
+            // Password verification runs outside the database lock. A concurrent identity binding
+            // or role change must not allow that earlier authentication to mint a new session.
+            let current = db.accounts.get(&email).ok_or_else(unauthorized)?;
+            if current.password_hash != stored.password_hash
+                || current.auth0_sub != stored.auth0_sub
+                || current.bootstrap_admin != stored.bootstrap_admin
+                || current.account.role != stored.account.role
+            {
+                return Err(unauthorized());
+            }
+            create_session(db, stored.account)
+        })
     }
     /// Signs in a verified Auth0 identity, creating or linking the account.
     ///
@@ -446,6 +479,8 @@ impl ProductStore {
             let ttl;
             let account = if let Some(key) = key {
                 let stored = db.accounts.get_mut(&key).expect("key came from the map");
+                let first_binding = stored.auth0_sub.is_none();
+                let previous_role = stored.account.role.clone();
                 match stored.auth0_sub.as_deref() {
                     Some(linked) if linked != sub => {
                         return Err(ApiError::new(
@@ -456,9 +491,7 @@ impl ProductStore {
                     }
                     _ => stored.auth0_sub = Some(sub.to_owned()),
                 }
-                let bootstrap_admin =
-                    stored.account.role == Role::Admin && stored.password_hash.is_some();
-                stored.account.role = if admin || bootstrap_admin {
+                stored.account.role = if admin || stored.bootstrap_admin {
                     Role::Admin
                 } else {
                     Role::User
@@ -468,7 +501,12 @@ impl ProductStore {
                 } else {
                     SESSION_SECONDS
                 };
-                stored.account.clone()
+                let account = stored.account.clone();
+                if first_binding || (previous_role != Role::Admin && account.role == Role::Admin) {
+                    db.sessions
+                        .retain(|_, session| session.account_id != account.id);
+                }
+                account
             } else {
                 if db.accounts.len() >= 10000 {
                     return Err(ApiError::new(
@@ -499,6 +537,7 @@ impl ProductStore {
                         account: account.clone(),
                         password_hash: None,
                         auth0_sub: Some(sub.to_owned()),
+                        bootstrap_admin: false,
                     },
                 );
                 account
@@ -813,7 +852,12 @@ impl ProductStore {
     }
 }
 fn create_session(db: &mut Database, account: Account) -> Result<AuthResponse, ApiError> {
-    create_session_for(db, account, SESSION_SECONDS)
+    let ttl = if account.role == Role::Admin {
+        ADMIN_SESSION_SECONDS
+    } else {
+        SESSION_SECONDS
+    };
+    create_session_for(db, account, ttl)
 }
 fn create_session_for(
     db: &mut Database,
@@ -1216,4 +1260,154 @@ fn vector(value: Option<&Value>, len: usize, bound: f64) -> Result<Vec<f64>, Api
         .iter()
         .map(|value| number(Some(value), bound))
         .collect()
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    use axum::response::IntoResponse;
+    use serde_json::json;
+
+    const EMAIL: &str = "bootstrap@example.test";
+    const PASSWORD: &str = "the existing bootstrap password";
+    const LEGACY_TOKEN: &str = "1234567890123456789012345678901234567890123";
+
+    fn legacy_store(role: Role) -> ProductStore {
+        let root = std::env::temp_dir().join(format!("inview-legacy-identity-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        // Schema 1 before Auth0 had neither auth0_sub nor bootstrap_admin.
+        fs::write(root.join("product.json"), serde_json::to_vec(&json!({
+            "schema_version": 1,
+            "accounts": { EMAIL: { "account": {"id": "legacy-id", "email": EMAIL, "name": "Legacy", "role": role},
+                "password_hash": hash_password(PASSWORD).unwrap() } },
+            "sessions": { digest_token(LEGACY_TOKEN): {"account_id": "legacy-id", "expires_at": now() + SESSION_SECONDS} },
+            "submissions": {}, "retries": {}, "releases": []
+        })).unwrap()).unwrap();
+        ProductStore::open_inner(root, true).unwrap()
+    }
+
+    #[test]
+    fn legacy_provenance_defaults_false_and_matching_bootstrap_migrates_and_revokes() {
+        let store = legacy_store(Role::Admin);
+        assert!(!store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+        assert_eq!(store.account(LEGACY_TOKEN).unwrap().id, "legacy-id");
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_err());
+        store.bootstrap_admin(EMAIL, PASSWORD).unwrap();
+        assert!(store.account(LEGACY_TOKEN).is_err());
+        let session = store.login_with(EMAIL, PASSWORD, true).unwrap();
+        assert_eq!(session.account.id, "legacy-id");
+        assert!(session.expires_at <= now() + ADMIN_SESSION_SECONDS);
+        let saved: Database =
+            serde_json::from_slice(&fs::read(store.inner.root.join("product.json")).unwrap())
+                .unwrap();
+        assert!(saved.accounts[EMAIL].bootstrap_admin);
+        assert!(!saved.sessions.contains_key(&digest_token(LEGACY_TOKEN)));
+        // Repeated bootstrap is idempotent, not a logout on every server startup.
+        store.bootstrap_admin(EMAIL, PASSWORD).unwrap();
+        assert!(store.account(&session.token).is_ok());
+        let linked = store
+            .sign_in_external("email|bootstrap", EMAIL, None, false)
+            .unwrap();
+        assert_eq!(linked.account.role, Role::Admin);
+        assert!(store.account(&session.token).is_err());
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_ok());
+    }
+
+    #[test]
+    fn legacy_admin_without_explicit_bootstrap_is_demoted_on_external_sign_in() {
+        let store = legacy_store(Role::Admin);
+        let linked = store
+            .sign_in_external("email|legacy", EMAIL, None, false)
+            .unwrap();
+        assert_eq!(linked.account.role, Role::User);
+        assert_eq!(linked.account.id, "legacy-id");
+        assert!(store.account(LEGACY_TOKEN).is_err());
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_err());
+        assert!(!store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+    }
+
+    #[test]
+    fn bootstrap_conflicts_do_not_change_passwords_provenance_or_sessions() {
+        let store = legacy_store(Role::Admin);
+        let before = fs::read(store.inner.root.join("product.json")).unwrap();
+        let error = store
+            .bootstrap_admin(EMAIL, "a different long password")
+            .unwrap_err();
+        assert_eq!(error.into_response().status(), StatusCode::CONFLICT);
+        assert_eq!(
+            fs::read(store.inner.root.join("product.json")).unwrap(),
+            before
+        );
+        assert!(store.account(LEGACY_TOKEN).is_ok());
+        assert!(!store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+
+        let passwordless = ProductStore::default();
+        let external = passwordless
+            .sign_in_external("apple|admin", EMAIL, None, true)
+            .unwrap();
+        let before = fs::read(passwordless.inner.root.join("product.json")).unwrap();
+        let error = passwordless.bootstrap_admin(EMAIL, PASSWORD).unwrap_err();
+        assert_eq!(error.into_response().status(), StatusCode::CONFLICT);
+        assert_eq!(
+            fs::read(passwordless.inner.root.join("product.json")).unwrap(),
+            before
+        );
+        assert!(passwordless.account(&external.token).is_ok());
+        assert!(passwordless.login_with(EMAIL, PASSWORD, true).is_err());
+
+        let user = legacy_store(Role::User);
+        assert_eq!(
+            user.bootstrap_admin(EMAIL, PASSWORD)
+                .unwrap_err()
+                .into_response()
+                .status(),
+            StatusCode::CONFLICT
+        );
+        assert!(user.account(LEGACY_TOKEN).is_ok());
+    }
+
+    #[test]
+    fn explicit_bootstrap_provenance_and_revocation_survive_reopening() {
+        let root = std::env::temp_dir().join(format!("inview-bootstrap-reopen-{}", Uuid::new_v4()));
+        let store = ProductStore::open(&root).unwrap();
+        store.bootstrap_admin(EMAIL, PASSWORD).unwrap();
+        let old = store.login_with(EMAIL, PASSWORD, true).unwrap();
+        let linked = store
+            .sign_in_external("email|bootstrap", EMAIL, None, false)
+            .unwrap();
+        drop(store);
+        let store = ProductStore::open_inner(root, true).unwrap();
+        assert!(store.account(&old.token).is_err());
+        assert_eq!(store.account(&linked.token).unwrap().role, Role::Admin);
+        assert!(store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_ok());
+    }
+
+    #[test]
+    fn failed_link_persistence_does_not_partially_revoke_or_bind() {
+        let store = legacy_store(Role::User);
+        // Force the atomic rename to fail without damaging the original file.
+        let path = store.inner.root.join("product.json");
+        let backup = store.inner.root.join("product.backup");
+        fs::rename(&path, &backup).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert!(
+            store
+                .sign_in_external("apple|owner", EMAIL, None, true)
+                .is_err()
+        );
+        assert_eq!(store.account(LEGACY_TOKEN).unwrap().role, Role::User);
+        assert!(
+            store.inner.data.lock().unwrap().accounts[EMAIL]
+                .auth0_sub
+                .is_none()
+        );
+        fs::remove_dir(&path).unwrap();
+        fs::rename(&backup, &path).unwrap();
+        let owner = store
+            .sign_in_external("apple|owner", EMAIL, None, true)
+            .unwrap();
+        assert!(store.account(LEGACY_TOKEN).is_err());
+        assert_eq!(store.account(&owner.token).unwrap().role, Role::Admin);
+    }
 }

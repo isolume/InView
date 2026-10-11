@@ -29,13 +29,13 @@ INVIEW_LOCAL_BACKEND_URL =
 // YES makes new installs use the Mac server by default; the Scanning settings screen can switch either way.
 INVIEW_USE_LOCAL_BACKEND = NO
 
-// Sign in with Apple or email through Auth0 (passwordless Universal Login). These are public
-// identifiers, not secrets: the native app uses PKCE and has no client secret. Clear
-// INVIEW_AUTH0_DOMAIN to fall back to email and password. Write // as :/$()/ in xcconfig.
-INVIEW_AUTH0_DOMAIN = inview.us.auth0.com
-INVIEW_AUTH0_CLIENT_ID = fzUUl4rl0YTRzUGLhdGe6uMp4Ue55Nfx
+// Auth0 is opt-in: leave these blank for a password-only backend. Configure them in
+// Secrets.xcconfig only when the backend and tenant are ready for Auth0 sign-in.
+// These are public PKCE identifiers, not secrets. Write // as :/$()/ in xcconfig.
+INVIEW_AUTH0_DOMAIN =
+INVIEW_AUTH0_CLIENT_ID =
 // Must match Allowed Callback URLs in the Auth0 application.
-INVIEW_AUTH0_CALLBACK_URL = inview:/$()/inview.us.auth0.com/ios/com.inview.InView/callback
+INVIEW_AUTH0_CALLBACK_URL =
 
 // Public token for surrounding maps and placement. Override in Secrets.xcconfig.
 MAPBOX_ACCESS_TOKEN =

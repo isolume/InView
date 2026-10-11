@@ -14,7 +14,7 @@ server --> {token, expires_at, account}
 ## What the server checks
 - RS256 only (never the token's own `alg`), signature from `https://{domain}/.well-known/jwks.json`.
 - `iss == https://{domain}/`; `aud` is the app's client ID, the admin app's client ID, or the
-  optional API identifier; `exp`, `nbf`, `sub`, `iat` present.
+  optional API identifier; `exp`, `sub`, `iat` present. `nbf` is validated when present.
 - The token was issued in the last 10 minutes (it is traded right after sign-in).
 - `email_verified` is `true`. An unverified email never links to or creates an account.
 
@@ -23,10 +23,26 @@ server --> {token, expires_at, account}
   (keeping its id and submissions), else a new user is created.
 - **Admin** if the `https://inview.app/roles` claim contains `admin`, or the verified email is in
   `INVIEW_ADMIN_EMAILS`. It is re-derived at every sign-in, so removing the role demotes on the next
-  one. Administrator sessions last 8 hours; user sessions 14 days.
+  one, except for explicitly provisioned bootstrap administrators. Administrator sessions last
+  8 hours; user sessions 14 days. First Auth0 linking and promotion to administrator revoke all
+  previous sessions for that account before issuing the replacement session.
 - The password administrator from `INVIEW_ADMIN_EMAIL`/`INVIEW_ADMIN_PASSWORD` remains as
   break-glass (`/admin` → "Use administrator password"). Registration and password login are
-  closed for everyone else once Auth0 is configured.
+  closed for everyone else once Auth0 is configured. A password hash or an old admin role alone
+  does not grant break-glass access.
+
+### Migrating an existing bootstrap administrator
+
+Keep or restore `INVIEW_ADMIN_EMAIL` and the **original matching** `INVIEW_ADMIN_PASSWORD` during
+startup. Legacy records default to non-bootstrap; matching explicit configuration establishes
+bootstrap provenance and revokes that account's existing sessions. Subsequent startups with the
+same credentials are idempotent. New bootstrap accounts are marked explicitly at creation.
+
+A contributor account, a passwordless Auth0 administrator, or an administrator with a different
+password causes startup to fail with `admin_conflict`. Credentials are never silently installed or
+overwritten. Supply the original matching bootstrap credentials or choose a dedicated administrator
+email. An ordinary Auth0 sign-in never establishes bootstrap provenance, and promoting a legacy
+password user through Auth0 does not give that user permanent break-glass access.
 
 ## Auth0 tenant (once)
 1. **Native application** (iOS), already created: type *Native*, token endpoint auth *None*.
@@ -64,11 +80,17 @@ At least one of the client IDs or the audience is required with a domain; anythi
 startup error.
 
 ## App configuration
-`Config/App.xcconfig` carries `INVIEW_AUTH0_DOMAIN`, `INVIEW_AUTH0_CLIENT_ID` and
-`INVIEW_AUTH0_CALLBACK_URL`. They are public identifiers (the native app uses PKCE and has no
-secret). Override in the git-ignored `Secrets.xcconfig`. Clearing the domain restores email and
-password sign-in. The callback URL uses a custom scheme, so no Associated Domains entitlement or
-Team ID is needed; it must exactly match an Allowed Callback URL.
+Auth0 is **opt-in at build time**. `Config/App.xcconfig` leaves `INVIEW_AUTH0_DOMAIN`,
+`INVIEW_AUTH0_CLIENT_ID` and `INVIEW_AUTH0_CALLBACK_URL` blank, preserving email/password sign-in
+for an existing password-only backend. After configuring the backend and tenant, set these values
+in the git-ignored `Config/Secrets.xcconfig` and rebuild. `Config/Secrets.example.xcconfig` includes
+commented public identifiers for the InView native app; uncomment them or supply your own registered
+application's values. PKCE uses no client secret.
+
+The app does not negotiate the login method with the server: an Auth0-enabled build must point to
+an Auth0-enabled backend. Clearing the domain and rebuilding restores email/password sign-in for
+a password-only backend. The callback URL uses a custom scheme, so no Associated Domains entitlement
+or Team ID is needed; it must exactly match an Allowed Callback URL.
 
 The sign-in sheet is ephemeral: the app keeps no Auth0 session or refresh token, and uses only the
 server session afterward.
@@ -76,5 +98,11 @@ server session afterward.
 ## Verifying
 - `cargo test --test auth0` covers verification, linking, roles and the break-glass admin with a
   test-only RSA key and static JWKS.
+- `node --test backend/tests/admin_auth0.test.cjs` runs the actual admin script with a stubbed DOM
+  and network: non-admin rejection/account switching, administrator logout, password recovery,
+  and state-mismatch rejection. It does not contact a tenant or prove live SSO behavior.
 - Live: with the variables set, sign in from the app, then `GET /api/accounts/me`; on `/admin`,
-  sign in as an admin (and confirm a non-admin is refused).
+  sign in as an admin (and confirm a non-admin is refused). After refusal, **Use another account**
+  ends the Auth0 tenant session and returns to `/admin`; choose **Continue with Auth0** to sign in
+  again. The administrator password disclosure remains available. Ensure `/admin` is registered
+  as an Allowed Logout URL for this recovery path.

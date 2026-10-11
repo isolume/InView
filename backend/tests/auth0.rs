@@ -218,13 +218,77 @@ async fn an_existing_account_links_by_verified_email_and_keeps_its_id() {
         .product
         .register("grace@example.test", "another long password", Some("Grace"))
         .unwrap();
+    let other = state
+        .product
+        .register("other@example.test", ADMIN_PASSWORD, None)
+        .unwrap();
+    let (status, _, submission) = call(
+        &router,
+        "POST",
+        "/api/submissions",
+        Some(&existing.token),
+        Some(json!({
+            "client_submission_id": "ec3b4471-a95e-4b64-b9fd-73d2d43c7393",
+            "venue_id": "student-center-east", "floor": 2, "authorized_space": true,
+            "map": {"createdAt": "2026-10-10T12:00:00Z", "floorY": 0,
+                "footprints": [{"kind": "floor", "center": [0, 0], "size": [10, 10], "yaw": 0}],
+                "points": [], "requiresMeasuredFloorCoverage": true}
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{submission}");
+    let (status, _, submission) = call(
+        &router,
+        "GET",
+        &format!("/api/submissions/{}", submission["id"].as_str().unwrap()),
+        Some(&existing.token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
     let (status, body) = exchange(&router, &sign(&claims("apple|001", "grace@example.test"))).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _, retained) = call(
+        &router,
+        "GET",
+        &format!("/api/submissions/{}", submission["id"].as_str().unwrap()),
+        body["token"].as_str(),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{retained}");
+    assert_eq!(
+        retained, submission,
+        "linking must not change submission ownership or evidence"
+    );
+    assert!(
+        state.product.account(&other.token).is_ok(),
+        "unrelated sessions remain valid"
+    );
     assert_eq!(
         body["account"]["id"],
         serde_json::to_value(&existing.account.id).unwrap()
     );
     assert_eq!(body["account"]["name"], "Grace", "an existing name is kept");
+    // A session issued before ownership was verified cannot survive linking.
+    let (status, _, _) = call(
+        &router,
+        "GET",
+        "/api/accounts/me",
+        Some(&existing.token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _, _) = call(
+        &router,
+        "GET",
+        "/api/accounts/me",
+        body["token"].as_str(),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
 
     // A different sign-in claiming the same email must not take over a linked account.
     let (status, body) =
@@ -429,6 +493,7 @@ async fn with_auth0_on_passwords_only_serve_the_bootstrapped_admin() {
     let (status, _, body) = login("breakglass@example.test", ADMIN_PASSWORD).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["account"]["role"], "admin");
+    assert!(body["expires_at"].as_u64().unwrap() - now() <= 8 * 3600);
     // Ordinary accounts must use Auth0, even with the right password.
     let (status, _, _) = login("pat@example.test", "yet another long password").await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -668,4 +733,122 @@ async fn with_no_keys_the_exchange_is_unavailable_not_unauthorized() {
     *tenant.keys.lock().unwrap() = Some(JwkSet { keys: vec![] });
     let auth0 = verifier(&tenant, timing(60_000, 60_000, 60_000));
     assert_eq!(auth0.verify(&token).await, Err(VerifyError::Unavailable));
+}
+
+#[tokio::test]
+async fn legacy_password_account_promotion_revokes_old_tokens_and_does_not_grant_breakglass() {
+    let (state, router) = setup(&[]);
+    let existing = state
+        .product
+        .register("legacy@example.test", ADMIN_PASSWORD, None)
+        .unwrap();
+    let plain = claims("email|legacy", "legacy@example.test");
+    let (status, linked) = exchange(&router, &sign(&plain)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(linked["account"]["id"], existing.account.id);
+    let (status, admin) = exchange(
+        &router,
+        &sign(&with(
+            plain.clone(),
+            json!({format!("{NAMESPACE}roles"): ["admin"]}),
+        )),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(admin["account"]["role"], "admin");
+    assert!(admin["expires_at"].as_u64().unwrap() - now() <= 8 * 3600);
+    for token in [&existing.token, linked["token"].as_str().unwrap()] {
+        for path in ["/api/accounts/me", "/api/admin/submissions"] {
+            assert_eq!(
+                call(&router, "GET", path, Some(token), None).await.0,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+    }
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            "/api/admin/submissions",
+            admin["token"].as_str(),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    // A retained password is not proof of explicit bootstrap provisioning, even while admin.
+    assert_eq!(
+        call(
+            &router,
+            "POST",
+            "/api/accounts/login",
+            None,
+            Some(json!({"email": "legacy@example.test", "password": ADMIN_PASSWORD}))
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, demoted) = exchange(&router, &sign(&plain)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(demoted["account"]["role"], "user");
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            "/api/admin/submissions",
+            admin["token"].as_str(),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &router,
+            "POST",
+            "/api/accounts/login",
+            None,
+            Some(json!({"email": "legacy@example.test", "password": ADMIN_PASSWORD}))
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn first_link_with_admin_claim_revokes_preregistered_attackers_session() {
+    let (state, router) = setup(&["owner@example.test"]);
+    let attacker = state
+        .product
+        .register("owner@example.test", ADMIN_PASSWORD, None)
+        .unwrap();
+    let (status, owner) =
+        exchange(&router, &sign(&claims("apple|owner", "owner@example.test"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(owner["account"]["id"], attacker.account.id);
+    assert_eq!(owner["account"]["role"], "admin");
+    for path in ["/api/accounts/me", "/api/admin/submissions"] {
+        assert_eq!(
+            call(&router, "GET", path, Some(&attacker.token), None)
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            "/api/admin/submissions",
+            owner["token"].as_str(),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
 }
