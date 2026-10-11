@@ -40,4 +40,13 @@ final class SignReaderTests: XCTestCase {
         XCTAssertTrue(crop.contains(CGPoint(x: 0.5, y: 0.5)))
         XCTAssertEqual(plate.box.midX, 0.5, accuracy: 0.1)
     }
+
+    /// Directions are given as clock positions from where the camera faces (-z), not compass bearings.
+    func testSpeaksWhereTheSignIsAsAClockPosition() {
+        let camera = matrix_identity_float4x4
+        XCTAssertEqual(SignReader.spokenLocation(of: SIMD3(0, 1, -3), from: camera), "12 o'clock, 3 meters")
+        XCTAssertEqual(SignReader.spokenLocation(of: SIMD3(2, 1, 0), from: camera), "3 o'clock, 2 meters")
+        XCTAssertEqual(SignReader.spokenLocation(of: SIMD3(-1, 1, -1.732), from: camera), "11 o'clock, 2 meters")
+        XCTAssertEqual(SignReader.spokenLocation(of: SIMD3(0, 1, 4), from: camera), "6 o'clock, 4 meters")
+    }
 }

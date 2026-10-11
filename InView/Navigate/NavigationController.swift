@@ -55,7 +55,12 @@ final class NavigationController: ObservableObject {
         return view
     }()
     /// Reads room, exit and restroom signs in the same relocalized session, so they land on the saved map.
-    lazy var signReader = SignReader(session: arView.session)
+    lazy var signReader: SignReader = {
+        let reader = SignReader(session: arView.session)
+        // Signs are read aloud in the same voice as the directions.
+        reader.speak = { [weak self] text in self?.say(Narrator.Line(text: text, isUrgent: true)) }
+        return reader
+    }()
 
     private static let rerouteInterval: TimeInterval = 1
     /// Reading depth is the costliest tick; a newly moved chair can wait a second.

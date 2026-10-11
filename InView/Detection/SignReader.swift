@@ -63,6 +63,10 @@ final class SignReader: ObservableObject {
     private static let lockHold: TimeInterval = 4
     private static let focusHold: TimeInterval = 1.5
 
+    /// Speaks what a locked sign says and where it is, for riders who can't see it. Without one,
+    /// VoiceOver users still hear an announcement.
+    var speak: ((String) -> Void)?
+
     init(session: ARSession) {
         self.session = session
     }
@@ -166,7 +170,10 @@ final class SignReader: ObservableObject {
     private func lock() {
         isLocked = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        if let focus { UIAccessibility.post(notification: .announcement, argument: "\(focus.reading.title) sign") }
+        if let focus {
+            let location = session.currentFrame.map { Self.spokenLocation(of: focus.position, from: $0.camera.transform) }
+            announce([focus.reading.fullTitle, location].compactMap { $0 }.joined(separator: ", ") + ".")
+        }
         check()
     }
 
@@ -187,7 +194,25 @@ final class SignReader: ObservableObject {
             focus?.reading.roomNumber = reading.roomNumber ?? focus?.reading.roomNumber
             let after = focus?.reading.fullTitle ?? ""
             focus?.check = before.caseInsensitiveCompare(after) == .orderedSame ? .confirmed : .corrected(from: before)
+            if case .corrected = focus?.check { announce("Correction: \(after).") }
         }
+    }
+
+    private func announce(_ text: String) {
+        if let speak { speak(text) } else { UIAccessibility.post(notification: .announcement, argument: text) }
+    }
+
+    /// Where the sign is from the camera, the way orientation and mobility instructors give directions:
+    /// a clock position (12 is straight ahead) and a distance along the floor.
+    nonisolated static func spokenLocation(of sign: SIMD3<Float>, from camera: simd_float4x4) -> String {
+        let offset = SIMD2(sign.x - camera.columns.3.x, sign.z - camera.columns.3.z)
+        let forward = SIMD2(-camera.columns.2.x, -camera.columns.2.z)
+        let right = SIMD2(camera.columns.0.x, camera.columns.0.z)
+        let angle = atan2(simd_dot(offset, right), simd_dot(offset, forward))
+        var hour = Int((angle / (.pi / 6)).rounded()) % 12
+        if hour <= 0 { hour += 12 }
+        let meters = max(1, Int(simd_length(offset).rounded()))
+        return "\(hour) o'clock, \(meters) \(meters == 1 ? "meter" : "meters")"
     }
 
     /// For signs OCR can't read (pictograms): sends the middle of the view to the vision model, and
