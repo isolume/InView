@@ -211,17 +211,22 @@ struct ArrivedPanel: View {
     let destination: AccessPoint?
     let onDone: () -> Void
     @State private var bounce = 0
+    @State private var burst = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label {
-                Text("You’ve arrived")
-            } icon: {
-                Image(systemName: Theme.symbol(for: .good))
-                    .foregroundStyle(Theme.color(for: .good))
-                    .symbolEffect(.bounce, value: bounce)
+            HStack(spacing: 14) {
+                ZStack {
+                    if !reduceMotion { Confetti(burst: burst) }
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 46))
+                        .foregroundStyle(.white, Theme.routeStart.gradient)
+                        .symbolEffect(.bounce, value: bounce)
+                }
+                .frame(width: 56, height: 56)
+                Text("You’ve arrived").font(.panelTitle)
             }
-            .font(.panelTitle)
             Text(destination?.title ?? "Destination").foregroundStyle(.secondary)
             if destination?.requiresAssistance == true {
                 Label("Needs a staff member to operate", systemImage: Theme.Symbol.needsStaff)
@@ -232,7 +237,38 @@ struct ArrivedPanel: View {
             }
             .buttonStyle(.glassProminent).controlSize(.large)
         }
-        .onAppear { bounce += 1 }
+        .onAppear {
+            bounce += 1
+            withAnimation(.easeOut(duration: 1.1)) { burst = true }
+        }
+    }
+}
+
+/// A short burst of colored symbols from behind the arrival seal.
+private struct Confetti: View {
+    let burst: Bool
+    private static let pieces: [(symbol: String, color: Color)] = [
+        ("star.fill", .yellow), ("circle.fill", .pink), ("sparkle", .blue), ("heart.fill", .red),
+        ("star.fill", .orange), ("circle.fill", .green), ("sparkle", .purple), ("star.fill", .teal),
+        ("circle.fill", .indigo), ("sparkle", .yellow), ("heart.fill", .pink), ("star.fill", .mint),
+    ]
+
+    var body: some View {
+        ZStack {
+            ForEach(Self.pieces.indices, id: \.self) { index in
+                let angle = Double(index) / Double(Self.pieces.count) * 2 * .pi
+                let distance: CGFloat = index.isMultiple(of: 2) ? 70 : 52
+                Image(systemName: Self.pieces[index].symbol)
+                    .font(.system(size: index.isMultiple(of: 3) ? 13 : 9, weight: .bold))
+                    .foregroundStyle(Self.pieces[index].color)
+                    .offset(x: burst ? cos(angle) * distance : 0, y: burst ? sin(angle) * distance : 0)
+                    .scaleEffect(burst ? 1 : 0.2)
+                    .opacity(burst ? 0 : 1)
+                    .rotationEffect(.degrees(burst ? 180 : 0))
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

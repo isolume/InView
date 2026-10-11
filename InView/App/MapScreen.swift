@@ -61,6 +61,8 @@ struct MapScreen: View {
     @State private var previewStart: SIMD2<Float>?
     @State private var routeStart: RouteStart?
     @State private var swapTurns = 0
+    /// Shown for a moment when the camera finds the person.
+    @State private var showsFoundYou = false
     @State private var isFindingRoute = false
     @State private var routeMessage: String?
     @State private var routeCheck: ServerRouteCheck?
@@ -221,6 +223,13 @@ struct MapScreen: View {
                         .ignoresSafeArea()
                     floatingControls(leadingInset: usesSidePanel ? sideInset : 16)
                     if usesSidePanel { sidePanel(geometry) }
+                    if showsFoundYou {
+                        FoundYouBadge()
+                            .frame(maxWidth: .infinity)
+                            .padding(.leading, usesSidePanel ? sideInset : 0)
+                            .padding(.top, 70)
+                            .transition(.scale(scale: 0.7).combined(with: .opacity))
+                    }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -285,6 +294,14 @@ struct MapScreen: View {
         .onChange(of: liveTrigger, initial: true) { _, trigger in
             live.update(scanID: trigger.scanID, origin: trigger.origin, query: trigger.query,
                         existing: controller.map?.points ?? [])
+        }
+        .onChange(of: controller.phase) { old, new in
+            guard old == .locating, controller.isLocated else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) { showsFoundYou = true }
+            Task {
+                try? await Task.sleep(for: .seconds(2.2))
+                withAnimation(.easeOut(duration: 0.3)) { showsFoundYou = false }
+            }
         }
         .onChange(of: controller.phase) { _, phase in
             // Finding the person happens behind the map; AR only opens when they ask for it.
@@ -491,6 +508,7 @@ struct MapScreen: View {
                     }
                 }
                 .frame(height: 100).frame(maxWidth: .infinity)
+                .overlay { RadarPulse() }
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityHidden(true)
                 Text(controller.locatingHint ?? (controller.phase == .locating
@@ -1518,5 +1536,47 @@ private struct QuickActionButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.9 : 1)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+/// Rings spreading from the middle of the camera preview while ARKit searches for the scanned room.
+private struct RadarPulse: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            ZStack {
+                ForEach(0..<3) { ring in
+                    let phase = (time / 2 + Double(ring) / 3).truncatingRemainder(dividingBy: 1)
+                    Circle()
+                        .stroke(Color.white.opacity(0.8 * (1 - phase)), lineWidth: 2)
+                        .frame(width: 20 + 140 * phase, height: 20 + 140 * phase)
+                }
+                Image(systemName: "location.viewfinder").font(.title3.weight(.semibold)).foregroundStyle(.white)
+                    .shadow(radius: 3)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The moment the camera recognizes the room: a green seal and "Found you".
+private struct FoundYouBadge: View {
+    @State private var bounce = 0
+
+    var body: some View {
+        Label {
+            Text("Found you").font(.headline)
+        } icon: {
+            Image(systemName: "checkmark.seal.fill").foregroundStyle(.white, Theme.routeStart)
+                .font(.title2)
+                .symbolEffect(.bounce, value: bounce)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .glassEffect(.regular, in: Capsule())
+        .onAppear { bounce += 1 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Found your location")
     }
 }
