@@ -56,7 +56,12 @@ final class SignReader: ObservableObject {
     private var generation = 0
     private var lastResult = Date.distantPast
     /// Signs already put on the map this session.
-    private var handled: [(title: String, position: SIMD3<Float>)] = []
+    /// Where signs already dealt with hang: tagged, dismissed, or not place signs. Matched by position
+    /// alone, because an AI rename means the next OCR read of the same plate won't match the title.
+    private var handled: [SIMD3<Float>] = []
+    /// Signs already on the map, so walking past them again doesn't re-read and re-announce them.
+    var knownSigns: () -> [SIMD3<Float>] = { [] }
+    private static let alreadyRead: Float = 1.5
 
     private static let interval: TimeInterval = 0.5
     private static let locksAfter = 2
@@ -93,7 +98,7 @@ final class SignReader: ObservableObject {
 
     /// The current sign is on the map: stop offering it, and look for the next one.
     func markHandled() {
-        if let focus { handled.append((focus.reading.title, focus.position)) }
+        if let focus { handled.append(focus.position) }
         reset()
     }
 
@@ -141,7 +146,7 @@ final class SignReader: ObservableObject {
             return
         }
         hint = nil
-        if !isLocked, handled.contains(where: { $0.title == plate.reading.title && simd_distance($0.position, position) < Self.sameSign }) {
+        if !isLocked, (handled + knownSigns()).contains(where: { simd_distance($0, position) < Self.alreadyRead }) {
             hint = "“\(plate.reading.title)” is on the map ✓ · try another sign"
             return
         }
@@ -190,7 +195,12 @@ final class SignReader: ObservableObject {
             guard focus?.id == id else { return }
             // No answer: the OCR reading stands. An answer that it's no place sign stops it being tagged.
             guard let answer else { focus?.check = .failed; return }
-            guard let reading = answer else { focus?.check = .rejected; return }
+            guard let reading = answer else {
+                // Never read this spot again: a poster doesn't become a sign on the next glance.
+                focus?.check = .rejected
+                if let position = focus?.position { handled.append(position) }
+                return
+            }
             let before = focus?.reading.fullTitle ?? ""
             focus?.reading.category = reading.category
             focus?.reading.title = reading.title

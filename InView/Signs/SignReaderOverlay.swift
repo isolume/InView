@@ -181,7 +181,7 @@ struct SignReaderOverlay: View {
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                Button { reader.reset() } label: {
+                Button { reader.markHandled() } label: {
                     Image(systemName: "xmark").font(.subheadline.weight(.semibold)).frame(width: 32, height: 32)
                         .background(Color(.tertiarySystemFill), in: Circle())
                 }
