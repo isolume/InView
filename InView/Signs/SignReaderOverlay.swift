@@ -241,7 +241,7 @@ struct SignReaderOverlay: View {
             let message = await onAdd(place)
             isAdding = false
             guard let message else { addError = "Couldn’t save it to this map."; return }
-            reader.reset()
+            reader.markHandled()
             added = (place, message)
             try? await Task.sleep(for: .seconds(3))
             if added?.point.id == place.id { added = nil }

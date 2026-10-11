@@ -53,6 +53,8 @@ final class SignReader: ObservableObject {
     private var inFlight = false
     private var generation = 0
     private var lastResult = Date.distantPast
+    /// Signs already put on the map this session.
+    private var handled: [(title: String, position: SIMD3<Float>)] = []
 
     private static let interval: TimeInterval = 0.35
     private static let locksAfter = 2
@@ -80,6 +82,12 @@ final class SignReader: ObservableObject {
         timer?.invalidate()
         timer = nil
         inFlight = false
+        reset()
+    }
+
+    /// The current sign is on the map: stop offering it, and look for the next one.
+    func markHandled() {
+        if let focus { handled.append((focus.reading.title, focus.position)) }
         reset()
     }
 
@@ -126,7 +134,13 @@ final class SignReader: ObservableObject {
             return
         }
         hint = nil
-        if var current = focus, current.reading.title == plate.reading.title || current.reading.roomNumber.map({ $0 == plate.reading.roomNumber }) == true,
+        if !isLocked, handled.contains(where: { $0.title == plate.reading.title && simd_distance($0.position, position) < Self.sameSign }) {
+            hint = "“\(plate.reading.title)” is on the map ✓ · try another sign"
+            return
+        }
+        // Once locked, anything read at the same spot is the same sign, even after AI renamed it.
+        if var current = focus, isLocked || current.reading.title == plate.reading.title
+            || current.reading.roomNumber.map({ $0 == plate.reading.roomNumber }) == true,
            simd_distance(current.position, position) < Self.sameSign {
             current.hits += 1
             // Running average: each read refines the measured position.
@@ -151,6 +165,7 @@ final class SignReader: ObservableObject {
     private func lock() {
         isLocked = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if let focus { UIAccessibility.post(notification: .announcement, argument: "\(focus.reading.title) sign") }
         check()
     }
 
