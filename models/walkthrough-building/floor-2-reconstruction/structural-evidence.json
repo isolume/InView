@@ -1,0 +1,2823 @@
+{
+  "schema_version": 1,
+  "coordinate_frame": "source scan principalUV; uv = principal_axis_matrix times [source x, source z]",
+  "principal_axis_matrix": [
+    [
+      0.9255238,
+      -0.3786894
+    ],
+    [
+      0.3786894,
+      0.9255238
+    ]
+  ],
+  "source_native_floor_y_m": -1.5322381,
+  "routing_coverage": false,
+  "method": "Native RoomPlan walls plus axis-aligned raw walls with confidence-2 depth support in two separated height bands and >=3 sampled frames. Near collinear overlap deduplicated; native plane locations preferred. Angled atrium/glass returns and low rails excluded. Source evidence unchanged.",
+  "walls": [
+    {
+      "id": "wall-0",
+      "source": "native_and_depth",
+      "source_ids": [
+        "51D412D7-69B2-4E31-AB1A-6EE8D3C9082A",
+        "D4439E81-554A-4DDA-9DAB-B908198AC836"
+      ],
+      "native_indices": [
+        0
+      ],
+      "raw_indices": [
+        97
+      ],
+      "ends_uv": [
+        [
+          -8.92458898388032,
+          0.33890958276416017
+        ],
+        [
+          -2.79984919188384,
+          0.33890958276416017
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 0.33890958276416017,
+      "length_m": 6.124739791996479,
+      "height_m": 2.6284799999999997,
+      "bottom_native_y_m": -1.456019635,
+      "depth_support": {
+        "confidence_2_points": 4764,
+        "temporal_frames": 17,
+        "vertical_band_low_points": 2273,
+        "vertical_band_high_points": 2491,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-1",
+      "source": "native_and_depth",
+      "source_ids": [
+        "73236127-4529-41A2-A3CB-8436884B83AE",
+        "D4A226A9-6F11-454D-9B61-CBD520D4D586"
+      ],
+      "native_indices": [
+        1
+      ],
+      "raw_indices": [
+        58
+      ],
+      "ends_uv": [
+        [
+          -20.272222330657627,
+          29.656797816220163
+        ],
+        [
+          -13.022237370408378,
+          29.656797816220163
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.656797816220163,
+      "length_m": 7.2499849602492485,
+      "height_m": 2.7939205,
+      "bottom_native_y_m": -1.496646165,
+      "depth_support": {
+        "confidence_2_points": 13250,
+        "temporal_frames": 13,
+        "vertical_band_low_points": 6463,
+        "vertical_band_high_points": 6787,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-2",
+      "source": "native_and_depth",
+      "source_ids": [
+        "136078F3-31A0-4808-9344-BAF53A9E60B3",
+        "B8F605D7-B560-4892-B951-A48B794A30EE"
+      ],
+      "native_indices": [
+        2
+      ],
+      "raw_indices": [
+        12
+      ],
+      "ends_uv": [
+        [
+          -23.226039307343598,
+          12.62504339546172
+        ],
+        [
+          -23.226039307343598,
+          16.893283350296215
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -23.226039307343598,
+      "length_m": 4.268239954834495,
+      "height_m": 2.8141135,
+      "bottom_native_y_m": -1.470546015,
+      "depth_support": {
+        "confidence_2_points": 5101,
+        "temporal_frames": 14,
+        "vertical_band_low_points": 2144,
+        "vertical_band_high_points": 2957,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-3",
+      "source": "native_and_depth",
+      "source_ids": [
+        "97A6DD4C-F973-4814-8059-E2D2F2F0CCD5",
+        "F10A7CD4-9F80-4B14-A7F9-B071AEDE5141"
+      ],
+      "native_indices": [
+        3
+      ],
+      "raw_indices": [
+        113
+      ],
+      "ends_uv": [
+        [
+          -23.23221803683153,
+          7.269985020054202
+        ],
+        [
+          -21.22972584681767,
+          7.269985020054202
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 7.269985020054202,
+      "length_m": 2.002492190013861,
+      "height_m": 2.81420715,
+      "bottom_native_y_m": -1.468287465,
+      "depth_support": {
+        "confidence_2_points": 1206,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 568,
+        "vertical_band_high_points": 638,
+        "quarter_meter_coverage_fraction": 0.7777777777777778
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-4",
+      "source": "native_and_depth",
+      "source_ids": [
+        "1DFE6DA8-BAE3-4117-AACA-5AB9CB891674",
+        "D0212904-41FA-4E76-82DD-3325A526883E"
+      ],
+      "native_indices": [
+        4
+      ],
+      "raw_indices": [
+        95
+      ],
+      "ends_uv": [
+        [
+          -22.865214089758403,
+          8.444148763949505
+        ],
+        [
+          -22.865214089758403,
+          10.097233337772094
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -22.865214089758403,
+      "length_m": 1.6530845738225892,
+      "height_m": 2.7390803999999997,
+      "bottom_native_y_m": -1.407806265,
+      "depth_support": {
+        "confidence_2_points": 1174,
+        "temporal_frames": 5,
+        "vertical_band_low_points": 580,
+        "vertical_band_high_points": 594,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-5",
+      "source": "native_and_depth",
+      "source_ids": [
+        "32E1EE8B-A646-4258-BB97-D53B796021A9"
+      ],
+      "native_indices": [
+        5
+      ],
+      "raw_indices": [],
+      "ends_uv": [
+        [
+          -13.038918203716007,
+          28.77833002834438
+        ],
+        [
+          -11.502241766149474,
+          28.77833002834438
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 28.77833002834438,
+      "length_m": 1.5366764375665323,
+      "height_m": 2.878333,
+      "bottom_native_y_m": -1.53223803,
+      "depth_support": {
+        "confidence_2_points": 1358,
+        "temporal_frames": 4,
+        "vertical_band_low_points": 605,
+        "vertical_band_high_points": 753,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-6",
+      "source": "native_and_depth",
+      "source_ids": [
+        "3EF3F331-9338-405C-8C42-A25C843CEBA8"
+      ],
+      "native_indices": [
+        6
+      ],
+      "raw_indices": [],
+      "ends_uv": [
+        [
+          -8.9245886671417,
+          0.3389095685611771
+        ],
+        [
+          -8.9245886671417,
+          1.8290913484206226
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -8.9245886671417,
+      "length_m": 1.4901817798594454,
+      "height_m": 2.73,
+      "bottom_native_y_m": -1.53223807,
+      "depth_support": {
+        "confidence_2_points": 3203,
+        "temporal_frames": 12,
+        "vertical_band_low_points": 1574,
+        "vertical_band_high_points": 1629,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-7",
+      "source": "native_and_depth",
+      "source_ids": [
+        "27FF3176-3708-4571-8542-836AD3DF4D04",
+        "F3E4A79B-5BB6-4B13-955D-FC21575613BB"
+      ],
+      "native_indices": [
+        7
+      ],
+      "raw_indices": [
+        18
+      ],
+      "ends_uv": [
+        [
+          -23.1657971667848,
+          7.269986150296033
+        ],
+        [
+          -23.1657971667848,
+          8.34187425086607
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -23.1657971667848,
+      "length_m": 1.0718881005700371,
+      "height_m": 2.8141894,
+      "bottom_native_y_m": -1.471763565,
+      "depth_support": {
+        "confidence_2_points": 1475,
+        "temporal_frames": 7,
+        "vertical_band_low_points": 710,
+        "vertical_band_high_points": 765,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-8",
+      "source": "native_and_depth",
+      "source_ids": [
+        "326AC3B8-F509-4240-BB75-F81728F820DE",
+        "BF0E4BC6-2BC8-4347-9030-693D9A9609E4"
+      ],
+      "native_indices": [
+        8
+      ],
+      "raw_indices": [
+        24
+      ],
+      "ends_uv": [
+        [
+          -23.239649243202802,
+          10.07287241335292
+        ],
+        [
+          -23.239649243202802,
+          11.22640818719148
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -23.239649243202802,
+      "length_m": 1.1535357738385592,
+      "height_m": 2.814121,
+      "bottom_native_y_m": -1.468953215,
+      "depth_support": {
+        "confidence_2_points": 1381,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 747,
+        "vertical_band_high_points": 634,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-9",
+      "source": "native_and_depth",
+      "source_ids": [
+        "4C5F112C-2242-47E9-9A59-4A632174BF62",
+        "850F618C-612E-4520-A745-BBB14C6C666B"
+      ],
+      "native_indices": [
+        9
+      ],
+      "raw_indices": [
+        63
+      ],
+      "ends_uv": [
+        [
+          -22.3404838813652,
+          16.890648448527614
+        ],
+        [
+          -22.3404838813652,
+          18.52218643337115
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -22.3404838813652,
+      "length_m": 1.6315379848435363,
+      "height_m": 2.78878515,
+      "bottom_native_y_m": -1.452914915,
+      "depth_support": {
+        "confidence_2_points": 1202,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 462,
+        "vertical_band_high_points": 740,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-10",
+      "source": "native_and_depth",
+      "source_ids": [
+        "2E284477-F2F0-4368-A929-6D91B74FB500",
+        "9DC49C67-2537-4DB9-BA01-C0DEE4835AB6"
+      ],
+      "native_indices": [
+        10
+      ],
+      "raw_indices": [
+        20
+      ],
+      "ends_uv": [
+        [
+          0.284675935453917,
+          -3.9021144206133607
+        ],
+        [
+          1.8797737788728672,
+          -3.9021144206133607
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -3.9021144206133607,
+      "length_m": 1.5950978434189502,
+      "height_m": 2.7344095,
+      "bottom_native_y_m": -1.4594744149999999,
+      "depth_support": {
+        "confidence_2_points": 10285,
+        "temporal_frames": 18,
+        "vertical_band_low_points": 6650,
+        "vertical_band_high_points": 3635,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-11",
+      "source": "native_and_depth",
+      "source_ids": [
+        "0D3DB4A9-215C-4032-9723-F8D935EE8B99"
+      ],
+      "native_indices": [
+        11
+      ],
+      "raw_indices": [],
+      "ends_uv": [
+        [
+          0.33667374145366025,
+          -5.069932911156517
+        ],
+        [
+          0.33667374145366025,
+          -3.9021144365595233
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 0.33667374145366025,
+      "length_m": 1.1678184745969937,
+      "height_m": 2.878333,
+      "bottom_native_y_m": -1.53223803,
+      "depth_support": {
+        "confidence_2_points": 2011,
+        "temporal_frames": 11,
+        "vertical_band_low_points": 1049,
+        "vertical_band_high_points": 962,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-12",
+      "source": "native_and_depth",
+      "source_ids": [
+        "1B1E7F46-4BEA-480D-97CB-F2CA1592BB4E",
+        "855DDD83-5C34-4787-B364-7D4C47031BF3",
+        "8A1E3B09-F3AC-4C18-B77B-470AB2E22CEB"
+      ],
+      "native_indices": [
+        12
+      ],
+      "raw_indices": [
+        14,
+        68
+      ],
+      "ends_uv": [
+        [
+          -11.502238870069517,
+          29.684882167217005
+        ],
+        [
+          -7.4233131207487,
+          29.684882167217005
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.684882167217005,
+      "length_m": 4.078925749320817,
+      "height_m": 2.7108054,
+      "bottom_native_y_m": -1.4623522,
+      "depth_support": {
+        "confidence_2_points": 5367,
+        "temporal_frames": 14,
+        "vertical_band_low_points": 2631,
+        "vertical_band_high_points": 2736,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-13",
+      "source": "native_and_depth",
+      "source_ids": [
+        "6049B800-2243-42B2-907D-274EADDA7E70"
+      ],
+      "native_indices": [
+        13
+      ],
+      "raw_indices": [],
+      "ends_uv": [
+        [
+          -23.226040155834344,
+          16.8906496540054
+        ],
+        [
+          -22.34048440937006,
+          16.8906496540054
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 16.8906496540054,
+      "length_m": 0.8855557464642843,
+      "height_m": 2.878333,
+      "bottom_native_y_m": -1.53223803,
+      "depth_support": {
+        "confidence_2_points": 69,
+        "temporal_frames": 1,
+        "vertical_band_low_points": 33,
+        "vertical_band_high_points": 36,
+        "quarter_meter_coverage_fraction": 0.25
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-14",
+      "source": "native_and_depth",
+      "source_ids": [
+        "C47B0EEB-7F95-46E2-9B95-80D1A19E02BF"
+      ],
+      "native_indices": [
+        14
+      ],
+      "raw_indices": [],
+      "ends_uv": [
+        [
+          -13.038917092448358,
+          28.7783311720772
+        ],
+        [
+          -13.038917092448358,
+          29.656797613497442
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -13.038917092448358,
+      "length_m": 0.8784664414202439,
+      "height_m": 2.878333,
+      "bottom_native_y_m": -1.53223803,
+      "depth_support": {
+        "confidence_2_points": 105,
+        "temporal_frames": 7,
+        "vertical_band_low_points": 58,
+        "vertical_band_high_points": 47,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-15",
+      "source": "native_and_depth",
+      "source_ids": [
+        "0483259C-DDCE-45F5-AEE0-1D48E85F56E9",
+        "9B942E04-E58D-46ED-8342-88FC42A731C3"
+      ],
+      "native_indices": [
+        15
+      ],
+      "raw_indices": [
+        4
+      ],
+      "ends_uv": [
+        [
+          -11.502240495374188,
+          28.747802652192657
+        ],
+        [
+          -11.502240495374188,
+          29.741807928277726
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -11.502240495374188,
+      "length_m": 0.9940052760850691,
+      "height_m": 2.7613825,
+      "bottom_native_y_m": -1.464108465,
+      "depth_support": {
+        "confidence_2_points": 1698,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 844,
+        "vertical_band_high_points": 854,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-16",
+      "source": "native_and_depth",
+      "source_ids": [
+        "08505F27-5C38-49F5-840C-355A5249FB08",
+        "8884664A-A929-4BA9-8A43-35914B98F17E"
+      ],
+      "native_indices": [
+        16
+      ],
+      "raw_indices": [
+        66
+      ],
+      "ends_uv": [
+        [
+          -23.294780759537016,
+          12.625042602635203
+        ],
+        [
+          -22.531404112766328,
+          12.625042602635203
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 12.625042602635203,
+      "length_m": 0.7633766467706877,
+      "height_m": 2.81429475,
+      "bottom_native_y_m": -1.4653643650000001,
+      "depth_support": {
+        "confidence_2_points": 569,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 280,
+        "vertical_band_high_points": 289,
+        "quarter_meter_coverage_fraction": 0.75
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-17",
+      "source": "native_and_depth",
+      "source_ids": [
+        "096E926C-77C3-416B-9993-3CA5706333F2",
+        "39A22349-0769-45B5-9A94-18DFE2439A89"
+      ],
+      "native_indices": [
+        17
+      ],
+      "raw_indices": [
+        7
+      ],
+      "ends_uv": [
+        [
+          -23.23964929962021,
+          10.097231397288002
+        ],
+        [
+          -22.865213492187788,
+          10.097231397288002
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 10.097231397288002,
+      "length_m": 0.3744358074324232,
+      "height_m": 2.73914235,
+      "bottom_native_y_m": -1.415903165,
+      "depth_support": {
+        "confidence_2_points": 598,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 298,
+        "vertical_band_high_points": 300,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-18",
+      "source": "native_and_depth",
+      "source_ids": [
+        "3015BAF5-5ECA-4F95-BC5B-1A277F2A4B14",
+        "75877F85-D5D6-48AC-BA17-6A85EA76BF7F"
+      ],
+      "native_indices": [
+        18
+      ],
+      "raw_indices": [
+        21
+      ],
+      "ends_uv": [
+        [
+          -23.33255244815303,
+          18.4952118668415
+        ],
+        [
+          -22.334739477956568,
+          18.4952118668415
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 18.4952118668415,
+      "length_m": 0.9978129701964633,
+      "height_m": 2.8141498,
+      "bottom_native_y_m": -1.462410365,
+      "depth_support": {
+        "confidence_2_points": 1321,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 625,
+        "vertical_band_high_points": 696,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-19",
+      "source": "native_and_depth",
+      "source_ids": [
+        "F70F23A8-838F-488F-848E-D9E635881D15"
+      ],
+      "native_indices": [
+        19
+      ],
+      "raw_indices": [],
+      "ends_uv": [
+        [
+          -22.86521480192949,
+          8.44414871941253
+        ],
+        [
+          -23.165798132082912,
+          8.300564071674268
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 8.372356395543399,
+      "length_m": 0.3005833301534224,
+      "height_m": 2.878333,
+      "bottom_native_y_m": -1.53223803,
+      "depth_support": {
+        "confidence_2_points": 0,
+        "temporal_frames": 0,
+        "vertical_band_low_points": 0,
+        "vertical_band_high_points": 0,
+        "quarter_meter_coverage_fraction": 0.0
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-20",
+      "source": "native_and_depth",
+      "source_ids": [
+        "7BEE1304-9A2B-4195-8A09-E3A12BA3479F"
+      ],
+      "native_indices": [
+        20
+      ],
+      "raw_indices": [],
+      "ends_uv": [
+        [
+          -2.7998491500464,
+          -5.069932527555006
+        ],
+        [
+          -2.7998491500464,
+          0.33890938935540565
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -2.7998491500464,
+      "length_m": 5.408841916910411,
+      "height_m": 2.73,
+      "bottom_native_y_m": -1.53223807,
+      "depth_support": {
+        "confidence_2_points": 6767,
+        "temporal_frames": 17,
+        "vertical_band_low_points": 3730,
+        "vertical_band_high_points": 3037,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-21",
+      "source": "native_and_depth",
+      "source_ids": [
+        "04734F95-60AD-4CD5-8E1D-9EAD781C5CA7",
+        "25016F12-8EF6-49F3-863B-62BFD2DE04AD",
+        "4B9C692D-855F-4BC1-9938-852A4EF8EFD3",
+        "65F54D56-05F7-42CA-B93C-9901538A9A90",
+        "783A642E-C94E-4840-B770-DCA6DE1972D3",
+        "D2F7B9BF-5E15-49D9-9A14-D95830C7E78E",
+        "EA593C59-5D2C-4ADE-9B38-34FFF0B4D939"
+      ],
+      "native_indices": [
+        21,
+        22
+      ],
+      "raw_indices": [
+        17,
+        50,
+        59,
+        96,
+        110
+      ],
+      "ends_uv": [
+        [
+          -18.730568092920134,
+          -5.0699329159038315
+        ],
+        [
+          0.3366735782073105,
+          -5.0699329159038315
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -5.0699329159038315,
+      "length_m": 19.067241671127444,
+      "height_m": 2.73,
+      "bottom_native_y_m": -1.53223807,
+      "depth_support": {
+        "confidence_2_points": 19441,
+        "temporal_frames": 36,
+        "vertical_band_low_points": 9305,
+        "vertical_band_high_points": 10136,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-22",
+      "source": "native_and_depth",
+      "source_ids": [
+        "5CD6BAC9-0E1C-4CED-A724-AD53247CA4FA",
+        "8B9E2568-41B5-40D7-B343-400A4104FBD5",
+        "CFE9798B-0893-4C34-BADF-56053B4155E6"
+      ],
+      "native_indices": [
+        23
+      ],
+      "raw_indices": [
+        70,
+        94
+      ],
+      "ends_uv": [
+        [
+          -23.1596272736,
+          -0.24934942344457856
+        ],
+        [
+          -23.1596272736,
+          5.791625529192328
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -23.1596272736,
+      "length_m": 6.0409749526369065,
+      "height_m": 2.6125946,
+      "bottom_native_y_m": -1.4176028,
+      "depth_support": {
+        "confidence_2_points": 7365,
+        "temporal_frames": 9,
+        "vertical_band_low_points": 3660,
+        "vertical_band_high_points": 3705,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-23",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "0084BFF0-FF99-4264-BEB4-5B8D705C5835"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        1
+      ],
+      "ends_uv": [
+        [
+          5.204240103717933,
+          29.43355243360367
+        ],
+        [
+          13.472966547080869,
+          29.43355243360367
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.43355243360367,
+      "length_m": 8.268726443362937,
+      "height_m": 2.7489252,
+      "bottom_native_y_m": -1.4405924,
+      "depth_support": {
+        "confidence_2_points": 8711,
+        "temporal_frames": 11,
+        "vertical_band_low_points": 4297,
+        "vertical_band_high_points": 4414,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-24",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "014201B0-F771-4825-9790-49221B90FC46"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        2
+      ],
+      "ends_uv": [
+        [
+          1.8766093960267487,
+          -5.196737807085995
+        ],
+        [
+          1.8766093960267487,
+          -3.9768133790544304
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 1.8766093960267487,
+      "length_m": 1.2199244280315646,
+      "height_m": 2.7102873,
+      "bottom_native_y_m": -1.3866973,
+      "depth_support": {
+        "confidence_2_points": 2005,
+        "temporal_frames": 5,
+        "vertical_band_low_points": 1062,
+        "vertical_band_high_points": 943,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-25",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "067E8CAB-04FA-4900-87D8-AE111FD90F77"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        5
+      ],
+      "ends_uv": [
+        [
+          -23.108782831794734,
+          32.37351778251333
+        ],
+        [
+          -23.108782831794734,
+          35.423766239595054
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -23.108782831794734,
+      "length_m": 3.0502484570817217,
+      "height_m": 2.7229967,
+      "bottom_native_y_m": -1.4931698,
+      "depth_support": {
+        "confidence_2_points": 3022,
+        "temporal_frames": 10,
+        "vertical_band_low_points": 434,
+        "vertical_band_high_points": 2588,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-26",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "0821DEE6-AA36-4D85-9B73-C0DB085568F7"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        6
+      ],
+      "ends_uv": [
+        [
+          -19.209638698729968,
+          -5.409454537909323
+        ],
+        [
+          -19.209638698729968,
+          -0.26802577938787797
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -19.209638698729968,
+      "length_m": 5.141428758521444,
+      "height_m": 2.562303,
+      "bottom_native_y_m": -1.3809272,
+      "depth_support": {
+        "confidence_2_points": 4444,
+        "temporal_frames": 11,
+        "vertical_band_low_points": 2104,
+        "vertical_band_high_points": 2340,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-27",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "0CCD208D-1126-42D2-B2CF-FC931D56CB6C",
+        "58F57630-99E0-49D8-9522-EDBAE0943592"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        8,
+        44
+      ],
+      "ends_uv": [
+        [
+          10.520237715500386,
+          -5.042106009044674
+        ],
+        [
+          15.279016915102124,
+          -5.042106009044674
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -5.042106009044674,
+      "length_m": 4.758779199601738,
+      "height_m": 2.78284165,
+      "bottom_native_y_m": -1.3886859999999999,
+      "depth_support": {
+        "confidence_2_points": 11286,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 5902,
+        "vertical_band_high_points": 5384,
+        "quarter_meter_coverage_fraction": 0.95
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-28",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "101A126B-460A-4062-B2D2-AB85034B8429"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        9
+      ],
+      "ends_uv": [
+        [
+          3.4302703150298672,
+          33.108763258590315
+        ],
+        [
+          5.779948978948132,
+          33.108763258590315
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 33.108763258590315,
+      "length_m": 2.349678663918265,
+      "height_m": 2.6489463,
+      "bottom_native_y_m": -1.3860347,
+      "depth_support": {
+        "confidence_2_points": 915,
+        "temporal_frames": 5,
+        "vertical_band_low_points": 335,
+        "vertical_band_high_points": 580,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-29",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "1154FC92-C9FF-4237-AD79-7BA9DC722837"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        10
+      ],
+      "ends_uv": [
+        [
+          15.119101308693791,
+          -3.7398256111777752
+        ],
+        [
+          15.119101308693791,
+          -0.2402560100179456
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 15.119101308693791,
+      "length_m": 3.4995696011598296,
+      "height_m": 2.6500387,
+      "bottom_native_y_m": -1.340403,
+      "depth_support": {
+        "confidence_2_points": 3089,
+        "temporal_frames": 4,
+        "vertical_band_low_points": 1618,
+        "vertical_band_high_points": 1471,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-30",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "13D93842-FDBE-47DE-B598-E8BF59D56015"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        13
+      ],
+      "ends_uv": [
+        [
+          4.348775009340791,
+          29.809363969151974
+        ],
+        [
+          4.943809238984009,
+          29.809363969151974
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.809363969151974,
+      "length_m": 0.5950342296432183,
+      "height_m": 2.7499633,
+      "bottom_native_y_m": -1.4546106,
+      "depth_support": {
+        "confidence_2_points": 1255,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 648,
+        "vertical_band_high_points": 607,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-31",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "2340CFEA-4BB3-444B-AD31-36F52BA99D9D"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        15
+      ],
+      "ends_uv": [
+        [
+          -20.927254945525494,
+          29.91674599445486
+        ],
+        [
+          -20.47745588753811,
+          29.91674599445486
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.91674599445486,
+      "length_m": 0.4497990579873843,
+      "height_m": 2.2498443,
+      "bottom_native_y_m": -1.3875282,
+      "depth_support": {
+        "confidence_2_points": 993,
+        "temporal_frames": 4,
+        "vertical_band_low_points": 572,
+        "vertical_band_high_points": 421,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-32",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "2BA1C76D-93AE-458B-9EA1-4BB3F1F247AA"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        19
+      ],
+      "ends_uv": [
+        [
+          9.293062654368686,
+          3.3592500194097434
+        ],
+        [
+          9.293062654368686,
+          5.007476505986394
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 9.293062654368686,
+      "length_m": 1.6482264865766503,
+      "height_m": 2.5446239,
+      "bottom_native_y_m": -1.369481,
+      "depth_support": {
+        "confidence_2_points": 3800,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 1803,
+        "vertical_band_high_points": 1997,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-33",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "317685D9-61E0-49F1-9B9A-D2F72D8CECA2"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        23
+      ],
+      "ends_uv": [
+        [
+          -23.377106885094644,
+          22.565186588757964
+        ],
+        [
+          -23.377106885094644,
+          29.06546742865564
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -23.377106885094644,
+      "length_m": 6.500280839897677,
+      "height_m": 2.7520065,
+      "bottom_native_y_m": -1.4142504,
+      "depth_support": {
+        "confidence_2_points": 7189,
+        "temporal_frames": 9,
+        "vertical_band_low_points": 3501,
+        "vertical_band_high_points": 3688,
+        "quarter_meter_coverage_fraction": 0.9629629629629629
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-34",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "331AD942-5C61-4786-B37C-261707E85589"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        25
+      ],
+      "ends_uv": [
+        [
+          15.01267531317481,
+          32.28183336103726
+        ],
+        [
+          16.93666314239479,
+          32.28183336103726
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 32.28183336103726,
+      "length_m": 1.9239878292199784,
+      "height_m": 2.650043,
+      "bottom_native_y_m": -1.4370688,
+      "depth_support": {
+        "confidence_2_points": 1333,
+        "temporal_frames": 4,
+        "vertical_band_low_points": 746,
+        "vertical_band_high_points": 587,
+        "quarter_meter_coverage_fraction": 0.75
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-35",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "3F023E25-C9E4-4831-93CF-481958AC977A"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        31
+      ],
+      "ends_uv": [
+        [
+          -26.202909808811,
+          36.975343960205464
+        ],
+        [
+          -22.1739213410102,
+          36.975343960205464
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 36.975343960205464,
+      "length_m": 4.028988467800801,
+      "height_m": 2.7205415,
+      "bottom_native_y_m": -1.4907142,
+      "depth_support": {
+        "confidence_2_points": 4209,
+        "temporal_frames": 9,
+        "vertical_band_low_points": 2159,
+        "vertical_band_high_points": 2050,
+        "quarter_meter_coverage_fraction": 0.8823529411764706
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-36",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "4008618E-9847-4294-A376-A88CF9E9CD03"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        32
+      ],
+      "ends_uv": [
+        [
+          -16.651894755281965,
+          31.943861627906703
+        ],
+        [
+          -7.1645118983746725,
+          31.943861627906703
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 31.943861627906703,
+      "length_m": 9.487382856907292,
+      "height_m": 2.7954736,
+      "bottom_native_y_m": -1.5470197,
+      "depth_support": {
+        "confidence_2_points": 15257,
+        "temporal_frames": 20,
+        "vertical_band_low_points": 8466,
+        "vertical_band_high_points": 6791,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-37",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "405FFCF4-C40B-466F-8D8D-C5183BAEA52E"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        33
+      ],
+      "ends_uv": [
+        [
+          -4.622356920785947,
+          32.10281818153601
+        ],
+        [
+          3.649274921868347,
+          32.10281818153601
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 32.10281818153601,
+      "length_m": 8.271631842654294,
+      "height_m": 2.8059282,
+      "bottom_native_y_m": -1.5180688,
+      "depth_support": {
+        "confidence_2_points": 11247,
+        "temporal_frames": 17,
+        "vertical_band_low_points": 5792,
+        "vertical_band_high_points": 5455,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-38",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "414E25EF-8D1A-419C-8FA5-228253559C27"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        34
+      ],
+      "ends_uv": [
+        [
+          15.108145832459405,
+          0.10866537563533815
+        ],
+        [
+          16.557518312230997,
+          0.10866537563533815
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 0.10866537563533815,
+      "length_m": 1.4493724797715917,
+      "height_m": 2.6623063,
+      "bottom_native_y_m": -1.3574772,
+      "depth_support": {
+        "confidence_2_points": 1827,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 891,
+        "vertical_band_high_points": 936,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-39",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "480520BA-DDD7-4D00-B35B-794C01E99D6A"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        37
+      ],
+      "ends_uv": [
+        [
+          6.81165360200532,
+          2.490329090998144
+        ],
+        [
+          6.81165360200532,
+          3.3972858317289285
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 6.81165360200532,
+      "length_m": 0.9069567407307844,
+      "height_m": 2.5032089,
+      "bottom_native_y_m": -1.3287785,
+      "depth_support": {
+        "confidence_2_points": 2043,
+        "temporal_frames": 4,
+        "vertical_band_low_points": 1341,
+        "vertical_band_high_points": 702,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-40",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "49B6A5CA-A01E-44ED-AF67-B17B4679815E"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        38
+      ],
+      "ends_uv": [
+        [
+          -8.33766915355094,
+          1.8937330973675728
+        ],
+        [
+          -1.2373984063772978,
+          1.8937330973675728
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 1.8937330973675728,
+      "length_m": 7.100270747173643,
+      "height_m": 2.4649143,
+      "bottom_native_y_m": -1.310135,
+      "depth_support": {
+        "confidence_2_points": 5335,
+        "temporal_frames": 24,
+        "vertical_band_low_points": 2634,
+        "vertical_band_high_points": 2701,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-41",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "49C79592-10FD-4C29-86FE-E636C2A3EBF1"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        39
+      ],
+      "ends_uv": [
+        [
+          -23.249439089171045,
+          -0.21516879614110002
+        ],
+        [
+          -19.24796093409636,
+          -0.21516879614110002
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -0.21516879614110002,
+      "length_m": 4.001478155074686,
+      "height_m": 2.5981226,
+      "bottom_native_y_m": -1.4147811,
+      "depth_support": {
+        "confidence_2_points": 4610,
+        "temporal_frames": 10,
+        "vertical_band_low_points": 2210,
+        "vertical_band_high_points": 2400,
+        "quarter_meter_coverage_fraction": 0.9411764705882353
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-42",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "49E6FB7C-89DC-48C4-9807-E3863B0553C1"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        40
+      ],
+      "ends_uv": [
+        [
+          -23.461971787081236,
+          31.729060371662428
+        ],
+        [
+          -21.859968213275163,
+          31.729060371662428
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 31.729060371662428,
+      "length_m": 1.6020035738060727,
+      "height_m": 2.7025793,
+      "bottom_native_y_m": -1.5278499,
+      "depth_support": {
+        "confidence_2_points": 4453,
+        "temporal_frames": 14,
+        "vertical_band_low_points": 2943,
+        "vertical_band_high_points": 1510,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-43",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "53B021E6-4459-4E93-AD3E-3C1B141E93A7"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        42
+      ],
+      "ends_uv": [
+        [
+          5.493691254128316,
+          4.988049843222237
+        ],
+        [
+          9.294135348666888,
+          4.988049843222237
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 4.988049843222237,
+      "length_m": 3.8004440945385722,
+      "height_m": 2.5009708,
+      "bottom_native_y_m": -1.3422586,
+      "depth_support": {
+        "confidence_2_points": 4016,
+        "temporal_frames": 11,
+        "vertical_band_low_points": 1977,
+        "vertical_band_high_points": 2039,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-44",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "57031FF3-B399-4522-9FFD-0CEEB1159C51"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        43
+      ],
+      "ends_uv": [
+        [
+          16.635219860945604,
+          -3.9748215660150015
+        ],
+        [
+          16.635219860945604,
+          -0.5762440890353993
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 16.635219860945604,
+      "length_m": 3.398577476979602,
+      "height_m": 2.6501303,
+      "bottom_native_y_m": -1.3519,
+      "depth_support": {
+        "confidence_2_points": 3350,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 2838,
+        "vertical_band_high_points": 512,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-45",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "593DAE0D-5FE4-4051-9860-E2BBFB7BB07D"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        45
+      ],
+      "ends_uv": [
+        [
+          14.482876933817874,
+          29.49220139529648
+        ],
+        [
+          16.98698530319093,
+          29.49220139529648
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.49220139529648,
+      "length_m": 2.504108369373057,
+      "height_m": 2.7003374,
+      "bottom_native_y_m": -1.4372692,
+      "depth_support": {
+        "confidence_2_points": 1315,
+        "temporal_frames": 7,
+        "vertical_band_low_points": 655,
+        "vertical_band_high_points": 660,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-47",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "70D3DD08-B0BD-4346-BAF8-0B2D92BD9BF0"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        55
+      ],
+      "ends_uv": [
+        [
+          -20.290447417133187,
+          31.572344442548317
+        ],
+        [
+          -20.290447417133187,
+          31.993656180446077
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -20.290447417133187,
+      "length_m": 0.42131173789776,
+      "height_m": 2.7455335,
+      "bottom_native_y_m": -1.4970796,
+      "depth_support": {
+        "confidence_2_points": 922,
+        "temporal_frames": 3,
+        "vertical_band_low_points": 478,
+        "vertical_band_high_points": 444,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-48",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "7226FFDE-0AD3-4240-A213-F4DF78260430"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        56
+      ],
+      "ends_uv": [
+        [
+          -21.74626019401462,
+          29.7731883974432
+        ],
+        [
+          -20.746535789386176,
+          29.7731883974432
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.7731883974432,
+      "length_m": 0.999724404628445,
+      "height_m": 2.599972,
+      "bottom_native_y_m": -1.4283323,
+      "depth_support": {
+        "confidence_2_points": 1494,
+        "temporal_frames": 5,
+        "vertical_band_low_points": 841,
+        "vertical_band_high_points": 653,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-49",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "8159A988-9597-40B0-8E28-97F28AD41A50"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        61
+      ],
+      "ends_uv": [
+        [
+          -18.72514465941143,
+          -5.235059549700873
+        ],
+        [
+          -18.72514465941143,
+          -1.4349797935470066
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -18.72514465941143,
+      "length_m": 3.8000797561538664,
+      "height_m": 2.6740098,
+      "bottom_native_y_m": -1.4926335,
+      "depth_support": {
+        "confidence_2_points": 1440,
+        "temporal_frames": 3,
+        "vertical_band_low_points": 693,
+        "vertical_band_high_points": 747,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-50",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "85BC355B-374E-41B4-A38D-C1A9AEF23E83"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        64
+      ],
+      "ends_uv": [
+        [
+          -7.056672395646111,
+          39.1407978626524
+        ],
+        [
+          -4.523094917536688,
+          39.1407978626524
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 39.1407978626524,
+      "length_m": 2.5335774781094234,
+      "height_m": 2.797233,
+      "bottom_native_y_m": -1.5211841,
+      "depth_support": {
+        "confidence_2_points": 4757,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 2521,
+        "vertical_band_high_points": 2236,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-51",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "85F7B622-0748-406D-B851-6B60854EAB1F"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        65
+      ],
+      "ends_uv": [
+        [
+          16.96551510791206,
+          29.472267793080317
+        ],
+        [
+          16.96551510791206,
+          32.30617259716529
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 16.96551510791206,
+      "length_m": 2.833904804084977,
+      "height_m": 2.7002234,
+      "bottom_native_y_m": -1.4030966,
+      "depth_support": {
+        "confidence_2_points": 5181,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 2180,
+        "vertical_band_high_points": 3001,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-52",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "8BF54C3E-8B0A-4C15-A5B1-D219CEBA9262"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        71
+      ],
+      "ends_uv": [
+        [
+          -12.978551104788744,
+          -5.394792272308714
+        ],
+        [
+          -12.57888774770172,
+          -5.394792272308714
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -5.394792272308714,
+      "length_m": 0.39966335708702516,
+      "height_m": 2.549869,
+      "bottom_native_y_m": -1.3817378,
+      "depth_support": {
+        "confidence_2_points": 676,
+        "temporal_frames": 7,
+        "vertical_band_low_points": 323,
+        "vertical_band_high_points": 353,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-53",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "8C566DB9-80E1-4A8D-85B1-391094782D0B"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        72
+      ],
+      "ends_uv": [
+        [
+          -4.583217711495495,
+          32.071322652103724
+        ],
+        [
+          -4.583217711495495,
+          39.15767208195387
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -4.583217711495495,
+      "length_m": 7.086349429850145,
+      "height_m": 2.749947,
+      "bottom_native_y_m": -1.4865072,
+      "depth_support": {
+        "confidence_2_points": 7647,
+        "temporal_frames": 14,
+        "vertical_band_low_points": 3990,
+        "vertical_band_high_points": 3657,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-54",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "98FFB09E-1EF0-4AD6-BDFD-AB983BE95638"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        74
+      ],
+      "ends_uv": [
+        [
+          16.667755146633276,
+          -4.98894839480095
+        ],
+        [
+          19.412272092443928,
+          -4.98894839480095
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -4.98894839480095,
+      "length_m": 2.744516945810652,
+      "height_m": 2.8054748,
+      "bottom_native_y_m": -1.4264312,
+      "depth_support": {
+        "confidence_2_points": 2837,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 1437,
+        "vertical_band_high_points": 1400,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-55",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "9D593B35-D7DE-4C01-A077-2BDBDA7E1195"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        76
+      ],
+      "ends_uv": [
+        [
+          -3.7727177195283748,
+          29.367616133252334
+        ],
+        [
+          4.392237064171175,
+          29.367616133252334
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.367616133252334,
+      "length_m": 8.16495478369955,
+      "height_m": 2.7502613,
+      "bottom_native_y_m": -1.4477817,
+      "depth_support": {
+        "confidence_2_points": 10988,
+        "temporal_frames": 13,
+        "vertical_band_low_points": 5432,
+        "vertical_band_high_points": 5556,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-56",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "A8284BB8-E393-440C-ABA5-18A3836B2FD7"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        78
+      ],
+      "ends_uv": [
+        [
+          -4.65782632342877,
+          29.751803592475508
+        ],
+        [
+          -4.10591506754535,
+          29.751803592475508
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.751803592475508,
+      "length_m": 0.5519112558834198,
+      "height_m": 2.6923962,
+      "bottom_native_y_m": -1.4482652,
+      "depth_support": {
+        "confidence_2_points": 972,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 489,
+        "vertical_band_high_points": 483,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-57",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "AED96929-6D47-4173-935A-3D1708432F29"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        80
+      ],
+      "ends_uv": [
+        [
+          15.327221982839564,
+          -4.120576001622963
+        ],
+        [
+          16.66700933305724,
+          -4.120576001622963
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -4.120576001622963,
+      "length_m": 1.3397873502176765,
+      "height_m": 2.7000313,
+      "bottom_native_y_m": -1.3499832,
+      "depth_support": {
+        "confidence_2_points": 2875,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 1595,
+        "vertical_band_high_points": 1280,
+        "quarter_meter_coverage_fraction": 0.8333333333333334
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-58",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "AF0E5A7C-DE3D-40F5-B358-4902DABD8147"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        81
+      ],
+      "ends_uv": [
+        [
+          -7.320866815743155,
+          41.33700046979199
+        ],
+        [
+          -4.614448819783647,
+          41.33700046979199
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 41.33700046979199,
+      "length_m": 2.7064179959595087,
+      "height_m": 2.7999625,
+      "bottom_native_y_m": -1.5165973,
+      "depth_support": {
+        "confidence_2_points": 5237,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 1806,
+        "vertical_band_high_points": 3431,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-59",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "B1D08692-171D-4EEE-99D6-E5EE6A333CA3"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        82
+      ],
+      "ends_uv": [
+        [
+          13.357988731098768,
+          29.890396877239414
+        ],
+        [
+          14.008021758849633,
+          29.890396877239414
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.890396877239414,
+      "length_m": 0.6500330277508652,
+      "height_m": 2.6999044,
+      "bottom_native_y_m": -1.4157835,
+      "depth_support": {
+        "confidence_2_points": 864,
+        "temporal_frames": 6,
+        "vertical_band_low_points": 439,
+        "vertical_band_high_points": 425,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-60",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "B9909A94-EB2B-41AB-9EFB-A7338364C526"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        83
+      ],
+      "ends_uv": [
+        [
+          -1.3188456136278748,
+          1.8144759751668853
+        ],
+        [
+          -1.3188456136278748,
+          4.964031245112828
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -1.3188456136278748,
+      "length_m": 3.149555269945943,
+      "height_m": 2.5500073,
+      "bottom_native_y_m": -1.3536313,
+      "depth_support": {
+        "confidence_2_points": 6939,
+        "temporal_frames": 14,
+        "vertical_band_low_points": 3679,
+        "vertical_band_high_points": 3260,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-61",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "BDDB2E1B-0740-4F4E-A4CD-9C259CF0E714"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        86
+      ],
+      "ends_uv": [
+        [
+          4.964732035073948,
+          -4.5273496774203705
+        ],
+        [
+          4.964732035073948,
+          2.422394516725171
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 4.964732035073948,
+      "length_m": 6.949744194145541,
+      "height_m": 2.551303,
+      "bottom_native_y_m": -1.332138,
+      "depth_support": {
+        "confidence_2_points": 11437,
+        "temporal_frames": 15,
+        "vertical_band_low_points": 5726,
+        "vertical_band_high_points": 5711,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-62",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "C0847DD0-957F-4ACF-B66B-908A84F465BE"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        88
+      ],
+      "ends_uv": [
+        [
+          10.55085926137743,
+          -5.141459800922563
+        ],
+        [
+          10.55085926137743,
+          -4.168974904987918
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 10.55085926137743,
+      "length_m": 0.9724848959346453,
+      "height_m": 2.6998363,
+      "bottom_native_y_m": -1.3816897,
+      "depth_support": {
+        "confidence_2_points": 2220,
+        "temporal_frames": 5,
+        "vertical_band_low_points": 1127,
+        "vertical_band_high_points": 1093,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-63",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "CB540542-17C2-4B61-8812-524845F2C436"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        93
+      ],
+      "ends_uv": [
+        [
+          -7.195506392659617,
+          31.993218104053458
+        ],
+        [
+          -7.195506392659617,
+          38.842516967418064
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -7.195506392659617,
+      "length_m": 6.849298863364606,
+      "height_m": 2.7787738,
+      "bottom_native_y_m": -1.5303204,
+      "depth_support": {
+        "confidence_2_points": 12560,
+        "temporal_frames": 14,
+        "vertical_band_low_points": 7052,
+        "vertical_band_high_points": 5508,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-64",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "D741CE8F-99B1-4319-AF0C-858C0C418C19"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        98
+      ],
+      "ends_uv": [
+        [
+          -6.967742855168638,
+          29.34009214187417
+        ],
+        [
+          -4.609367389325762,
+          29.34009214187417
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 29.34009214187417,
+      "length_m": 2.358375465842876,
+      "height_m": 2.6771796,
+      "bottom_native_y_m": -1.4287263,
+      "depth_support": {
+        "confidence_2_points": 2117,
+        "temporal_frames": 5,
+        "vertical_band_low_points": 1033,
+        "vertical_band_high_points": 1084,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-65",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "D8D0E671-CD69-4573-B6BA-B00A64482F02"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        101
+      ],
+      "ends_uv": [
+        [
+          1.8729462588692347,
+          -5.135506877929162
+        ],
+        [
+          8.981546737539485,
+          -5.135506877929162
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": -5.135506877929162,
+      "length_m": 7.108600478670251,
+      "height_m": 2.7629113,
+      "bottom_native_y_m": -1.4393212,
+      "depth_support": {
+        "confidence_2_points": 25003,
+        "temporal_frames": 23,
+        "vertical_band_low_points": 12830,
+        "vertical_band_high_points": 12173,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-66",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "DBE4FAB1-1A75-49D5-9410-6ED948E22779"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        102
+      ],
+      "ends_uv": [
+        [
+          -22.020945709494097,
+          13.335730392640114
+        ],
+        [
+          -20.519615845303907,
+          13.335730392640114
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 13.335730392640114,
+      "length_m": 1.5013298641901898,
+      "height_m": 2.70075,
+      "bottom_native_y_m": -1.3948379,
+      "depth_support": {
+        "confidence_2_points": 338,
+        "temporal_frames": 3,
+        "vertical_band_low_points": 168,
+        "vertical_band_high_points": 170,
+        "quarter_meter_coverage_fraction": 0.8571428571428571
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-67",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "DDB7C521-0BAD-4823-8FE1-97B6593F71C6"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        104
+      ],
+      "ends_uv": [
+        [
+          -7.296503223914338,
+          39.32508492647909
+        ],
+        [
+          -7.296503223914338,
+          41.295017547460105
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": -7.296503223914338,
+      "length_m": 1.9699326209810124,
+      "height_m": 2.7499986,
+      "bottom_native_y_m": -1.5116651,
+      "depth_support": {
+        "confidence_2_points": 1923,
+        "temporal_frames": 3,
+        "vertical_band_low_points": 1033,
+        "vertical_band_high_points": 890,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-68",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "DFE99B46-1FA5-46D4-B580-3BD435802557"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        106
+      ],
+      "ends_uv": [
+        [
+          16.674621125826263,
+          -5.019552561619447
+        ],
+        [
+          16.674621125826263,
+          -4.08615386398535
+        ]
+      ],
+      "axis": 0,
+      "constant_uv": 16.674621125826263,
+      "length_m": 0.9333986976340967,
+      "height_m": 2.7011056,
+      "bottom_native_y_m": -1.3457297,
+      "depth_support": {
+        "confidence_2_points": 2935,
+        "temporal_frames": 5,
+        "vertical_band_low_points": 1597,
+        "vertical_band_high_points": 1338,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-69",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "EF9D6E7A-7EF8-48F4-A45A-25A5EC64BD67"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        112
+      ],
+      "ends_uv": [
+        [
+          6.794069858541729,
+          3.3497874114378963
+        ],
+        [
+          9.285119190242487,
+          3.3497874114378963
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 3.3497874114378963,
+      "length_m": 2.491049331700758,
+      "height_m": 2.5009065,
+      "bottom_native_y_m": -1.3471321,
+      "depth_support": {
+        "confidence_2_points": 6104,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 4880,
+        "vertical_band_high_points": 1224,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    },
+    {
+      "id": "wall-70",
+      "source": "depth_supported_raw",
+      "source_ids": [
+        "FF40FFD9-E063-4B2D-BBA5-C5FEC256D610"
+      ],
+      "native_indices": [],
+      "raw_indices": [
+        115
+      ],
+      "ends_uv": [
+        [
+          6.183796677458979,
+          32.213383655886076
+        ],
+        [
+          12.018909800690224,
+          32.213383655886076
+        ]
+      ],
+      "axis": 1,
+      "constant_uv": 32.213383655886076,
+      "length_m": 5.835113123231245,
+      "height_m": 2.749897,
+      "bottom_native_y_m": -1.4708233,
+      "depth_support": {
+        "confidence_2_points": 7421,
+        "temporal_frames": 8,
+        "vertical_band_low_points": 4213,
+        "vertical_band_high_points": 3208,
+        "quarter_meter_coverage_fraction": 1
+      },
+      "display_only": true
+    }
+  ],
+  "doors": [
+    {
+      "id": "851E9FBA-BA9A-425C-8DDE-65EDB82337C2",
+      "native_index": 0,
+      "ends_uv": [
+        [
+          -22.340481775109442,
+          18.254651912268443
+        ],
+        [
+          -22.34048324756616,
+          16.970716125064754
+        ]
+      ],
+      "width_m": 1.2839357,
+      "height_m": 2.3120718,
+      "bottom_native_y_m": -1.532238
+    },
+    {
+      "id": "E5268600-1F9C-427E-9C2F-271C7F10E0AC",
+      "native_index": 1,
+      "ends_uv": [
+        [
+          -11.633649156829264,
+          28.778328590132748
+        ],
+        [
+          -12.513530242207757,
+          28.778329598473995
+        ]
+      ],
+      "width_m": 0.87988114,
+      "height_m": 2.2463977,
+      "bottom_native_y_m": -1.5322380500000001
+    },
+    {
+      "id": "7FB3A596-3934-4D7F-879F-03737951160B",
+      "native_index": 2,
+      "ends_uv": [
+        [
+          -8.924588337875763,
+          0.47829161550692023
+        ],
+        [
+          -8.924587836676196,
+          1.3932983917767987
+        ]
+      ],
+      "width_m": 0.9150068,
+      "height_m": 2.3252068,
+      "bottom_native_y_m": -1.53223815
+    },
+    {
+      "id": "BD5D5F10-09D4-440A-99B7-D59634828923",
+      "native_index": 3,
+      "ends_uv": [
+        [
+          -6.286029684087013,
+          0.3389091665912036
+        ],
+        [
+          -7.106306825166387,
+          0.3389090906725959
+        ]
+      ],
+      "width_m": 0.8202772,
+      "height_m": 2.285461,
+      "bottom_native_y_m": -1.53223803
+    },
+    {
+      "id": "3DCAD5FB-5FA7-48A7-9763-7C7B908BAEE9",
+      "native_index": 4,
+      "ends_uv": [
+        [
+          0.813602382998798,
+          -3.9021145403225885
+        ],
+        [
+          1.6527669056778822,
+          -3.902114607400572
+        ]
+      ],
+      "width_m": 0.83916456,
+      "height_m": 2.2923694,
+      "bottom_native_y_m": -1.53223802
+    },
+    {
+      "id": "3B07C042-53C9-4A00-A4B0-2BD80F46D4F1",
+      "native_index": 5,
+      "ends_uv": [
+        [
+          -17.23796283392559,
+          29.65680098229568
+        ],
+        [
+          -18.093319516155812,
+          29.656800209690118
+        ]
+      ],
+      "width_m": 0.85535663,
+      "height_m": 2.2292829,
+      "bottom_native_y_m": -1.53223815
+    }
+  ],
+  "excluded_raw_walls": [
+    {
+      "raw_index": 3,
+      "id": "02C45173-B555-451C-A7B5-A86107AD944E",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 11,
+      "id": "117D8505-C041-426E-BF3F-9CFC49817753",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 20.865576068459067
+    },
+    {
+      "raw_index": 16,
+      "id": "24B5B0C8-F6CA-4AA7-8968-3B38B2B25E2E",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 14.133365153186531
+    },
+    {
+      "raw_index": 22,
+      "id": "30545B55-025C-456D-B2C1-23D851B45DBC",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 26,
+      "id": "38643F0A-15EE-46E7-BE0A-35D3B199477A",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 19.319993768203915
+    },
+    {
+      "raw_index": 27,
+      "id": "39E7F4DA-15A3-4A31-B13B-E9BCE8356672",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 37.8988401721013
+    },
+    {
+      "raw_index": 29,
+      "id": "3D3E9CF8-63F9-4E28-A313-4DF07392FBD4",
+      "reason": "insufficient spatial/temporal/two-height depth support",
+      "depth_support": {
+        "confidence_2_points": 649,
+        "temporal_frames": 2,
+        "vertical_band_low_points": 358,
+        "vertical_band_high_points": 291,
+        "quarter_meter_coverage_fraction": 1
+      }
+    },
+    {
+      "raw_index": 30,
+      "id": "3E3F4E6C-1D14-444B-9103-DC180FC80E84",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 3.3858457504343504
+    },
+    {
+      "raw_index": 35,
+      "id": "4169D75B-731E-40D4-82CD-37CEDEDF59BD",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 37.846044369557184
+    },
+    {
+      "raw_index": 36,
+      "id": "44C51529-1BCF-434E-B326-C7DD7DE0BCCB",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 41,
+      "id": "535B1E3A-CC94-4D66-B0DB-58C82AC0C204",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 14.153768180271143
+    },
+    {
+      "raw_index": 46,
+      "id": "5B08ADB3-3DFF-4DF2-90E4-D26408901966",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 47,
+      "id": "5CC8DE20-787D-41EF-8C5F-47BE74EC08A9",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 37.69240920809363
+    },
+    {
+      "raw_index": 48,
+      "id": "5E6D9174-84EA-4216-A51F-16E776B6848B",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 3.315383400789163
+    },
+    {
+      "raw_index": 52,
+      "id": "6C0145A0-3F95-4A51-AB97-90A7F1D746B0",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 53,
+      "id": "6C41F189-BE92-466E-8E42-D7278D9AD1DD",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 15.403301340865037
+    },
+    {
+      "raw_index": 54,
+      "id": "6D774149-FD6E-40A0-8DDD-EB95AB779054",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 57,
+      "id": "72B59AFA-63C1-4472-A3B5-B2A5BEBB06E3",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 38.172584270478126
+    },
+    {
+      "raw_index": 59,
+      "id": "783A642E-C94E-4840-B770-DCA6DE1972D3",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 4.510161955694041
+    },
+    {
+      "raw_index": 60,
+      "id": "7B158D74-3AEE-43F3-A5B7-6EEFF3D12FC5",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 62,
+      "id": "8468FBF3-CA63-464A-A970-5B193C8ADCFF",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 8.411789887041786
+    },
+    {
+      "raw_index": 67,
+      "id": "89CF08A4-3992-49F5-BD8A-3DE36E53C0DB",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 13.185022599419847
+    },
+    {
+      "raw_index": 73,
+      "id": "95D2065E-4F7A-4556-BECA-DE33F48E8D3E",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 75,
+      "id": "9D2C82FB-ECB0-479D-A4A8-44FE5D2CBB40",
+      "reason": "insufficient spatial/temporal/two-height depth support",
+      "depth_support": {
+        "confidence_2_points": 3059,
+        "temporal_frames": 2,
+        "vertical_band_low_points": 1470,
+        "vertical_band_high_points": 1589,
+        "quarter_meter_coverage_fraction": 1
+      }
+    },
+    {
+      "raw_index": 77,
+      "id": "A6A7FCB3-61D8-46FB-93E7-D9E52878A080",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 79,
+      "id": "A969CC06-3D32-46F8-A2DC-075D715DEDCB",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 13.666788431877649
+    },
+    {
+      "raw_index": 84,
+      "id": "BB51448B-DB1D-47A4-B547-FD8ED97C330F",
+      "reason": "insufficient spatial/temporal/two-height depth support",
+      "depth_support": {
+        "confidence_2_points": 551,
+        "temporal_frames": 1,
+        "vertical_band_low_points": 456,
+        "vertical_band_high_points": 95,
+        "quarter_meter_coverage_fraction": 1
+      }
+    },
+    {
+      "raw_index": 85,
+      "id": "BBE93EFA-1202-41E1-B65F-EE0E3A841C56",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 35.00959388645023
+    },
+    {
+      "raw_index": 87,
+      "id": "C07B04E3-9A30-45B2-AAC2-4C2A6CCCFC47",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 89,
+      "id": "C2B2F995-4BDF-4AC9-82B7-EF1465597508",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 90,
+      "id": "C51F0436-D84A-4564-BF43-7D160CC0F894",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 92,
+      "id": "CAAD2ABE-E4B7-4391-A0D9-E6C2F479EDAD",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 99,
+      "id": "D7CD0327-141A-44ED-8FD8-60FAA57D3024",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 9.435393106307881
+    },
+    {
+      "raw_index": 100,
+      "id": "D89340BD-FC5C-46B6-878D-10EE98906F66",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 103,
+      "id": "DD8339A3-AA26-4A61-B639-8B689CF09691",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 5.235335601340111
+    },
+    {
+      "raw_index": 105,
+      "id": "DF8BB8EC-D93B-4050-9588-AD2BCA202FF8",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 107,
+      "id": "E4E1D0A1-719C-4C99-9443-566C0DE1B035",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 3.623449501157939
+    },
+    {
+      "raw_index": 108,
+      "id": "E6601E35-C9D4-48EB-AEBB-805D3362C9E2",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 7.560269935839774
+    },
+    {
+      "raw_index": 109,
+      "id": "E9EC4D3E-E1DF-4462-A17E-FB73E106B77D",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 13.354916044832038
+    },
+    {
+      "raw_index": 111,
+      "id": "EA5DB022-3034-4923-8365-0C7991E433D1",
+      "reason": "low height: railing/low obstacle evidence"
+    },
+    {
+      "raw_index": 114,
+      "id": "FA4E9ED7-52CA-4822-96B3-60BFBD1F12DE",
+      "reason": "not aligned to architecture; angled glass or aggregate outlier",
+      "axis_difference_degrees": 15.660049458441112
+    }
+  ],
+  "notes": [
+    "Compact visual structure candidate; does not establish enclosed rooms beyond observed extents.",
+    "High depth returns can be glazed windows; wall material classification remains video informed.",
+    "Three source balcony recesses differ from prior map; no old walls included here.",
+    "Raw wall51 was removed as duplicate of raw50 before secondary depth-return fitting; no double main balcony wall."
+  ]
+}

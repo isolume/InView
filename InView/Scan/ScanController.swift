@@ -64,6 +64,9 @@ final class ScanController: ObservableObject {
     @Published private(set) var signObservations: [CaptureTextObservation] = []
     /// Signs the mapper pointed the reader at; they label their doors when the map is ready.
     @Published private(set) var readSigns: [SignReader.Sighting] = []
+    @Published private(set) var tracedFloors: [Footprint] = []
+    @Published private(set) var liveWalkTrace: ScanWalkTrace?
+    private var lastTraceRefresh: TimeInterval = 0
     @Published private(set) var currentFloor: ScanFloorIdentity?
     @Published private(set) var buildingName = "Building"
     @Published private(set) var isChangingFloors = false
@@ -239,6 +242,14 @@ final class ScanController: ObservableObject {
         detailRequested = AppConfig.detailedScanning
         rawCapture = RawScanCapture(reconstructsMesh: detailRequested)
         rawCapture.floorID = currentFloor?.id.uuidString ?? "ground"
+        detector.floorElevation = { [weak self] position in
+            guard let self else { return nil }
+            if let floor = self.liveFloors.first(where: {
+                Polygon.contains(SIMD2(position.x, position.z), in: $0.corners)
+            }) { return floor.bottom }
+            return self.rawCapture.hasMeasuredFloor(at: position) ? self.rawCapture.measuredFloorElevation(near: position) : nil
+        }
+        tracedFloors = []; liveWalkTrace = nil; lastTraceRefresh = 0
         signObservations = []
         readSigns = []
         let captureID = scanID
@@ -781,6 +792,12 @@ final class ScanController: ObservableObject {
             normal = abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1
         } else { normal = false }
         trackingNotice = normal ? nil : "Move slowly while positioning recovers."
+        if frame.timestamp - lastTraceRefresh >= 1 {
+            lastTraceRefresh = frame.timestamp
+            // Preserve measured polygon boundaries. Never fill a convex hull across rooms/gaps.
+            tracedFloors = Array((rawCapture.tracedFloors + liveFloors).prefix(128))
+            liveWalkTrace = rawCapture.liveWalkTrace
+        }
         let position = frame.camera.transform.translation
         let floorObserved = rawCapture.hasMeasuredFloor(at: position)
             || liveFloors.contains { Polygon.contains(SIMD2(position.x, position.z), in: $0.corners) }

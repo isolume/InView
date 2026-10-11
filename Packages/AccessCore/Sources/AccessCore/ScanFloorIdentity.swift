@@ -192,4 +192,44 @@ public struct SavedFloorRegistry: Codable, Equatable, Sendable {
         }
         selection = SavedFloorSelection(buildingID: buildingID, floorID: floorID)
     }
+
+    /// Forgets a floor and every earlier version of it, and its building once no floors remain.
+    /// When it was selected, the lowest remaining floor of that building is selected, or nothing.
+    /// - Returns: The removed floor with its versions, so the caller can delete their files.
+    @discardableResult
+    public mutating func removeFloor(buildingID: UUID, floorID: UUID) throws -> SavedFloor {
+        try validate()
+        guard let buildingIndex = buildings.firstIndex(where: { $0.id == buildingID }),
+              let floorIndex = buildings[buildingIndex].floors.firstIndex(where: { $0.id == floorID }) else {
+            throw SavedFloorStorageError.missingFloor
+        }
+        let removed = buildings[buildingIndex].floors.remove(at: floorIndex)
+        let remaining = buildings[buildingIndex].floors
+        if remaining.isEmpty { buildings.remove(at: buildingIndex) }
+        if selection?.floorID == floorID {
+            selection = remaining.min { $0.level < $1.level }
+                .map { SavedFloorSelection(buildingID: buildingID, floorID: $0.id) }
+        }
+        return removed
+    }
+
+    /// Forgets a building and all its floors, clearing the selection if it was in this building.
+    /// - Returns: The removed floors, so the caller can delete their files.
+    @discardableResult
+    public mutating func removeBuilding(_ buildingID: UUID) throws -> [SavedFloor] {
+        try validate()
+        guard let index = buildings.firstIndex(where: { $0.id == buildingID }) else {
+            throw SavedFloorStorageError.missingFloor
+        }
+        let removed = buildings.remove(at: index).floors
+        if selection?.buildingID == buildingID { selection = nil }
+        return removed
+    }
+}
+
+extension SavedFloor {
+    /// The current save and every earlier one, each with its own storage folder.
+    public var allVersions: [SavedFloorVersion] {
+        previousVersions + [SavedFloorVersion(storageID: storageID, savedAt: savedAt, captureID: captureID)]
+    }
 }

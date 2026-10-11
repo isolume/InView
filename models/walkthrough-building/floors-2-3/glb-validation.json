@@ -11,45 +11,46 @@
     "Scene graph references, cycles and finite transforms",
     "Standalone floor world triangles match combined export by floor/name identity",
     "Viewer triangle counts and world bounds agree within five-decimal serialization tolerance",
-    "Floor 2 upward display floor triangle area retains all source polygons, including overlapping old measured floors",
+    "Floor 2 display-only floor union has no overlapping triangles; exported top triangles and physical areas match its reconstruction; saved routing map and scan scene retain their hashes",
     "Retained Floor 3 GLB/USDZ/PNGs and viewer geometry match archived video assets",
-    "Input hashes unchanged during validation"
+    "Input hashes unchanged during validation",
+    "Bundled Floor 2 and Floor 3 USDZs and PNGs, and model layout, match exported assets"
   ],
   "files": [
     {
       "file": "building.glb",
-      "sha256": "1f71e86804fe22d5ad5ab137f9f8fe9e193d335c8e334cb81f658fa5ea150b78",
-      "bytes": 4533604,
+      "sha256": "2242d2e12698770387d60cc11d675ccc0d9145a930610af0afb46b5ad276905d",
+      "bytes": 5940896,
       "passed": true,
       "errors": [],
       "warnings": [],
       "counts": {
         "scenes": 1,
-        "nodes": 693,
-        "meshes": 505,
-        "materials": 25,
+        "nodes": 924,
+        "meshes": 689,
+        "materials": 34,
         "buffers": 1,
-        "bufferViews": 1490,
-        "accessors": 1490,
+        "bufferViews": 2025,
+        "accessors": 2025,
         "textures": 0,
         "images": 0,
-        "numeric_components_checked": 1015998,
-        "normals_checked": 134470,
+        "numeric_components_checked": 1310310,
+        "normals_checked": 175216,
         "degenerate_triangles": 0,
-        "mesh_primitives": 505,
-        "unique_mesh_vertices": 134470,
-        "indices_checked": 259182,
-        "unique_mesh_triangles": 86394,
-        "mesh_nodes": 693,
-        "scene_nodes_reached": 693,
-        "instanced_triangles": 224788,
+        "mesh_primitives": 689,
+        "unique_mesh_vertices": 175216,
+        "indices_checked": 319134,
+        "unique_mesh_triangles": 106378,
+        "mesh_nodes": 924,
+        "scene_nodes_reached": 924,
+        "instanced_triangles": 311392,
         "mesh_nodes_by_floor": {
-          "2": 292,
+          "2": 523,
           "3": 401
         },
         "estimated_from_video_by_floor": {
           "2": {
-            "False": 292
+            "False": 523
           },
           "3": {
             "True": 401
@@ -59,18 +60,18 @@
       "bounds_y_up_m": {
         "min": [
           -32.09900083252343,
-          -0.12031600624322891,
-          -25.833362579345703
+          -0.14437921345233917,
+          -25.916172606870532
         ],
         "max": [
-          26.30464650491736,
+          41.022416691565944,
           5.6000001430511475,
-          16.199000380933285
+          25.06062889099121
         ],
         "dimensions": [
-          58.40364733744079,
-          5.720316149294376,
-          42.03236296027899
+          73.12141752408937,
+          5.744379356503487,
+          50.97680149786174
         ]
       },
       "normal_length_range": [
@@ -81,55 +82,55 @@
     },
     {
       "file": "floor-2.glb",
-      "sha256": "2239cf6f008d2b3711f26ac68ac341dda8a259f9d577ce5bbcf0672719022dd8",
-      "bytes": 2215648,
+      "sha256": "e8410911a260ea4c19e03386f21d16f3020bd2e4760afa568c6033f3b87a7981",
+      "bytes": 3627548,
       "passed": true,
       "errors": [],
       "warnings": [],
       "counts": {
         "scenes": 1,
-        "nodes": 292,
-        "meshes": 231,
-        "materials": 7,
+        "nodes": 523,
+        "meshes": 415,
+        "materials": 16,
         "buffers": 1,
-        "bufferViews": 677,
-        "accessors": 677,
+        "bufferViews": 1217,
+        "accessors": 1217,
         "textures": 0,
         "images": 0,
-        "numeric_components_checked": 498564,
-        "normals_checked": 67074,
+        "numeric_components_checked": 795120,
+        "normals_checked": 107820,
         "degenerate_triangles": 0,
-        "mesh_primitives": 231,
-        "unique_mesh_vertices": 67074,
-        "indices_checked": 155160,
-        "unique_mesh_triangles": 51720,
-        "mesh_nodes": 292,
-        "scene_nodes_reached": 292,
-        "instanced_triangles": 134236,
+        "mesh_primitives": 415,
+        "unique_mesh_vertices": 107820,
+        "indices_checked": 215112,
+        "unique_mesh_triangles": 71704,
+        "mesh_nodes": 523,
+        "scene_nodes_reached": 523,
+        "instanced_triangles": 220840,
         "mesh_nodes_by_floor": {
-          "2": 292
+          "2": 523
         },
         "estimated_from_video_by_floor": {
           "2": {
-            "False": 292
+            "False": 523
           }
         }
       },
       "bounds_y_up_m": {
         "min": [
-          -3.629947029357699,
-          -0.12031600624322891,
-          -25.833362579345703
+          -1.919914335990966,
+          -0.14437921345233917,
+          -25.916172606870532
         ],
         "max": [
-          26.30464650491736,
-          0.8983595371246338,
-          15.102869987487793
+          41.022416691565944,
+          1.5240027904510498,
+          25.06062889099121
         ],
         "dimensions": [
-          29.93459353427506,
-          1.0186755433678627,
-          40.936232566833496
+          42.94233102755691,
+          1.668382003903389,
+          50.97680149786174
         ]
       },
       "normal_length_range": [
@@ -202,17 +203,17 @@
     "passed": true,
     "errors": [],
     "combined_is_union_of_floor_exports": true,
-    "objects_compared": 693,
+    "objects_compared": 924,
     "maximum_world_geometry_difference_m": 0.0,
     "tolerance_m": 1e-05,
     "identity": "floor extras and node names; world triangle coordinates are canonicalized"
   },
   "viewer_comparison": {
     "file": "viewer-scene.json",
-    "sha256": "a70f0356765e7a7eedbaa262aebed7a6cea75f9a719db29f14cc321192ebf534",
+    "sha256": "8458549c92c3c3fd13a1440aafa88571f397c5239d040d8f0135570ca8af0918",
     "passed": true,
     "errors": [],
-    "triangle_count": 224788,
+    "triangle_count": 311392,
     "bounds_tolerance_m": 1.1e-05,
     "floors": {
       "3": {
@@ -223,11 +224,11 @@
         "maximum_bounds_difference_m": 3.514582559205337e-06
       },
       "2": {
-        "viewer_meshes": 292,
-        "glb_mesh_nodes": 292,
-        "viewer_triangles": 134236,
-        "glb_triangles": 134236,
-        "maximum_bounds_difference_m": 3.993756771084045e-06
+        "viewer_meshes": 523,
+        "glb_mesh_nodes": 523,
+        "viewer_triangles": 220840,
+        "glb_triangles": 220840,
+        "maximum_bounds_difference_m": 4.335990966053416e-06
       }
     },
     "declared_bounds_maximum_difference_m": 0.0
@@ -268,53 +269,101 @@
     "viewer_tolerance_m": 1.1e-05,
     "viewer_labels_unchanged": true
   },
-  "floor_2_display_area_retention": {
+  "floor_2_reconstruction": {
     "passed": true,
     "errors": [],
-    "source_file": "illustration-floors.json",
-    "source_sha256": "f19f9ba0f78aa327030fc347f013785b3319b1fa9206e9c50065e6fb4a5a48bd",
-    "original_measured_floor_regions_unchanged": true,
-    "original_floor_regions": 12,
-    "source_display_floor_regions": 13,
-    "exported_display_floor_meshes": 13,
-    "native_completed_source_id": "103E07FD-1FC6-4F60-8C2C-8C8C49691068",
-    "native_addition_within_completed_outline": true,
-    "model_to_map_scale_from_elevators": 1.2467168944905882,
-    "source_polygon_area_sum_m2": 718.2452375878197,
-    "exported_upward_horizontal_triangle_area_sum_m2": 718.2452387964432,
-    "absolute_area_difference_m2": 1.208623530146724e-06,
-    "area_tolerance_m2": 0.0007182452375878197,
-    "source_polygon_areas_m2": [
-      72.8649981276814,
-      87.75274052517521,
-      284.26953881036883,
-      43.39379330810711,
-      0.06120360788996293,
-      5.030684125488865,
-      2.8019578238375304,
-      4.586512578079693,
-      1.08862703043674,
-      1.0776657176518514,
-      11.94427824747499,
-      0.20354321343300796,
-      203.16969447219452
-    ],
-    "exported_floor_mesh_areas_m2": {
-      "0": 72.8649957169401,
-      "1": 87.7527457724532,
-      "2": 284.2695393823093,
-      "3": 43.39379726139109,
-      "4": 0.06120353087467603,
-      "5": 5.030686591374389,
-      "6": 2.8019578364104394,
-      "7": 4.586512733573362,
-      "8": 1.0886231989273387,
-      "9": 1.0776654171600129,
-      "10": 11.94428010573542,
-      "11": 0.20354285291517088,
-      "12": 203.16968839637877
+    "mode": "video_lidar_reconstruction",
+    "source_file": "reconstruction.json",
+    "source_sha256": "aac5a05b6ef07e2da3459c72377bf8d87e4d0a011e626b6f0ef43399a9780925",
+    "registration_sha256": "576a2a267f280dc297475433c40474883be5705fc64b8b93b5c9687022212e63",
+    "manifest_sha256": "231ed80284a6dbae5387a6d747711b84fa34669009bfb8b7c83268c3f98d2a77",
+    "preserved_resources": {
+      "student-center-east-floor-2.json": {
+        "expected_sha256": "a2c0993c064ab9d664b3e4db2fef64bbb06c34268a89ee1c2f29ea3fdbb9e473",
+        "current_sha256": "a2c0993c064ab9d664b3e4db2fef64bbb06c34268a89ee1c2f29ea3fdbb9e473",
+        "unchanged": true
+      },
+      "student-center-east-floor-2-scene.json": {
+        "expected_sha256": "7cf4fbf4cf1d582bd82f0a604ca63e998ae44887a36c2ccaf1534b422bcc5632",
+        "current_sha256": "7cf4fbf4cf1d582bd82f0a604ca63e998ae44887a36c2ccaf1534b422bcc5632",
+        "unchanged": true
+      }
     },
-    "comparison": "Sum each source polygon separately, including old overlaps; do not union source coverage"
+    "model_to_map_scale_from_elevators": 1.2467168944905882,
+    "scan_registration_scale": 1,
+    "source_display_floor_regions": 2,
+    "source_area_sum_m2": 570.466483508016,
+    "exported_top_area_sum_m2": 570.466520868454,
+    "overlapping_triangle_pairs": 0,
+    "maximum_overlap_m2": 0.0,
+    "triangle_coordinate_tolerance_m": 0.0001,
+    "floors": [
+      {
+        "id": "continuous-tile-floor",
+        "declared_area_m2": 482.71374596302917,
+        "outline_area_m2": 482.71374596302957,
+        "source_triangle_area_m2": 482.7137459117095,
+        "exported_top_area_m2": 482.7137838542241,
+        "source_triangles": 94,
+        "exported_top_triangles": 94,
+        "matched_triangles": 94,
+        "maximum_triangle_coordinate_difference_m": 3.253840166195232e-06,
+        "area_tolerance_m2": 0.00048271374596302915
+      },
+      {
+        "id": "lounge-carpet",
+        "declared_area_m2": 87.75273754498687,
+        "outline_area_m2": 87.75273754498687,
+        "source_triangle_area_m2": 87.75273778826998,
+        "exported_top_area_m2": 87.7527370142299,
+        "source_triangles": 20,
+        "exported_top_triangles": 20,
+        "matched_triangles": 20,
+        "maximum_triangle_coordinate_difference_m": 1.0604371620814845e-06,
+        "area_tolerance_m2": 0.0001
+      }
+    ]
+  },
+  "app_resources": {
+    "passed": true,
+    "errors": [],
+    "files": [
+      {
+        "export": "floor-2.usdz",
+        "app_resource": "student-center-east-floor-2-model.usdz",
+        "export_sha256": "7e33fb3161f5821f3e4e2974253c4d994c10bd10c2751a00792f81236c8b95bc",
+        "app_sha256": "7e33fb3161f5821f3e4e2974253c4d994c10bd10c2751a00792f81236c8b95bc",
+        "matches": true
+      },
+      {
+        "export": "floor-2.png",
+        "app_resource": "student-center-east-floor-2-model.png",
+        "export_sha256": "ef927903203a7748e013e8245f70ee353e4a3caf926b8df3633b5d10b291a656",
+        "app_sha256": "ef927903203a7748e013e8245f70ee353e4a3caf926b8df3633b5d10b291a656",
+        "matches": true
+      },
+      {
+        "export": "floor-3.usdz",
+        "app_resource": "student-center-east-floor-3-model.usdz",
+        "export_sha256": "c9051c71aafc066c1d425e9ac630a219d4d193ae3649b170bc8edcf3f6657d93",
+        "app_sha256": "c9051c71aafc066c1d425e9ac630a219d4d193ae3649b170bc8edcf3f6657d93",
+        "matches": true
+      },
+      {
+        "export": "floor-3.png",
+        "app_resource": "student-center-east-floor-3-model.png",
+        "export_sha256": "65b0937b4e9deb7256c753485895d157c6f8c0cf58b07adf41f860d37675a7d9",
+        "app_sha256": "65b0937b4e9deb7256c753485895d157c6f8c0cf58b07adf41f860d37675a7d9",
+        "matches": true
+      },
+      {
+        "export": "layout.json",
+        "app_resource": "student-center-east-model-layout.json",
+        "export_sha256": "9e01b6d4fb6892902defb0aab0e878526f057793c8851e610062effcb67e8627",
+        "app_sha256": "9e01b6d4fb6892902defb0aab0e878526f057793c8851e610062effcb67e8627",
+        "matches": true
+      }
+    ]
   },
   "source_hashes_unchanged_during_validation": true
 }

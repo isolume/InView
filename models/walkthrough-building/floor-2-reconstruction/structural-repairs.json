@@ -1,0 +1,63 @@
+{
+  "coordinate_frame": "source principalUV",
+  "repairs": [
+    {
+      "action": "replace_endpoints",
+      "wall_id": "wall-40",
+      "ends_uv": [
+        [
+          -8.924588667,
+          1.829091348
+        ],
+        [
+          -1.237398406,
+          1.829091348
+        ]
+      ],
+      "depth_candidate_indices": [
+        5
+      ],
+      "reason": "Raw observed upper lounge corridor segment is truncated at the measured native endcap; continuous depth confirms join."
+    },
+    {
+      "action": "add",
+      "id": "balcony-depth-gap-repair",
+      "ends_uv": [
+        [
+          -23.225,
+          18.495211867
+        ],
+        [
+          -23.225,
+          22.565186589
+        ]
+      ],
+      "depth_candidate_indices": [
+        17
+      ],
+      "reason": "Continuous inner balcony wall has strong high-confidence depth support but raw RoomPlan list omits middle section."
+    },
+    {
+      "action": "replace_endpoints",
+      "wall_id": "wall-53",
+      "ends_uv": [
+        [
+          -4.583217711,
+          32.071322652
+        ],
+        [
+          -4.583217711,
+          41.33700047
+        ]
+      ],
+      "depth_candidate_indices": [
+        4
+      ],
+      "source_raw_indices": [
+        72,
+        75
+      ],
+      "reason": "Far restroom wall is continuous in depth and raw75; raw75 has only two sampled timepoints but over 3000 highconfidence points in both vertical bands."
+    }
+  ]
+}

@@ -11,6 +11,7 @@ struct ScanView: View {
     @State private var marks = 0
     /// Created per scan session, while the mapper reads a sign.
     @State private var signReader: SignReader?
+    @State private var showsFloorTrace = true
 
     var body: some View {
         Group {
@@ -71,7 +72,8 @@ struct ScanView: View {
                 Color(.systemBackground).ignoresSafeArea()
             }
             if controller.phase == .scanning {
-                DetectionOverlay(detector: controller.detector, session: controller.session, signs: controller.signObservations)
+                DetectionOverlay(detector: controller.detector, session: controller.session, signs: controller.signObservations,
+                                 floors: showsFloorTrace ? controller.tracedFloors : [])
                     .ignoresSafeArea()
                 Crosshair()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -113,6 +115,26 @@ struct ScanView: View {
                         }
                         if controller.phase == .scanning {
                             DetectionStatus(detector: controller.detector)
+                        }
+                    }
+                    if controller.phase == .scanning {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Button { showsFloorTrace.toggle() } label: {
+                                    Label(showsFloorTrace ? "Hide floor trace" : "Show floor trace", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
+                                        .font(.caption.weight(.semibold))
+                                }.buttonStyle(.glass)
+                                if showsFloorTrace, let trace = controller.liveWalkTrace {
+                                    ScanWalkPreview(map: VenueMap(floorY: controller.tracedFloors.first?.bottom ?? 0,
+                                                                  footprints: controller.tracedFloors, points: []),
+                                                    trace: trace, coverage: nil, isLive: true)
+                                        .frame(width: 190, height: 155)
+                                    Text("Measured outlines + phone trail\nNot a verified route")
+                                        .font(.caption2).padding(6)
+                                        .background(.ultraThinMaterial, in: .rect(cornerRadius: 8))
+                                }
+                            }
+                            Spacer()
                         }
                     }
                     Spacer()
@@ -351,6 +373,9 @@ private struct DetectionStatus: View {
             return "Mark accessibility features below"
         }
         if detector.lastError != nil { return "Feature detection unavailable" }
+        if detector.sightings.contains(where: { !$0.isConfirmed }) {
+            return "Move slightly, then hold still for another view"
+        }
         return "Looking for accessibility features"
     }
 }

@@ -10,6 +10,9 @@ public struct Route: Sendable {
     /// Distance the route keeps from obstacles. Below the ideal when the space is cramped.
     public let clearance: Float
     public let preference: RoutePreference
+    /// Meters of the route outside measured floor, where the scan saw no wall or obstacle
+    /// but didn't record the floor. Zero unless the conditions allowed unmapped space.
+    public let unmappedLength: Float
 
     /// A distance-based estimate using the same speed for both preferences.
     /// Building transitions and waiting times are handled by the building route.
@@ -24,8 +27,9 @@ public struct Route: Sendable {
 
     init(destination: AccessPoint, waypoints: [SIMD2<Float>], length: Float, clearance: Float,
          level: Int, goalIndex: Int, preference: RoutePreference = .stepFree,
-         requiredClearance: Float? = nil, requiresMeasuredRampSlope: Bool = false) {
+         requiredClearance: Float? = nil, requiresMeasuredRampSlope: Bool = false, unmappedLength: Float = 0) {
         self.destination = destination
+        self.unmappedLength = unmappedLength
         self.waypoints = waypoints
         self.length = length
         self.clearance = clearance
@@ -49,9 +53,14 @@ public struct RouteConditions: Sendable {
     /// Reject ramps without a measured, finite incline. Width and incline are separate requirements.
     public var requiresMeasuredRampSlope: Bool
     public var preference: RoutePreference
+    /// When no route stays on measured floor, cross free space the scan saw but didn't record as
+    /// floor. Navigation opts in and tells the person; audits stay on measured floor.
+    public var allowsUnmappedSpace: Bool
 
     public init(unavailable: Set<UUID> = [], obstacles: [SIMD2<Float>] = [], minimumClearance: Float? = nil,
-                requiresMeasuredRampSlope: Bool = false, preference: RoutePreference = .stepFree) {
+                requiresMeasuredRampSlope: Bool = false, preference: RoutePreference = .stepFree,
+                allowsUnmappedSpace: Bool = false) {
+        self.allowsUnmappedSpace = allowsUnmappedSpace
         self.unavailable = unavailable
         self.obstacles = obstacles
         self.minimumClearance = minimumClearance
@@ -74,10 +83,13 @@ public final class RoutePlanner: Sendable {
 
     public let map: VenueMap
     public let grids: [OccupancyGrid]
+    /// The same grids, also open across unmapped space.
+    let openGrids: [OccupancyGrid]
 
     public init(map: VenueMap) {
         self.map = map
         grids = Self.clearances.map { OccupancyGrid(map: map, clearance: $0) }
+        openGrids = grids.map { $0.allowingUnmapped() }
     }
 
     /// The route to a usable access point. Step-free prefers wider passages;
@@ -86,14 +98,22 @@ public final class RoutePlanner: Sendable {
         let available = map.points.filter {
             ($0.kind == .elevator || $0.kind == .ramp) && isEligible($0, conditions: conditions)
         }
-        let grids = grids(avoiding: conditions.obstacles)
-        return bestRoute(from: start, among: available, grids: grids, conditions: conditions)
+        return bestRoute(from: start, among: available, conditions: conditions)
     }
 
     /// Routes to a selected point, including a named room, while respecting live conditions.
     public func route(from start: SIMD2<Float>, to destination: AccessPoint, conditions: RouteConditions = RouteConditions()) -> Route? {
         guard isEligible(destination, conditions: conditions) else { return nil }
-        return bestRoute(from: start, among: [destination], grids: grids(avoiding: conditions.obstacles),
+        return bestRoute(from: start, among: [destination], conditions: conditions)
+    }
+
+    /// Measured floor first; unmapped space only when that finds nothing and the conditions allow it.
+    private func bestRoute(from start: SIMD2<Float>, among points: [AccessPoint], conditions: RouteConditions) -> Route? {
+        if let route = bestRoute(from: start, among: points, grids: grids(avoiding: conditions.obstacles), conditions: conditions) {
+            return route
+        }
+        guard conditions.allowsUnmappedSpace else { return nil }
+        return bestRoute(from: start, among: points, grids: grids(avoiding: conditions.obstacles, unmapped: true),
                          conditions: conditions)
     }
 
@@ -129,13 +149,13 @@ public final class RoutePlanner: Sendable {
         conditions.requiresMeasuredRampSlope = conditions.requiresMeasuredRampSlope || route.requiresMeasuredRampSlope
         guard isEligible(route.destination, conditions: conditions),
               conditions.minimumClearance?.isFinite != false else { return nil }
-        let grids = grids(avoiding: conditions.obstacles)
+        let grids = grids(avoiding: conditions.obstacles, unmapped: route.unmappedLength > 0)
         if route.preference == .fastest {
             // A previous path happening to be wide must not prevent Fastest from
             // considering a shorter walking passage when conditions change.
             conditions.minimumClearance = max(0.3, route.requiredClearance ?? 0.3,
                                               conditions.minimumClearance ?? 0.3)
-            return bestRoute(from: start, among: [route.destination], grids: grids, conditions: conditions)
+            return bestRoute(from: start, among: [route.destination], conditions: conditions)
         }
         let minimumClearance = max(route.clearance, conditions.minimumClearance ?? route.clearance)
         conditions.minimumClearance = minimumClearance
@@ -148,11 +168,12 @@ public final class RoutePlanner: Sendable {
                                  destination: route.destination, conditions: conditions)
             }
         }
-        return bestRoute(from: start, among: [route.destination], grids: grids, conditions: conditions)
+        return bestRoute(from: start, among: [route.destination], conditions: conditions)
     }
 
-    private func grids(avoiding obstacles: [SIMD2<Float>]) -> [OccupancyGrid] {
-        obstacles.isEmpty ? grids : grids.map { $0.blocking(obstacles, radius: Self.obstacleRadius) }
+    private func grids(avoiding obstacles: [SIMD2<Float>], unmapped: Bool = false) -> [OccupancyGrid] {
+        let base = unmapped ? openGrids : grids
+        return obstacles.isEmpty ? base : base.map { $0.blocking(obstacles, radius: Self.obstacleRadius) }
     }
 
     private func isEligible(_ point: AccessPoint, conditions: RouteConditions) -> Bool {
@@ -205,6 +226,22 @@ public final class RoutePlanner: Sendable {
         let waypoints = grid.smooth(grid.path(to: goal, parents: parents).map(grid.center(of:)))
         return Route(destination: destination, waypoints: waypoints, length: Polyline.length(of: waypoints),
                      clearance: grid.clearance, level: level, goalIndex: goal, preference: conditions.preference,
-                     requiredClearance: conditions.minimumClearance, requiresMeasuredRampSlope: conditions.requiresMeasuredRampSlope)
+                     requiredClearance: conditions.minimumClearance, requiresMeasuredRampSlope: conditions.requiresMeasuredRampSlope,
+                     unmappedLength: Self.unmappedLength(of: waypoints, on: grid))
+    }
+
+    /// Meters of the path over unmapped cells, sampled every half cell.
+    private static func unmappedLength(of waypoints: [SIMD2<Float>], on grid: OccupancyGrid) -> Float {
+        let step = grid.cellSize / 2
+        var total: Float = 0
+        for (a, b) in zip(waypoints, waypoints.dropFirst()) {
+            let length = simd_distance(a, b)
+            let samples = max(1, Int((length / step).rounded(.up)))
+            for sample in 0..<samples {
+                let point = a + (b - a) * ((Float(sample) + 0.5) / Float(samples))
+                if let index = grid.index(containing: point), grid.isUnmapped(index) { total += length / Float(samples) }
+            }
+        }
+        return total
     }
 }

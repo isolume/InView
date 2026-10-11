@@ -17,6 +17,9 @@ extension OccupancyGrid {
     }
 
     private static let diagonalStep = Float(2).squareRoot()
+    /// Crossing unmapped space costs this much more than measured floor, so routes only leave
+    /// the scan where it saves a long way round or there is no other way.
+    static let unmappedStepCost: Float = 3
     private static let neighborOffsets = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 
     /// Dijkstra over free cells, or A* when a goal is given. Moves are 8-connected and never
@@ -60,7 +63,7 @@ extension OccupancyGrid {
                 guard !blocked[neighbor] else { continue }
                 let diagonal = dx != 0 && dy != 0
                 if diagonal && (blocked[y * width + nx] || blocked[ny * width + x]) { continue }
-                let next = entry.cost + (diagonal ? Self.diagonalStep : 1)
+                let next = entry.cost + (diagonal ? Self.diagonalStep : 1) * (unmapped[neighbor] ? Self.unmappedStepCost : 1)
                 if next < cost[neighbor] {
                     cost[neighbor] = next
                     if storingParents { parent[neighbor] = Int32(index) }

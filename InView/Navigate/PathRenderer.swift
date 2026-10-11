@@ -14,6 +14,7 @@ final class PathRenderer {
     private static let maxChevrons = 60
 
     private let anchor: AnchorEntity
+    private let scene: RealityKit.Scene
     private let routeRoot = Entity()
     private let obstacleRoot = Entity()
     private var stairsMarkers: [StairsMarker] = []
@@ -26,6 +27,7 @@ final class PathRenderer {
     private(set) var floorY: Float
 
     init(scene: RealityKit.Scene, map: VenueMap) {
+        self.scene = scene
         anchor = AnchorEntity(world: .zero)
         floorY = map.floorY
         chevron = ModelEntity(mesh: Self.chevronMesh(), materials: [UnlitMaterial(color: Theme.accentUIColor)])
@@ -43,6 +45,10 @@ final class PathRenderer {
             anchor.addChild(marker.entity)
         }
         scene.addAnchor(anchor)
+    }
+
+    func remove() {
+        scene.removeAnchor(anchor)
     }
 
     func show(_ route: Route) {

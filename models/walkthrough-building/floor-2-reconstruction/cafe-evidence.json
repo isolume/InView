@@ -1,0 +1,956 @@
+{
+  "coordinate_frame": "native scan XYZ meters, center_xz_m=[X,Z]; same source and projection contract as furnishings.json",
+  "objects": [
+    {
+      "id": "west-round-cafe-table",
+      "category": "round_high_table",
+      "center_xz_m": [
+        -17.655,
+        47.737
+      ],
+      "size_m": [
+        0.8,
+        1.02,
+        0.8
+      ],
+      "long_axis_xz": [
+        1.0,
+        0.0
+      ],
+      "materials": {
+        "top": "off-white",
+        "base": "silver"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.2,
+      "priority": true,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 3,
+        "samples": [
+          {
+            "xyz": [
+              -17.373,
+              -0.47,
+              47.837
+            ],
+            "depth": 2.908,
+            "confidence": 1,
+            "pixel": [
+              337,
+              617
+            ],
+            "segment": 28,
+            "pts": 3.000208
+          }
+        ]
+      },
+      "notes": "Round white standing-height table against wall. Center ray intersects horizontal plane at Y=-0.47m measured at its near edge; round silhouette and scale regularize 0.8m diameter."
+    },
+    {
+      "id": "west-wall-desk",
+      "category": "half_round_table",
+      "center_xz_m": [
+        -19.499,
+        48.278
+      ],
+      "size_m": [
+        1.1,
+        0.74,
+        0.6
+      ],
+      "long_axis_xz": [
+        -0.925,
+        0.38
+      ],
+      "materials": {
+        "top": "pale maple",
+        "base": "silver"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.28,
+      "priority": true,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -19.544,
+              -0.762,
+              48.67
+            ],
+            "depth": 3.766,
+            "confidence": 1,
+            "pixel": [
+              248,
+              798
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          },
+          {
+            "xyz": [
+              -19.874,
+              -0.72,
+              48.195
+            ],
+            "depth": 3.791,
+            "confidence": 0,
+            "pixel": [
+              386,
+              789
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          },
+          {
+            "xyz": [
+              -19.481,
+              -0.86,
+              48.057
+            ],
+            "depth": 3.391,
+            "confidence": 0,
+            "pixel": [
+              350,
+              847
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          },
+          {
+            "xyz": [
+              -18.864,
+              -0.834,
+              47.977
+            ],
+            "depth": 2.825,
+            "confidence": 1,
+            "pixel": [
+              242,
+              885
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          }
+        ]
+      },
+      "notes": "Small pale wood half-round desk/table against wall behind tall navy chair. Horizontal top depth approx Y=-0.76m, footprint regularized from visible tabletop; straight back along wall."
+    },
+    {
+      "id": "west-round-coffee-table",
+      "category": "round_coffee_table",
+      "center_xz_m": [
+        -17.942,
+        43.878
+      ],
+      "size_m": [
+        0.98,
+        0.44,
+        0.98
+      ],
+      "long_axis_xz": [
+        1.0,
+        0.0
+      ],
+      "materials": {
+        "top": "warm gray",
+        "body": "blue gray patterned textile"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.2,
+      "priority": true,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 6,
+        "samples": [
+          {
+            "xyz": [
+              -18.268,
+              -1.058,
+              43.74
+            ],
+            "depth": 2.627,
+            "confidence": 1,
+            "pixel": [
+              556,
+              854
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          },
+          {
+            "xyz": [
+              -17.991,
+              -1.087,
+              43.911
+            ],
+            "depth": 2.35,
+            "confidence": 2,
+            "pixel": [
+              626,
+              904
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          },
+          {
+            "xyz": [
+              -17.647,
+              -1.124,
+              43.918
+            ],
+            "depth": 2.18,
+            "confidence": 2,
+            "pixel": [
+              760,
+              942
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          }
+        ]
+      },
+      "notes": "Low cylindrical table centered among pale blue chairs. Center calibrated ray intersects measured horizontal tabletop. Top has possessions in evidence, omitted from model."
+    },
+    {
+      "id": "west-cafe-stool-navy",
+      "category": "high_stool",
+      "center_xz_m": [
+        -18.11,
+        47.78
+      ],
+      "size_m": [
+        0.47,
+        1.08,
+        0.53
+      ],
+      "long_axis_xz": [
+        -0.925,
+        0.38
+      ],
+      "materials": {
+        "seat_back": "navy blue",
+        "legs": "silver"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.18,
+      "priority": false,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 3,
+        "samples": [
+          {
+            "xyz": [
+              -17.865,
+              -0.714,
+              47.738
+            ],
+            "depth": 3.191,
+            "confidence": 1,
+            "pixel": [
+              473,
+              674
+            ],
+            "segment": 28,
+            "pts": 3.000208
+          },
+          {
+            "xyz": [
+              -18.109,
+              -0.757,
+              47.631
+            ],
+            "depth": 3.273,
+            "confidence": 1,
+            "pixel": [
+              543,
+              681
+            ],
+            "segment": 28,
+            "pts": 3.000208
+          },
+          {
+            "xyz": [
+              -18.336,
+              -0.763,
+              47.608
+            ],
+            "depth": 3.401,
+            "confidence": 1,
+            "pixel": [
+              590,
+              675
+            ],
+            "segment": 28,
+            "pts": 3.000208
+          }
+        ]
+      },
+      "notes": "Seat height~0.74m, narrow metal legs and footrest; back to wall."
+    },
+    {
+      "id": "west-cafe-stool-gray",
+      "category": "high_stool",
+      "center_xz_m": [
+        -16.85,
+        47.2
+      ],
+      "size_m": [
+        0.47,
+        1.08,
+        0.53
+      ],
+      "long_axis_xz": [
+        -0.925,
+        0.38
+      ],
+      "materials": {
+        "seat_back": "light gray",
+        "legs": "silver"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.25,
+      "priority": false,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 2,
+        "samples": [
+          {
+            "xyz": [
+              -16.611,
+              -0.482,
+              47.363
+            ],
+            "depth": 3.162,
+            "confidence": 1,
+            "pixel": [
+              538,
+              666
+            ],
+            "segment": 28,
+            "pts": 2.000139
+          },
+          {
+            "xyz": [
+              -16.882,
+              -0.512,
+              47.323
+            ],
+            "depth": 3.273,
+            "confidence": 1,
+            "pixel": [
+              605,
+              667
+            ],
+            "segment": 28,
+            "pts": 2.000139
+          },
+          {
+            "xyz": [
+              -16.729,
+              -0.631,
+              47.31
+            ],
+            "depth": 3.195,
+            "confidence": 1,
+            "pixel": [
+              575,
+              705
+            ],
+            "segment": 28,
+            "pts": 2.000139
+          }
+        ]
+      },
+      "notes": "Back plane measured; seat center offset slightly forward toward corridor. Seat partly hidden by bin."
+    },
+    {
+      "id": "west-swivel-chair-01",
+      "category": "swivel_lounge_chair",
+      "center_xz_m": [
+        -19.01,
+        43.29
+      ],
+      "size_m": [
+        0.76,
+        1.02,
+        0.79
+      ],
+      "long_axis_xz": [
+        0.41,
+        0.9121
+      ],
+      "materials": {
+        "shell": "pale blue gray",
+        "base": "silver"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.18,
+      "priority": false,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 6,
+        "samples": [
+          {
+            "xyz": [
+              -18.886,
+              -1.049,
+              43.223
+            ],
+            "depth": 3.371,
+            "confidence": 1,
+            "pixel": [
+              463,
+              776
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          },
+          {
+            "xyz": [
+              -19.115,
+              -0.931,
+              43.281
+            ],
+            "depth": 3.414,
+            "confidence": 1,
+            "pixel": [
+              401,
+              746
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          },
+          {
+            "xyz": [
+              -19.297,
+              -0.634,
+              43.252
+            ],
+            "depth": 3.477,
+            "confidence": 2,
+            "pixel": [
+              359,
+              667
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          }
+        ]
+      },
+      "notes": "Tall curved back and low seat, four-spoke metal swivel base. Faces toward coffee table."
+    },
+    {
+      "id": "west-swivel-chair-02",
+      "category": "swivel_lounge_chair",
+      "center_xz_m": [
+        -17.93,
+        42.57
+      ],
+      "size_m": [
+        0.76,
+        1.02,
+        0.79
+      ],
+      "long_axis_xz": [
+        0.992,
+        0.126
+      ],
+      "materials": {
+        "shell": "pale blue gray",
+        "base": "silver"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.18,
+      "priority": false,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 6,
+        "samples": [
+          {
+            "xyz": [
+              -17.878,
+              -1.103,
+              42.722
+            ],
+            "depth": 3.309,
+            "confidence": 1,
+            "pixel": [
+              767,
+              771
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          },
+          {
+            "xyz": [
+              -18.167,
+              -0.888,
+              42.494
+            ],
+            "depth": 3.607,
+            "confidence": 2,
+            "pixel": [
+              704,
+              696
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          },
+          {
+            "xyz": [
+              -18.047,
+              -0.582,
+              42.27
+            ],
+            "depth": 3.686,
+            "confidence": 2,
+            "pixel": [
+              745,
+              612
+            ],
+            "segment": 28,
+            "pts": 6.000417
+          }
+        ]
+      },
+      "notes": "Tall curved back and four-spoke metal swivel base; faces toward coffee table."
+    },
+    {
+      "id": "west-tub-chair-01",
+      "category": "tub_chair",
+      "center_xz_m": [
+        -15.29,
+        42.49
+      ],
+      "size_m": [
+        0.81,
+        0.78,
+        0.81
+      ],
+      "long_axis_xz": [
+        0.925,
+        -0.38
+      ],
+      "materials": {
+        "body": "navy blue"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.2,
+      "priority": false,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 8,
+        "samples": [
+          {
+            "xyz": [
+              -15.32,
+              -1.081,
+              42.432
+            ],
+            "depth": 2.51,
+            "confidence": 1,
+            "pixel": [
+              339,
+              817
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          },
+          {
+            "xyz": [
+              -15.094,
+              -0.966,
+              42.756
+            ],
+            "depth": 2.213,
+            "confidence": 2,
+            "pixel": [
+              432,
+              814
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          },
+          {
+            "xyz": [
+              -15.086,
+              -1.016,
+              41.963
+            ],
+            "depth": 2.984,
+            "confidence": 2,
+            "pixel": [
+              402,
+              733
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          }
+        ]
+      },
+      "notes": "Rounded upholstered club chair, solid curved arms/back. Depth centers measured seat/back; omit any belongings."
+    },
+    {
+      "id": "west-tub-chair-02",
+      "category": "tub_chair",
+      "center_xz_m": [
+        -15.94,
+        42.85
+      ],
+      "size_m": [
+        0.81,
+        0.78,
+        0.81
+      ],
+      "long_axis_xz": [
+        0.38,
+        0.925
+      ],
+      "materials": {
+        "body": "navy blue"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.26,
+      "priority": false,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 8,
+        "samples": [
+          {
+            "xyz": [
+              -15.911,
+              -1.093,
+              42.91
+            ],
+            "depth": 1.953,
+            "confidence": 0,
+            "pixel": [
+              76,
+              947
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          },
+          {
+            "xyz": [
+              -15.821,
+              -1.151,
+              42.547
+            ],
+            "depth": 2.33,
+            "confidence": 1,
+            "pixel": [
+              150,
+              886
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          },
+          {
+            "xyz": [
+              -16.063,
+              -0.964,
+              42.505
+            ],
+            "depth": 2.285,
+            "confidence": 2,
+            "pixel": [
+              43,
+              826
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          }
+        ]
+      },
+      "notes": "Second matching navy club chair partly off left of frame."
+    },
+    {
+      "id": "west-tub-chair-03",
+      "category": "tub_chair",
+      "center_xz_m": [
+        -15.23,
+        43.6
+      ],
+      "size_m": [
+        0.81,
+        0.78,
+        0.81
+      ],
+      "long_axis_xz": [
+        0.925,
+        -0.38
+      ],
+      "materials": {
+        "body": "navy blue"
+      },
+      "base": "place_on_clean_floor",
+      "uncertainty_m": 0.3,
+      "priority": false,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 8,
+        "samples": [
+          {
+            "xyz": [
+              -15.307,
+              -0.771,
+              43.897
+            ],
+            "depth": 1.038,
+            "confidence": 2,
+            "pixel": [
+              377,
+              1075
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          },
+          {
+            "xyz": [
+              -15.1,
+              -0.771,
+              43.826
+            ],
+            "depth": 1.142,
+            "confidence": 1,
+            "pixel": [
+              534,
+              1007
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          },
+          {
+            "xyz": [
+              -15.169,
+              -0.882,
+              43.915
+            ],
+            "depth": 1.07,
+            "confidence": 2,
+            "pixel": [
+              501,
+              1143
+            ],
+            "segment": 28,
+            "pts": 8.000556
+          }
+        ]
+      },
+      "notes": "Third matching navy club chair foreground; center estimated 0.3m from measured back arc toward other seats."
+    }
+  ],
+  "glazing": [
+    {
+      "id": "office-window-bank-segment26",
+      "category": "interior_glazing",
+      "endpoints_xz_m": [
+        [
+          -4.88,
+          36.48
+        ],
+        [
+          -6.61,
+          37.15
+        ]
+      ],
+      "bottom_y_m": -1.45,
+      "top_y_m": 0.65,
+      "thickness_m": 0.05,
+      "materials": {
+        "panes": "plain clear glass, subtle blue-gray",
+        "frame": "silver gray"
+      },
+      "evidence": {
+        "segment": "video-0026",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -4.865,
+              -0.191,
+              36.464
+            ],
+            "depth": 2.234,
+            "confidence": 2,
+            "pixel": [
+              506,
+              631
+            ],
+            "segment": 26,
+            "pts": 4.000282
+          },
+          {
+            "xyz": [
+              -6.608,
+              -0.236,
+              37.128
+            ],
+            "depth": 3.455,
+            "confidence": 1,
+            "pixel": [
+              861,
+              614
+            ],
+            "segment": 26,
+            "pts": 4.000282
+          },
+          {
+            "xyz": [
+              -4.863,
+              -1.392,
+              36.453
+            ],
+            "depth": 2.334,
+            "confidence": 2,
+            "pixel": [
+              510,
+              1090
+            ],
+            "segment": 26,
+            "pts": 4.000282
+          },
+          {
+            "xyz": [
+              -6.582,
+              -1.498,
+              37.136
+            ],
+            "depth": 3.57,
+            "confidence": 1,
+            "pixel": [
+              845,
+              930
+            ],
+            "segment": 26,
+            "pts": 4.000282
+          },
+          {
+            "xyz": [
+              -4.94,
+              0.622,
+              36.559
+            ],
+            "depth": 2.273,
+            "confidence": 1,
+            "pixel": [
+              517,
+              308
+            ],
+            "segment": 26,
+            "pts": 4.000282
+          },
+          {
+            "xyz": [
+              -6.624,
+              0.651,
+              37.223
+            ],
+            "depth": 3.467,
+            "confidence": 1,
+            "pixel": [
+              853,
+              384
+            ],
+            "segment": 26,
+            "pts": 4.000282
+          }
+        ]
+      },
+      "notes": "Three vertical window bays, two horizontal mullion rows; total visible width~1.86m. These endpoints are measured metal frame faces; interior behind panes should remain unmodeled/opaque haze rather than invented rooms."
+    },
+    {
+      "id": "orange-sofa-glazed-partition",
+      "category": "interior_glazing",
+      "endpoints_xz_m": [
+        [
+          -9.44,
+          38.12
+        ],
+        [
+          -8.05,
+          41.41
+        ]
+      ],
+      "bottom_y_m": -1.45,
+      "top_y_m": 1.0,
+      "thickness_m": 0.05,
+      "materials": {
+        "panes": "plain clear glass, subtle blue-gray",
+        "frame": "silver gray"
+      },
+      "evidence": {
+        "segment": "video-0027",
+        "requested_pts": 1,
+        "samples": [
+          {
+            "xyz": [
+              -9.09,
+              -0.147,
+              38.939
+            ],
+            "depth": 1.854,
+            "confidence": 1,
+            "pixel": [
+              228,
+              574
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          },
+          {
+            "xyz": [
+              -8.915,
+              -0.132,
+              39.377
+            ],
+            "depth": 2.277,
+            "confidence": 1,
+            "pixel": [
+              350,
+              554
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          },
+          {
+            "xyz": [
+              -8.046,
+              0.469,
+              41.407
+            ],
+            "depth": 4.199,
+            "confidence": 1,
+            "pixel": [
+              588,
+              400
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          },
+          {
+            "xyz": [
+              -8.591,
+              -0.948,
+              40.719
+            ],
+            "depth": 3.551,
+            "confidence": 1,
+            "pixel": [
+              586,
+              742
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          }
+        ]
+      },
+      "notes": "Clearly glazed office/intersection wall behind orange sofa. Three horizontal bands and repeated vertical mullions. Far endpoint directly on metal mullion; near endpoint extends measured mullion line 0.9m to cover observed sofa length. Match nearby RoomPlan wall then replace its center panel with glazing. Uncertainty~0.25m."
+    }
+  ],
+  "notes": "Three priority table objects plus seven optional measured chair placements. White standing tables by railing were visible but rejected here because far thin tabletop depth had no confident samples. All screens, photos, people and possessions omitted."
+}

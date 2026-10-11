@@ -33,8 +33,14 @@ extension Route {
     static let sharpTurnAngle: Float = 60
 
     /// The next corner worth announcing, if any.
-    public var nextManeuver: Maneuver? {
-        guard waypoints.count > 2 else { return nil }
+    public var nextManeuver: Maneuver? { maneuvers(limit: 1).first }
+
+    /// Every corner worth announcing, in order, for a list of directions.
+    public var maneuvers: [Maneuver] { maneuvers(limit: .max) }
+
+    private func maneuvers(limit: Int) -> [Maneuver] {
+        var found: [Maneuver] = []
+        guard waypoints.count > 2 else { return found }
         var travelled: Float = 0
         for i in 1..<(waypoints.count - 1) {
             let incoming = waypoints[i] - waypoints[i - 1]
@@ -49,8 +55,9 @@ extension Route {
             let turn: Maneuver.Turn = angle < Self.sharpTurnAngle
                 ? (isRight ? .slightRight : .slightLeft)
                 : (isRight ? .right : .left)
-            return Maneuver(turn: turn, position: waypoints[i], distance: travelled)
+            found.append(Maneuver(turn: turn, position: waypoints[i], distance: travelled))
+            if found.count == limit { break }
         }
-        return nil
+        return found
     }
 }

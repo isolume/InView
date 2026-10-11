@@ -4,12 +4,11 @@ import Combine
 import UIKit
 
 /// Samples steady camera frames during a scan, asks a vision model for elevators, ramps and stairs, pins
-/// each one in 3D by casting rays onto the scanned surfaces, and checks the model's claims against LiDAR.
+/// each one in 3D using matched-frame depth (raycasts remain a provisional fallback), and checks LiDAR evidence.
 ///
-/// A detection only counts when a raycast puts it on a scanned surface. It's confirmed once it's been seen
-/// in two frames, or in one frame with high confidence; ramps and stairs also need LiDAR to agree at least
-/// once (or many more sightings when LiDAR can't tell). Hand-marked pins count right away. Finds that never
-/// confirm are kept for the volunteer to decide on in review.
+/// Automatic confirmation requires distinct viewpoints and measured geometry; repeating a model claim
+/// never substitutes for missing depth. Copied depth belongs to the exact image sent to the model.
+/// Hand-marked pins count right away. Inconclusive finds remain for volunteer review.
 @MainActor
 final class AccessibilityDetector: ObservableObject {
     /// The frame a detection was found in, for the volunteer to check in review.
@@ -32,13 +31,17 @@ final class AccessibilityDetector: ObservableObject {
         var isManual: Bool
         /// Frames that reported it.
         var frames = 1
-        /// Frames where LiDAR agreed with the model (ramps and stairs only).
+        /// Independent frames where measured geometry supported the model's claim.
         var verifiedFrames = 0
         /// A bounded window of recent slope measurements; the median is reported.
         var slopes: [Float] = []
         var evidence: Evidence?
         /// Time of the measurement used for position, so backend pose corrections can follow it.
         var measurementTimestamp: TimeInterval?
+        var measuredStairs: StairsCheck.Measurement?
+        var lastCountedTimestamp: TimeInterval?
+        var lastCountedView: SIMD3<Float>?
+        var lastCountedDirection: SIMD3<Float>?
 
         var slopeDegrees: Float? {
             slopes.isEmpty ? nil : slopes.sorted()[slopes.count / 2]
@@ -52,12 +55,8 @@ final class AccessibilityDetector: ObservableObject {
 
         var isConfirmed: Bool {
             if isManual { return true }
-            // Every sighting sits on a LiDAR surface already; one sure look at it is enough.
-            let seenEnough = frames >= 2 || confidence >= AccessibilityDetector.highConfidence
-            switch kind {
-            case .elevator: return seenEnough
-            case .ramp, .stairs: return (seenEnough && verifiedFrames >= 1) || frames >= AccessibilityDetector.unverifiedFrames
-            }
+            // A sign, estimated plane or repeated identical frame cannot confirm an entrance.
+            return frames >= 2 && verifiedFrames >= 1
         }
 
         /// One line for the console.
@@ -123,13 +122,9 @@ final class AccessibilityDetector: ObservableObject {
     private static let minimumConfidence: Float = 0.6
     /// Stairs are a costly false alarm (they block routes), so the model must be surer.
     private static let minimumStairsConfidence: Float = 0.8
-    /// A single sighting this sure counts as confirmed (for ramps and stairs, once LiDAR agrees too).
-    nonisolated static let highConfidence: Float = 0.85
-    /// Ramps and stairs LiDAR could never check confirm after this many sightings.
-    nonisolated static let unverifiedFrames = 4
     /// Ramps are steeper than about 1:20; anything flatter is just floor. Much steeper is stairs or furniture.
     private static let plausibleRampSlope: ClosedRange<Float> = 1.5...15
-    /// Stairs the camera spots are drawn this size, starting at the bottom step: (width, depth).
+    /// Manual/review fallback marker when no visible stair extent was measured: (width, depth).
     static let spottedStairsSize = SIMD2<Float>(1.2, 1.5)
     /// A floor-plane hit further out than this is a grazing ray, not where the model pointed.
     private static let maxFloorPlaneDistance: Float = 6
@@ -139,10 +134,8 @@ final class AccessibilityDetector: ObservableObject {
     /// 4 × 4 = 16 raycasts: enough for SurfaceFit's 8-sample minimum after outliers go, a third of the old 7 × 7.
     private static let slopeSampleSpan: CGFloat = 0.08
     private static let slopeSampleSteps = 4
-    /// Stairs samples: two columns this far either side of the claimed bottom step...
-    private static let stairsSampleColumns: [CGFloat] = [-0.02, 0.02]
-    /// ...and rows from above it to well below, so stairs going up or down are both covered. 18 raycasts, was 39.
-    private static let stairsSampleRows: [CGFloat] = Array(stride(from: 0.12, through: -0.24, by: -0.045))
+    /// An independently measured floor, never the model's proposed floor position.
+    var floorElevation: ((SIMD3<Float>) -> Float?)?
 
     private let client = VisionProvider.makeDetector()
     private weak var session: ARSession?
@@ -289,6 +282,8 @@ final class AccessibilityDetector: ObservableObject {
     /// The footprint for a stairs sighting, extending from the bottom step up the stairs; nil otherwise.
     static func stairsFootprint(for sighting: Sighting) -> Footprint? {
         guard sighting.kind == .stairs else { return nil }
+        if let measured = sighting.measuredStairs?.footprint(id: sighting.id) { return measured }
+        // Only explicit manual/review confirmation may use the conservative marker footprint.
         let size = spottedStairsSize
         let bottom = SIMD2(sighting.position.x, sighting.position.z)
         // The footprint's y axis runs up the stairs.
@@ -334,7 +329,7 @@ final class AccessibilityDetector: ObservableObject {
 
     /// Copies what's needed out of the frame and lets it go before anything asynchronous starts.
     private func analyze(_ frame: ARFrame) {
-        guard let client, let snapshot = FrameEncoder.snapshot(frame.capturedImage) else { return }
+        guard let client, let sample = ScanVideoSample.copy(frame) else { return }
         let camera = CameraSnapshot(frame.camera, timestamp: frame.timestamp)
         requestsInFlight += 1
         stats.framesSent += 1
@@ -342,7 +337,9 @@ final class AccessibilityDetector: ObservableObject {
         let generation = samplingGeneration
         // This detached job owns the pixel copy and releases it as soon as encoding ends. The
         // network task below captures only its small JPEG result, never the sensor-sized buffer.
-        let encodeTask = Task.detached(priority: .utility) { FrameEncoder.encode(snapshot) }
+        let encodeTask = Task.detached(priority: .utility) {
+            (FrameEncoder.encode(sample.pixels), sample.featureDepth())
+        }
         Log.detection.info("frame \(number) sent · steady \(self.stats.steadyTicks)/\(self.stats.ticks) ticks · in flight \(self.requestsInFlight)")
         analysisTask = Task { [weak self] in
             defer {
@@ -352,7 +349,7 @@ final class AccessibilityDetector: ObservableObject {
                 }
             }
             do {
-                let encoded = await withTaskCancellationHandler {
+                let (encoded, depth) = await withTaskCancellationHandler {
                     await encodeTask.value
                 } onCancel: {
                     encodeTask.cancel()
@@ -363,7 +360,7 @@ final class AccessibilityDetector: ObservableObject {
                 let detections = try await client.detect(jpeg: encoded.jpeg)
                 try Task.checkCancellation()
                 guard self?.samplingGeneration == generation else { return }
-                await self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, preview: encoded.preview, generation: generation)
+                await self?.handle(detections, number: number, latency: Date.now.timeIntervalSince(started), camera: camera, depth: depth, preview: encoded.preview, generation: generation)
             } catch {
                 guard !Task.isCancelled, self?.samplingGeneration == generation else { return }
                 self?.stats.framesFailed += 1
@@ -375,7 +372,7 @@ final class AccessibilityDetector: ObservableObject {
 
     /// Places and checks each detection. The raycasts run on the main actor, where ARSession is known to be
     /// safe to call, so the loop yields between detections to keep the UI and ARKit callbacks moving.
-    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, preview: Data, generation: Int) async {
+    private func handle(_ detections: [VisionDetection], number: Int, latency: TimeInterval, camera: CameraSnapshot, depth: FeatureDepthGeometry?, preview: Data, generation: Int) async {
         guard isScanning, samplingGeneration == generation, !Task.isCancelled else { return }
         framesAnalyzed += 1
         stats.framesAnalyzed += 1
@@ -385,16 +382,17 @@ final class AccessibilityDetector: ObservableObject {
         // Every find from this frame shares the same JPEG-backed image, rather than retaining one
         // UIImage/JPEG object for every elevator, ramp or staircase returned by the model.
         let evidenceImage = UIImage(data: preview)
-        for (index, detection) in detections.enumerated() {
+        for (index, detection) in detections.prefix(16).enumerated() {
             if index > 0 { await Task.yield() }
             guard isScanning, samplingGeneration == generation, !Task.isCancelled, let session else { return }
             Log.detection.info("  \(detection.kind.rawValue, privacy: .public) '\(detection.name, privacy: .public)' \(String(format: "%.2f", detection.confidence), privacy: .public) at (\(String(format: "%.2f, %.2f", detection.target.x, detection.target.y), privacy: .public))")
-            guard detection.confidence >= Self.minimumConfidence else {
+            guard detection.isValid, detection.confidence >= Self.minimumConfidence else {
                 Log.detection.info("    skipped: below minimum confidence")
                 continue
             }
             let target = FrameEncoder.capturedImagePoint(fromPortrait: detection.target)
-            guard let position = locate(target, camera: camera, in: session) else {
+            let measuredTarget = depth?.target(at: SIMD2(Float(target.x), Float(target.y)))
+            guard let position = measuredTarget ?? locate(target, camera: camera, in: session) else {
                 // A guessed position would never line up with the next sighting, so it could never confirm.
                 stats.unplacedDetections += 1
                 Log.detection.info("    dropped: no raycast hit, so it can't be placed")
@@ -402,9 +400,16 @@ final class AccessibilityDetector: ObservableObject {
             }
             var verified = false
             var slope: Float?
+            var stairsMeasurement: StairsCheck.Measurement?
             switch detection.kind {
             case .elevator:
-                break
+                guard detection.elevatorEvidence != .signOnly, detection.elevatorEvidence != .panelOnly else { continue }
+                // A doorway plus a call panel/indicator is stronger semantic evidence than a metal door.
+                // The target must also lie on an independently observed floor, not on the door leaf.
+                if detection.elevatorEvidence == .doorAndPanel, measuredTarget != nil,
+                   let floor = floorElevation?(position), abs(position.y - floor) <= 0.2 {
+                    verified = true
+                }
             case .ramp:
                 slope = await measureSlopeInBatches(around: FrameEncoder.capturedImagePoint(fromPortrait: detection.surface), camera: camera, in: session)
                 guard !Task.isCancelled, samplingGeneration == generation else { return }
@@ -421,16 +426,20 @@ final class AccessibilityDetector: ObservableObject {
                     Log.detection.info("    skipped: below minimum stairs confidence")
                     continue
                 }
-                let verdict = await checkStairs(around: detection.target, camera: camera, in: session)
-                guard !Task.isCancelled, samplingGeneration == generation else { return }
-                switch verdict {
+                let assessment: StairsCheck.Assessment
+                if let depth, let box = detection.bounds {
+                    let samples = depth.samples(portraitBox: SIMD4(Float(box.minX), Float(box.minY), Float(box.width), Float(box.height)))
+                    assessment = StairsCheck.assess(samples, viewer: camera.transform.translation)
+                } else { assessment = StairsCheck.Assessment(verdict: .inconclusive, measurement: nil) }
+                stairsMeasurement = assessment.measurement
+                switch assessment.verdict {
                 case .notStairs:
                     rejectedClaims += 1
                     stats.stairsRejected += 1
                     Log.detection.info("    rejected: LiDAR says not stairs")
                     continue
                 case .stairs:
-                    verified = true
+                    verified = measuredTarget != nil && stairsMeasurement?.footprint() != nil
                     stats.stairsVerified += 1
                 case .inconclusive:
                     stats.stairsInconclusive += 1
@@ -445,35 +454,13 @@ final class AccessibilityDetector: ObservableObject {
                 isManual: false,
                 verified: verified,
                 slope: slope,
-                evidence: evidenceImage.map { Evidence(image: $0, point: detection.target) }
+                evidence: evidenceImage.map { Evidence(image: $0, point: detection.target) },
+                measuredStairs: stairsMeasurement
             )
         }
     }
 
     // MARK: Geometry
-
-    /// Raycasts a strip of the image around the claimed stairs, above and below the bottom step so stairs
-    /// going up or down are both covered, and asks whether the surface there climbs like stairs.
-    private func checkStairs(around portraitPoint: CGPoint, camera: CameraSnapshot, in session: ARSession) async -> StairsCheck.Verdict {
-        var samples: [SIMD3<Float>] = []
-        var casts = 0
-        for column in Self.stairsSampleColumns {
-            for row in Self.stairsSampleRows {
-                if casts > 0 && casts.isMultiple(of: 4) {
-                    await Task.yield()
-                    guard !Task.isCancelled else { return .inconclusive }
-                }
-                let point = CGPoint(x: min(1, max(0, portraitPoint.x + column)), y: min(1, max(0, portraitPoint.y + row)))
-                if let hit = hit(FrameEncoder.capturedImagePoint(fromPortrait: point), camera: camera, in: session) {
-                    samples.append(hit)
-                }
-                casts += 1
-            }
-        }
-        let verdict = StairsCheck.classify(samples, viewer: camera.transform.translation)
-        Log.detection.info("    stairs check: \(samples.count) of \(casts) raycasts hit → \(String(describing: verdict), privacy: .public)")
-        return verdict
-    }
 
     /// Casts a ray through a captured-image point onto the scanned surfaces. When the mesh there is still
     /// patchy, the floor planes ARKit has found, extended, catch points on the floor. Nil when nothing does.
@@ -553,7 +540,7 @@ final class AccessibilityDetector: ObservableObject {
     /// point at any of the lower steps, so they merge from further away.
     private static func mergeDistance(for kind: VisionDetection.Kind) -> Float {
         switch kind {
-        case .elevator: 2
+        case .elevator: 0.65
         case .ramp: 2.5
         case .stairs: 3
         }
@@ -570,7 +557,8 @@ final class AccessibilityDetector: ObservableObject {
         isManual: Bool,
         verified: Bool,
         slope: Float?,
-        evidence: Evidence?
+        evidence: Evidence?,
+        measuredStairs: StairsCheck.Measurement? = nil
     ) -> UUID {
         let floor = SIMD2(position.x, position.z)
         let away = floor - SIMD2(camera.transform.translation.x, camera.transform.translation.z)
@@ -585,6 +573,10 @@ final class AccessibilityDetector: ObservableObject {
         guard let match else {
             var sighting = Sighting(kind: kind, name: name, position: position, facing: facing, confidence: confidence, isManual: isManual)
             sighting.measurementTimestamp = camera.timestamp
+            sighting.measuredStairs = measuredStairs
+            sighting.lastCountedTimestamp = camera.timestamp
+            sighting.lastCountedView = camera.transform.translation
+            sighting.lastCountedDirection = -SIMD3(camera.transform.columns.2.x, camera.transform.columns.2.y, camera.transform.columns.2.z)
             sighting.verifiedFrames = verified ? 1 : 0
             if let slope { sighting.addSlope(slope) }
             sighting.evidence = evidence
@@ -609,13 +601,30 @@ final class AccessibilityDetector: ObservableObject {
                     sighting.measurementTimestamp = camera.timestamp
                 }
             } else {
-                sighting.position += (position - sighting.position) / Float(sighting.frames + 1)
+                if confidence >= sighting.confidence {
+                    sighting.position = position
+                    sighting.measurementTimestamp = camera.timestamp
+                }
             }
         }
         let blended = sighting.facing * Float(sighting.frames) + facing
         if simd_length(blended) > 1e-3 { sighting.facing = simd_normalize(blended) }
-        sighting.frames += 1
-        if verified { sighting.verifiedFrames += 1 }
+        let direction = -SIMD3(camera.transform.columns.2.x, camera.transform.columns.2.y, camera.transform.columns.2.z)
+        if let time = camera.timestamp, let previousTime = sighting.lastCountedTimestamp,
+           let previous = sighting.lastCountedView, let previousDirection = sighting.lastCountedDirection,
+           FeatureConfirmation.isNewView(position: camera.transform.translation, direction: direction, timestamp: time,
+                                         previousPosition: previous, previousDirection: previousDirection, previousTimestamp: previousTime) {
+            sighting.frames += 1
+            sighting.lastCountedTimestamp = time
+            sighting.lastCountedView = camera.transform.translation
+            sighting.lastCountedDirection = direction
+            if verified { sighting.verifiedFrames += 1 }
+        }
+        if let measuredStairs, measuredStairs.footprint() != nil,
+           sighting.measuredStairs?.footprint() == nil
+            || measuredStairs.treadCount >= (sighting.measuredStairs?.treadCount ?? 0) {
+            sighting.measuredStairs = measuredStairs
+        }
         if let slope { sighting.addSlope(slope) }
         if let evidence, isManual || confidence >= sighting.confidence || sighting.evidence == nil {
             sighting.evidence = evidence
@@ -656,5 +665,28 @@ struct CameraSnapshot {
         let local = SIMD4<Float>((px - cx) / fx, -(py - cy) / fy, -1, 0)
         let world = transform * local
         return (transform.translation, simd_normalize(SIMD3(world.x, world.y, world.z)))
+    }
+}
+
+private extension ScanVideoSample {
+    /// Decoded off the main actor; the network request retains only this small calibrated depth,
+    /// JPEG bytes and the original pose, never an ARFrame or sensor-sized image buffer.
+    func featureDepth() -> FeatureDepthGeometry? {
+        guard let depth, let confidence, let stride = confidenceBytesPerRow,
+              depthWidth > 0, depthHeight > 0 else { return nil }
+        var values: [Float?] = []
+        var quality: [Int] = []
+        depth.withUnsafeBytes { bytes in
+            confidence.withUnsafeBytes { confidenceBytes in
+                for row in 0..<depthHeight { for column in 0..<depthWidth {
+                    let value = bytes.loadUnaligned(fromByteOffset: row * depthBytesPerRow + column * 4, as: Float.self)
+                    values.append(value.isFinite && value > 0 ? value : nil)
+                    quality.append(Int(confidenceBytes.load(fromByteOffset: row * stride + column, as: UInt8.self)))
+                } }
+            }
+        }
+        return FeatureDepthGeometry(CaptureDepthFrame(id: "detection", timestampSeconds: timestamp,
+            mapFromCamera: mapFromCamera, camera: camera,
+            depth: CaptureDepthImage(width: depthWidth, height: depthHeight, valuesM: values, confidence: quality)))
     }
 }

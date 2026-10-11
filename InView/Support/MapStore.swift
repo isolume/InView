@@ -50,6 +50,51 @@ enum MapStore {
         }
     }
 
+    /// A saved floor's map, whether or not it's the one selected, for listing what each floor holds.
+    static func map(for floor: SavedFloor) -> VenueMap? {
+        let location = floorDirectory(identity: floor.identity, storageID: floor.storageID)
+        guard let data = try? Data(contentsOf: location.appending(path: "venue-map.json")) else { return nil }
+        return try? decoder.decode(VenueMap.self, from: data)
+    }
+
+    /// Deletes a saved floor and every earlier version of it from this device: its map, places,
+    /// 3D scan and live-location data. Raw scan recordings stay, for uploading.
+    /// When it was open, the building's lowest remaining floor opens, or the app's own map.
+    static func deleteFloor(buildingID: UUID, floorID: UUID) throws {
+        try publicationLock.withLock {
+            var registry = try readRegistry()
+            let removed = try registry.removeFloor(buildingID: buildingID, floorID: floorID)
+            // The registry no longer points at the files before they go, so a failure leaves no broken map.
+            try encoder.encode(registry).write(to: registryURL, options: .atomic)
+            deleteFiles(of: [removed])
+        }
+        notifySelectionChanged()
+    }
+
+    /// Deletes a saved building and all of its floors from this device.
+    static func deleteBuilding(_ buildingID: UUID) throws {
+        try publicationLock.withLock {
+            var registry = try readRegistry()
+            let removed = try registry.removeBuilding(buildingID)
+            try encoder.encode(registry).write(to: registryURL, options: .atomic)
+            deleteFiles(of: removed)
+            try? FileManager.default.removeItem(at: buildingsDirectory.appending(path: buildingID.uuidString, directoryHint: .isDirectory))
+        }
+        notifySelectionChanged()
+    }
+
+    private static func deleteFiles(of floors: [SavedFloor]) {
+        for floor in floors {
+            for version in floor.allVersions {
+                try? FileManager.default.removeItem(at: floorDirectory(identity: floor.identity, storageID: version.storageID))
+            }
+            let floorFolder = buildingsDirectory
+                .appending(path: floor.identity.buildingID.uuidString, directoryHint: .isDirectory)
+                .appending(path: floor.identity.id.uuidString, directoryHint: .isDirectory)
+            try? FileManager.default.removeItem(at: floorFolder)
+        }
+    }
+
     /// Map browsing is independent of the optional assets needed for live AR positioning.
     static func load() -> VenueMap? {
         let selected = selectedDirectory
@@ -87,6 +132,19 @@ enum MapStore {
     static func loadWorldMap() -> ARWorldMap? {
         guard let data = try? Data(contentsOf: worldMapURL) else { return nil }
         return try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data)
+    }
+
+    /// Replaces a saved floor's world map with the navigation session's, which also learned today's
+    /// lighting and viewpoints, so finding the rider there next time is quicker. Skipped when the
+    /// selected floor changed since `source` was loaded.
+    static func refreshWorldMap(_ worldMap: ARWorldMap, matching source: PlaceEditSource) {
+        guard let storageID = source.storageID,
+              let data = try? NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: true) else { return }
+        publicationLock.withLock {
+            guard let selected = resolvedSelection(), selected.floor.storageID == storageID,
+                  selected.directory == source.directory else { return }
+            try? data.write(to: source.directory.appending(path: "venue.arworldmap"), options: .atomic)
+        }
     }
 
     static func loadStartView() -> UIImage? {

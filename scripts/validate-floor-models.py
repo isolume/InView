@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Validate standalone floor GLBs, their combined export, and the offline viewer.
 
-Requires NumPy. The default paths validate the current InView Floor 2 scan model
-and retained Floor 3 video model; no assumption is made that both share provenance.
+Requires NumPy. The layout provenance selects either the original Floor 2 scan
+polygons or the video/LiDAR reconstruction, alongside the retained Floor 3 model.
 Only the validation JSON is written. All model and archive files are read-only.
 """
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 import hashlib
+from itertools import permutations
 import json
 import math
 from pathlib import Path
@@ -23,6 +24,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / "models/walkthrough-building/floors-2-3"
 DEFAULT_ARCHIVE = ROOT / "models/walkthrough-building/floors-2-3-video.zip"
+APP_RESOURCES = ROOT / "InView/Resources/StudentCenter"
 COMPONENTS = {5120: (np.dtype("i1"), 1), 5121: (np.dtype("u1"), 1),
               5122: (np.dtype("<i2"), 2), 5123: (np.dtype("<u2"), 2),
               5125: (np.dtype("<u4"), 4), 5126: (np.dtype("<f4"), 4)}
@@ -500,6 +502,163 @@ def floor_area_retention(model, source_path, original_path, projection_path):
             "comparison": "Sum each source polygon separately, including old overlaps; do not union source coverage"}
 
 
+def triangle_intersection_area(first, second):
+    """Clip a triangle against another convex triangle, accepting shared edges."""
+    def cross(a, b): return float(a[0]*b[1] - a[1]*b[0])
+    orientation = 1 if cross(second[1]-second[0], second[2]-second[0]) > 0 else -1
+    clipped = list(first)
+    for a, b in zip(second, np.roll(second, -1, axis=0)):
+        if not clipped: return 0.0
+        output = []
+        previous = clipped[-1]; before = orientation * cross(b-a, previous-a)
+        for point in clipped:
+            after = orientation * cross(b-a, point-a)
+            if (after >= 0) != (before >= 0):
+                output.append(previous + (point-previous) * before / (before-after))
+            if after >= 0: output.append(point)
+            previous, before = point, after
+        clipped = output
+    return polygon_area(clipped) if len(clipped) >= 3 else 0.0
+
+
+def reconstructed_floor_check(model, source_path, layout, manifest_path, registration_path, resource_directory=APP_RESOURCES):
+    """Verify the clean display union against physical scan-space triangles."""
+    source_bytes = source_path.read_bytes(); source = json.loads(source_bytes)
+    manifest = json.loads(manifest_path.read_bytes()); registration = json.loads(registration_path.read_bytes())
+    errors = []
+    if layout["floor_2_source"]["reconstruction_sha256"] != sha(source_bytes):
+        errors.append("The exported layout does not identify this reconstruction source hash")
+    preserved = {}
+    for key, name in (("routing_map_sha256", "student-center-east-floor-2.json"),
+                      ("scan_scene_sha256", "student-center-east-floor-2-scene.json")):
+        current = sha((resource_directory/name).read_bytes())
+        require(isinstance(manifest.get(key), str) and re.fullmatch(r"[a-f0-9]{64}", manifest[key]), f"Invalid {key} in reconstruction manifest")
+        preserved[name] = {"expected_sha256": manifest[key], "current_sha256": current, "unchanged": current == manifest[key]}
+        if current != manifest[key]: errors.append(f"Preserved {name} differs from the reconstruction manifest")
+    original = json.loads((resource_directory/"student-center-east-floor-2.json").read_bytes())
+    ids = ("0252CB01-29DC-4136-8A98-AB2076782D1E", "457D4F40-982C-48BA-854F-F35DCF158A80")
+    anchors = []
+    for identifier in ids:
+        matches = [p for p in original["points"] if p["id"] == identifier and p["kind"] == "elevator"]
+        require(len(matches) == 1, f"The preserved map needs exactly one elevator anchor {identifier}")
+        position = finite_array(matches[0]["position"], (3,), "Elevator anchor")
+        anchors.append(position[[0, 2]])
+    delta = anchors[1]-anchors[0]; scale = float(np.linalg.norm(delta))/2.37
+    require(0.5 <= scale <= 2, "Elevator-derived model-to-map scale is invalid")
+    angle = math.atan2(delta[1], delta[0]); c, s = math.cos(angle), math.sin(angle)
+    model_rotation = np.array([[c, -s], [s, c]])
+    model_translation = anchors[0] - scale * (model_rotation @ np.array([-1.30, 8.82]))
+    axis = finite_array(source["principal_axis_matrix"], (2, 2), "Principal axis matrix")
+    require(np.allclose(axis @ axis.T, np.eye(2), atol=1e-6, rtol=0) and abs(np.linalg.det(axis)-1) <= 1e-6,
+            "Principal axes must be a rotation, without reflection or scale")
+    theta = float(registration["horizontal_rotation_radians"])
+    require(math.isfinite(theta) and registration.get("uniform_scale") == 1, "Scan registration must use a finite yaw and preserve physical scale")
+    c, s = math.cos(theta), math.sin(theta); scan_rotation = np.array([[c, -s], [s, c]])
+    scan_translation = finite_array(registration["translation_xz_m"], (2,), "Scan registration translation")
+    vertical = float(registration["vertical_translation_m"])
+    require(math.isfinite(vertical), "Scan registration vertical translation is invalid")
+    require(abs(float(registration["source_native_floor_y_m"])+vertical-float(original["floorY"])) <= 1e-5,
+            "Scan registration does not place its native floor at the preserved map floor")
+
+    floors = source["floors"]
+    require(isinstance(floors, list) and 0 < len(floors) <= 1000, "Reconstruction needs a bounded list of display floors")
+    require(all(isinstance(f.get("id"), str) and f["id"] for f in floors), "Every display floor needs a source ID")
+    require(len({f["id"] for f in floors}) == len(floors), "Reconstruction repeats display floor IDs")
+    objects = defaultdict(list)
+    for obj in model.world_objects: objects[obj["name"]].append(obj)
+    geometry_tolerance = 1e-4
+    reports = []; all_source_triangles = []; total_declared = total_exported = 0.0
+    for floor in floors:
+        identifier = floor["id"]; vertices = finite_array(floor["vertices_uv"], (len(floor["vertices_uv"]), 2), "Source floor vertices")
+        raw_indices = floor["triangles"]
+        require(isinstance(raw_indices, list) and raw_indices and all(isinstance(t, list) and len(t) == 3 and all(type(i) is int for i in t) for t in raw_indices),
+                f"Floor {identifier} source triangle indices are invalid")
+        indices = np.asarray(raw_indices, dtype=np.int64)
+        require(indices.min() >= 0 and indices.max() < len(vertices), f"Floor {identifier} triangle index is out of range")
+        source_triangles = vertices[indices]
+        edges_a, edges_b = source_triangles[:,1]-source_triangles[:,0], source_triangles[:,2]-source_triangles[:,0]
+        areas = abs(edges_a[:,0]*edges_b[:,1]-edges_a[:,1]*edges_b[:,0])/2
+        require(np.all(areas > 1e-10), f"Floor {identifier} source has degenerate triangles")
+        area = float(floor["area_m2"]); require(math.isfinite(area) and area > 0, f"Floor {identifier} declared area is invalid")
+        tolerance = max(1e-4, area*1e-6)
+        outline_area = polygon_area(floor["outer_uv"]) - sum(polygon_area(hole) for hole in floor.get("holes_uv", []))
+        triangle_area = float(areas.sum())
+        if abs(outline_area-area) > tolerance: errors.append(f"Floor {identifier} outer-minus-hole area differs from its declared area")
+        if abs(triangle_area-area) > tolerance: errors.append(f"Floor {identifier} source triangle area differs from its declared area")
+        # Centroids must stay in the outer ring and outside holes. Pairwise
+        # intersection below also rejects duplicate or overlapping triangles.
+        for center in source_triangles.mean(axis=1):
+            if not point_in_polygon(center, floor["outer_uv"], tolerance=1e-8) or any(point_in_polygon(center, hole, tolerance=1e-8) for hole in floor.get("holes_uv", [])):
+                errors.append(f"Floor {identifier} has a source triangle outside its floor outline or inside a hole"); break
+        all_source_triangles.extend(source_triangles)
+        matches = objects.get(f"Floor 2 · {identifier}", [])
+        require(len(matches) == 1, f"Floor {identifier} needs exactly one named exported mesh")
+        obj = matches[0]
+        require(obj["floor"] == 2, f"Floor {identifier} has incorrect floor metadata")
+        if obj["extras"].get("routing_coverage") is not False: errors.append(f"Floor {identifier} must be labeled display-only, with routing_coverage=false")
+        top = []
+        for primitive in obj["primitives"]:
+            points = primitive["positions"][primitive["triangles"]]
+            normals = np.cross(points[:,1]-points[:,0], points[:,2]-points[:,0])
+            horizontal = np.ptp(points[:,:,1], axis=1) <= 1e-6
+            top.extend(points[horizontal & (normals[:,1] > 0)])
+        require(top, f"Floor {identifier} has no upward horizontal exported triangles")
+        top = np.asarray(top); exported_area = float(np.cross(top[:,1]-top[:,0], top[:,2]-top[:,0])[:,1].sum())/2*scale*scale
+        if abs(exported_area-area) > tolerance: errors.append(f"Floor {identifier} exported area differs from its source by {abs(exported_area-area):.9g} m2")
+        map_points = top[:,:,[0,2]] @ model_rotation.T * scale + model_translation
+        source_points = (map_points-scan_translation) @ scan_rotation
+        uv = source_points @ axis.T
+        maximum = 0.0; matched = set()
+        if len(uv) != len(source_triangles): errors.append(f"Floor {identifier} exported top triangle count differs from the reconstruction")
+        else:
+            centers = source_triangles.mean(axis=1)
+            for triangle in uv:
+                candidates = np.flatnonzero(np.linalg.norm(centers-triangle.mean(axis=0), axis=1) <= geometry_tolerance)
+                best = None
+                for index in candidates:
+                    if int(index) in matched: continue
+                    difference = min(float(np.max(abs(triangle-source_triangles[index][list(order)]))) for order in permutations(range(3)))
+                    if best is None or difference < best[0]: best = (difference, int(index))
+                if best is None or best[0] > geometry_tolerance:
+                    errors.append(f"Floor {identifier} exported top triangle does not match its scan-space reconstruction"); break
+                maximum = max(maximum, best[0]); matched.add(best[1])
+        total_declared += area; total_exported += exported_area
+        reports.append({"id": identifier, "declared_area_m2": area, "outline_area_m2": outline_area,
+                        "source_triangle_area_m2": triangle_area, "exported_top_area_m2": exported_area,
+                        "source_triangles": len(source_triangles), "exported_top_triangles": len(top),
+                        "matched_triangles": len(matched), "maximum_triangle_coordinate_difference_m": maximum,
+                        "area_tolerance_m2": tolerance})
+    # A clean union has no positive-area triangle intersections, including
+    # intersections between different source floor pieces. Boundary contact is OK.
+    all_triangles = np.asarray(all_source_triangles); lower = all_triangles.min(axis=1); upper = all_triangles.max(axis=1)
+    overlaps = 0; maximum_overlap = 0.0
+    for index, triangle in enumerate(all_triangles):
+        candidates = np.flatnonzero(np.all(lower[index+1:] < upper[index]-1e-9, axis=1) & np.all(upper[index+1:] > lower[index]+1e-9, axis=1))+index+1
+        for other in candidates:
+            overlap = triangle_intersection_area(triangle, all_triangles[other])
+            if overlap > 1e-8: overlaps += 1; maximum_overlap = max(maximum_overlap, overlap)
+    if overlaps: errors.append(f"Reconstruction contains {overlaps} overlapping floor triangle pairs (maximum {maximum_overlap:.9g} m2)")
+    return {"passed": not errors, "errors": errors, "mode": "video_lidar_reconstruction", "source_file": source_path.name,
+            "source_sha256": sha(source_bytes), "registration_sha256": sha(registration_path.read_bytes()),
+            "manifest_sha256": sha(manifest_path.read_bytes()), "preserved_resources": preserved,
+            "model_to_map_scale_from_elevators": scale, "scan_registration_scale": registration["uniform_scale"],
+            "source_display_floor_regions": len(floors), "source_area_sum_m2": total_declared,
+            "exported_top_area_sum_m2": total_exported, "overlapping_triangle_pairs": overlaps,
+            "maximum_overlap_m2": maximum_overlap, "triangle_coordinate_tolerance_m": geometry_tolerance,
+            "floors": reports}
+
+
+def app_resource_check(directory, resource_directory=APP_RESOURCES):
+    errors, files = [], []
+    pairs = [(f"floor-{floor}.{extension}", f"student-center-east-floor-{floor}-model.{extension}")
+             for floor in (2, 3) for extension in ("usdz", "png")]
+    for source, target in pairs + [("layout.json", "student-center-east-model-layout.json")]:
+        exported = sha((directory/source).read_bytes()); bundled = sha((resource_directory/target).read_bytes())
+        files.append({"export": source, "app_resource": target, "export_sha256": exported, "app_sha256": bundled, "matches": exported == bundled})
+        if exported != bundled: errors.append(f"Bundled {target} does not match exported {source}")
+    return {"passed": not errors, "errors": errors, "files": files}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, default=DEFAULT_DIR)
@@ -508,13 +667,27 @@ def main():
     parser.add_argument("--floor-source", type=Path)
     parser.add_argument("--original-map", type=Path)
     parser.add_argument("--registered-projection", type=Path)
+    parser.add_argument("--check-app-resources", action="store_true", help="Also require copied app USDZ, preview and layout to match exports")
     args = parser.parse_args(); directory = args.directory.resolve(); archive = args.archive.resolve()
     output = args.output or directory / "glb-validation.json"
-    floor_source = args.floor_source or directory / "illustration-floors.json"
+    layout_path = directory / "layout.json"
+    layout = json.loads(layout_path.read_bytes())
+    reconstruction_mode = "reconstruction_sha256" in layout.get("floor_2_source", {})
+    reconstruction_directory = directory.parent / "floor-2-reconstruction"
+    floor_source = args.floor_source or (reconstruction_directory / "reconstruction.json" if reconstruction_mode else directory / "illustration-floors.json")
     original_map = args.original_map or directory.parent / "floor-2-evidence/original-floor-2.json"
     registered_projection = args.registered_projection or directory.parent / "floor-2-evidence/registered-projection.json"
     input_paths = [directory/name for name in ("building.glb", "floor-2.glb", "floor-3.glb", "viewer-scene.json", "floor-3.usdz", "floor-3.png", "floor-3-plan.png")] + [archive]
-    input_paths.extend([floor_source, original_map, registered_projection])
+    input_paths.extend([floor_source, layout_path])
+    manifest_path = floor_source.parent / "manifest.json"
+    registration_path = floor_source.parent / "registration.json"
+    if reconstruction_mode:
+        input_paths.extend([manifest_path, registration_path, APP_RESOURCES/"student-center-east-floor-2.json", APP_RESOURCES/"student-center-east-floor-2-scene.json"])
+    else: input_paths.extend([original_map, registered_projection])
+    if args.check_app_resources:
+        input_paths.extend(directory/name for name in ("floor-2.usdz", "floor-2.png"))
+        input_paths.extend(APP_RESOURCES/f"student-center-east-floor-{floor}-model.{extension}" for floor in (2, 3) for extension in ("usdz", "png"))
+        input_paths.append(APP_RESOURCES/"student-center-east-model-layout.json")
     initial_hashes = {str(p):sha(p.read_bytes()) for p in input_paths}
     models = {name: GLB(directory / (name + ".glb")).validate() for name in ("building", "floor-2", "floor-3")}
     errors = [f"{name}.glb: {error}" for name, model in models.items() for error in model.report["errors"]]
@@ -526,8 +699,13 @@ def main():
     except (ValueError,IndexError,KeyError,TypeError) as exc: scene = {}; comparisons["viewer_comparison"] = {"passed":False,"errors":[str(exc)]}
     try: comparisons["retained_floor_3"] = retained_floor_check(directory, archive, scene)
     except (ValueError,IndexError,KeyError,TypeError,zipfile.BadZipFile) as exc: comparisons["retained_floor_3"] = {"passed":False,"errors":[str(exc)]}
-    try: comparisons["floor_2_display_area_retention"] = floor_area_retention(models["floor-2"],floor_source,original_map,registered_projection)
-    except (ValueError,IndexError,KeyError,TypeError) as exc: comparisons["floor_2_display_area_retention"] = {"passed":False,"errors":[str(exc)]}
+    floor_check_name = "floor_2_reconstruction" if reconstruction_mode else "floor_2_display_area_retention"
+    try:
+        comparisons[floor_check_name] = reconstructed_floor_check(models["floor-2"], floor_source, layout, manifest_path, registration_path) if reconstruction_mode else floor_area_retention(models["floor-2"], floor_source, original_map, registered_projection)
+    except (ValueError,IndexError,KeyError,TypeError) as exc: comparisons[floor_check_name] = {"passed":False,"errors":[str(exc)]}
+    if args.check_app_resources:
+        try: comparisons["app_resources"] = app_resource_check(directory)
+        except (OSError,ValueError,KeyError,TypeError) as exc: comparisons["app_resources"] = {"passed":False,"errors":[str(exc)]}
     for name, comparison in comparisons.items(): errors.extend(f"{name}: {e}" for e in comparison["errors"])
     changed = [str(p) for p in input_paths if initial_hashes[str(p)] != sha(p.read_bytes())]
     if changed: errors.append("Validation inputs changed during the run: " + ", ".join(changed))
@@ -536,10 +714,11 @@ def main():
                          "Index bounds and vertex attribute counts", "Unit local and world normals", "No local/world degenerate triangles",
                          "Scene graph references, cycles and finite transforms", "Standalone floor world triangles match combined export by floor/name identity",
                          "Viewer triangle counts and world bounds agree within five-decimal serialization tolerance",
-                         "Floor 2 upward display floor triangle area retains all source polygons, including overlapping old measured floors",
+                         ("Floor 2 display-only floor union has no overlapping triangles; exported top triangles and physical areas match its reconstruction; saved routing map and scan scene retain their hashes" if reconstruction_mode else "Floor 2 upward display floor triangle area retains all source polygons, including overlapping old measured floors"),
                          "Retained Floor 3 GLB/USDZ/PNGs and viewer geometry match archived video assets", "Input hashes unchanged during validation"],
               "files": [models[name].report for name in ("building","floor-2","floor-3")], **comparisons,
               "source_hashes_unchanged_during_validation": not changed}
+    if args.check_app_resources: report["checks"].append("Bundled Floor 2 and Floor 3 USDZs and PNGs, and model layout, match exported assets")
     output.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n")
     print(json.dumps({"passed": report["passed"], "errors": errors[:20], "error_count": len(errors),
                       "output": str(output), "mesh_nodes": {name:model.report["counts"].get("mesh_nodes") for name,model in models.items()},
