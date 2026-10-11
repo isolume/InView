@@ -16,7 +16,7 @@ GPS stops at the front door. Inside, signs are written for people who can see th
 3. **Find yourself.** The phone recognizes the space from the saved scan, with no QR codes or beacons.
 4. **Get there.** AR arrows, a 2D or 3D map, and voice guide you to the door. Anyone can tag a sign they pass, so the map improves with each visit.
 
-The app opens on a 3D map of Georgia State's Student Center East (Floors 2 and 3).
+The app opens on your saved map, or offers to map a building or run the demo.
 
 ## Setup
 
