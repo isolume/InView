@@ -1,4 +1,5 @@
 import AccessCore
+import ARKit
 import AVFoundation
 import CoreVideo
 import XCTest
@@ -12,6 +13,150 @@ final class ScanVideoCaptureTests: XCTestCase {
         XCTAssertEqual(dimensions.0, 1260)
         XCTAssertEqual(dimensions.1, 714)
         XCTAssertEqual(Double(dimensions.0) / 1920, Double(dimensions.1) / 1088, accuracy: 0.000001)
+    }
+
+    @MainActor
+    func testEnabledRecordingWithoutCameraFramesKeepsADiagnosticAndNeverClaimsRecording() async throws {
+        let id = UUID()
+        let folder = try CaptureStore.captureDirectory(for: id.uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let recording = ScanVideoCapture()
+        var statuses: [String] = []
+        recording.onStatus = { statuses.append($0) }
+        let session = ARSession() // No camera session is run on the Simulator.
+        try recording.start(session: session, captureID: id, floor: nil)
+        await recording.finish()
+        XCTAssertFalse(statuses.contains("Recording video"))
+        XCTAssertEqual(statuses.last, "No video frames saved")
+        let manifest = try JSONDecoder().decode(ScanVideoManifest.self,
+            from: Data(contentsOf: folder.appending(path: "video-manifest.json")))
+        try manifest.validate()
+        XCTAssertEqual(manifest.status, "partial")
+        XCTAssertEqual(manifest.stopReason, "camera_unavailable")
+        XCTAssertTrue(manifest.segments.isEmpty)
+    }
+
+    func testNativeCameraPixelsKeepPoseWhenDepthIsUnavailable() throws {
+        let copied = try nativeSample(at: 100, hasDepth: false)
+        XCTAssertNil(copied.depth)
+        XCTAssertNil(copied.confidence)
+        XCTAssertEqual(copied.mapFromCamera, identity)
+        XCTAssertEqual(copied.camera.imageWidth, 64)
+        XCTAssertEqual(copied.camera.imageHeight, 48)
+        XCTAssertEqual(copied.timestamp, 100)
+    }
+
+    private func nativeSample(at timestamp: Double, hasDepth: Bool) throws -> ScanVideoSample {
+        var image: CVPixelBuffer?
+        XCTAssertEqual(CVPixelBufferCreate(nil, 64, 48, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &image), kCVReturnSuccess)
+        let cameraImage = try XCTUnwrap(image)
+        CVPixelBufferLockBaseAddress(cameraImage, [])
+        for plane in 0..<CVPixelBufferGetPlaneCount(cameraImage) {
+            memset(CVPixelBufferGetBaseAddressOfPlane(cameraImage, plane), 128,
+                   CVPixelBufferGetBytesPerRowOfPlane(cameraImage, plane) * CVPixelBufferGetHeightOfPlane(cameraImage, plane))
+        }
+        CVPixelBufferUnlockBaseAddress(cameraImage, [])
+        var depth: CVPixelBuffer?
+        if hasDepth {
+            XCTAssertEqual(CVPixelBufferCreate(nil, 4, 3, kCVPixelFormatType_DepthFloat32,
+                [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &depth), kCVReturnSuccess)
+            let map = try XCTUnwrap(depth)
+            CVPixelBufferLockBaseAddress(map, [])
+            memset(CVPixelBufferGetBaseAddress(map), 0, CVPixelBufferGetDataSize(map))
+            let stride = CVPixelBufferGetBytesPerRow(map)
+            for row in 0..<3 {
+                let values = CVPixelBufferGetBaseAddress(map)!.advanced(by: row * stride).assumingMemoryBound(to: Float.self)
+                for column in 0..<4 { values[column] = Float(column + 1) }
+            }
+            CVPixelBufferUnlockBaseAddress(map, [])
+        }
+        return try XCTUnwrap(ScanVideoSample.copy(image: cameraImage, depthMap: depth, confidenceMap: nil,
+            timestamp: timestamp, mapFromCamera: identity,
+            camera: .init(imageWidth: 64, imageHeight: 48, fx: 50, fy: 50, cx: 32, cy: 24), mapping: "mapped"))
+    }
+
+    func testVideoEncodesNativeCameraFramesAcrossDepthGapsWithoutInventingMeasurements() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "video-gaps-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let id = UUID().uuidString
+        let writer = ScanVideoWriter(folder: folder, captureID: id, mapID: id, floorID: "ground",
+                                     policy: .init(minimumFreeBytes: 0))
+        var count = 0
+        var timestamp = 100.0
+        for _ in 0..<40 {
+            // First and last frame lack depth. The middle frame retains its native bytes.
+            count = try await writer.append(nativeSample(at: timestamp, hasDepth: count == 1))
+            timestamp += 0.103827
+            if count == 3 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(count, 3)
+        let saved = try await writer.finish(reason: nil, skippedSamples: 0)
+        XCTAssertEqual(saved, 3)
+        let manifest = try JSONDecoder().decode(ScanVideoManifest.self,
+            from: Data(contentsOf: folder.appending(path: "video-manifest.json")))
+        try manifest.validate()
+        XCTAssertEqual(manifest.status, "complete")
+        let segment = try XCTUnwrap(manifest.segments.first)
+        let document = try JSONDecoder().decode(ScanVideoFrameDocument.self,
+            from: Data(contentsOf: folder.appending(path: segment.framesAsset)))
+        try document.validate(segment: segment)
+        XCTAssertNil(document.frames[0].rawDepth)
+        XCTAssertNotNil(document.frames[1].rawDepth)
+        XCTAssertNil(document.frames[2].rawDepth)
+        let paired = try XCTUnwrap(document.frames[1].rawDepth)
+        XCTAssertEqual(paired.offset, 0)
+        XCTAssertEqual(paired.length, segment.depthBytes)
+        for frame in document.frames { XCTAssertEqual(frame.mapFromCamera, identity) }
+        let asset = AVURLAsset(url: folder.appending(path: segment.videoAsset))
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: try XCTUnwrap(tracks.first),
+                                             outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        reader.add(output)
+        XCTAssertTrue(reader.startReading())
+        var times: [Double] = []
+        while let frame = output.copyNextSampleBuffer() { times.append(CMSampleBufferGetPresentationTimeStamp(frame).seconds) }
+        XCTAssertEqual(times.count, 3)
+        for (actual, frame) in zip(times, document.frames) {
+            XCTAssertEqual(actual, frame.presentationTimeSeconds, accuracy: 0.000001)
+        }
+    }
+
+    func testVideoSavesAPlayableMovieEvenWhenNoFrameHasDepth() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "video-rgb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let id = UUID().uuidString
+        let writer = ScanVideoWriter(folder: folder, captureID: id, mapID: id, floorID: "ground",
+                                     policy: .init(minimumFreeBytes: 0))
+        var count = 0
+        for index in 0..<30 {
+            count = try await writer.append(nativeSample(at: 100 + Double(index) * 0.103827, hasDepth: false))
+            if count == 1 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(count, 1)
+        let saved = try await writer.finish(reason: nil, skippedSamples: 0)
+        XCTAssertEqual(saved, 1)
+        let manifest = try JSONDecoder().decode(ScanVideoManifest.self,
+            from: Data(contentsOf: folder.appending(path: "video-manifest.json")))
+        try manifest.validate()
+        let segment = try XCTUnwrap(manifest.segments.first)
+        XCTAssertEqual(segment.depthBytes, 0)
+        XCTAssertEqual(try Data(contentsOf: folder.appending(path: segment.depthAsset)).count, 0)
+        let document = try JSONDecoder().decode(ScanVideoFrameDocument.self,
+            from: Data(contentsOf: folder.appending(path: segment.framesAsset)))
+        try document.validate(segment: segment)
+        XCTAssertNil(document.frames[0].rawDepth)
+        let asset = AVURLAsset(url: folder.appending(path: segment.videoAsset))
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: try XCTUnwrap(tracks.first),
+            outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        reader.add(output)
+        XCTAssertTrue(reader.startReading())
+        XCTAssertNotNil(output.copyNextSampleBuffer())
     }
 
     private func sample(at timestamp: Double) throws -> ScanVideoSample {
@@ -66,7 +211,8 @@ final class ScanVideoCaptureTests: XCTestCase {
             let depth = try Data(contentsOf: folder.appending(path: segment.depthAsset))
             for frame in document.frames {
                 XCTAssertEqual(frame.mapFromCamera, identity)
-                XCTAssertEqual(depth.subdata(in: frame.rawDepth.offset..<(frame.rawDepth.offset + frame.rawDepth.length)),
+                let rawDepth = try XCTUnwrap(frame.rawDepth)
+                XCTAssertEqual(depth.subdata(in: rawDepth.offset..<(rawDepth.offset + rawDepth.length)),
                                try sample(at: frame.timestampSeconds).depth)
                 XCTAssertEqual(frame.presentationTimeSeconds, frame.timestampSeconds - document.frames[0].timestampSeconds,
                                accuracy: 0.000001)

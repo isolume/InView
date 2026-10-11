@@ -8,26 +8,40 @@ import Foundation
 @MainActor
 final class ScanVideoCapture {
     var onStatus: ((String) -> Void)?
+    var onDepthAvailability: ((Bool) -> Void)?
     private weak var session: ARSession?
     private var timer: Timer?
     private var worker: Task<Void, Never>?
     private var writer: ScanVideoWriter?
     private var lastTimestamp: Double?
     private var skippedSamples = 0
+    private var acceptedFrames = 0
+    private var lastSampleFailure = "camera_unavailable"
     private var stopped = false
     private var finished = false
 
     func start(session: ARSession, captureID: UUID, floor: ScanFloorIdentity?) throws {
         let folder = try CaptureStore.captureDirectory(for: captureID.uuidString)
-        writer = ScanVideoWriter(folder: folder, captureID: captureID.uuidString,
-                                 mapID: captureID.uuidString, floorID: floor?.id.uuidString ?? "ground")
+        let recorder = ScanVideoWriter(folder: folder, captureID: captureID.uuidString,
+                                       mapID: captureID.uuidString, floorID: floor?.id.uuidString ?? "ground")
+        writer = recorder
         self.session = session
+        worker = Task { [weak self] in
+            do { try await recorder.prepare() }
+            catch {
+                self?.stopped = true
+                self?.pause()
+                self?.onStatus?("Video couldn't start. Scanning can continue.")
+                Log.scan.error("video initialization failed: \(error.localizedDescription, privacy: .private)")
+            }
+            self?.worker = nil
+        }
         resume()
     }
 
     func resume() {
         guard timer == nil, writer != nil, session != nil, !stopped, !finished else { return }
-        onStatus?("Recording video")
+        onStatus?("Waiting for camera")
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.sample() }
         }
@@ -48,7 +62,8 @@ final class ScanVideoCapture {
         if let worker { await worker.value }
         guard let writer else { return }
         do {
-            let count = try await writer.finish(reason: reason, skippedSamples: skippedSamples)
+            let count = try await writer.finish(reason: reason ?? (acceptedFrames == 0 ? lastSampleFailure : nil),
+                                                skippedSamples: skippedSamples)
             let isPartial = await writer.isPartial
             if !stopped {
                 onStatus?(count > 0 ? (isPartial ? "Partial video saved" : "Video saved") : "No video frames saved")
@@ -66,20 +81,37 @@ final class ScanVideoCapture {
     }
 
     private func sample() {
-        guard !stopped, !finished, let writer, let frame = session?.currentFrame,
-              lastTimestamp.map({ frame.timestamp - $0 >= 0.075 }) ?? true else { return }
+        guard !stopped, !finished, let writer else { return }
+        guard let frame = session?.currentFrame else {
+            lastSampleFailure = "camera_unavailable"
+            onStatus?("Waiting for camera")
+            return
+        }
+        guard lastTimestamp.map({ frame.timestamp - $0 >= 0.075 }) ?? true else { return }
         guard worker == nil else { skippedSamples += 1; return }
         guard case .normal = frame.camera.trackingState,
-              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1,
-              let sample = ScanVideoSample.copy(frame) else {
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else {
+            lastSampleFailure = "tracking_unavailable"
+            onStatus?("Video waiting for positioning")
             skippedSamples += 1
             return
         }
+        guard let sample = ScanVideoSample.copy(frame) else {
+            lastSampleFailure = "camera_copy_failed"
+            onStatus?("Video waiting for camera")
+            skippedSamples += 1
+            return
+        }
+        lastSampleFailure = "encoder_unavailable"
         lastTimestamp = frame.timestamp
         worker = Task { [weak self] in
             do {
                 let count = try await writer.append(sample)
                 guard let self else { return }
+                if count > acceptedFrames {
+                    acceptedFrames = count
+                    onDepthAvailability?(sample.depth != nil)
+                }
                 if timer != nil { onStatus?(count > 0 ? "Recording video" : "Waiting for video") }
             } catch {
                 guard let self else { return }
@@ -89,6 +121,7 @@ final class ScanVideoCapture {
                 _ = try? await writer.finish(reason: reason, skippedSamples: skippedSamples)
                 onStatus?((error as? ScanVideoRecordingError)?.errorDescription
                           ?? "Video stopped. Earlier segments are kept; scanning can continue.")
+                Log.scan.error("video recording failed: \(error.localizedDescription, privacy: .private)")
             }
             self?.worker = nil
         }
@@ -101,7 +134,7 @@ struct ScanVideoSample: Sendable {
     var mapFromCamera: [Float]
     var camera: CaptureCameraCalibration
     var mapping: String
-    var depth: Data
+    var depth: Data?
     var depthWidth: Int
     var depthHeight: Int
     var depthBytesPerRow: Int
@@ -109,33 +142,48 @@ struct ScanVideoSample: Sendable {
     var confidenceBytesPerRow: Int?
 
     static func copy(_ frame: ARFrame) -> Self? {
-        guard let depth = frame.sceneDepth,
-              CVPixelBufferGetPixelFormatType(depth.depthMap) == kCVPixelFormatType_DepthFloat32,
-              let bytes = copyBytes(depth.depthMap, bytesPerPixel: 4),
-              let pixels = FrameEncoder.snapshot(frame.capturedImage) else { return nil }
-        let confidence = depth.confidenceMap.flatMap { copyBytes($0, bytesPerPixel: 1) }
-        if depth.confidenceMap != nil, confidence == nil { return nil }
-        if let buffer = depth.confidenceMap {
-            guard CVPixelBufferGetWidth(buffer) == CVPixelBufferGetWidth(depth.depthMap),
-                  CVPixelBufferGetHeight(buffer) == CVPixelBufferGetHeight(depth.depthMap),
-                  CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_OneComponent8 else { return nil }
-        }
         let camera = frame.camera
-        guard Int(camera.imageResolution.width) == CVPixelBufferGetWidth(frame.capturedImage),
-              Int(camera.imageResolution.height) == CVPixelBufferGetHeight(frame.capturedImage) else { return nil }
         let m = camera.transform
         let k = camera.intrinsics
-        return Self(pixels: pixels, timestamp: frame.timestamp,
+        return copy(image: frame.capturedImage, depthMap: frame.sceneDepth?.depthMap,
+                    confidenceMap: frame.sceneDepth?.confidenceMap, timestamp: frame.timestamp,
                     mapFromCamera: (0..<4).flatMap { column in (0..<4).map { m[column][$0] } },
                     camera: .init(imageWidth: Int(camera.imageResolution.width),
                                   imageHeight: Int(camera.imageResolution.height),
                                   fx: k[0][0], fy: k[1][1], cx: k[2][0], cy: k[2][1]),
-                    mapping: CameraTrack.Mapping(frame.worldMappingStatus).label,
-                    depth: bytes, depthWidth: CVPixelBufferGetWidth(depth.depthMap),
-                    depthHeight: CVPixelBufferGetHeight(depth.depthMap),
-                    depthBytesPerRow: CVPixelBufferGetBytesPerRow(depth.depthMap),
-                    confidence: confidence,
-                    confidenceBytesPerRow: depth.confidenceMap.map(CVPixelBufferGetBytesPerRow))
+                    mapping: CameraTrack.Mapping(frame.worldMappingStatus).label)
+    }
+
+    /// Camera poses remain useful when RoomPlan temporarily withholds scene depth.
+    /// Only valid depth from this exact frame is attached; absent data is never invented.
+    static func copy(image: CVPixelBuffer, depthMap: CVPixelBuffer?, confidenceMap: CVPixelBuffer?,
+                     timestamp: Double, mapFromCamera: [Float], camera: CaptureCameraCalibration,
+                     mapping: String) -> Self? {
+        guard camera.imageWidth == CVPixelBufferGetWidth(image),
+              camera.imageHeight == CVPixelBufferGetHeight(image),
+              let pixels = FrameEncoder.snapshot(image) else { return nil }
+        var sample = Self(pixels: pixels, timestamp: timestamp, mapFromCamera: mapFromCamera,
+                          camera: camera, mapping: mapping, depth: nil,
+                          depthWidth: 0, depthHeight: 0, depthBytesPerRow: 0,
+                          confidence: nil, confidenceBytesPerRow: nil)
+        if let depthMap,
+           CVPixelBufferGetPixelFormatType(depthMap) == kCVPixelFormatType_DepthFloat32,
+           camera.imageWidth * CVPixelBufferGetHeight(depthMap) == camera.imageHeight * CVPixelBufferGetWidth(depthMap),
+           let bytes = copyBytes(depthMap, bytesPerPixel: 4) {
+            sample.depth = bytes
+            sample.depthWidth = CVPixelBufferGetWidth(depthMap)
+            sample.depthHeight = CVPixelBufferGetHeight(depthMap)
+            sample.depthBytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
+            if let confidenceMap,
+               CVPixelBufferGetWidth(confidenceMap) == sample.depthWidth,
+               CVPixelBufferGetHeight(confidenceMap) == sample.depthHeight,
+               CVPixelBufferGetPixelFormatType(confidenceMap) == kCVPixelFormatType_OneComponent8,
+               let confidence = copyBytes(confidenceMap, bytesPerPixel: 1) {
+                sample.confidence = confidence
+                sample.confidenceBytesPerRow = CVPixelBufferGetBytesPerRow(confidenceMap)
+            }
+        }
+        return sample
     }
 
     private static func copyBytes(_ buffer: CVPixelBuffer, bytesPerPixel: Int) -> Data? {
@@ -214,8 +262,8 @@ actor ScanVideoWriter {
             status: "recording", segments: [])
     }
 
-    func append(_ sample: ScanVideoSample) async throws -> Int {
-        guard !sealed else { return frameCount }
+    func prepare() throws {
+        guard !sealed else { return }
         if !initialized {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             guard !FileManager.default.fileExists(atPath: folder.appending(path: "video-manifest.json").path) else {
@@ -224,7 +272,12 @@ actor ScanVideoWriter {
             try saveManifest()
             initialized = true
         }
-        let sampleBytes = sample.depth.count + (sample.confidence?.count ?? 0)
+    }
+
+    func append(_ sample: ScanVideoSample) async throws -> Int {
+        guard !sealed else { return frameCount }
+        try prepare()
+        let sampleBytes = (sample.depth?.count ?? 0) + (sample.confidence?.count ?? 0)
         if let current = segment,
            current.frames.count >= policy.framesPerSegment
             || current.depthBytes + sampleBytes > policy.maximumDepthBytesPerSegment
@@ -248,11 +301,11 @@ actor ScanVideoWriter {
         if current.frames.isEmpty { current.start = sample.timestamp }
         let sx = Float(current.width) / Float(sample.camera.imageWidth)
         let sy = Float(current.height) / Float(sample.camera.imageHeight)
-        let raw = ScanVideoDepth(width: sample.depthWidth, height: sample.depthHeight,
+        let raw = sample.depth.map { depth in ScanVideoDepth(width: sample.depthWidth, height: sample.depthHeight,
             bytesPerRow: sample.depthBytesPerRow, pixelFormat: kCVPixelFormatType_DepthFloat32,
-            offset: current.depthBytes, length: sample.depth.count,
-            confidenceOffset: sample.confidence.map { _ in current.depthBytes + sample.depth.count },
-            confidenceLength: sample.confidence?.count, confidenceBytesPerRow: sample.confidenceBytesPerRow)
+            offset: current.depthBytes, length: depth.count,
+            confidenceOffset: sample.confidence.map { _ in current.depthBytes + depth.count },
+            confidenceLength: sample.confidence?.count, confidenceBytesPerRow: sample.confidenceBytesPerRow) }
         let pts = CMTime(seconds: sample.timestamp - current.start, preferredTimescale: 1_000_000)
         let frame = ScanVideoFrame(index: current.frames.count, timestampSeconds: sample.timestamp,
             presentationTimeSeconds: pts.seconds, mapFromCamera: sample.mapFromCamera,
@@ -267,7 +320,7 @@ actor ScanVideoWriter {
             frames: current.frames + [frame])
         try document.validate(depthBytes: current.depthBytes + sampleBytes)
         do {
-            try current.depthFile.write(contentsOf: sample.depth)
+            if let depth = sample.depth { try current.depthFile.write(contentsOf: depth) }
             if let confidence = sample.confidence { try current.depthFile.write(contentsOf: confidence) }
         } catch {
             try? current.depthFile.truncate(atOffset: UInt64(current.depthBytes))
@@ -286,8 +339,8 @@ actor ScanVideoWriter {
 
     func finish(reason: String?, skippedSamples: Int) async throws -> Int {
         guard !sealed else { return manifest.segments.reduce(0) { $0 + $1.frameCount } }
+        try prepare()
         sealed = true
-        guard initialized else { return 0 }
         var stopReason = reason
         do { try await closeSegment() }
         catch {

@@ -51,6 +51,9 @@ public enum ScanVideoExport {
             let frames = try directory.requiredFile(segment.framesAsset, bytes: UInt64(segment.framesBytes))
             let frameData = try frames.readJSON(maximumBytes: 1024 * 1024)
             let document = try JSONDecoder().decode(ScanVideoFrameDocument.self, from: frameData)
+            guard document.schemaVersion == manifest.schemaVersion else {
+                throw ScanVideoExportError.invalidSource
+            }
             try document.validate(segment: segment)
             indexedFiles.append(frames.identity)
         }
@@ -98,8 +101,12 @@ public enum ScanVideoExport {
     matrices are column-major and map camera coordinates into that scan frame.
     ARKit camera coordinates use +X right, +Y up, and -Z forward.
 
-    Each frames.json entry indexes one successfully encoded RGB frame and the depth
-    copied from the same ARFrame. raw_depth indexes byte ranges in depth.bin;
+    Each frames.json entry indexes one successfully encoded RGB frame with its pose
+    and calibration. When present, raw_depth indexes depth copied from the same ARFrame
+    as byte ranges in depth.bin. An absent raw_depth means that frame has no measured
+    depth; its pose and camera calibration remain valid. Schema 2 permits these frames
+    and an empty depth.bin when an entire segment has no measured depth. Schema 1
+    requires recorded depth for every frame. Never invent depth for an absent entry.
     Little-endian Float32 depth is in meters, with native row stride and raw bits intact.
     Ignore row padding and nonfinite/invalid distances. Optional confidence is UInt8
     with its own row stride: 0 low, 1 medium, 2 high.

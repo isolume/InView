@@ -28,19 +28,29 @@ keep the scan in review with a retry action.
 
 Each successfully appended video frame has a record copied from that **same
 ARFrame**: ARKit capture time, movie presentation time, `map_from_camera`, sensor
-intrinsics, scaled video intrinsics, world-mapping state and native scene-depth
-and confidence bytes. The recording accepts fresh, normally tracked frames with
-depth. It never infers video poses from the separately sampled/decimated movement
-track. ARKit's estimated tracking accuracy and depth uncertainty still apply;
+intrinsics, scaled video intrinsics, world-mapping state and, when available,
+native scene-depth and confidence bytes. The recording accepts fresh, normally
+tracked camera frames even during depth gaps. It never infers video poses from
+the separately sampled/decimated movement track. ARKit's estimated tracking
+accuracy and depth uncertainty still apply;
 recorded coordinates are not ground-truth positions.
 
-`video-manifest.json` schema 1 identifies the capture, map and floor, declares
+`video-manifest.json` schema 2 identifies the capture, map and floor, declares
 `shared_arkit_session`, meters, Y up and a right-handed coordinate frame, and
 records `arkit_uptime_seconds` with a Unix-time offset. Its ordered segments name
 `video-NNNN.mp4`, `video-NNNN.frames.json` and `video-NNNN.depth.bin`, with exact
 byte lengths, frame counts and first/last capture times. Only successfully
 finalized segments enter the manifest. Recording state, skipped samples and any
 stop reason are explicit.
+
+The app restores scene depth after RoomPlan starts on the shared ARSession,
+preserving its current configuration without resetting tracking or anchors.
+RoomPlan can remove requested depth semantics during startup; this matches a
+[developer reproduction](https://developer.apple.com/forums/thread/763400).
+Camera video still records through unavailable depth, keeping its pose and
+calibration. The app shows **Recording** only after a frame reaches the encoder,
+and reports unavailable depth separately. Even a zero-frame recording leaves a
+manifest with its stop reason; review and Saved scans show that no video was saved.
 
 The frame index uses column-major 4×4 transforms, matching `capture.json` and
 RoomPlan. `presentation_time_seconds` is the actual movie timestamp, rounded to
@@ -67,6 +77,12 @@ ARKit camera looks along local -Z; for a depth pixel `(u,v)` and measured depth
 `d`, camera position is `[(u-cx)*d/fx, -(v-cy)*d/fy, -d, 1]`. Multiply by
 `map_from_camera` to place it in the scan. Reject invalid depths and use
 confidence to filter uncertain measurements.
+
+Schema 2 frame indexes omit `raw_depth` when that exact frame has no valid depth
+sample. Such frames retain real camera poses and intrinsics; do not infer or
+interpolate a depth measurement for them. An all-camera segment has an empty
+depth file with a declared size of zero. Schema 1 recordings remain readable and
+continue to require measured depth for every frame.
 
 ## Resource and recovery limits
 

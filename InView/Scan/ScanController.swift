@@ -57,6 +57,7 @@ final class ScanController: ObservableObject {
     @Published private(set) var walkCoverage: ScanWalkFloorCoverage.Assessment?
     @Published private(set) var originalScanWarning: String?
     @Published private(set) var videoStatus: String?
+    @Published private(set) var videoDepthNotice: String?
     @Published private(set) var captureView: ScanPreviewCameraView?
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
@@ -109,6 +110,10 @@ final class ScanController: ObservableObject {
         let capture = RoomCaptureSession(arSession: session)
         let id = scanID
         sessionDelegate = CaptureSessionDelegate(
+            onStart: { [weak self] in
+                guard let self, self.scanID == id, self.isActive, self.phase == .scanning else { return }
+                self.rawCapture.restoreDepthAfterRoomPlanStart(session: self.session)
+            },
             onEnd: { [weak self] data, error in
                 guard self?.scanID == id else { return }
                 self?.sectionEnded(data, error: error)
@@ -240,6 +245,10 @@ final class ScanController: ObservableObject {
             video.onStatus = { [weak self] status in
                 guard self?.scanID == id else { return }
                 self?.videoStatus = status
+            }
+            video.onDepthAvailability = { [weak self] available in
+                guard self?.scanID == id, !available else { return }
+                self?.videoDepthNotice = "Some video frames have no LiDAR measurements."
             }
             videoCapture = video
             do { try video.start(session: session, captureID: scanID, floor: currentFloor) }
@@ -1050,6 +1059,7 @@ final class ScanController: ObservableObject {
                 rawCapture.stop()
                 videoCapture = nil
                 videoStatus = nil
+                videoDepthNotice = nil
                 splatCapture.stop()
                 trackingNotice = nil
                 scanGuidance = "Move slowly and include the floor as you scan."
@@ -1230,13 +1240,20 @@ final class ScanController: ObservableObject {
 final class CaptureSessionDelegate: NSObject, RoomCaptureSessionDelegate {
     private let roomLock = NSLock()
     private var latestRoom: CapturedRoom?
+    private let onStart: @MainActor () -> Void
     private let onEnd: @MainActor (CapturedRoomData, Error?) -> Void
     private let onInstruction: @MainActor (RoomCaptureSession.Instruction) -> Void
 
-    init(onEnd: @escaping @MainActor (CapturedRoomData, Error?) -> Void,
+    init(onStart: @escaping @MainActor () -> Void = {},
+         onEnd: @escaping @MainActor (CapturedRoomData, Error?) -> Void,
          onInstruction: @escaping @MainActor (RoomCaptureSession.Instruction) -> Void) {
+        self.onStart = onStart
         self.onEnd = onEnd
         self.onInstruction = onInstruction
+    }
+
+    func captureSession(_ session: RoomCaptureSession, didStartWith configuration: RoomCaptureSession.Configuration) {
+        Task { @MainActor in onStart() }
     }
 
     func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {

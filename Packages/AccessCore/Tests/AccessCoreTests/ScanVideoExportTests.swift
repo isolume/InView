@@ -16,7 +16,8 @@ private struct VideoExportFixture {
     }
 }
 
-private func videoExportFixture(segmentCount: Int = 2, videoBytes: Int? = nil) throws -> VideoExportFixture {
+private func videoExportFixture(segmentCount: Int = 2, videoBytes: Int? = nil,
+                                schemaVersion: Int = 2, measuredDepth: [Bool] = [true, true]) throws -> VideoExportFixture {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("inview-video-export-test-\(UUID().uuidString)")
     let source = directory.appendingPathComponent("capture")
     try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
@@ -32,22 +33,30 @@ private func videoExportFixture(segmentCount: Int = 2, videoBytes: Int? = nil) t
         let sensor = CaptureCameraCalibration(imageWidth: 4, imageHeight: 2, fx: 4, fy: 4, cx: 2, cy: 1)
         let encoded = CaptureCameraCalibration(imageWidth: 2, imageHeight: 1, fx: 2, fy: 2, cx: 1, cy: 0.5)
         let start = Double(index) + 100
-        let frames = [0.0, 0.37].enumerated().map { frameIndex, elapsed in
-            ScanVideoFrame(index: frameIndex, timestampSeconds: start + elapsed,
-                           presentationTimeSeconds: elapsed, mapFromCamera: videoExportIdentity,
-                           sensorCamera: sensor, videoCamera: encoded, tracking: "normal", mapping: "mapped",
-                           rawDepth: ScanVideoDepth(width: 2, height: 1, bytesPerRow: 12,
-                                                    offset: frameIndex * 16, length: 12,
-                                                    confidenceOffset: frameIndex * 16 + 12,
-                                                    confidenceLength: 4, confidenceBytesPerRow: 4))
-        }
-        let document = ScanVideoFrameDocument(segmentID: segmentID, videoAsset: segmentID + ".mp4",
-                                              depthAsset: segmentID + ".depth.bin", videoWidth: 2,
-                                              videoHeight: 1, frames: frames)
-        let frameData = try JSONEncoder().encode(document)
         // Preserve native padding and a NaN raw bit pattern, rather than repacking values.
         let row = Data([0, 0, 128, 63, 1, 0, 192, 127, 0xaa, 0xbb, 0xcc, 0xdd, 2, 0, 0xee, 0xff])
-        let depth = row + row
+        var depth = Data()
+        let frames = [0.0, 0.37].enumerated().map { frameIndex, elapsed in
+            let rawDepth: ScanVideoDepth?
+            if measuredDepth[frameIndex] {
+                rawDepth = ScanVideoDepth(width: 2, height: 1, bytesPerRow: 12,
+                                          offset: depth.count, length: 12,
+                                          confidenceOffset: depth.count + 12,
+                                          confidenceLength: 4, confidenceBytesPerRow: 4)
+                depth.append(row)
+            } else {
+                rawDepth = nil
+            }
+            return ScanVideoFrame(index: frameIndex, timestampSeconds: start + elapsed,
+                                  presentationTimeSeconds: elapsed, mapFromCamera: videoExportIdentity,
+                                  sensorCamera: sensor, videoCamera: encoded, tracking: "normal", mapping: "mapped",
+                                  rawDepth: rawDepth)
+        }
+        var document = ScanVideoFrameDocument(segmentID: segmentID, videoAsset: segmentID + ".mp4",
+                                              depthAsset: segmentID + ".depth.bin", videoWidth: 2,
+                                              videoHeight: 1, frames: frames)
+        document.schemaVersion = schemaVersion
+        let frameData = try JSONEncoder().encode(document)
         let video = Data("saved mp4 \(segmentID)".utf8)
         let mediaURL = source.appendingPathComponent(segmentID + ".mp4")
         try video.write(to: mediaURL)
@@ -64,11 +73,12 @@ private func videoExportFixture(segmentCount: Int = 2, videoBytes: Int? = nil) t
                                          framesBytes: frameData.count, frameCount: frames.count,
                                          startTimestampSeconds: start, endTimestampSeconds: start + 0.37))
     }
-    let manifest = ScanVideoManifest(captureID: id, mapID: "building", floorID: "second",
+    var manifest = ScanVideoManifest(captureID: id, mapID: "building", floorID: "second",
                                      unixOffsetSeconds: 1_700_000_000,
                                      status: segmentCount > 0 ? "complete" : "partial",
                                      stopReason: segmentCount > 0 ? nil : "No usable video frames were saved.",
                                      segments: segments)
+    manifest.schemaVersion = schemaVersion
     let fixture = VideoExportFixture(directory: directory, source: source, manifest: manifest)
     try fixture.writeManifest(manifest)
     return fixture
@@ -117,6 +127,7 @@ private func videoTarEntries(_ url: URL) throws -> [String: VideoTarEntry] {
 }
 
 private func videoTarData(_ url: URL, entry: VideoTarEntry) throws -> Data {
+    if entry.bytes == 0 { return Data() }
     let handle = try FileHandle(forReadingFrom: url)
     defer { try? handle.close() }
     try handle.seek(toOffset: entry.offset)
@@ -151,7 +162,99 @@ private func videoExportTemporaryFiles(_ directory: URL) throws -> [String] {
     let readme = String(decoding: try videoTarData(fixture.destination, entry: #require(entries[prefix + "README.txt"])), as: UTF8.self)
     #expect(readme.contains("same ARFrame") && readme.contains("sensor-native") && readme.contains("scaled"))
     #expect(readme.contains("Do not infer pose") && readme.contains("measurement error"))
+    #expect(readme.contains("absent raw_depth") && readme.contains("no measured")
+            && readme.contains("pose and camera calibration remain valid"))
     #expect(try videoExportTemporaryFiles(fixture.directory).isEmpty)
+}
+
+@Test func scanVideoExportPreservesPosedRGBFramesWithMixedAndAbsentMeasuredDepth() throws {
+    for measuredDepth in [[false, true], [true, false], [false, false]] {
+        let fixture = try videoExportFixture(segmentCount: 1, measuredDepth: measuredDepth)
+        defer { fixture.remove() }
+        let segment = try #require(fixture.manifest.segments.first)
+        let expectedDepth = try Data(contentsOf: fixture.file(segment.depthAsset))
+        try ScanVideoExport.write(captureDirectory: fixture.source, to: fixture.destination)
+        let entries = try videoTarEntries(fixture.destination)
+        let prefix = fixture.manifest.captureID + "/"
+        let depthEntry = try #require(entries[prefix + segment.depthAsset])
+        #expect(depthEntry.bytes == UInt64(measuredDepth.filter { $0 }.count * 16))
+        #expect(try videoTarData(fixture.destination, entry: depthEntry) == expectedDepth)
+        let frameEntry = try #require(entries[prefix + segment.framesAsset])
+        let document = try JSONDecoder().decode(ScanVideoFrameDocument.self,
+                                                from: videoTarData(fixture.destination, entry: frameEntry))
+        #expect(document.schemaVersion == 2)
+        #expect(document.frames.map { $0.rawDepth != nil } == measuredDepth)
+        #expect(document.frames.allSatisfy { $0.mapFromCamera == videoExportIdentity })
+        #expect(document.frames[1].presentationTimeSeconds == 0.37)
+        #expect(document.frames[1].videoCamera.imageWidth == 2)
+        try document.validate(segment: segment)
+        #expect(try videoExportTemporaryFiles(fixture.directory).isEmpty)
+    }
+}
+
+@Test func scanVideoExportStillRequiresAnExactRegularEmptySidecarForRGBOnlySegments() throws {
+    let fixture = try videoExportFixture(segmentCount: 1, measuredDepth: [false, false])
+    defer { fixture.remove() }
+    let segment = try #require(fixture.manifest.segments.first)
+    let depthURL = fixture.file(segment.depthAsset)
+    try FileManager.default.removeItem(at: depthURL)
+    #expect(throws: ScanVideoExportError.invalidSource) {
+        try ScanVideoExport.write(captureDirectory: fixture.source, to: fixture.destination)
+    }
+    try Data([0]).write(to: depthURL)
+    #expect(throws: ScanVideoExportError.invalidSource) {
+        try ScanVideoExport.write(captureDirectory: fixture.source, to: fixture.destination)
+    }
+    try FileManager.default.removeItem(at: depthURL)
+    try FileManager.default.createDirectory(at: depthURL, withIntermediateDirectories: false)
+    #expect(throws: ScanVideoExportError.invalidSource) {
+        try ScanVideoExport.write(captureDirectory: fixture.source, to: fixture.destination)
+    }
+    #expect(!FileManager.default.fileExists(atPath: fixture.destination.path))
+    #expect(try videoExportTemporaryFiles(fixture.directory).isEmpty)
+}
+
+@Test func scanVideoExportRejectsDeclaredButUnindexedDepthInRGBOnlyAndMixedSegments() throws {
+    for measuredDepth in [[false, false], [false, true]] {
+        let fixture = try videoExportFixture(segmentCount: 1, measuredDepth: measuredDepth)
+        defer { fixture.remove() }
+        let segment = try #require(fixture.manifest.segments.first)
+        let original = try Data(contentsOf: fixture.file(segment.depthAsset))
+        try (original + Data([0x7f])).write(to: fixture.file(segment.depthAsset))
+        var manifest = fixture.manifest
+        manifest.segments[0].depthBytes += 1
+        try fixture.writeManifest(manifest)
+        #expect(throws: CaptureValidationError.self) {
+            try ScanVideoExport.write(captureDirectory: fixture.source, to: fixture.destination)
+        }
+        #expect(!FileManager.default.fileExists(atPath: fixture.destination.path))
+        #expect(try videoExportTemporaryFiles(fixture.directory).isEmpty)
+    }
+}
+
+@Test func scanVideoExportAcceptsCompleteLegacyDepthEvidenceAndRejectsMixedSchemaVersions() throws {
+    let legacy = try videoExportFixture(segmentCount: 1, schemaVersion: 1)
+    defer { legacy.remove() }
+    try ScanVideoExport.write(captureDirectory: legacy.source, to: legacy.destination)
+    #expect(FileManager.default.fileExists(atPath: legacy.destination.path))
+    for manifestVersion in [1, 2] {
+        let fixture = try videoExportFixture(segmentCount: 1, schemaVersion: manifestVersion)
+        defer { fixture.remove() }
+        let segment = try #require(fixture.manifest.segments.first)
+        var document = try JSONDecoder().decode(ScanVideoFrameDocument.self,
+                                                from: Data(contentsOf: fixture.file(segment.framesAsset)))
+        document.schemaVersion = manifestVersion == 1 ? 2 : 1
+        let data = try JSONEncoder().encode(document)
+        try data.write(to: fixture.file(segment.framesAsset))
+        var manifest = fixture.manifest
+        manifest.segments[0].framesBytes = data.count
+        try fixture.writeManifest(manifest)
+        #expect(throws: ScanVideoExportError.invalidSource) {
+            try ScanVideoExport.write(captureDirectory: fixture.source, to: fixture.destination)
+        }
+        #expect(!FileManager.default.fileExists(atPath: fixture.destination.path))
+        #expect(try videoExportTemporaryFiles(fixture.directory).isEmpty)
+    }
 }
 
 @Test func scanVideoExportKeepsCompletedSegmentsAndReasonFromPartialRecording() throws {
@@ -220,7 +323,7 @@ private func videoExportTemporaryFiles(_ directory: URL) throws -> [String] {
         try original.write(to: asset)
     }
     var document = try JSONDecoder().decode(ScanVideoFrameDocument.self, from: Data(contentsOf: fixture.file(segment.framesAsset)))
-    document.frames[1].rawDepth.offset = 0
+    document.frames[1].rawDepth?.offset = 0
     let broken = try JSONEncoder().encode(document)
     try broken.write(to: fixture.file(segment.framesAsset))
     var manifest = fixture.manifest

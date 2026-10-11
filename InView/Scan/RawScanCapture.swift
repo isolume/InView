@@ -139,6 +139,16 @@ final class RawScanCapture {
         session.run(configuration, options: [])
     }
 
+    /// RoomPlan can replace frame semantics when it starts on a shared session.
+    /// Restore depth after didStart, keeping its configuration and coordinate frame.
+    func restoreDepthAfterRoomPlanStart(session: ARSession) {
+        guard ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth),
+              let configuration = session.configuration?.copy() as? ARWorldTrackingConfiguration else { return }
+        depthEnabled = true
+        configuration.frameSemantics.insert(.sceneDepth)
+        session.run(configuration, options: [])
+    }
+
     func start(session: ARSession) {
         self.session = session
         resume()

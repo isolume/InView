@@ -1,13 +1,13 @@
 import Foundation
 
 /// Local video evidence shares the scan's original ARKit coordinates and monotonic clock.
-/// Each completed segment contains video, byte-exact depth/confidence, and a frame index.
+/// Each completed segment contains video, available byte-exact depth/confidence, and a frame index.
 public struct ScanVideoManifest: Codable, Equatable, Sendable {
     public static let maximumFramesPerSegment = 100
     public static let maximumAssetBytes = 64 * 1024 * 1024
     public static let maximumSegments = 10_000
 
-    public var schemaVersion = 1
+    public var schemaVersion = 2
     public var captureID: String
     public var mapID: String
     public var floorID: String
@@ -31,7 +31,7 @@ public struct ScanVideoManifest: Codable, Equatable, Sendable {
     }
 
     public func validate() throws {
-        try videoRequire(schemaVersion == 1 && coordinateFrame == "shared_arkit_session"
+        try videoRequire([1, 2].contains(schemaVersion) && coordinateFrame == "shared_arkit_session"
                          && coordinates == .metersYUpRightHanded && clock == "arkit_uptime_seconds",
                          "This scan video format is not supported.")
         try StreamManifest(id: captureID, mapID: mapID, floorID: floorID, coordinates: coordinates).validate()
@@ -48,6 +48,8 @@ public struct ScanVideoManifest: Codable, Equatable, Sendable {
         var end: Double?
         for (index, segment) in segments.enumerated() {
             try segment.validate()
+            try videoRequire(schemaVersion != 1 || segment.depthBytes > 0,
+                             "A legacy scan video segment requires recorded depth.")
             try videoRequire(segment.id == ScanVideoSegment.identifier(index: index)
                              && end.map({ segment.startTimestampSeconds > $0 }) != false,
                              "The scan video segments are out of order.")
@@ -92,9 +94,10 @@ public struct ScanVideoSegment: Codable, Equatable, Sendable {
     public func validate() throws {
         try videoRequire(videoSegmentID(id) && videoAsset == id + ".mp4"
                          && depthAsset == id + ".depth.bin" && framesAsset == id + ".frames.json"
-                         && [videoBytes, depthBytes, framesBytes].allSatisfy {
+                         && [videoBytes, framesBytes].allSatisfy {
                              (1...ScanVideoManifest.maximumAssetBytes).contains($0)
-                         } && (1...ScanVideoManifest.maximumFramesPerSegment).contains(frameCount)
+                         } && (0...ScanVideoManifest.maximumAssetBytes).contains(depthBytes)
+                         && (1...ScanVideoManifest.maximumFramesPerSegment).contains(frameCount)
                          && videoTime(startTimestampSeconds) && videoTime(endTimestampSeconds)
                          && endTimestampSeconds >= startTimestampSeconds,
                          "The scan video segment is incomplete or invalid.")
@@ -110,7 +113,7 @@ public struct ScanVideoSegment: Codable, Equatable, Sendable {
 
 /// Intrinsics describe sensor-native encoded pixels; the MP4 track rotates their display 90° clockwise.
 public struct ScanVideoFrameDocument: Codable, Equatable, Sendable {
-    public var schemaVersion = 1
+    public var schemaVersion = 2
     public var segmentID: String
     public var videoAsset: String
     public var depthAsset: String
@@ -127,13 +130,14 @@ public struct ScanVideoFrameDocument: Codable, Equatable, Sendable {
 
     /// Validates every byte range and requires the depth sidecar to contain exactly the indexed bytes.
     public func validate(depthBytes: Int) throws {
-        try videoRequire(schemaVersion == 1 && videoSegmentID(segmentID)
+        try videoRequire([1, 2].contains(schemaVersion) && videoSegmentID(segmentID)
                          && videoAsset == segmentID + ".mp4" && depthAsset == segmentID + ".depth.bin"
                          && pixelOrientation == "sensor_native_with_90_cw_display_transform"
                          && (1...1280).contains(videoWidth) && (1...1280).contains(videoHeight)
                          && videoWidth >= videoHeight
                          && (1...ScanVideoManifest.maximumFramesPerSegment).contains(frames.count)
-                         && (1...ScanVideoManifest.maximumAssetBytes).contains(depthBytes),
+                         && (0...ScanVideoManifest.maximumAssetBytes).contains(depthBytes)
+                         && (schemaVersion != 1 || depthBytes > 0),
                          "The scan video frame index is invalid.")
         var offset = 0
         var previous: Double?
@@ -145,7 +149,11 @@ public struct ScanVideoFrameDocument: Codable, Equatable, Sendable {
                              && previous.map({ frame.timestampSeconds > $0 }) != false
                              && abs(frame.presentationTimeSeconds - (frame.timestampSeconds - first)) <= 0.000001,
                              "The scan video frame timing or calibration is inconsistent.")
-            offset = try frame.rawDepth.validate(expectedOffset: offset, maximumBytes: depthBytes)
+            if let depth = frame.rawDepth {
+                offset = try depth.validate(expectedOffset: offset, maximumBytes: depthBytes)
+            } else {
+                try videoRequire(schemaVersion != 1, "A legacy scan video frame requires recorded depth.")
+            }
             previous = frame.timestampSeconds
         }
         try videoRequire(offset == depthBytes, "The scan video depth sidecar has unindexed bytes.")
@@ -168,7 +176,7 @@ public struct ScanVideoFrameDocument: Codable, Equatable, Sendable {
     }
 }
 
-/// One successfully encoded RGB image and the depth copied from that exact ARFrame.
+/// One successfully encoded RGB image, pose, and any depth available on that exact ARFrame.
 public struct ScanVideoFrame: Codable, Equatable, Sendable {
     public var index: Int
     public var timestampSeconds: Double
@@ -178,12 +186,13 @@ public struct ScanVideoFrame: Codable, Equatable, Sendable {
     public var videoCamera: CaptureCameraCalibration
     public var tracking: String
     public var mapping: String
-    public var rawDepth: ScanVideoDepth
+    /// Absent when the ARFrame provided no measured depth; pose and calibration remain valid.
+    public var rawDepth: ScanVideoDepth?
 
     public init(index: Int, timestampSeconds: Double, presentationTimeSeconds: Double,
                 mapFromCamera: [Float], sensorCamera: CaptureCameraCalibration,
                 videoCamera: CaptureCameraCalibration, tracking: String, mapping: String,
-                rawDepth: ScanVideoDepth) {
+                rawDepth: ScanVideoDepth? = nil) {
         self.index = index; self.timestampSeconds = timestampSeconds
         self.presentationTimeSeconds = presentationTimeSeconds; self.mapFromCamera = mapFromCamera
         self.sensorCamera = sensorCamera; self.videoCamera = videoCamera
@@ -207,11 +216,14 @@ public struct ScanVideoFrame: Codable, Equatable, Sendable {
                          && videoNear(videoCamera.fx, sensorCamera.fx * sx)
                          && videoNear(videoCamera.fy, sensorCamera.fy * sy)
                          && videoNear(videoCamera.cx, sensorCamera.cx * sx)
-                         && videoNear(videoCamera.cy, sensorCamera.cy * sy)
-                         && (1...1024).contains(rawDepth.width) && (1...1024).contains(rawDepth.height)
-                         && sensorCamera.imageWidth * rawDepth.height == sensorCamera.imageHeight * rawDepth.width,
-                         "A scan video frame does not align its camera and depth.")
-        _ = try rawDepth.validate(expectedOffset: rawDepth.offset, maximumBytes: Int.max)
+                         && videoNear(videoCamera.cy, sensorCamera.cy * sy),
+                         "A scan video frame does not align its camera calibration.")
+        if let rawDepth {
+            try videoRequire((1...1024).contains(rawDepth.width) && (1...1024).contains(rawDepth.height)
+                             && sensorCamera.imageWidth * rawDepth.height == sensorCamera.imageHeight * rawDepth.width,
+                             "A scan video frame does not align its camera and depth.")
+            _ = try rawDepth.validate(expectedOffset: rawDepth.offset, maximumBytes: Int.max)
+        }
     }
 
     enum CodingKeys: String, CodingKey {

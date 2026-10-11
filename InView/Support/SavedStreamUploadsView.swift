@@ -110,6 +110,8 @@ struct SavedStreamUploadsView: View {
                     }
                     .disabled(busyID != nil)
                 }
+            } else {
+                Text("No video saved").font(.footnote).foregroundStyle(.secondary)
             }
             if !scan.originalFiles.isEmpty {
                 ShareLink(items: scan.originalFiles) {

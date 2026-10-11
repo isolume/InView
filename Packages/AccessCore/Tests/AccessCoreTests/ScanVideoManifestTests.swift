@@ -55,10 +55,11 @@ struct ScanVideoManifestTests {
         let savedManifest = try JSONDecoder().decode(ScanVideoManifest.self, from: manifestData)
         #expect(savedDocument == document)
         #expect(savedManifest == manifest)
+        #expect(savedDocument.schemaVersion == 2 && savedManifest.schemaVersion == 2)
         #expect(savedDocument.frames[1].timestampSeconds == 125.625)
         #expect(savedDocument.frames[1].presentationTimeSeconds == 125.625 - 125.4)
-        #expect(savedDocument.frames[0].rawDepth.bytesPerRow == 20)
-        #expect(savedDocument.frames[0].rawDepth.confidenceBytesPerRow == 8)
+        #expect(savedDocument.frames[0].rawDepth?.bytesPerRow == 20)
+        #expect(savedDocument.frames[0].rawDepth?.confidenceBytesPerRow == 8)
         #expect(savedDocument.frames[0].sensorCamera.imageWidth == 1920)
         #expect(savedDocument.frames[0].videoCamera.imageWidth == 1280)
         let object = try #require(JSONSerialization.jsonObject(with: documentData) as? [String: Any])
@@ -89,7 +90,7 @@ struct ScanVideoManifestTests {
 
     @Test func videoManifestRejectsUnknownVersionCoordinatesClocksAndRecordingMetadata() throws {
         let changes: [(inout ScanVideoManifest) -> Void] = [
-            { $0.schemaVersion = 2 }, { $0.coordinateFrame = "optimized" }, { $0.coordinates.units = "feet" },
+            { $0.schemaVersion = 3 }, { $0.coordinateFrame = "optimized" }, { $0.coordinates.units = "feet" },
             { $0.clock = "unix_seconds" }, { $0.unixOffsetSeconds = .infinity }, { $0.targetFrameRate = 30 },
             { $0.status = "done" }, { $0.skippedSamples = -1 }, { $0.stopReason = "   " },
         ]
@@ -109,6 +110,7 @@ struct ScanVideoManifestTests {
             { $0.videoAsset = "../video-0000.mp4" }, { $0.depthAsset = "/video-0000.depth.bin" },
             { $0.framesAsset = "video-0000/frames.json" }, { $0.framesAsset = "video-0001.frames.json" },
             { $0.videoBytes = 0 }, { $0.depthBytes = ScanVideoManifest.maximumAssetBytes + 1 },
+            { $0.depthBytes = -1 }, { $0.framesBytes = 0 },
             { $0.frameCount = 101 }, { $0.endTimestampSeconds = 1 },
         ]
         for change in changes {
@@ -152,7 +154,7 @@ struct ScanVideoManifestTests {
             { $0.mapFromCamera[0] = 2 }, { $0.mapFromCamera[12] = .nan }, { $0.mapFromCamera.removeLast() },
             { $0.tracking = "limited:relocalizing" }, { $0.tracking = "not_available" }, { $0.mapping = "ready" },
             { $0.sensorCamera.fx = 0 }, { $0.videoCamera.cy = .infinity }, { $0.sensorCamera.cx = -1 },
-            { $0.videoCamera.imageHeight = 950 }, { $0.videoCamera.fx += 1 }, { $0.rawDepth.height = 4 },
+            { $0.videoCamera.imageHeight = 950 }, { $0.videoCamera.fx += 1 }, { $0.rawDepth?.height = 4 },
         ]
         for change in changes {
             var frame = videoTestDocument().frames[0]
@@ -163,11 +165,11 @@ struct ScanVideoManifestTests {
 
     @Test func videoDepthRejectsGapsOverlapsIncompleteConfidenceAndWrongNativeLayout() throws {
         let changes: [(inout ScanVideoFrameDocument) -> Void] = [
-            { $0.frames[0].rawDepth.offset = 1 }, { $0.frames[1].rawDepth.offset = 83 },
-            { $0.frames[1].rawDepth.offset = 85 }, { $0.frames[0].rawDepth.confidenceOffset = 59 },
-            { $0.frames[0].rawDepth.confidenceOffset = 61 }, { $0.frames[0].rawDepth.length = 48 },
-            { $0.frames[0].rawDepth.bytesPerRow = 16 }, { $0.frames[0].rawDepth.pixelFormat = 0 },
-            { $0.frames[0].rawDepth.confidenceBytesPerRow = nil }, { $0.frames[0].rawDepth.confidenceLength = 12 },
+            { $0.frames[0].rawDepth?.offset = 1 }, { $0.frames[1].rawDepth?.offset = 83 },
+            { $0.frames[1].rawDepth?.offset = 85 }, { $0.frames[0].rawDepth?.confidenceOffset = 59 },
+            { $0.frames[0].rawDepth?.confidenceOffset = 61 }, { $0.frames[0].rawDepth?.length = 48 },
+            { $0.frames[0].rawDepth?.bytesPerRow = 16 }, { $0.frames[0].rawDepth?.pixelFormat = 0 },
+            { $0.frames[0].rawDepth?.confidenceBytesPerRow = nil }, { $0.frames[0].rawDepth?.confidenceLength = 12 },
         ]
         for change in changes {
             var document = videoTestDocument()
@@ -180,15 +182,15 @@ struct ScanVideoManifestTests {
     }
 
     @Test func videoDepthChecksOverflowBeforeUsingSidecarOffsets() throws {
-        var depth = videoTestDocument().frames[0].rawDepth
+        var depth = try #require(videoTestDocument().frames[0].rawDepth)
         depth.offset = Int.max - 1
         #expect(throws: CaptureValidationError.self) {
             try depth.validate(expectedOffset: Int.max - 1, maximumBytes: Int.max)
         }
-        depth = videoTestDocument().frames[0].rawDepth
+        depth = try #require(videoTestDocument().frames[0].rawDepth)
         depth.bytesPerRow = Int.max
         #expect(throws: CaptureValidationError.self) { try depth.validate(expectedOffset: 0, maximumBytes: Int.max) }
-        depth = videoTestDocument().frames[0].rawDepth
+        depth = try #require(videoTestDocument().frames[0].rawDepth)
         depth.confidenceBytesPerRow = Int.max
         #expect(throws: CaptureValidationError.self) { try depth.validate(expectedOffset: 0, maximumBytes: Int.max) }
     }
@@ -196,15 +198,88 @@ struct ScanVideoManifestTests {
     @Test func videoDepthCanExplicitlyRepresentUnavailableConfidenceWithoutInventingIt() throws {
         var document = videoTestDocument()
         for index in document.frames.indices {
-            document.frames[index].rawDepth.offset = index * 60
-            document.frames[index].rawDepth.confidenceOffset = nil
-            document.frames[index].rawDepth.confidenceLength = nil
-            document.frames[index].rawDepth.confidenceBytesPerRow = nil
+            document.frames[index].rawDepth?.offset = index * 60
+            document.frames[index].rawDepth?.confidenceOffset = nil
+            document.frames[index].rawDepth?.confidenceLength = nil
+            document.frames[index].rawDepth?.confidenceBytesPerRow = nil
         }
         try document.validate(depthBytes: 120)
         let data = try JSONEncoder().encode(document)
         #expect(try JSONDecoder().decode(ScanVideoFrameDocument.self, from: data) == document)
         #expect(!String(decoding: data, as: UTF8.self).contains("confidence_offset"))
+    }
+
+    @Test func videoFramesWithoutMeasuredDepthRetainExactPoseCalibrationAndTiming() throws {
+        var document = videoTestDocument()
+        for index in document.frames.indices { document.frames[index].rawDepth = nil }
+        try document.validate(depthBytes: 0)
+        var segment = try videoTestSegment(document)
+        segment.depthBytes = 0
+        try document.validate(segment: segment)
+        var manifest = try videoTestManifest()
+        manifest.segments = [segment]
+        try manifest.validate()
+        let data = try JSONEncoder().encode(document)
+        let saved = try JSONDecoder().decode(ScanVideoFrameDocument.self, from: data)
+        #expect(saved == document)
+        #expect(saved.frames[1].mapFromCamera[12] == 0.25)
+        #expect(saved.frames[1].timestampSeconds == 125.625)
+        #expect(saved.frames[1].videoCamera == videoTestDocument().frames[1].videoCamera)
+        #expect(!String(decoding: data, as: UTF8.self).contains("raw_depth"))
+        #expect(throws: CaptureValidationError.self) { try document.validate(depthBytes: 1) }
+        document.frames[0].mapFromCamera[0] = 2
+        #expect(throws: CaptureValidationError.self) { try document.validate(depthBytes: 0) }
+        document = saved
+        document.frames[0].videoCamera.fx += 1
+        #expect(throws: CaptureValidationError.self) { try document.validate(depthBytes: 0) }
+    }
+
+    @Test func mixedVideoFramesIndexOnlyMeasuredDepthWithoutReservingBytesForAbsentDepth() throws {
+        let original = videoTestDocument()
+        var document = original
+        let timestamps = [125.3, 125.4, 125.5, 125.625, 125.8]
+        document.frames = timestamps.enumerated().map { index, timestamp in
+            var frame = original.frames[index == 3 ? 1 : 0]
+            frame.index = index
+            frame.timestampSeconds = timestamp
+            frame.presentationTimeSeconds = timestamp - timestamps[0]
+            if index != 1 && index != 3 { frame.rawDepth = nil }
+            return frame
+        }
+        try document.validate(depthBytes: 168)
+        #expect(document.frames[1].rawDepth?.offset == 0)
+        #expect(document.frames[3].rawDepth?.offset == 84)
+        let data = try JSONEncoder().encode(document)
+        #expect(try JSONDecoder().decode(ScanVideoFrameDocument.self, from: data) == document)
+        document.frames[3].rawDepth?.offset = 85
+        #expect(throws: CaptureValidationError.self) { try document.validate(depthBytes: 169) }
+        document.frames[3].rawDepth?.offset = 83
+        #expect(throws: CaptureValidationError.self) { try document.validate(depthBytes: 168) }
+    }
+
+    @Test func legacyVideoDocumentsRequireDepthOnEveryFrameAndNonemptyDepthSegments() throws {
+        var document = videoTestDocument()
+        document.schemaVersion = 1
+        var segment = try videoTestSegment(document)
+        var manifest = try videoTestManifest()
+        manifest.schemaVersion = 1
+        manifest.segments = [segment]
+        try document.validate(segment: segment)
+        try manifest.validate()
+        let data = try JSONEncoder().encode(document)
+        #expect(try JSONDecoder().decode(ScanVideoFrameDocument.self, from: data) == document)
+        document.frames[0].rawDepth = nil
+        document.frames[1].rawDepth?.offset = 0
+        document.frames[1].rawDepth?.confidenceOffset = 60
+        #expect(throws: CaptureValidationError.self) { try document.validate(depthBytes: 84) }
+        document.schemaVersion = 2
+        try document.validate(depthBytes: 84)
+        document.schemaVersion = 1
+        for index in document.frames.indices { document.frames[index].rawDepth = nil }
+        #expect(throws: CaptureValidationError.self) { try document.validate(depthBytes: 0) }
+        segment.depthBytes = 0
+        manifest.segments = [segment]
+        #expect(throws: CaptureValidationError.self) { try manifest.validate() }
     }
 
     @Test func videoFrameIndexCrossChecksSegmentIdentityCountAndTimeline() throws {
@@ -221,7 +296,7 @@ struct ScanVideoManifestTests {
             #expect(throws: CaptureValidationError.self) { try document.validate(segment: segment) }
         }
         var invalid = document
-        invalid.schemaVersion = 2
+        invalid.schemaVersion = 3
         #expect(throws: CaptureValidationError.self) { try invalid.validate(depthBytes: 168) }
         invalid = document
         invalid.pixelOrientation = "portrait"

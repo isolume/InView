@@ -232,6 +232,9 @@ struct ScanView: View {
             if let status = controller.videoStatus, status != "Recording video" {
                 Text(status).font(.footnote).foregroundStyle(.secondary)
             }
+            if let notice = controller.videoDepthNotice {
+                Text(notice).font(.footnote).foregroundStyle(.secondary)
+            }
             if controller.automaticFloorDetectionUnavailable {
                 Text("Use the floor button when you move to another floor.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -439,6 +442,12 @@ private struct MapReviewDetailsView: View {
                 }
                 if controller.draft != nil, let warning = controller.originalScanWarning {
                     Section { Text(warning).foregroundStyle(.secondary) }
+                }
+                if let status = controller.videoStatus {
+                    Section {
+                        Label(status, systemImage: "video")
+                        if let notice = controller.videoDepthNotice { Text(notice).foregroundStyle(.secondary) }
+                    }
                 }
                 if let draft = controller.draft {
                     Section {
