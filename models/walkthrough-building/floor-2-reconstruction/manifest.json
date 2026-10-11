@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "capture_id": "CA3352E3-7C9E-465C-A643-CADF1385B3C9",
+  "source_files": [
+    {
+      "filename": "0D8269FD-6D09-494F-824F-0492E42CD6AD.json",
+      "bytes": 127653,
+      "sha256": "badd70db9b906e3245c67d9d95ccb3297ed5b05c76f01a6503d486aff6c2ed45"
+    },
+    {
+      "filename": "capture 3.json",
+      "bytes": 3480757,
+      "sha256": "d898425b8f4a62b030988e85b6862b4e1ab44be92de3a811345a9528d4c8adf5"
+    },
+    {
+      "filename": "raw-snapshot 3.json",
+      "bytes": 7694747,
+      "sha256": "fbe3b6ec2bb4eaef64f331dfc5626e5fdad942ab78ca35f4c9f303dc886cd580"
+    },
+    {
+      "filename": "roomplan 3.json",
+      "bytes": 127721,
+      "sha256": "b98aa292c07ea739970d5f7fa4ed87fb9a6fd97a7a9d2a0563cb57294341d118"
+    },
+    {
+      "filename": "CA3352E3-7C9E-465C-A643-CADF1385B3C9.inviewvideo.tar",
+      "bytes": 980241920,
+      "sha256": "ea0e6898810f4ebd0c5e7ef4ba3992aebb539a5e658eff6726b698d41ba33650"
+    }
+  ],
+  "routing_map_sha256": "a2c0993c064ab9d664b3e4db2fef64bbb06c34268a89ee1c2f29ea3fdbb9e473",
+  "scan_scene_sha256": "7cf4fbf4cf1d582bd82f0a604ca63e998ae44887a36c2ccaf1534b422bcc5632",
+  "note": "Visual reconstruction. Full sensor archive remains external; structural source and derived geometry are stored here. Video pixels, people and belongings are not embedded.",
+  "derived_files": [
+    {
+      "filename": "cafe-evidence.json",
+      "sha256": "1bdc00893be88452bd24801097736e3a20e0ce0fb533c29857969b74af9baab5"
+    },
+    {
+      "filename": "floor-evidence.json",
+      "sha256": "297b73da7dfdf8d75ecbb0b19a03f9b3a4d7b790f7c100d7f0faf2ed8dfe2646"
+    },
+    {
+      "filename": "furnishing-evidence.json",
+      "sha256": "0be722d254248bbf9dced56dc01017ed7180c2a2869f44e22a41f59ae708afbd"
+    },
+    {
+      "filename": "preparation-validation.json",
+      "sha256": "896abc9548a9202fd82a987813047011154063a80336cf64545dbfcd9a33b6ce"
+    },
+    {
+      "filename": "reconstruction.json",
+      "sha256": "d37c3c8bf78d3c2c1ed23a377f0f39372f5249d7144763200f48e36013d2cd33"
+    },
+    {
+      "filename": "registration.json",
+      "sha256": "576a2a267f280dc297475433c40474883be5705fc64b8b93b5c9687022212e63"
+    },
+    {
+      "filename": "source-geometry.json",
+      "sha256": "352dd3db7567157a9f89bea49169eaed8e0fbfc5707c6fc0c1e7d3fba8d0f605"
+    },
+    {
+      "filename": "structural-evidence.json",
+      "sha256": "9812f576be93a4898df494b903cfcfedb8e0a2111644e86655f06b7e7e186f3c"
+    },
+    {
+      "filename": "structural-repairs.json",
+      "sha256": "e55d6dba7fed629e96e4a7aa38c678a7fe2a6f697b16c69748f58bbd2d0bc7fb"
+    }
+  ]
+}

@@ -1,0 +1,1811 @@
+{
+  "schema_version": 1,
+  "coordinate_frame": "native scan map_from_camera, meters, XYZ Y-up; center_xz_m is [X,Z]",
+  "source_scan": "CA3352E3-7C9E-465C-A643-CADF1385B3C9",
+  "method": "Upright video pixel manually selected; normalized upright(x,y) maps to sensor(y,1-x). Match decoded image to first frame pts>=requested time. Median valid confidence>=1 raw depth in 3x3 window, sensor intrinsics scaled to depth, column-major map_from_camera. Upright decoded image 960x1280. Sizes marked regularized are approximate semantic reconstruction.",
+  "floor_y_samples_m": [
+    -1.431,
+    -1.435,
+    -1.417,
+    -1.486,
+    -1.499,
+    -1.532,
+    -1.54,
+    -1.548
+  ],
+  "objects": [
+    {
+      "id": "gallery-bench-01",
+      "category": "backless_bench",
+      "center_xz_m": [
+        6.101,
+        29.541
+      ],
+      "size_m": [
+        1.14,
+        0.46,
+        0.43
+      ],
+      "long_axis_xz": [
+        0.9561,
+        -0.2929
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.14,
+      "evidence": {
+        "segment": "video-0019",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              5.53,
+              -0.989,
+              29.538
+            ],
+            "depth": 3.055,
+            "confidence": 1,
+            "pixel": [
+              380,
+              833
+            ],
+            "segment": 19,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              6.452,
+              -0.99,
+              29.267
+            ],
+            "depth": 3.762,
+            "confidence": 1,
+            "pixel": [
+              552,
+              775
+            ],
+            "segment": 19,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              6.724,
+              -1.028,
+              29.516
+            ],
+            "depth": 3.697,
+            "confidence": 1,
+            "pixel": [
+              641,
+              788
+            ],
+            "segment": 19,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              5.697,
+              -1.024,
+              29.842
+            ],
+            "depth": 2.889,
+            "confidence": 1,
+            "pixel": [
+              468,
+              861
+            ],
+            "segment": 19,
+            "pts": 4.000302
+          }
+        ]
+      },
+      "notes": "Four inset upholstery corner samples; metal end panels and dark seat underside. Height standardized to 0.46 m from seat/floor evidence."
+    },
+    {
+      "id": "gallery-bench-02",
+      "category": "backless_bench",
+      "center_xz_m": [
+        11.044,
+        27.511
+      ],
+      "size_m": [
+        1.31,
+        0.46,
+        0.44
+      ],
+      "long_axis_xz": [
+        0.9269,
+        -0.3754
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.14,
+      "evidence": {
+        "segment": "video-0020",
+        "requested_pts": 0,
+        "samples": [
+          {
+            "xyz": [
+              10.409,
+              -1.009,
+              27.565
+            ],
+            "depth": 2.295,
+            "confidence": 2,
+            "pixel": [
+              149,
+              945
+            ],
+            "segment": 20,
+            "pts": 0
+          },
+          {
+            "xyz": [
+              11.471,
+              -1.002,
+              27.157
+            ],
+            "depth": 3.162,
+            "confidence": 1,
+            "pixel": [
+              445,
+              831
+            ],
+            "segment": 20,
+            "pts": 0
+          },
+          {
+            "xyz": [
+              11.724,
+              -1.072,
+              27.416
+            ],
+            "depth": 3.07,
+            "confidence": 1,
+            "pixel": [
+              545,
+              862
+            ],
+            "segment": 20,
+            "pts": 0
+          },
+          {
+            "xyz": [
+              10.571,
+              -1.034,
+              27.905
+            ],
+            "depth": 2.082,
+            "confidence": 2,
+            "pixel": [
+              247,
+              1000
+            ],
+            "segment": 20,
+            "pts": 0
+          }
+        ]
+      },
+      "notes": "Four inset upholstery corner samples; metal end panels and dark seat underside. Height standardized to 0.46 m from seat/floor evidence."
+    },
+    {
+      "id": "gallery-bench-03",
+      "category": "backless_bench",
+      "center_xz_m": [
+        14.564,
+        26.131
+      ],
+      "size_m": [
+        1.3,
+        0.46,
+        0.42
+      ],
+      "long_axis_xz": [
+        0.9245,
+        -0.3812
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.14,
+      "evidence": {
+        "segment": "video-0020",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              13.941,
+              -0.995,
+              26.237
+            ],
+            "depth": 1.82,
+            "confidence": 1,
+            "pixel": [
+              45,
+              1040
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              15.001,
+              -1.039,
+              25.741
+            ],
+            "depth": 2.73,
+            "confidence": 2,
+            "pixel": [
+              430,
+              892
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              15.218,
+              -1.069,
+              26.072
+            ],
+            "depth": 2.533,
+            "confidence": 2,
+            "pixel": [
+              546,
+              932
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              14.098,
+              -1.085,
+              26.475
+            ],
+            "depth": 1.687,
+            "confidence": 1,
+            "pixel": [
+              140,
+              1130
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          }
+        ]
+      },
+      "notes": "Four inset upholstery corner samples; metal end panels and dark seat underside. Height standardized to 0.46 m from seat/floor evidence."
+    },
+    {
+      "id": "gallery-bench-04",
+      "category": "backless_bench",
+      "center_xz_m": [
+        16.778,
+        25.296
+      ],
+      "size_m": [
+        1.14,
+        0.46,
+        0.43
+      ],
+      "long_axis_xz": [
+        0.9408,
+        -0.3389
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.14,
+      "evidence": {
+        "segment": "video-0020",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              16.336,
+              -1.021,
+              25.236
+            ],
+            "depth": 3.762,
+            "confidence": 1,
+            "pixel": [
+              676,
+              795
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              17.121,
+              -1.039,
+              25.019
+            ],
+            "depth": 4.301,
+            "confidence": 1,
+            "pixel": [
+              778,
+              769
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              17.39,
+              -1.074,
+              25.229
+            ],
+            "depth": 4.234,
+            "confidence": 0,
+            "pixel": [
+              853,
+              781
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          },
+          {
+            "xyz": [
+              16.265,
+              -1.014,
+              25.7
+            ],
+            "depth": 3.316,
+            "confidence": 1,
+            "pixel": [
+              740,
+              828
+            ],
+            "segment": 20,
+            "pts": 4.000302
+          }
+        ]
+      },
+      "notes": "Four inset upholstery corner samples; metal end panels and dark seat underside. Height standardized to 0.46 m from seat/floor evidence."
+    },
+    {
+      "id": "gallery-bench-05",
+      "category": "backless_bench",
+      "center_xz_m": [
+        20.24,
+        23.881
+      ],
+      "size_m": [
+        1.14,
+        0.46,
+        0.47
+      ],
+      "long_axis_xz": [
+        0.9463,
+        -0.3234
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.14,
+      "evidence": {
+        "segment": "video-0020",
+        "requested_pts": 8,
+        "samples": [
+          {
+            "xyz": [
+              19.658,
+              -1.005,
+              23.877
+            ],
+            "depth": 3.242,
+            "confidence": 1,
+            "pixel": [
+              485,
+              780
+            ],
+            "segment": 20,
+            "pts": 8.000605
+          },
+          {
+            "xyz": [
+              20.56,
+              -0.997,
+              23.595
+            ],
+            "depth": 3.939,
+            "confidence": 1,
+            "pixel": [
+              625,
+              722
+            ],
+            "segment": 20,
+            "pts": 8.000605
+          },
+          {
+            "xyz": [
+              20.888,
+              -1.062,
+              23.836
+            ],
+            "depth": 3.914,
+            "confidence": 1,
+            "pixel": [
+              719,
+              735
+            ],
+            "segment": 20,
+            "pts": 8.000605
+          },
+          {
+            "xyz": [
+              19.853,
+              -1.035,
+              24.216
+            ],
+            "depth": 3.061,
+            "confidence": 1,
+            "pixel": [
+              586,
+              802
+            ],
+            "segment": 20,
+            "pts": 8.000605
+          }
+        ]
+      },
+      "notes": "Four inset upholstery corner samples; metal end panels and dark seat underside. Height standardized to 0.46 m from seat/floor evidence."
+    },
+    {
+      "id": "gallery-bench-06",
+      "category": "backless_bench",
+      "center_xz_m": [
+        22.61,
+        23.08
+      ],
+      "size_m": [
+        1.3,
+        0.46,
+        0.5
+      ],
+      "long_axis_xz": [
+        0.9285,
+        -0.3712
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.28,
+      "evidence": {
+        "segment": "video-0020",
+        "requested_pts": 8,
+        "samples": [
+          {
+            "xyz": [
+              22.334,
+              -1.014,
+              22.947
+            ],
+            "depth": 5.395,
+            "confidence": 1,
+            "pixel": [
+              780,
+              656
+            ],
+            "segment": 20,
+            "pts": 8.000605
+          },
+          {
+            "xyz": [
+              22.363,
+              -1.073,
+              23.114
+            ],
+            "depth": 5.277,
+            "confidence": 1,
+            "pixel": [
+              806,
+              669
+            ],
+            "segment": 20,
+            "pts": 8.000605
+          },
+          {
+            "xyz": [
+              22.678,
+              -0.959,
+              22.926
+            ],
+            "depth": 5.578,
+            "confidence": 1,
+            "pixel": [
+              815,
+              640
+            ],
+            "segment": 20,
+            "pts": 8.000605
+          }
+        ]
+      },
+      "notes": "Far bench partly occupied/occluded. Width uses nearby identical bench; bounded seat samples anchor its near half."
+    },
+    {
+      "id": "approach-bench-01",
+      "category": "backless_bench",
+      "center_xz_m": [
+        -16.22,
+        0.62
+      ],
+      "size_m": [
+        1.55,
+        0.46,
+        0.53
+      ],
+      "long_axis_xz": [
+        -0.925,
+        0.38
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.28,
+      "evidence": {
+        "segment": "video-0033",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -15.789,
+              -1.104,
+              0.775
+            ],
+            "depth": 4.574,
+            "confidence": 1,
+            "pixel": [
+              350,
+              690
+            ],
+            "segment": 33,
+            "pts": 4.000268
+          },
+          {
+            "xyz": [
+              -16.001,
+              -1.114,
+              0.423
+            ],
+            "depth": 4.363,
+            "confidence": 1,
+            "pixel": [
+              272,
+              702
+            ],
+            "segment": 33,
+            "pts": 4.000268
+          },
+          {
+            "xyz": [
+              -16.69,
+              -1.179,
+              0.604
+            ],
+            "depth": 3.697,
+            "confidence": 1,
+            "pixel": [
+              281,
+              756
+            ],
+            "segment": 33,
+            "pts": 4.000268
+          }
+        ]
+      },
+      "notes": "Two adjoining approach benches seen in segment12 and return segment33. Current centers follow later measured depth; note 0.2-0.4m scan drift."
+    },
+    {
+      "id": "approach-bench-02",
+      "category": "backless_bench",
+      "center_xz_m": [
+        -17.68,
+        1.08
+      ],
+      "size_m": [
+        1.55,
+        0.46,
+        0.53
+      ],
+      "long_axis_xz": [
+        -0.925,
+        0.38
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "deep navy blue",
+        "frame": "brushed silver"
+      },
+      "uncertainty_m": 0.28,
+      "evidence": {
+        "segment": "video-0013",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -17.887,
+              -0.94,
+              1.126
+            ],
+            "depth": 1.972,
+            "confidence": 2,
+            "pixel": [
+              30,
+              1021
+            ],
+            "segment": 13,
+            "pts": 4.000323
+          },
+          {
+            "xyz": [
+              -18.315,
+              -0.945,
+              1.313
+            ],
+            "depth": 2.256,
+            "confidence": 2,
+            "pixel": [
+              233,
+              966
+            ],
+            "segment": 13,
+            "pts": 4.000323
+          },
+          {
+            "xyz": [
+              -18.591,
+              -1.019,
+              1.12
+            ],
+            "depth": 2.145,
+            "confidence": 2,
+            "pixel": [
+              351,
+              1021
+            ],
+            "segment": 13,
+            "pts": 4.000323
+          },
+          {
+            "xyz": [
+              -18.073,
+              -0.981,
+              0.896
+            ],
+            "depth": 1.799,
+            "confidence": 2,
+            "pixel": [
+              104,
+              1089
+            ],
+            "segment": 13,
+            "pts": 4.000323
+          }
+        ]
+      },
+      "notes": "Visible continuation of approach bench row; use paired center with preceding bench; far-left portion is outside this frame."
+    },
+    {
+      "id": "approach-planter",
+      "category": "rectangular_planter",
+      "center_xz_m": [
+        -19.28,
+        1.77
+      ],
+      "size_m": [
+        1.25,
+        0.84,
+        0.53
+      ],
+      "long_axis_xz": [
+        -0.925,
+        0.38
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "box": "light silver gray",
+        "foliage": "green"
+      },
+      "uncertainty_m": 0.22,
+      "evidence": {
+        "segment": "video-0013",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -18.721,
+              -1.002,
+              1.364
+            ],
+            "depth": 2.41,
+            "confidence": 2,
+            "pixel": [
+              390,
+              963
+            ],
+            "segment": 13,
+            "pts": 4.000323
+          },
+          {
+            "xyz": [
+              -19.695,
+              -0.973,
+              1.739
+            ],
+            "depth": 3.004,
+            "confidence": 2,
+            "pixel": [
+              662,
+              877
+            ],
+            "segment": 13,
+            "pts": 4.000323
+          },
+          {
+            "xyz": [
+              -19.162,
+              -1.151,
+              1.521
+            ],
+            "depth": 2.684,
+            "confidence": 2,
+            "pixel": [
+              528,
+              973
+            ],
+            "segment": 13,
+            "pts": 4.000323
+          }
+        ]
+      },
+      "notes": "Front face measured. Center offset ~0.25m toward wall from front face. Low foliage crown adds ~0.3m. Do not copy photos or screen content."
+    },
+    {
+      "id": "drinking-fountain-low",
+      "category": "wall_fountain",
+      "center_xz_m": [
+        -18.01,
+        17.07
+      ],
+      "size_m": [
+        0.5,
+        0.8,
+        0.44
+      ],
+      "long_axis_xz": [
+        0.37,
+        0.929
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "fixture": "brushed silver"
+      },
+      "uncertainty_m": 0.18,
+      "evidence": {
+        "segment": "video-0015",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -18.062,
+              -0.624,
+              16.804
+            ],
+            "depth": 3.104,
+            "confidence": 1,
+            "pixel": [
+              350,
+              748
+            ],
+            "segment": 15,
+            "pts": 4.000317
+          },
+          {
+            "xyz": [
+              -18.178,
+              -0.7,
+              17.236
+            ],
+            "depth": 3.25,
+            "confidence": 1,
+            "pixel": [
+              473,
+              756
+            ],
+            "segment": 15,
+            "pts": 4.000317
+          },
+          {
+            "xyz": [
+              -17.986,
+              -0.88,
+              17.111
+            ],
+            "depth": 3.361,
+            "confidence": 1,
+            "pixel": [
+              419,
+              799
+            ],
+            "segment": 15,
+            "pts": 4.000317
+          }
+        ]
+      },
+      "notes": "Wall-mounted low basin; open space beneath. Basin top is approximately floor+0.76m."
+    },
+    {
+      "id": "drinking-fountain-high",
+      "category": "wall_fountain",
+      "center_xz_m": [
+        -17.79,
+        17.6
+      ],
+      "size_m": [
+        0.48,
+        0.98,
+        0.43
+      ],
+      "long_axis_xz": [
+        0.37,
+        0.929
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "fixture": "brushed silver"
+      },
+      "uncertainty_m": 0.25,
+      "evidence": {
+        "segment": "video-0015",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -17.931,
+              -0.538,
+              17.343
+            ],
+            "depth": 3.496,
+            "confidence": 0,
+            "pixel": [
+              460,
+              700
+            ],
+            "segment": 15,
+            "pts": 4.000317
+          },
+          {
+            "xyz": [
+              -17.83,
+              -0.58,
+              17.795
+            ],
+            "depth": 3.831,
+            "confidence": 1,
+            "pixel": [
+              537,
+              694
+            ],
+            "segment": 15,
+            "pts": 4.000317
+          }
+        ]
+      },
+      "notes": "Higher basin with bottle-filler backplate up to approximately floor+1.35m; partly reflective surface."
+    },
+    {
+      "id": "orange-waiting-sofa",
+      "category": "three_module_sofa",
+      "center_xz_m": [
+        -9.19,
+        40.04
+      ],
+      "size_m": [
+        2.9,
+        0.84,
+        0.7
+      ],
+      "long_axis_xz": [
+        0.3729,
+        0.9279
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "alternating muted patterned gray and orange",
+        "back": "orange and dark teal"
+      },
+      "uncertainty_m": 0.15,
+      "evidence": {
+        "segment": "video-0027",
+        "requested_pts": 1,
+        "samples": [
+          {
+            "xyz": [
+              -9.483,
+              -1.087,
+              38.713
+            ],
+            "depth": 1.561,
+            "confidence": 2,
+            "pixel": [
+              255,
+              1130
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          },
+          {
+            "xyz": [
+              -8.506,
+              -1.07,
+              41.191
+            ],
+            "depth": 3.953,
+            "confidence": 1,
+            "pixel": [
+              639,
+              745
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          },
+          {
+            "xyz": [
+              -8.931,
+              -1.112,
+              41.289
+            ],
+            "depth": 3.725,
+            "confidence": 1,
+            "pixel": [
+              737,
+              768
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          },
+          {
+            "xyz": [
+              -9.901,
+              -1.144,
+              39.032
+            ],
+            "depth": 1.49,
+            "confidence": 1,
+            "pixel": [
+              557,
+              1188
+            ],
+            "segment": 27,
+            "pts": 1.000069
+          }
+        ]
+      },
+      "notes": "Three adjoining armless modules. Seat top floor+0.42m, back height floor+0.85m. Back is window side; visible front edge points are samples 2,3."
+    },
+    {
+      "id": "cafe-appliance-cabinet",
+      "category": "cabinet",
+      "center_xz_m": [
+        -20.34,
+        47.17
+      ],
+      "size_m": [
+        0.56,
+        1.9,
+        0.45
+      ],
+      "long_axis_xz": [
+        -0.37,
+        0.929
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "body": "charcoal gray"
+      },
+      "uncertainty_m": 0.18,
+      "evidence": {
+        "segment": "video-0028",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -20.17,
+              0.287,
+              47.341
+            ],
+            "depth": 3.549,
+            "confidence": 1,
+            "pixel": [
+              606,
+              551
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          },
+          {
+            "xyz": [
+              -20.337,
+              0.27,
+              46.912
+            ],
+            "depth": 3.463,
+            "confidence": 1,
+            "pixel": [
+              726,
+              556
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          },
+          {
+            "xyz": [
+              -19.994,
+              -1.338,
+              46.844
+            ],
+            "depth": 3.199,
+            "confidence": 2,
+            "pixel": [
+              704,
+              1001
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          },
+          {
+            "xyz": [
+              -19.909,
+              -1.317,
+              47.251
+            ],
+            "depth": 3.342,
+            "confidence": 2,
+            "pixel": [
+              590,
+              977
+            ],
+            "segment": 28,
+            "pts": 4.000278
+          }
+        ]
+      },
+      "notes": "Tall cabinet holding stacked small appliances; front plane measured, center extends into wall direction. Use simplified dark shelves, no readable labels."
+    },
+    {
+      "id": "recycling-station",
+      "category": "recycling_cabinet",
+      "center_xz_m": [
+        -13.79,
+        37.16
+      ],
+      "size_m": [
+        1.22,
+        1.15,
+        0.62
+      ],
+      "long_axis_xz": [
+        0.925,
+        -0.38
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "body": "charcoal gray",
+        "top": "muted colored opening lids"
+      },
+      "uncertainty_m": 0.18,
+      "evidence": {
+        "segment": "video-0029",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -14.185,
+              -0.687,
+              37.534
+            ],
+            "depth": 3.516,
+            "confidence": 2,
+            "pixel": [
+              190,
+              576
+            ],
+            "segment": 29,
+            "pts": 4.000276
+          },
+          {
+            "xyz": [
+              -13.19,
+              -0.698,
+              37.051
+            ],
+            "depth": 3.24,
+            "confidence": 2,
+            "pixel": [
+              461,
+              561
+            ],
+            "segment": 29,
+            "pts": 4.000276
+          },
+          {
+            "xyz": [
+              -14.186,
+              -1.324,
+              37.554
+            ],
+            "depth": 3.68,
+            "confidence": 2,
+            "pixel": [
+              217,
+              728
+            ],
+            "segment": 29,
+            "pts": 4.000276
+          },
+          {
+            "xyz": [
+              -13.246,
+              -1.319,
+              37.179
+            ],
+            "depth": 3.355,
+            "confidence": 2,
+            "pixel": [
+              447,
+              730
+            ],
+            "segment": 29,
+            "pts": 4.000276
+          },
+          {
+            "xyz": [
+              -13.645,
+              -0.557,
+              37.32
+            ],
+            "depth": 3.293,
+            "confidence": 2,
+            "pixel": [
+              316,
+              535
+            ],
+            "segment": 29,
+            "pts": 4.000276
+          }
+        ]
+      },
+      "notes": "Two front doors and sorting lid; rear display board rises ~0.25m above cabinet. Width and face from depth."
+    },
+    {
+      "id": "modular-seating-01",
+      "category": "modular_seating_island",
+      "center_xz_m": [
+        -23.2,
+        17.13
+      ],
+      "size_m": [
+        2.4,
+        0.4,
+        1.65
+      ],
+      "long_axis_xz": [
+        0.9911,
+        -0.133
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "dark desaturated teal patterned textile",
+        "backs": "muted teal and mustard yellow"
+      },
+      "uncertainty_m": 0.35,
+      "evidence": {
+        "segment": "video-0031",
+        "requested_pts": 2,
+        "samples": [
+          {
+            "xyz": [
+              -23.179,
+              -1.118,
+              17.578
+            ],
+            "depth": 4.598,
+            "confidence": 1,
+            "pixel": [
+              699,
+              615
+            ],
+            "segment": 31,
+            "pts": 2.000134
+          },
+          {
+            "xyz": [
+              -22.031,
+              -1.119,
+              17.207
+            ],
+            "depth": 3.439,
+            "confidence": 2,
+            "pixel": [
+              819,
+              680
+            ],
+            "segment": 31,
+            "pts": 2.000134
+          },
+          {
+            "xyz": [
+              -21.967,
+              -1.167,
+              16.803
+            ],
+            "depth": 3.322,
+            "confidence": 1,
+            "pixel": [
+              936,
+              699
+            ],
+            "segment": 31,
+            "pts": 2.000134
+          }
+        ]
+      },
+      "notes": "Five separate islands verified across segment31@2,4,6,8 and segment32@0. Simplify each as low rectangle with short intersecting central back panels to floor+0.85m. Front depth samples are strong; occluded rear corners and width regularized from visible matching modules. No people, possessions, temporary boards or white portable tables."
+    },
+    {
+      "id": "modular-seating-02",
+      "category": "modular_seating_island",
+      "center_xz_m": [
+        -23.35,
+        14.57
+      ],
+      "size_m": [
+        2.4,
+        0.4,
+        1.65
+      ],
+      "long_axis_xz": [
+        0.9911,
+        -0.133
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "dark desaturated teal patterned textile",
+        "backs": "muted teal and mustard yellow"
+      },
+      "uncertainty_m": 0.35,
+      "evidence": {
+        "segment": "video-0031",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -23.296,
+              -1.112,
+              15.38
+            ],
+            "depth": 3.816,
+            "confidence": 1,
+            "pixel": [
+              479,
+              703
+            ],
+            "segment": 31,
+            "pts": 4.000271
+          },
+          {
+            "xyz": [
+              -22.242,
+              -1.19,
+              14.519
+            ],
+            "depth": 2.994,
+            "confidence": 2,
+            "pixel": [
+              800,
+              770
+            ],
+            "segment": 31,
+            "pts": 4.000271
+          },
+          {
+            "xyz": [
+              -22.3,
+              -1.144,
+              14.154
+            ],
+            "depth": 3.115,
+            "confidence": 2,
+            "pixel": [
+              885,
+              738
+            ],
+            "segment": 31,
+            "pts": 4.000271
+          }
+        ]
+      },
+      "notes": "Five separate islands verified across segment31@2,4,6,8 and segment32@0. Simplify each as low rectangle with short intersecting central back panels to floor+0.85m. Front depth samples are strong; occluded rear corners and width regularized from visible matching modules. No people, possessions, temporary boards or white portable tables."
+    },
+    {
+      "id": "modular-seating-03",
+      "category": "modular_seating_island",
+      "center_xz_m": [
+        -23.63,
+        12.5
+      ],
+      "size_m": [
+        2.4,
+        0.4,
+        1.65
+      ],
+      "long_axis_xz": [
+        0.9911,
+        -0.133
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "dark desaturated teal patterned textile",
+        "backs": "muted teal and mustard yellow"
+      },
+      "uncertainty_m": 0.35,
+      "evidence": {
+        "segment": "video-0031",
+        "requested_pts": 6,
+        "samples": [
+          {
+            "xyz": [
+              -24.424,
+              -1.111,
+              13.251
+            ],
+            "depth": 3.998,
+            "confidence": 1,
+            "pixel": [
+              118,
+              694
+            ],
+            "segment": 31,
+            "pts": 6.000408
+          },
+          {
+            "xyz": [
+              -22.865,
+              -1.125,
+              12.946
+            ],
+            "depth": 2.857,
+            "confidence": 2,
+            "pixel": [
+              313,
+              784
+            ],
+            "segment": 31,
+            "pts": 6.000408
+          },
+          {
+            "xyz": [
+              -22.644,
+              -1.227,
+              12.042
+            ],
+            "depth": 3.156,
+            "confidence": 2,
+            "pixel": [
+              580,
+              775
+            ],
+            "segment": 31,
+            "pts": 6.000408
+          },
+          {
+            "xyz": [
+              -22.531,
+              -1.203,
+              12.864
+            ],
+            "depth": 2.637,
+            "confidence": 2,
+            "pixel": [
+              383,
+              836
+            ],
+            "segment": 31,
+            "pts": 6.000408
+          }
+        ]
+      },
+      "notes": "Five separate islands verified across segment31@2,4,6,8 and segment32@0. Simplify each as low rectangle with short intersecting central back panels to floor+0.85m. Front depth samples are strong; occluded rear corners and width regularized from visible matching modules. No people, possessions, temporary boards or white portable tables."
+    },
+    {
+      "id": "modular-seating-04",
+      "category": "modular_seating_island",
+      "center_xz_m": [
+        -24.0,
+        10.0
+      ],
+      "size_m": [
+        2.4,
+        0.4,
+        1.65
+      ],
+      "long_axis_xz": [
+        0.9911,
+        -0.133
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "dark desaturated teal patterned textile",
+        "backs": "muted teal and mustard yellow"
+      },
+      "uncertainty_m": 0.35,
+      "evidence": {
+        "segment": "video-0031",
+        "requested_pts": 8,
+        "samples": [
+          {
+            "xyz": [
+              -25.095,
+              -1.156,
+              10.887
+            ],
+            "depth": 4.168,
+            "confidence": 2,
+            "pixel": [
+              155,
+              749
+            ],
+            "segment": 31,
+            "pts": 8.000545
+          },
+          {
+            "xyz": [
+              -24.805,
+              -1.105,
+              10.543
+            ],
+            "depth": 4.074,
+            "confidence": 2,
+            "pixel": [
+              244,
+              739
+            ],
+            "segment": 31,
+            "pts": 8.000545
+          },
+          {
+            "xyz": [
+              -22.873,
+              -1.229,
+              10.381
+            ],
+            "depth": 2.504,
+            "confidence": 2,
+            "pixel": [
+              488,
+              916
+            ],
+            "segment": 31,
+            "pts": 8.000545
+          },
+          {
+            "xyz": [
+              -23.015,
+              -1.232,
+              9.375
+            ],
+            "depth": 3.109,
+            "confidence": 2,
+            "pixel": [
+              718,
+              825
+            ],
+            "segment": 31,
+            "pts": 8.000545
+          }
+        ]
+      },
+      "notes": "Five separate islands verified across segment31@2,4,6,8 and segment32@0. Simplify each as low rectangle with short intersecting central back panels to floor+0.85m. Front depth samples are strong; occluded rear corners and width regularized from visible matching modules. No people, possessions, temporary boards or white portable tables."
+    },
+    {
+      "id": "modular-seating-05",
+      "category": "modular_seating_island",
+      "center_xz_m": [
+        -24.08,
+        7.72
+      ],
+      "size_m": [
+        2.4,
+        0.4,
+        1.65
+      ],
+      "long_axis_xz": [
+        0.9911,
+        -0.133
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "seat": "dark desaturated teal patterned textile",
+        "backs": "muted teal and mustard yellow"
+      },
+      "uncertainty_m": 0.35,
+      "evidence": {
+        "segment": "video-0032",
+        "requested_pts": 0,
+        "samples": [
+          {
+            "xyz": [
+              -23.222,
+              -1.199,
+              7.796
+            ],
+            "depth": 2.332,
+            "confidence": 2,
+            "pixel": [
+              504,
+              904
+            ],
+            "segment": 32,
+            "pts": 0
+          },
+          {
+            "xyz": [
+              -23.28,
+              -1.196,
+              7.383
+            ],
+            "depth": 2.613,
+            "confidence": 2,
+            "pixel": [
+              604,
+              853
+            ],
+            "segment": 32,
+            "pts": 0
+          },
+          {
+            "xyz": [
+              -23.371,
+              -1.213,
+              8.171
+            ],
+            "depth": 2.24,
+            "confidence": 2,
+            "pixel": [
+              349,
+              934
+            ],
+            "segment": 32,
+            "pts": 0
+          },
+          {
+            "xyz": [
+              -23.86,
+              -1.14,
+              8.269
+            ],
+            "depth": 2.564,
+            "confidence": 2,
+            "pixel": [
+              237,
+              857
+            ],
+            "segment": 32,
+            "pts": 0
+          }
+        ]
+      },
+      "notes": "Five separate islands verified across segment31@2,4,6,8 and segment32@0. Simplify each as low rectangle with short intersecting central back panels to floor+0.85m. Front depth samples are strong; occluded rear corners and width regularized from visible matching modules. No people, possessions, temporary boards or white portable tables."
+    },
+    {
+      "id": "round-column-by-elevator",
+      "category": "round_column",
+      "center_xz_m": [
+        -22.66,
+        3.849
+      ],
+      "size_m": [
+        0.534,
+        2.9,
+        0.534
+      ],
+      "long_axis_xz": [
+        1.0,
+        0.0
+      ],
+      "base": "place_on_clean_floor",
+      "materials": {
+        "lower": "deep cobalt blue",
+        "upper": "blue gray"
+      },
+      "uncertainty_m": 0.08,
+      "evidence": {
+        "segment": "video-0032",
+        "requested_pts": 4,
+        "samples": [
+          {
+            "xyz": [
+              -22.511,
+              -0.326,
+              4.067
+            ],
+            "depth": 0.78,
+            "confidence": 2,
+            "pixel": [
+              152,
+              723
+            ],
+            "segment": 32,
+            "pts": 4.083616
+          },
+          {
+            "xyz": [
+              -22.418,
+              -0.316,
+              3.967
+            ],
+            "depth": 0.751,
+            "confidence": 2,
+            "pixel": [
+              300,
+              723
+            ],
+            "segment": 32,
+            "pts": 4.083616
+          },
+          {
+            "xyz": [
+              -22.397,
+              -0.332,
+              3.813
+            ],
+            "depth": 0.816,
+            "confidence": 2,
+            "pixel": [
+              470,
+              723
+            ],
+            "segment": 32,
+            "pts": 4.083616
+          },
+          {
+            "xyz": [
+              -22.554,
+              -0.333,
+              4.096
+            ],
+            "depth": 0.803,
+            "confidence": 2,
+            "pixel": [
+              108,
+              723
+            ],
+            "segment": 32,
+            "pts": 4.083616
+          },
+          {
+            "xyz": [
+              -22.42,
+              -0.35,
+              3.73
+            ],
+            "depth": 0.881,
+            "confidence": 2,
+            "pixel": [
+              531,
+              723
+            ],
+            "segment": 32,
+            "pts": 4.083616
+          }
+        ]
+      },
+      "notes": "Circle least-squares fit to 5 high-confidence surface depth points. Blue base about 0.9m high; column continues to ceiling. Avoid adding if RoomPlan already represents it."
+    }
+  ],
+  "rails": {
+    "style": {
+      "height_m": 1.03,
+      "posts": "dark navy blue",
+      "infill": "six slender horizontal rods",
+      "handrail": "silver round tube"
+    },
+    "measured_floor_edge_anchors": [
+      {
+        "xyz": [
+          -13.243,
+          -1.438,
+          36.472
+        ],
+        "depth": 3.898,
+        "confidence": 1,
+        "pixel": [
+          557,
+          698
+        ],
+        "segment": 29,
+        "pts": 4.000276
+      },
+      {
+        "xyz": [
+          -15.531,
+          -1.499,
+          37.537
+        ],
+        "depth": 4.59,
+        "confidence": 1,
+        "pixel": [
+          73,
+          718
+        ],
+        "segment": 29,
+        "pts": 4.000276
+      },
+      {
+        "xyz": [
+          -17.024,
+          -1.468,
+          26.726
+        ],
+        "depth": 2.309,
+        "confidence": 1,
+        "pixel": [
+          219,
+          985
+        ],
+        "segment": 30,
+        "pts": 4.000278
+      },
+      {
+        "xyz": [
+          -17.47,
+          -1.511,
+          25.612
+        ],
+        "depth": 3.252,
+        "confidence": 2,
+        "pixel": [
+          493,
+          838
+        ],
+        "segment": 30,
+        "pts": 4.000278
+      },
+      {
+        "xyz": [
+          -17.851,
+          -1.454,
+          24.53
+        ],
+        "depth": 4.102,
+        "confidence": 1,
+        "pixel": [
+          649,
+          742
+        ],
+        "segment": 30,
+        "pts": 4.000278
+      }
+    ],
+    "notes": "Open atrium, not solid walls or glass. Robust long edge is approximately scan XZ (-13.24,36.47) through (-17.02,26.73),(-17.47,25.61),(-17.85,24.53). Fit line to these with structure/coverage and bound endpoints by footage; do not extend from a single extrapolated point. Segment31@2 shows rail turning to rear wall by modular lounge; last corner thin rods lack valid depth. First-gallery rail also visible segments6,9,10 facing tall exterior glazing."
+  }
+}
