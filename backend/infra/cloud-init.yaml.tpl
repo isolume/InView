@@ -9,11 +9,20 @@ write_files:
     permissions: '0600'
     content: |
       INVIEW_API_TOKEN=${api_token}
-  - path: /etc/caddy/Caddyfile
+  # Caddy serves HTTPS for backend_domain, or for <ip-with-dashes>.sslip.io when no domain was
+  # given. The instance learns its own address only after boot, so the Caddyfile is written in runcmd.
+  - path: /usr/local/sbin/inview-caddyfile
+    permissions: '0755'
     content: |
-      ${backend_domain} {
-        reverse_proxy 127.0.0.1:${backend_port}
-      }
+      #!/bin/sh
+      set -eu
+      domain="${backend_domain}"
+      if [ -z "$domain" ]; then
+        ip="$(curl -fsS --max-time 20 https://api.ipify.org || curl -fsS --max-time 20 https://ifconfig.me)"
+        domain="$(printf '%s' "$ip" | tr . -).sslip.io"
+      fi
+      printf '%s {\n  reverse_proxy 127.0.0.1:${backend_port}\n}\n' "$domain" > /etc/caddy/Caddyfile
+      printf 'INVIEW_BACKEND_URL=https://%s\n' "$domain" > /etc/inview/backend-url
   - path: /etc/systemd/system/inview-backend.service
     content: |
       [Unit]
@@ -50,5 +59,6 @@ runcmd:
   - systemctl daemon-reload
   - systemctl enable inview-backend.service
   - systemctl start inview-backend.service
+  - /usr/local/sbin/inview-caddyfile
   - systemctl enable caddy
   - systemctl restart caddy
