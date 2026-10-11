@@ -5,7 +5,7 @@
 - Sweep the floor first, then pause on the actual doorway or staircase. Take a small step sideways or change viewing angle, and pause again to obtain independent evidence.
 - Stair labels show the number of measured visible treads and vertical rise. Orange wireframes bound **sampled visible treads**, not the hidden remainder of a flight.
 - A `?` means the feature still needs evidence or human review. Repeated uncertain model replies no longer turn into a confirmed feature automatically.
-- **Show/Hide floor trace** toggles the live overhead preview and mint AR floor outlines. The preview combines measured floor polygons with the recorded phone trail and distance. Its final dot marks the last recorded camera position.
+- The scan camera no longer draws floor outlines or the overhead trail, so the camera stays clear; the measured floor polygons and phone trail are still recorded with the scan.
 
 Automatic feature recognition still uses the configured OpenAI or Gemini key. OCR signs and floor tracing do not need a key. OCR elevator/stair signs remain separately labeled sign locations; they are not promoted to physical entrances.
 
