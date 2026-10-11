@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     AppState,
+    building_nav::compose::ManualConnector,
     error::ApiError,
     geometry::{Transform, finite},
     map_frame::{self, ControlPoint, Fit},
@@ -20,6 +21,7 @@ use crate::{
 };
 
 const MIGRATION: &str = include_str!("../migrations/001_building_maps.sql");
+const CONNECTORS_MIGRATION: &str = include_str!("../migrations/002_building_connectors.sql");
 
 pub async fn connect(
     url: &str,
@@ -32,6 +34,9 @@ pub async fn connect(
         .execute(&mut *tx)
         .await?;
     sqlx::raw_sql(MIGRATION).execute(&mut *tx).await?;
+    sqlx::raw_sql(CONNECTORS_MIGRATION)
+        .execute(&mut *tx)
+        .await?;
     let available: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name='timescaledb')",
     )
@@ -62,14 +67,14 @@ pub async fn connect(
     Ok(pool)
 }
 
-fn unavailable() -> ApiError {
+pub(crate) fn unavailable() -> ApiError {
     ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
         "database_unavailable",
         "Set INVIEW_DATABASE_URL to use building maps.",
     )
 }
-fn failure(error: sqlx::Error) -> ApiError {
+pub(crate) fn failure(error: sqlx::Error) -> ApiError {
     tracing::error!(%error, "Building database operation failed");
     ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -156,7 +161,30 @@ pub struct Building {
     #[serde(skip_serializing_if = "Option::is_none")]
     alignments: Option<Vec<Alignment>>,
 }
-fn frame() -> Value {
+impl Building {
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+    pub(crate) fn version(&self) -> i32 {
+        self.version
+    }
+    pub(crate) fn reference_capture_id(&self) -> &str {
+        &self.reference_capture_id
+    }
+    /// Each aligned capture and its scan-to-building transform at this snapshot's version.
+    pub(crate) fn placements(&self) -> Vec<(String, Transform)> {
+        self.alignments
+            .iter()
+            .flatten()
+            .map(|a| {
+                let mut transform = map_frame::IDENTITY;
+                transform.0.copy_from_slice(&a.transform4x4_column_major);
+                (a.capture_id.clone(), transform)
+            })
+            .collect()
+    }
+}
+pub(crate) fn frame() -> Value {
     json!({"axes":"X/Z horizontal, Y up", "units":"meters", "origin":"reference scan ARKit world"})
 }
 
@@ -181,7 +209,11 @@ async fn summary(pool: &PgPool, row: &sqlx::postgres::PgRow) -> Result<Building,
         alignments: None,
     })
 }
-async fn snapshot(pool: &PgPool, id: &str, version: Option<i32>) -> Result<Building, ApiError> {
+pub(crate) async fn snapshot(
+    pool: &PgPool,
+    id: &str,
+    version: Option<i32>,
+) -> Result<Building, ApiError> {
     if !valid_id(id) {
         return Err(not_found());
     }
@@ -592,4 +624,80 @@ pub async fn overview(
         "observations": observations,
         "notice": "Mesh samples and phone paths are observations, NOT verified walkable space or localization.",
     })))
+}
+
+/// Manually registered connectors for a building, oldest first.
+pub(crate) async fn manual_connectors(
+    pool: &PgPool,
+    id: &str,
+) -> Result<Vec<ManualConnector>, ApiError> {
+    let rows = sqlx::query(
+        "SELECT id,kind,from_m,to_m,name,estimated_seconds FROM building_connectors
+         WHERE building_id=$1 ORDER BY created_at,id",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await
+    .map_err(failure)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            let value = json!({
+                "id": r.get::<String, _>("id"),
+                "kind": r.get::<String, _>("kind"),
+                "from_m": r.get::<Value, _>("from_m"),
+                "to_m": r.get::<Value, _>("to_m"),
+                "name": r.get::<Option<String>, _>("name"),
+                "estimated_seconds": r.get::<Option<f64>, _>("estimated_seconds"),
+            });
+            serde_json::from_value(value).ok()
+        })
+        .collect())
+}
+
+pub async fn connectors(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let pool = db(&state)?;
+    let building = snapshot(pool, &id, None).await?;
+    let connectors = manual_connectors(pool, building.id()).await?;
+    Ok(Json(
+        json!({"building_id": building.id, "connectors": connectors}),
+    ))
+}
+
+pub async fn add_connector(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    payload: Result<Json<ManualConnector>, JsonRejection>,
+) -> Result<(StatusCode, Json<ManualConnector>), ApiError> {
+    let Json(input) = payload.map_err(|e| ApiError::invalid(e.body_text()))?;
+    input.validate().map_err(ApiError::invalid)?;
+    let pool = db(&state)?;
+    let building = snapshot(pool, &id, None).await?;
+    let kind = serde_json::to_value(input.kind).map_err(|e| ApiError::invalid(e.to_string()))?;
+    let inserted = sqlx::query(
+        "INSERT INTO building_connectors(building_id,id,kind,from_m,to_m,name,estimated_seconds,created_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING",
+    )
+    .bind(building.id())
+    .bind(&input.id)
+    .bind(kind.as_str().unwrap_or_default())
+    .bind(json!(input.from_m))
+    .bind(json!(input.to_m))
+    .bind(&input.name)
+    .bind(input.estimated_seconds)
+    .bind(Utc::now())
+    .execute(pool)
+    .await
+    .map_err(failure)?;
+    if inserted.rows_affected() == 0 {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "connector_exists",
+            "A connector with this id already exists in this building.",
+        ));
+    }
+    Ok((StatusCode::CREATED, Json(input)))
 }

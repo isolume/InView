@@ -283,6 +283,11 @@ is retained with the package for reconstruction, OCR, and VLM workers.
 `GET /scans/{id}` returns the original JSON semantically unchanged; JSON whitespace,
 key order, and numerical spelling are not preserved byte-for-byte.
 
+After the worker has processed a scan, `POST /scans/{id}/routes` and
+`GET /scans/{id}/levels` plan multi-floor routes over its `nav_graph`, places,
+hazards, doors and signs. See "Building routes" in [README.md](README.md); the
+same body works for `POST /api/buildings/{id}/routes` across aligned scans.
+
 `GET /scans/{id}/scene` processes with the default options. A fresh scene is derived
 from the same source on each call. `POST /scans/{id}/process` accepts options:
 

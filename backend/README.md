@@ -26,6 +26,13 @@ HTTP handlers, graph types, storage and route selection live in separate modules
 | POST | `/api/buildings/{id}/alignments` | Provisionally align an uploaded scan |
 | GET | `/api/buildings/{id}/observations` | Time-indexed, version-pinned camera positions |
 | GET | `/api/buildings/{id}/overview` | Aligned camera paths and mesh samples |
+| POST | `/api/buildings/{id}/routes` | Distinct multi-floor routes across the building's aligned scans |
+| GET | `/api/buildings/{id}/levels` | Floors and connectors for a level picker |
+| POST | `/api/buildings/{id}/nearby` | Places, signs and connectors around a point, searchable by name |
+| GET/POST | `/api/buildings/{id}/connectors` | Manually registered elevators, stairs, escalators and ramps |
+| POST | `/scans/{id}/routes` | The same routes within one processed scan (no database) |
+| GET | `/scans/{id}/levels` | Floors and connectors of one processed scan |
+| POST | `/scans/{id}/nearby` | The same nearby search within one processed scan |
 | GET | `/scans/{id}/camera-track` | Dense movement track, with manifest/portable-frame fallback |
 | GET/PUT | `/scans/{id}/analysis` | Derived worker output; 404 until processed |
 | GET | `/graphs` | List graph summaries |
@@ -194,6 +201,125 @@ coordinate conventions, supported processing, and the current iPhone adapter.
   source evidence and require individual Keep or Drop decisions. Kept places use
   stable IDs and preserve volunteer-added points; server output never replaces
   the local map geometry.
+
+### Building routes (3D, multi-path)
+
+`POST /api/buildings/{id}/routes` (or `POST /scans/{id}/routes` for one scan) returns
+several distinct routes between two points, ready to draw floor by floor the way
+indoor maps do. The building scope composes every aligned scan's `<scan>-nav` graph
+(the published snapshot if one exists, else the worker candidate) into the reference
+scan's frame, joins overlapping scans at `scan_seam` edges, clusters floors from node
+heights (`L0` upward), and links floors with connectors. Connectors come from the
+graph's transitions, from pairing `elevator`/`stairs`/`escalator` places and `stairs`
+hazards across floors, and from `POST /api/buildings/{id}/connectors`
+(`{"id","kind":"elevator|stairs|escalator|ramp","from_m":[x,y,z],"to_m":[x,y,z],"name"?,"estimated_seconds"?}`
+in building-frame meters).
+
+```json
+{"from": {"place_id": "entrance"},
+ "to": {"position_m": [12.3, 3.5, -4.1], "level_id": "L1"},
+ "profiles": ["fastest", "accessible"], "alternatives": 2, "version": 4, "speed_mps": 1.2}
+```
+
+Each endpoint is exactly one of `place_id`, `node_id` (`<scan>:<node>`), `position_m`
+(with optional `level_id`), or `latitude`+`longitude` (with optional `level_id`; needs
+the reference scan's georef). Positions snap to the nearest graph node within 5 m on
+their floor. Profiles are `fastest`, `accessible` (step-free, ≥ 0.915 m clear, slope
+≤ 1:12) and `low_vision` (avoids hazards and narrow passages). Alternatives come from
+Yen's k-shortest paths. A path sharing at least 70% of its length with one already
+kept is dropped, a path found by several profiles carries all their `labels`, and at
+most 5 routes are returned.
+
+Each route has:
+- `accessibility.status`, one of:
+  - `not_accessible`: some edge or feature fails a criterion; `blocking` lists it;
+  - `unverified`: no failures, but something is unmeasured, such as elevator width or
+    a scan seam; `unverified` lists it;
+  - `accessible`.
+- `features`, each with:
+  - a stable `id` (`f1`…);
+  - a `type`, one of `door`, `stairs`, `elevator`, `escalator`, `ramp`,
+    `narrow_passage`, `scan_seam`, a hazard kind, `sign`, `landmark`, or
+    `destination`;
+  - `position_m`, `level_id`/`to_level_id`, `distance_along_m`, and `accessible`;
+  - `refs` back to the source place, hazard, door, sign and edge IDs.
+- `legs`: `walk` legs per floor, each with a simplified `polyline_m`, a
+  `polyline_lonlat` when georeferenced, and `bbox_m`. `connector` legs sit between
+  floors.
+- `steps`: machine-readable `maneuver` codes (`depart`, `slight_left`…`u_turn`,
+  `enter_elevator`/`exit_elevator`, `stairs_up`/`stairs_down`,
+  `escalator_up`/`escalator_down`, `ramp_up`/`ramp_down`, `pass_door`, `arrive`),
+  plus an English `instruction` anchored to nearby signs, and `feature_ids`.
+
+`unreachable` explains profiles with no route. The error codes are:
+- `endpoint_not_found` (404);
+- `no_route` (422);
+- `navigation_data_missing` (409): no processed nav graph yet;
+- `database_unavailable` (503): building scope without PostgreSQL.
+
+Results are screening output from captured evidence, not certified accessible routes.
+
+#### Server routes and the app's on-device planner
+
+The app keeps its own planner: an A* search over a 10 cm occupancy grid of the floor it has
+measured, at clearances of 0.45, 0.3 and 0.15 m. Measured on the same scans, in Release builds
+on an Apple-silicon Mac:
+
+| | Device grid | Server graph |
+|---|---|---|
+| Demo room, Reception → Meeting room | 0.3 ms · 14.96 m from the real start | 1 ms over local HTTP (~500 ms via ngrok) · 16.9 m, starting 1.8 m away at the nearest node |
+| Student Center floor 2 (491×432 grid) | 16 ms to build · 3.9 ms per route · 1.7 ms reroute | n/a (no nav graph) |
+| 625-node graph · 3 floors / 1,875 · 5 floors / 10,125 | n/a (one floor only) | 2.5 ms · 4.3 ms · 20 ms (plan with alternatives) |
+
+The two divide the work as follows:
+- **Server:** topology and meaning (floors, connectors, features, accessibility verdicts,
+  alternatives).
+- **Device:** exact geometry on its own floor, live obstacles, and offline use.
+- **`RouteReconciler`** (AccessCore) redraws each server walk leg on the device's floor from
+  where the person actually stands, then compares distances (`confirmed`, `shorterOnDevice`,
+  `longerOnDevice`, `blockedOnDevice`). It reports how much of the server path lies on measured
+  free floor. It flags `deviceFoundWiderPath` when the server judged a route too narrow but the
+  device routed it with 0.9 m of clearance. It never upgrades the server's accessibility status.
+
+On graphs over 1,500 nodes, alternatives use the penalty method, because Yen's spur searches took
+1.3 s at 10k nodes.
+
+### Nearby search ("where is McDonald's?")
+
+`POST /api/buildings/{id}/nearby` (or `POST /scans/{id}/nearby`) lists what is around a
+point, the way a maps app answers "restrooms near me".
+
+```json
+{"at": {"place_id": "entrance"}, "query": "mcdonalds", "categories": [],
+ "kinds": ["place", "sign", "connector"], "radius_m": 200, "limit": 25,
+ "same_level_only": false, "heading_degrees": 0, "version": 4, "speed_mps": 1.2}
+```
+
+`at` takes the same endpoint forms as routes. The parameters are:
+- `query` matches names, sign text and categories. It ignores case and punctuation
+  ("McDonald's" = "mcdonalds") and knows everyday words ("bathroom" finds `restroom`,
+  "lift" finds `elevator`).
+- `kinds` also accepts `door` and `hazard`.
+- A sign repeating a nearby place's name is folded into that place.
+- Connectors already backed by a place are listed through that place, along with
+  the floors they serve.
+
+Each result has:
+- `kind` and `category`;
+- `name`, `position_m`, `lon_lat`, `level_id` and `level_delta`;
+- `distance_m` (straight line), plus `walking_distance_m` and `walking_duration_s` over
+  the navigation graph, including other floors;
+- `accessible_route`: the screening of the best step-free path, one of `accessible`,
+  `unverified`, `not_accessible`, or `none`;
+- `bearing_deg`: true north with a georef, else the frame's −Z (see
+  `bearing_reference`), plus `compass` and, given `heading_degrees`,
+  `relative_direction` (`ahead`, `right`, `behind`, or `left`);
+- `serves_level_ids` for elevators, stairs and similar connectors;
+- `refs` back to the source records;
+- `route_to`, ready to pass as `to` in a routes request.
+
+Results are ordered by name match first, then walking distance, with unreachable
+results last.
 
 ## Operational limits
 
