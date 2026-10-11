@@ -140,6 +140,10 @@ pub fn app(state: AppState) -> Router {
             "/api/buildings/{building_id}/levels",
             get(route_api::building_levels),
         )
+        .route(
+            "/api/buildings/{building_id}/nearby",
+            post(route_api::building_nearby).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .route("/graphs", get(api::list_graphs))
         .route("/graphs/{graph_id}", axum::routing::put(api::put_graph))
         .route(
@@ -166,6 +170,10 @@ pub fn app(state: AppState) -> Router {
             post(route_api::scan_routes).layer(DefaultBodyLimit::max(64 * 1024)),
         )
         .route("/scans/{scan_id}/levels", get(route_api::scan_levels))
+        .route(
+            "/scans/{scan_id}/nearby",
+            post(route_api::scan_nearby).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .route("/scans/{scan_id}/assets/{filename}", get(scan_api::asset))
         .route(
             "/scans/{scan_id}/analysis",

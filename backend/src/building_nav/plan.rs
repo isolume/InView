@@ -70,7 +70,15 @@ impl RouteRequest {
         if !self.speed_mps.is_finite() || !(0.2..=3.0).contains(&self.speed_mps) {
             return Err("speed_mps must be within 0.2–3.0.".into());
         }
-        for endpoint in [&self.from, &self.to] {
+        self.from.validate()?;
+        self.to.validate()
+    }
+}
+
+impl Endpoint {
+    pub fn validate(&self) -> Result<(), String> {
+        let endpoint = self;
+        {
             let given = [
                 endpoint.place_id.is_some(),
                 endpoint.node_id.is_some(),
@@ -147,7 +155,7 @@ pub enum PlanError {
     NoRoute,
 }
 
-fn nearest(model: &NavModel, point: Vec3, level: usize) -> Option<(usize, f64)> {
+pub(crate) fn nearest(model: &NavModel, point: Vec3, level: usize) -> Option<(usize, f64)> {
     model
         .nodes
         .iter()
@@ -158,7 +166,7 @@ fn nearest(model: &NavModel, point: Vec3, level: usize) -> Option<(usize, f64)> 
         .min_by(|a, b| a.1.total_cmp(&b.1))
 }
 
-fn resolve<'m>(
+pub(crate) fn resolve<'m>(
     model: &'m NavModel,
     endpoint: &Endpoint,
     which: &'static str,
@@ -210,7 +218,12 @@ fn resolve<'m>(
     Err(missing())
 }
 
-fn resolved(model: &NavModel, node: usize, snapped: f64, place: Option<&Poi>) -> ResolvedEndpoint {
+pub(crate) fn resolved(
+    model: &NavModel,
+    node: usize,
+    snapped: f64,
+    place: Option<&Poi>,
+) -> ResolvedEndpoint {
     let n = &model.nodes[node];
     ResolvedEndpoint {
         node_id: n.id.clone(),

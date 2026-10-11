@@ -194,6 +194,66 @@ pub fn shortest(
     })
 }
 
+/// Shortest-path tree from one node: search cost plus walked meters and travel seconds along it.
+pub struct Tree {
+    pub cost: Vec<f64>,
+    pub length_m: Vec<f64>,
+    pub seconds: Vec<f64>,
+    pub previous: Vec<Option<usize>>,
+    /// Nodes in the order they were settled (every node after its predecessor).
+    pub order: Vec<usize>,
+}
+
+/// Meters a person walks along an edge; riding a lift or escalator adds none.
+pub fn walked_m(edge: &NavEdge) -> f64 {
+    match edge.kind {
+        EdgeKind::Elevator | EdgeKind::Escalator => 0.0,
+        _ => edge.length_m,
+    }
+}
+
+pub fn tree(
+    model: &NavModel,
+    from: usize,
+    weight: &dyn Fn(usize) -> Option<f64>,
+    speed_mps: f64,
+) -> Tree {
+    let n = model.nodes.len();
+    let mut tree = Tree {
+        cost: vec![f64::INFINITY; n],
+        length_m: vec![f64::INFINITY; n],
+        seconds: vec![f64::INFINITY; n],
+        previous: vec![None; n],
+        order: Vec::new(),
+    };
+    let mut settled = vec![false; n];
+    let mut queue = BinaryHeap::new();
+    tree.cost[from] = 0.0;
+    tree.length_m[from] = 0.0;
+    tree.seconds[from] = 0.0;
+    queue.push(Item(0.0, from));
+    while let Some(Item(cost, node)) = queue.pop() {
+        if settled[node] || cost > tree.cost[node] {
+            continue;
+        }
+        settled[node] = true;
+        tree.order.push(node);
+        for &e in &model.out[node] {
+            let edge = &model.edges[e];
+            let Some(w) = weight(e) else { continue };
+            let next = cost + w;
+            if next < tree.cost[edge.to] {
+                tree.cost[edge.to] = next;
+                tree.length_m[edge.to] = tree.length_m[node] + walked_m(edge);
+                tree.seconds[edge.to] = tree.seconds[node] + seconds(edge, speed_mps);
+                tree.previous[edge.to] = Some(e);
+                queue.push(Item(next, edge.to));
+            }
+        }
+    }
+    tree
+}
+
 /// Up to `k` loopless paths in increasing cost (Yen's algorithm).
 pub fn k_shortest(
     model: &NavModel,

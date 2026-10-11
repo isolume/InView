@@ -94,13 +94,15 @@ fn analysis() -> Value {
             {"id": "room-201", "category": "room", "name": "Room 201", "position_m": [10.0, 3.5, -0.5]},
             {"id": "elevator-g", "category": "elevator", "name": "Elevator", "position_m": [0.0, 0.0, 0.5]},
             {"id": "elevator-1", "category": "elevator", "name": "Elevator", "position_m": [0.0, 3.5, 0.5]},
-            {"id": "stairs-up", "category": "stairs", "name": "Stairwell", "position_m": [10.0, 3.5, 0.5]}
+            {"id": "stairs-up", "category": "stairs", "name": "Stairwell", "position_m": [10.0, 3.5, 0.5]},
+            {"id": "mcd", "category": "restaurant", "name": "McDonald's", "position_m": [0.0, 3.5, -1.5]}
         ],
         "hazards": [
             {"id": "stairs-0", "kind": "stairs", "severity": "barrier", "position_m": [10.0, 0.0, 0.5]}
         ],
         "signs": [
-            {"id": "sign-000", "category": "exit", "text": "EXIT", "position_m": [5.0, 3.5, 1.0]}
+            {"id": "sign-000", "category": "exit", "text": "EXIT", "position_m": [5.0, 3.5, 1.0]},
+            {"id": "sign-001", "category": "restroom", "text": "Restrooms", "position_m": [5.0, 0.0, 1.5]}
         ],
         "georef": {"latitude": 33.7756, "longitude": -84.3963, "heading_degrees": 0.0}
     })
@@ -337,6 +339,96 @@ async fn accessible_profile_reports_unreachable_when_only_stairs_connect() {
 }
 
 #[tokio::test]
+async fn nearby_finds_named_places_across_floors_like_a_maps_search() {
+    let router = seeded("mall", AppState::default()).await;
+    let search = |body: Value| send(&router, "POST", "/scans/mall/nearby", Some(body));
+
+    let (status, body) =
+        search(json!({"at": {"place_id": "entrance"}, "query": "mcdonalds"})).await;
+    assert_eq!(status, StatusCode::OK, "{body:#}");
+    assert_eq!(body["scope"]["scan_id"], "mall");
+    assert_eq!(body["bearing_reference"], "true_north");
+    assert_eq!(body["total_matches"], 1, "{body:#}");
+    let mcd = &body["results"][0];
+    assert_eq!(mcd["name"], "McDonald's");
+    assert_eq!(mcd["kind"], "place");
+    assert_eq!(mcd["level_id"], "L1");
+    assert_eq!(mcd["level_delta"], 1);
+    assert_eq!(mcd["reachable"], true);
+    assert_eq!(mcd["compass"], "W");
+    assert_eq!(mcd["accessible_route"], "unverified");
+    assert_eq!(mcd["route_to"], json!({"place_id": "mcd"}));
+    assert_eq!(mcd["refs"]["place_id"], "mcd");
+    let walk = mcd["walking_distance_m"].as_f64().unwrap();
+    assert!(walk > mcd["distance_m"].as_f64().unwrap(), "{mcd:#}");
+    assert!(mcd["walking_duration_s"].as_f64().unwrap() > 0.0);
+    let lon = mcd["lon_lat"][0].as_f64().unwrap();
+    // x = 0 lies on the georeference's meridian (the entrance, at x = 10, is east of it).
+    assert!((lon + 84.3963).abs() < 1e-6, "{lon}");
+
+    // The result routes directly.
+    let (status, route) = send(
+        &router,
+        "POST",
+        "/scans/mall/routes",
+        Some(json!({
+            "from": {"place_id": "entrance"}, "to": mcd["route_to"], "profiles": ["fastest"]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{route:#}");
+
+    // Everyday words reach categories; signs count as places to find.
+    let (_, body) = search(json!({"at": {"place_id": "entrance"}, "query": "bathroom"})).await;
+    assert_eq!(body["results"][0]["name"], "Restrooms", "{body:#}");
+    assert_eq!(body["results"][0]["kind"], "sign");
+
+    // Browsing with no query: nearest first; same-floor filter; facing hints.
+    let (_, body) = search(
+        json!({"at": {"place_id": "entrance"}, "same_level_only": true, "heading_degrees": 0.0}),
+    )
+    .await;
+    let results = body["results"].as_array().unwrap();
+    assert!(!results.is_empty());
+    assert!(results.iter().all(|r| r["level_id"] == "L0"), "{body:#}");
+    assert!(results.iter().all(|r| r["relative_direction"].is_string()));
+    let walks: Vec<f64> = results
+        .iter()
+        .map(|r| r["walking_distance_m"].as_f64().unwrap())
+        .collect();
+    assert!(walks.windows(2).all(|w| w[0] <= w[1]), "{walks:?}");
+    assert!(
+        results
+            .iter()
+            .all(|r| r["route_to"] != json!({"place_id": "entrance"}))
+    );
+
+    // Connectors list the floors they serve.
+    let (_, body) = search(json!({"at": {"place_id": "entrance"}, "kinds": ["connector"]})).await;
+    let elevator = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["category"] == "elevator")
+        .unwrap();
+    assert_eq!(elevator["serves_level_ids"], json!(["L0", "L1"]));
+    assert_eq!(elevator["level_id"], "L0");
+
+    let (_, body) = search(json!({"at": {"place_id": "entrance"}, "radius_m": 3.0})).await;
+    assert!(
+        body["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["walking_distance_m"].as_f64().unwrap() <= 3.0)
+    );
+
+    let (status, body) = search(json!({"at": {"place_id": "entrance"}, "radius_m": 0})).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "invalid_input");
+}
+
+#[tokio::test]
 #[ignore = "requires an isolated PostgreSQL database via INVIEW_TEST_DATABASE_URL"]
 async fn postgres_building_routes_compose_aligned_scans_and_manual_connectors() {
     let base = std::env::var("INVIEW_TEST_DATABASE_URL").expect("Set INVIEW_TEST_DATABASE_URL");
@@ -418,6 +510,19 @@ async fn postgres_building_routes_compose_aligned_scans_and_manual_connectors() 
     assert_eq!(status, StatusCode::OK, "{body:#}");
     assert_eq!(body["scope"]["building_id"], id);
     assert_eq!(body["scope"]["version"], 1);
+    let (status, found) = send(
+        &router,
+        "POST",
+        &format!("/api/buildings/{id}/nearby"),
+        Some(json!({
+            "at": {"place_id": "entrance"}, "query": "McDonald's", "version": 1
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{found:#}");
+    assert_eq!(found["scope"]["building_id"], id);
+    assert_eq!(found["results"][0]["name"], "McDonald's");
+    assert_eq!(found["results"][0]["accessible_route"], "unverified");
     let accessible = by_label(&body, "accessible");
     assert!(
         types(accessible).contains(&"ramp"),

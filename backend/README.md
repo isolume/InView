@@ -28,9 +28,11 @@ HTTP handlers, graph types, storage and route selection live in separate modules
 | GET | `/api/buildings/{id}/overview` | Aligned camera paths and mesh samples |
 | POST | `/api/buildings/{id}/routes` | Distinct multi-floor routes across the building's aligned scans |
 | GET | `/api/buildings/{id}/levels` | Floors and connectors for a level picker |
+| POST | `/api/buildings/{id}/nearby` | Places, signs and connectors around a point, searchable by name |
 | GET/POST | `/api/buildings/{id}/connectors` | Manually registered elevators, stairs, escalators and ramps |
 | POST | `/scans/{id}/routes` | The same routes within one processed scan (no database) |
 | GET | `/scans/{id}/levels` | Floors and connectors of one processed scan |
+| POST | `/scans/{id}/nearby` | The same nearby search within one processed scan |
 | GET | `/scans/{id}/camera-track` | Dense movement track, with manifest/portable-frame fallback |
 | GET/PUT | `/scans/{id}/analysis` | Derived worker output; 404 until processed |
 | GET | `/graphs` | List graph summaries |
@@ -256,6 +258,43 @@ Each route has:
 - `database_unavailable` (503): building scope without PostgreSQL.
 
 Results are screening output from captured evidence, not certified accessible routes.
+
+### Nearby search ("where is McDonald's?")
+
+`POST /api/buildings/{id}/nearby` (or `POST /scans/{id}/nearby`) lists what is around a
+point, the way a maps app answers "restrooms near me".
+
+```json
+{"at": {"place_id": "entrance"}, "query": "mcdonalds", "categories": [],
+ "kinds": ["place", "sign", "connector"], "radius_m": 200, "limit": 25,
+ "same_level_only": false, "heading_degrees": 0, "version": 4, "speed_mps": 1.2}
+```
+
+`at` takes the same endpoint forms as routes. The parameters are:
+- `query` matches names, sign text and categories. It ignores case and punctuation
+  ("McDonald's" = "mcdonalds") and knows everyday words ("bathroom" finds `restroom`,
+  "lift" finds `elevator`).
+- `kinds` also accepts `door` and `hazard`.
+- A sign repeating a nearby place's name is folded into that place.
+- Connectors already backed by a place are listed through that place, along with
+  the floors they serve.
+
+Each result has:
+- `kind` and `category`;
+- `name`, `position_m`, `lon_lat`, `level_id` and `level_delta`;
+- `distance_m` (straight line), plus `walking_distance_m` and `walking_duration_s` over
+  the navigation graph, including other floors;
+- `accessible_route`: the screening of the best step-free path, one of `accessible`,
+  `unverified`, `not_accessible`, or `none`;
+- `bearing_deg`: true north with a georef, else the frame's −Z (see
+  `bearing_reference`), plus `compass` and, given `heading_degrees`,
+  `relative_direction` (`ahead`, `right`, `behind`, or `left`);
+- `serves_level_ids` for elevators, stairs and similar connectors;
+- `refs` back to the source records;
+- `route_to`, ready to pass as `to` in a routes request.
+
+Results are ordered by name match first, then walking distance, with unreachable
+results last.
 
 ## Operational limits
 

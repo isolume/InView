@@ -14,6 +14,7 @@ use crate::{
     building_nav::{
         NavModel,
         compose::{self, ManualConnector, ScanLayer},
+        nearby::{self, NearbyRequest},
         plan::{self, PlanError, RouteRequest},
     },
     buildings,
@@ -261,6 +262,57 @@ pub async fn building_routes(
     let request = parse(payload)?;
     let (model, scope, notices) = building_model(&state, &id, request.version).await?;
     respond(&model, &request, scope, notices)
+}
+
+fn parse_nearby(
+    payload: Result<Json<NearbyRequest>, JsonRejection>,
+) -> Result<NearbyRequest, ApiError> {
+    let Json(request) =
+        payload.map_err(|e| ApiError::new(e.status(), "invalid_json", e.body_text()))?;
+    request.validate().map_err(ApiError::invalid)?;
+    Ok(request)
+}
+
+fn nearby_body(
+    model: &NavModel,
+    request: &NearbyRequest,
+    scope: Value,
+    mut notices: Vec<String>,
+) -> Result<Json<Value>, ApiError> {
+    let response = nearby::nearby(model, request).map_err(plan_error)?;
+    let mut body = serde_json::to_value(&response).map_err(|e| ApiError::invalid(e.to_string()))?;
+    notices.extend(response.notices);
+    body["notices"] = json!(notices);
+    body["scope"] = scope;
+    body["frame"] = buildings::frame();
+    Ok(Json(body))
+}
+
+/// Places, signs and connectors around a point of one processed scan.
+pub async fn scan_nearby(
+    State(state): State<AppState>,
+    Path(scan_id): Path<String>,
+    payload: Result<Json<NearbyRequest>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let request = parse_nearby(payload)?;
+    if request.version.is_some() {
+        return Err(ApiError::invalid(
+            "version applies to building searches only.",
+        ));
+    }
+    let (model, notices) = scan_model(&state, &scan_id).await?;
+    nearby_body(&model, &request, json!({"scan_id": scan_id}), notices)
+}
+
+/// Places, signs and connectors around a point anywhere in an aligned building.
+pub async fn building_nearby(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    payload: Result<Json<NearbyRequest>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let request = parse_nearby(payload)?;
+    let (model, scope, notices) = building_model(&state, &id, request.version).await?;
+    nearby_body(&model, &request, scope, notices)
 }
 
 #[derive(Debug, Default, Deserialize)]

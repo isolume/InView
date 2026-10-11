@@ -10,6 +10,7 @@ pub mod compose;
 pub mod features;
 pub mod geo;
 pub mod levels;
+pub mod nearby;
 pub mod paths;
 pub mod plan;
 pub mod render;
