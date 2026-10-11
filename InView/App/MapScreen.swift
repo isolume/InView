@@ -658,7 +658,7 @@ struct MapScreen: View {
                 .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                 .intelligenceGlow(assistant.phase == .listening || assistant.phase == .thinking,
                                   in: RoundedRectangle(cornerRadius: 12))
-                if !isDemo { moreMenu }
+                if !isDemo { accountButton }
                 if isDemo {
                     Button { controller.stop(); dismiss() } label: {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 30)).foregroundStyle(.secondary)
@@ -666,16 +666,6 @@ struct MapScreen: View {
                     .buttonStyle(.plain).accessibilityLabel("Close demo")
                 }
             }
-            if assistant.phase != .idle {
-                AssistantCard(assistant: assistant, onListen: listen, onShowPlace: showAssistantPlace)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.title2.bold()).lineLimit(2)
-                if hasVisualFloor {
-                    Text(showsModel ? "Floor \(selectedLevel)" : "Floor \(selectedLevel) · \(coverageTitle)").font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-            livePositionStatus
             ScrollView(.horizontal) {
                 HStack(spacing: 10) {
                     if !routablePlaces.isEmpty {
@@ -713,9 +703,20 @@ struct MapScreen: View {
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule)
                     }
+                    if !isDemo { toolChips }
                 }
             }
             .scrollIndicators(.hidden).scrollClipDisabled()
+            if assistant.phase != .idle {
+                AssistantCard(assistant: assistant, onListen: listen, onShowPlace: showAssistantPlace)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.title2.bold()).lineLimit(2)
+                if hasVisualFloor {
+                    Text(showsModel ? "Floor \(selectedLevel)" : "Floor \(selectedLevel) · \(coverageTitle)").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            livePositionStatus
             if showsModel, illustrationState == .failed {
                 Text(hasMap ? "The 3D model couldn’t be opened. Showing the floor scan." : "The 3D map couldn’t be opened. Choose another floor.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -823,25 +824,33 @@ struct MapScreen: View {
         }
     }
 
-    /// Account and mapping tools live behind one button, so the sheet is about finding your way.
-    private var moreMenu: some View {
-        Menu {
-            Button(account.isSignedIn ? "Your account" : "Sign in",
-                   systemImage: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle") { modal = .account }
-            Section {
-                Button("Map a building", systemImage: "viewfinder") { modal = .contribute }
-                Button("Saved maps", systemImage: "map") { modal = .savedMaps }
-                Button("My submissions", systemImage: "tray.full") { modal = .submissions }
-            }
-            if Self.showsCampus { Button("Building details", systemImage: "building.2") { modal = .building } }
-            Button("Settings", systemImage: "gearshape") { modal = .settings }
-            Button("Navigation demo", systemImage: "play.circle") { cover = .demo }
-        } label: {
+    private var accountButton: some View {
+        Button { modal = .account } label: {
             Image(systemName: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
                 .font(.system(size: 30)).foregroundStyle(Color.accentColor)
                 .frame(width: 44, height: 48)
         }
-        .accessibilityLabel("Account and mapping")
+        .buttonStyle(.plain)
+        .accessibilityLabel(account.isSignedIn ? "Your account" : "Sign in")
+    }
+
+    /// Mapping tools, after the wayfinding chips in the row under the search bar.
+    @ViewBuilder private var toolChips: some View {
+        // With no map yet, the empty state below already offers mapping and the demo.
+        let offersStart = !hasVisualFloor && !Self.showsCampus
+        if !offersStart { toolChip("Map a building", "viewfinder") { modal = .contribute } }
+        toolChip("Saved maps", "map") { modal = .savedMaps }
+        toolChip("Submissions", "tray.full") { modal = .submissions }
+        if Self.showsCampus { toolChip("Building", "building.2") { modal = .building } }
+        if !offersStart { toolChip("Demo", "play.circle") { cover = .demo } }
+        toolChip("Settings", "gearshape") { modal = .settings }
+    }
+
+    private func toolChip(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol).font(.subheadline.weight(.medium))
+        }
+        .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.secondary)
     }
 
     /// Finding the person, or the reminder that their position is showing and the camera is on.
