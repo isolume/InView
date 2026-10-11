@@ -12,6 +12,8 @@ struct SignReaderOverlay: View {
     /// Adds the place. Returns a message for the toast, or nil when it couldn't be saved.
     let onAdd: (AccessPoint) async -> String?
     var onShowOnMap: ((AccessPoint) -> Void)? = nil
+    /// While scanning there's no finished map yet: says how the sign will be linked instead.
+    var pendingLink: String? = nil
     var onClose: () -> Void
 
     @State private var isAdding = false
@@ -169,7 +171,7 @@ struct SignReaderOverlay: View {
             } label: {
                 HStack {
                     if isAdding { ProgressView().tint(.white) }
-                    Text(place?.sign?.door != nil ? "Tag this door on the map" : "Add to the map")
+                    Text(pendingLink != nil ? "Save this sign" : place?.sign?.door != nil ? "Tag this door on the map" : "Add to the map")
                 }
                 .font(.headline).frame(maxWidth: .infinity).frame(height: 50)
             }
@@ -182,7 +184,9 @@ struct SignReaderOverlay: View {
     }
 
     @ViewBuilder private func linkRow(_ place: AccessPoint?, reading: SignReading) -> some View {
-        if place == nil {
+        if let pendingLink, !reading.isDirectional {
+            Label(pendingLink, systemImage: "door.left.hand.open").font(.footnote.weight(.medium))
+        } else if place == nil {
             Label("Waiting for the map to load", systemImage: "hourglass").font(.footnote).foregroundStyle(.secondary)
         } else if reading.isDirectional {
             Label("Points \(reading.directions.joined(separator: " / ")) · pinned at the sign, not a door",

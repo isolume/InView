@@ -9,6 +9,8 @@ struct ScanView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var glass
     @State private var marks = 0
+    /// Created per scan session, while the mapper reads a sign.
+    @State private var signReader: SignReader?
 
     var body: some View {
         Group {
@@ -75,8 +77,21 @@ struct ScanView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
             }
+            if controller.phase == .scanning, let signReader {
+                SignReaderOverlay(reader: signReader, session: controller.session, preview: { sighting in
+                    // No finished map yet: the door link is made at review, against RoomPlan's final doors.
+                    SignPlaceBinder.place(for: sighting.reading, text: sighting.text, sign: sighting.position,
+                                          viewer: sighting.viewer, in: VenueMap(floorY: sighting.viewer.y - 1.3, footprints: [], points: []))
+                }, onAdd: { place in
+                    guard let sighting = signReader.focus else { return nil }
+                    controller.recordSign(sighting)
+                    return "\(controller.readSigns.count) sign\(controller.readSigns.count == 1 ? "" : "s") saved · doors are labeled when you finish"
+                }, pendingLink: "Links to the nearest measured door when you finish",
+                onClose: { self.signReader = nil })
+                .ignoresSafeArea()
+            }
             // One glass container, so the bottom controls morph into each phase's panel instead of cutting.
-            GlassEffectContainer(spacing: 12) {
+            if signReader == nil || controller.phase != .scanning { GlassEffectContainer(spacing: 12) {
                 VStack(spacing: 12) {
                     HStack(alignment: .top) {
                         CloseButton(action: close)
@@ -124,6 +139,7 @@ struct ScanView: View {
                 .padding()
             }
             .animation(.smooth, value: controller.phase)
+            }
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: marks)
     }
@@ -220,6 +236,22 @@ struct ScanView: View {
                     .accessibilityLabel("Mark \(kind.title.lowercased())")
                     .accessibilityHint("Marks the spot in the center of the screen")
                 }
+                Button {
+                    signReader = SignReader(session: controller.session)
+                } label: {
+                    VStack(spacing: 6) {
+                        KindBadge(symbol: "text.viewfinder", tint: .indigo, size: 30)
+                        Text(controller.readSigns.isEmpty ? "Sign" : "Signs \(controller.readSigns.count)")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 72)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Theme.Radius.panel))
+                .glassEffectID("mark-sign", in: glass)
+                .accessibilityLabel("Read a sign")
+                .accessibilityHint("Reads a room number or exit sign so its door is labeled on the map")
             }
             Button(action: controller.finish) {
                 Label("Finish", systemImage: "checkmark").frame(maxWidth: .infinity)
@@ -515,6 +547,23 @@ private struct MapReviewDetailsView: View {
                             Text("The camera saw these only briefly, or LiDAR couldn't check them. Tap a photo to look, then keep the real ones.")
                         }
                     }
+                    if !draft.signPlaces.isEmpty {
+                        Section {
+                            ForEach(draft.signPlaces) { point in
+                                HStack(spacing: 12) {
+                                    KindBadge(point: point, size: 30)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(point.title).font(.body.weight(.medium))
+                                        Text(signSummary(point)).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        } header: {
+                            Text("Read from signs")
+                        } footer: {
+                            Text("Each sign labels the measured door beside it. Rename or delete them under Destinations.")
+                        }
+                    }
                     Section {
                         if draft.points.isEmpty {
                             Text("None yet").foregroundStyle(.secondary)
@@ -670,6 +719,14 @@ private struct MapReviewDetailsView: View {
             }
             isSaving = false
         }
+    }
+
+    private func signSummary(_ point: AccessPoint) -> String {
+        guard let sign = point.sign else { return "" }
+        let link = sign.door.map { String(format: "Door %.2f m wide", $0.width) } ?? "No door nearby"
+        let room = sign.room == nil ? "" : " · room mapped"
+        let ai = sign.reader == "ai" ? " · AI checked" : ""
+        return "Read “\(sign.text)” · \(link)\(room)\(ai)"
     }
 
     private func name(for point: AccessPoint) -> Binding<String> {

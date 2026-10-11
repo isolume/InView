@@ -62,6 +62,8 @@ final class ScanController: ObservableObject {
     /// Finds the camera placed but didn't see often enough to count. Review asks about each one.
     @Published private(set) var unconfirmed: [AccessibilityDetector.Sighting] = []
     @Published private(set) var signObservations: [CaptureTextObservation] = []
+    /// Signs the mapper pointed the reader at; they label their doors when the map is ready.
+    @Published private(set) var readSigns: [SignReader.Sighting] = []
     @Published private(set) var currentFloor: ScanFloorIdentity?
     @Published private(set) var buildingName = "Building"
     @Published private(set) var isChangingFloors = false
@@ -238,6 +240,7 @@ final class ScanController: ObservableObject {
         rawCapture = RawScanCapture(reconstructsMesh: detailRequested)
         rawCapture.floorID = currentFloor?.id.uuidString ?? "ground"
         signObservations = []
+        readSigns = []
         let captureID = scanID
         rawCapture.onTextObservations = { [weak self] observations in
             guard let self, self.scanID == captureID else { return }
@@ -596,6 +599,42 @@ final class ScanController: ObservableObject {
                 self?.analysisStatus = nil
                 self?.analysisError = error.localizedDescription
             }
+        }
+    }
+
+    /// Keeps a sign the mapper read; the same sign read again replaces the earlier reading.
+    func recordSign(_ sighting: SignReader.Sighting) {
+        readSigns.removeAll { $0.reading.title == sighting.reading.title && simd_distance($0.position, sighting.position) < 1 }
+        readSigns.append(sighting)
+    }
+
+    /// Labels the finished map's doors from signs: every sign the mapper read, plus room, exit and
+    /// restroom text the scan's keyframes read on their own when it was seen twice or sits by a door.
+    /// All of them stay editable in review like any other destination.
+    private func applySigns(to map: inout VenueMap, frames: [CaptureDepthFrame]) {
+        for sighting in readSigns {
+            let point = SignPlaceBinder.place(for: sighting.reading, text: sighting.text, sign: sighting.position,
+                                              viewer: sighting.viewer, in: map, id: sighting.id)
+            map.applySign(point.withReader(sighting.check))
+        }
+        let viewers = Dictionary(frames.compactMap { frame -> (String, SIMD3<Float>)? in
+            frame.mapFromCamera.count == 16 ? (frame.id, SIMD3(frame.mapFromCamera[12], frame.mapFromCamera[13], frame.mapFromCamera[14])) : nil
+        }, uniquingKeysWith: { first, _ in first })
+        var clusters: [(reading: SignReading, text: String, position: SIMD3<Float>, viewer: SIMD3<Float>?, count: Int)] = []
+        for observation in signObservations {
+            guard let spatial = observation.spatial, let reading = SignInterpreter.interpret([observation.text]),
+                  !reading.isDirectional, [.room, .exit, .restroom].contains(reading.category) else { continue }
+            if let index = clusters.firstIndex(where: { $0.reading.title == reading.title && simd_distance($0.position, spatial.position) < 0.75 }) {
+                clusters[index].count += 1
+            } else {
+                clusters.append((reading, observation.text, spatial.position, viewers[observation.frameID], 1))
+            }
+        }
+        for cluster in clusters where cluster.count >= 2 || SignPlaceBinder.door(for: cluster.position, in: map) != nil {
+            // An explicit reading of the same sign wins over the passive one.
+            guard !readSigns.contains(where: { simd_distance($0.position, cluster.position) < 1 }) else { continue }
+            map.applySign(SignPlaceBinder.place(for: cluster.reading, text: cluster.text, sign: cluster.position,
+                                                viewer: cluster.viewer, in: map, confidence: 0.75))
         }
     }
 
@@ -1016,7 +1055,9 @@ final class ScanController: ObservableObject {
                 guard isActive, scanID == id else { return }
                 // The map and display come from the same successful assembly; failures publish neither.
                 rooms = assembled.rooms
-                draft = assembled.map
+                var reviewed = assembled.map
+                applySigns(to: &reviewed, frames: raw.frames)
+                draft = reviewed
                 walkTrace = raw.walkTrace
                 self.walkCoverage = walkCoverage
                 captureBundle = assembled.bundle
