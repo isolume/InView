@@ -1138,3 +1138,122 @@ async fn password_accounts_are_found_by_handle_only() {
         (StatusCode::OK, json!("Old Timer"))
     );
 }
+
+// --- contacts: hashed address book matching -------------------------------------------------------------
+
+fn contact_hash(email: &str) -> String {
+    inview_backend::product_store::contact_hash(email)
+}
+
+async fn match_contacts(router: &Router, bearer: &str, hashes: Vec<String>) -> (StatusCode, Value) {
+    let (status, _, body) = call(
+        router,
+        "POST",
+        "/api/people/match",
+        Some(bearer),
+        Some(json!({ "hashes": hashes })),
+    )
+    .await;
+    (status, body)
+}
+
+#[test]
+fn the_contact_hash_is_a_fixed_published_construction() {
+    // The app computes the same digest on the device; this vector is pinned on both sides.
+    assert_eq!(
+        contact_hash("  Alice@Example.test "),
+        contact_hash("alice@example.test")
+    );
+    assert_eq!(
+        contact_hash("alice@example.test"),
+        "6c24d8c5cc4d10c851f11e34a2f24c394498fd928dc57b4aa858c47e25ab8b00"
+    );
+}
+
+#[tokio::test]
+async fn contacts_match_only_opted_in_people_with_searchable_emails() {
+    let (_, router) = setup(&[]);
+    let me = sign_in(&router, "email|me", "me@example.test", "Me").await;
+    let ada = sign_in(&router, "apple|ada", "ada@example.test", "Ada Lovelace").await;
+    let _grace = sign_in(&router, "apple|grace", "grace@example.test", "Grace Hopper").await;
+    let relay = sign_in(
+        &router,
+        "apple|relay",
+        "r1@privaterelay.appleid.com",
+        "Relay",
+    )
+    .await;
+    discover(&router, &ada, json!({"discoverable": true})).await;
+    discover(&router, &relay, json!({"discoverable": true})).await;
+    discover(&router, &me, json!({"discoverable": true})).await;
+
+    let book = vec![
+        contact_hash("ADA@example.test"),
+        contact_hash("grace@example.test"),
+        contact_hash("r1@privaterelay.appleid.com"),
+        contact_hash("me@example.test"),
+        contact_hash("stranger@example.test"),
+    ];
+    let (status, body) = match_contacts(&router, &me, book.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let matches = body["matches"].as_array().unwrap();
+    assert_eq!(matches.len(), 1, "{body}");
+    assert_eq!(matches[0]["hash"], book[0]);
+    assert_eq!(matches[0]["name"], "Ada Lovelace");
+    let keys: Vec<_> = matches[0].as_object().unwrap().keys().cloned().collect();
+    assert!(
+        keys.iter()
+            .all(|k| ["hash", "person_id", "name", "handle"].contains(&k.as_str())),
+        "{keys:?}"
+    );
+    assert!(!body.to_string().contains("example.test"));
+    // Opting out removes them.
+    discover(&router, &ada, json!({"discoverable": false})).await;
+    let (_, body) = match_contacts(&router, &me, book).await;
+    assert!(body["matches"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn contact_batches_are_validated_bounded_and_rate_limited() {
+    let (_, router) = setup(&[]);
+    let (status, _, _) = call(
+        &router,
+        "POST",
+        "/api/people/match",
+        None,
+        Some(json!({"hashes": []})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let me = sign_in(&router, "email|me", "me@example.test", "Me").await;
+    for bad in [
+        vec!["alice@example.test".to_owned()],
+        vec!["ABCDEF".repeat(11)[..64].to_owned()],
+        vec!["z".repeat(64)],
+    ] {
+        let (status, body) = match_contacts(&router, &me, bad).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    }
+    let too_many = (0..501)
+        .map(|i| contact_hash(&format!("c{i}@example.test")))
+        .collect();
+    assert_eq!(
+        match_contacts(&router, &me, too_many).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let limit = (0..500)
+        .map(|i| contact_hash(&format!("c{i}@example.test")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        match_contacts(&router, &me, limit.clone()).await.0,
+        StatusCode::OK
+    );
+    let mut limited = false;
+    for _ in 0..12 {
+        if match_contacts(&router, &me, limit.clone()).await.0 == StatusCode::TOO_MANY_REQUESTS {
+            limited = true;
+            break;
+        }
+    }
+    assert!(limited, "contact matching is rate limited");
+}

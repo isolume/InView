@@ -377,6 +377,15 @@ directory can't be browsed.
 | `PUT /api/accounts/me/discovery` | `{discoverable?: bool, handle?: string, clear_handle?: bool}`. Handles are 3-24 characters of `a-z 0-9 . _`, case-insensitive and unique (`409 handle_taken`). |
 | `POST /api/people/find` | `{query}` with an exact email or handle returns `{person_id, name, handle}`. |
 
+| `POST /api/people/match` | `{hashes: [..]}` (at most 500 lower-case hex SHA-256 digests) returns `{matches: [{hash, person_id, name, handle}]}`: which of a phone's contacts chose to be found. |
+
+**Contacts.** The app hashes each contact email on the device as
+`sha256("inview-contacts-v1:" + trimmed lower-case email)` and sends only the digests; names and
+emails never leave the phone, and the server does not store what it receives. Only accounts that are
+discoverable with a searchable email can match, so a contact who has not opted in looks the same as a
+stranger. Matching is limited to 10 requests per 15 minutes per account. Hashing is not secrecy
+against someone who already guesses the address, which is why matching is opt-in and limited.
+
 - Nobody is findable until they turn `discoverable` on. Turning it off hides them again.
 - Match is exact (after trimming and lower-casing). No partial, prefix or wildcard search.
 - Email lookup only finds accounts whose address Auth0 verified, and never an Apple "Hide My Email"

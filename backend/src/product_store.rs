@@ -256,6 +256,37 @@ pub fn validate_handle(handle: &str) -> Result<String, ApiError> {
         ))
     }
 }
+const MAX_CONTACT_HASHES: usize = 500;
+const CONTACT_MATCHES_PER_WINDOW: u8 = 10;
+const CONTACT_HASH_PREFIX: &str = "inview-contacts-v1:";
+/// The identifier an app sends for one contact email: lower-case hex SHA-256 of the prefix plus the
+/// trimmed, lower-cased address. Apps compute the same value on the device, so no address leaves it.
+pub fn contact_hash(email: &str) -> String {
+    let digest = Sha256::digest(
+        format!("{CONTACT_HASH_PREFIX}{}", email.trim().to_ascii_lowercase()).as_bytes(),
+    );
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct ContactMatch {
+    /// The hash the app sent, so it can map the match back to the contact it came from.
+    pub hash: String,
+    #[serde(flatten)]
+    pub person: Person,
+}
+fn person_of(stored: &StoredAccount) -> Person {
+    // Passwordless email sign-in often names the account after its address; never expose that.
+    let name = Some(stored.account.name.trim())
+        .filter(|n| !n.is_empty() && !n.contains('@'))
+        .map(str::to_owned)
+        .or_else(|| stored.handle.clone())
+        .unwrap_or_else(|| "InView user".to_owned());
+    Person {
+        person_id: person_id(&stored.account.id),
+        name,
+        handle: stored.handle.clone(),
+    }
+}
 fn person_not_found() -> ApiError {
     ApiError::new(
         StatusCode::NOT_FOUND,
@@ -707,17 +738,50 @@ impl ProductStore {
             .filter(|a| a.discoverable && a.account.id != searcher.id)
             .filter(|a| !by_email || email_searchable(a))
             .ok_or_else(person_not_found)?;
-        // Passwordless email sign-in often names the account after its address; never expose that.
-        let name = Some(stored.account.name.trim())
-            .filter(|n| !n.is_empty() && !n.contains('@'))
-            .map(str::to_owned)
-            .or_else(|| stored.handle.clone())
-            .unwrap_or_else(|| "InView user".to_owned());
-        Ok(Person {
-            person_id: person_id(&stored.account.id),
-            name,
-            handle: stored.handle.clone(),
-        })
+        Ok(person_of(stored))
+    }
+    /// Matches an address book against opted-in people. The app sends SHA-256 hashes of its contacts'
+    /// normalised emails (see [`contact_hash`]); only discoverable accounts with a searchable email can
+    /// match, so a contact who never opted in is indistinguishable from a stranger. Uploaded hashes
+    /// are not stored.
+    pub fn match_contacts(
+        &self,
+        searcher: &Account,
+        hashes: &[String],
+    ) -> Result<Vec<ContactMatch>, ApiError> {
+        if hashes.len() > MAX_CONTACT_HASHES {
+            return Err(ApiError::invalid("Send at most 500 contacts at a time."));
+        }
+        if hashes.iter().any(|h| {
+            h.len() != 64
+                || !h
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        }) {
+            return Err(ApiError::invalid(
+                "Contacts must be lower-case SHA-256 hex digests.",
+            ));
+        }
+        self.attempt(
+            &format!("contacts:{}", searcher.id),
+            CONTACT_MATCHES_PER_WINDOW,
+        )?;
+        let wanted: std::collections::HashSet<&str> = hashes.iter().map(String::as_str).collect();
+        let db = self.inner.data.lock().map_err(storage_error)?;
+        let mut matches: Vec<ContactMatch> = db
+            .accounts
+            .values()
+            .filter(|a| a.discoverable && a.account.id != searcher.id && email_searchable(a))
+            .filter_map(|a| {
+                let hash = contact_hash(&a.account.email);
+                wanted.contains(hash.as_str()).then(|| ContactMatch {
+                    hash,
+                    person: person_of(a),
+                })
+            })
+            .collect();
+        matches.sort_by(|a, b| a.hash.cmp(&b.hash));
+        Ok(matches)
     }
     pub fn account(&self, token: &str) -> Result<Account, ApiError> {
         if token.len() != 43 {

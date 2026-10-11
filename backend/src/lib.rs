@@ -230,6 +230,11 @@ pub fn app(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(4 * 1024)),
         )
         .route(
+            "/api/people/match",
+            axum::routing::post(product_api::match_contacts)
+                .layer(DefaultBodyLimit::max(48 * 1024)),
+        )
+        .route(
             "/api/people/find",
             axum::routing::post(product_api::find_person).layer(DefaultBodyLimit::max(4 * 1024)),
         )

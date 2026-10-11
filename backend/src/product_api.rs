@@ -309,6 +309,21 @@ pub async fn find_person(
         .await
         .map(Json)
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MatchContactsRequest {
+    hashes: Vec<String>,
+}
+pub async fn match_contacts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<MatchContactsRequest>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    let matches = blocking(move || state.product.match_contacts(&account, &request.hashes)).await?;
+    Ok(Json(json!({ "matches": matches })))
+}
 pub async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,

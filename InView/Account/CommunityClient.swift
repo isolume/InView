@@ -1,3 +1,4 @@
+import AccessCore
 import Foundation
 
 struct CommunityAccount: Codable, Identifiable, Equatable {
@@ -124,6 +125,37 @@ struct CommunityClient {
         _ = try await response("api/accounts/logout", method: "POST", token: token)
     }
 
+    // MARK: People
+
+    func discovery(token: String) async throws -> DiscoverySettings {
+        try await request("api/accounts/me/discovery", token: token)
+    }
+
+    /// `handle` nil leaves it alone; `clearHandle` removes it.
+    func setDiscovery(discoverable: Bool? = nil, handle: String? = nil, clearHandle: Bool = false,
+                      token: String) async throws -> DiscoverySettings {
+        var body: [String: Any] = [:]
+        if let discoverable { body["discoverable"] = discoverable }
+        if let handle { body["handle"] = handle }
+        if clearHandle { body["clear_handle"] = true }
+        return try await request("api/accounts/me/discovery", method: "PUT", token: token,
+                                 body: JSONSerialization.data(withJSONObject: body))
+    }
+
+    /// One person by exact email or handle; throws `CommunityError.server` when nobody can be found.
+    func findPerson(_ query: String, token: String) async throws -> PersonMatch {
+        try await request("api/people/find", method: "POST", token: token,
+                          body: JSONSerialization.data(withJSONObject: ["query": query]))
+    }
+
+    /// Which of these contact hashes belong to people who chose to be found.
+    func matchContacts(hashes: [String], token: String) async throws -> [PersonMatch] {
+        struct Reply: Decodable { var matches: [PersonMatch] }
+        let reply: Reply = try await request("api/people/match", method: "POST", token: token,
+                                             body: JSONSerialization.data(withJSONObject: ["hashes": hashes]))
+        return reply.matches
+    }
+
     func submissions(token: String) async throws -> [CommunitySubmission] {
         try await request("api/submissions", token: token)
     }
@@ -179,6 +211,17 @@ struct CommunityClient {
             case 409: throw CommunityError.server("This email already belongs to a different sign-in method.")
             case 429: throw CommunityError.server("Too many attempts. Wait a moment and try again.")
             default: throw CommunityError.server("Sign-in is unavailable right now. Please try again later.")
+            }
+        }
+        if path.hasPrefix("api/people") || path == "api/accounts/me/discovery" {
+            switch response.statusCode {
+            case 200..<300: return data
+            case 401: throw CommunityError.sessionExpired
+            case 404: throw CommunityError.server("No one with that email or handle is available to find.")
+            case 409: throw CommunityError.server("That handle is already in use. Try another.")
+            case 422, 400: throw CommunityError.server("Use 3 to 24 letters, numbers, dots or underscores for a handle.")
+            case 429: throw CommunityError.server("You’ve searched a lot. Wait a few minutes and try again.")
+            default: throw CommunityError.server("People search is unavailable right now.")
             }
         }
         switch response.statusCode {

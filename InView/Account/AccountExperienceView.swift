@@ -26,6 +26,7 @@ struct AccountExperienceView: View {
                     Section {
                         NavigationLink { MySubmissionsView() } label: { Label("My submissions", systemImage: "tray") }
                         NavigationLink { ContributeExperienceView() } label: { Label("Contribute a scan", systemImage: "viewfinder") }
+                        NavigationLink { FindPeopleView() } label: { Label("Find people", systemImage: "person.2") }
                         if account.isAdmin, let client = try? CommunityClient() {
                             Link(destination: client.adminURL) { Label("Review scans", systemImage: "checkmark.shield") }
                         }
