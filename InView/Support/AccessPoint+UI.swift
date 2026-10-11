@@ -33,7 +33,7 @@ extension AccessPoint.Kind {
         switch self {
         case .elevator: Theme.accent
         case .ramp: Theme.ramp
-        case .destination: Theme.accent
+        case .destination: Theme.destination
         }
     }
 
@@ -42,7 +42,7 @@ extension AccessPoint.Kind {
         switch self {
         case .elevator: Theme.accentUIColor
         case .ramp: Theme.rampUIColor
-        case .destination: Theme.accentUIColor
+        case .destination: Theme.destinationUIColor
         }
     }
 }

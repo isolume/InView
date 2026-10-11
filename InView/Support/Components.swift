@@ -59,7 +59,7 @@ struct KindBadge: View {
             .font(.system(size: size * Self.glyphScale, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(tint, in: Circle())
+            .background(tint.gradient, in: Circle())
             .padding(isOnMap ? Self.ringWidth : 0)
             .background(isOnMap ? Color.white : .clear, in: Circle())
             .accessibilityHidden(true)

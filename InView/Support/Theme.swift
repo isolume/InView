@@ -14,6 +14,15 @@ enum Theme {
     static let route = accent
     static let ramp = Color.teal
     static let stairs = Color.red
+    /// Rooms and named places, set apart from the blue elevators.
+    static let destination = Color.orange
+    /// Where a route begins and ends, on every map and in the list of steps.
+    static let routeStart = Color.green
+    static let routeEnd = Color.red
+    /// The one primary action on a screen, like Directions.
+    static let brandGradient = LinearGradient(colors: [accent, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// The assistant's glow while it listens and thinks.
+    static let intelligenceColors: [Color] = [.blue, .purple, .pink, .orange, .yellow, .cyan, .blue]
     /// Furniture and other objects on the maps.
     static let furniture = Color(red: 0.50, green: 0.53, blue: 0.54)
 
@@ -23,6 +32,7 @@ enum Theme {
     static let routeUIColor = accentUIColor
     static let rampUIColor = light(.systemTeal)
     static let stairsUIColor = light(.systemRed)
+    static let destinationUIColor = light(.systemOrange)
 
     private static func light(_ color: UIColor) -> UIColor {
         color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))

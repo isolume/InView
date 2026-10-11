@@ -283,7 +283,7 @@ struct MapScreen: View {
                     if !controller.isPositionReliable, controller.phase != .locating {
                         Text("Position lost · Look around to reconnect")
                             .font(.subheadline.weight(.medium))
-                            .padding(12).background(.regularMaterial, in: Capsule())
+                            .padding(12).glassEffect(.regular, in: Capsule())
                             .padding(.top, 85)
                     } else if let route = controller.route, controller.phase == .navigating {
                         NextStepBanner(route: route, caption: controller.caption).padding(.horizontal, 16).padding(.top, 85)
@@ -315,7 +315,7 @@ struct MapScreen: View {
                 .overlay {
                     if showsModel, illustrationState == .loading {
                         ProgressView("Opening map…").padding(16)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
                             .padding(.bottom, bottomInset).padding(.leading, leadingInset)
                     } else if showsModel, illustrationState == .failed, !hasMap {
                         ContentUnavailableView("3D map unavailable", systemImage: "cube",
@@ -341,10 +341,11 @@ struct MapScreen: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
-            .background(.regularMaterial, in: Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
             .accessibilityLabel(showsAR ? "Return to map" : "Enter AR mode")
             Spacer(minLength: 0)
             cameraPreview
+            GlassEffectContainer(spacing: 12) {
             VStack(spacing: 12) {
                 if !isDemo {
                     VStack(spacing: 2) {
@@ -353,15 +354,17 @@ struct MapScreen: View {
                                 Text("\(level)").font(.system(.body, design: .rounded).weight(.semibold))
                                     .frame(width: 44, height: 44)
                                     .foregroundStyle(selectedLevel == level ? Color.white : .primary)
-                                    .background(selectedLevel == level ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 12))
+                                    .background(selectedLevel == level ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Floor \(level)\(mapAvailable(on: level) ? "" : ", no map")")
                             .accessibilityAddTraits(selectedLevel == level ? .isSelected : [])
                         }
                     }
-                    .padding(4).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .padding(4).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 17))
                     .frame(width: 52)
+                    .animation(.smooth, value: selectedLevel)
+                    .sensoryFeedback(.selection, trigger: selectedLevel)
                 }
                 if hasVisualFloor, !showsAR {
                     if modelAvailable || hasScanDetail {
@@ -387,7 +390,7 @@ struct MapScreen: View {
                                 .frame(width: 52, height: 48)
                         }
                         .foregroundStyle(.primary)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 17))
                         .accessibilityLabel("Map appearance")
                     }
                     VStack(spacing: 0) {
@@ -403,7 +406,7 @@ struct MapScreen: View {
                     }
                     .foregroundStyle(.primary)
                     .frame(width: 52)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 17))
                 }
                 if !isDemo, hasMap, !showsAR {
                     Button(action: locateMe) {
@@ -411,10 +414,12 @@ struct MapScreen: View {
                             .symbolEffect(.pulse, isActive: controller.phase == .locating)
                             .frame(width: 52, height: 48)
                     }
-                    .foregroundStyle(controller.isLocated ? Color.accentColor : .primary)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .foregroundStyle(controller.isLocated ? Color.white : .primary)
+                    .glassEffect(controller.isLocated ? .regular.tint(Theme.accent).interactive() : .regular.interactive(),
+                                 in: RoundedRectangle(cornerRadius: 17))
                     .accessibilityLabel(locationLabel)
                 }
+            }
             }
         }
         .padding(.leading, leadingInset).padding(.trailing, 16).padding(.top, 10)
@@ -452,7 +457,7 @@ struct MapScreen: View {
                     .font(.caption.weight(.medium)).fixedSize(horizontal: false, vertical: true)
             }
             .padding(7).frame(width: 150)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .accessibilityElement(children: .combine)
         }
     }
@@ -469,7 +474,7 @@ struct MapScreen: View {
         }
         .frame(width: sidePanelWidth(geometry))
         .frame(maxHeight: max(200, geometry.size.height - 20), alignment: .top)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 6)
         .padding(.leading, 16).padding(.top, 10)
@@ -490,7 +495,6 @@ struct MapScreen: View {
             .presentationDetents([.height(240), .height(440), .large], selection: $detent)
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(28)
-            .presentationBackground(.regularMaterial)
             .presentationBackgroundInteraction(.enabled(upThrough: .height(440)))
             .interactiveDismissDisabled(), when: !usesSidePanel)
     }
@@ -579,8 +583,11 @@ struct MapScreen: View {
                     if !routablePlaces.isEmpty {
                         Button { openDirections() } label: {
                             Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill").font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(Theme.brandGradient, in: Capsule())
+                                .shadow(color: Theme.accent.opacity(0.35), radius: 8, y: 3)
                         }
-                        .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
+                        .buttonStyle(.plain)
                     }
                     if hasVisualFloor {
                         Button { detent = .height(440); query = "Elevator" } label: {
@@ -714,29 +721,30 @@ struct MapScreen: View {
 
     @ViewBuilder private var quickActionItems: some View {
         quickAction(account.isSignedIn ? "Account" : "Sign in",
-                    symbol: account.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle",
-                    label: account.isSignedIn ? "Your account" : "Sign in") { modal = .account }
-        quickAction("Contribute", symbol: "viewfinder", label: "Contribute a scan") { modal = .contribute }
-        quickAction("Submissions", symbol: "tray.full", label: "My submissions") { modal = .submissions }
-        quickAction("Building", symbol: "building.2", label: "Building details") { modal = .building }
-        quickAction("Saved maps", symbol: "map", label: "Saved maps") { modal = .savedMaps }
-        quickAction("Settings", symbol: "gearshape", label: "Scan settings") { modal = .settings }
+                    symbol: account.isSignedIn ? "person.crop.circle.fill" : "person.fill",
+                    color: .blue, label: account.isSignedIn ? "Your account" : "Sign in") { modal = .account }
+        quickAction("Contribute", symbol: "viewfinder", color: .green, label: "Contribute a scan") { modal = .contribute }
+        quickAction("Submissions", symbol: "tray.full.fill", color: .orange, label: "My submissions") { modal = .submissions }
+        quickAction("Building", symbol: "building.2.fill", color: .indigo, label: "Building details") { modal = .building }
+        quickAction("Saved maps", symbol: "map.fill", color: .teal, label: "Saved maps") { modal = .savedMaps }
+        quickAction("Settings", symbol: "gearshape.fill", color: .gray, label: "Scan settings") { modal = .settings }
         #if DEBUG
-        quickAction("Demo", symbol: "play.circle", label: "Navigation demo") { cover = .demo }
+        quickAction("Demo", symbol: "play.fill", color: .pink, label: "Navigation demo") { cover = .demo }
         #endif
     }
 
-    private func quickAction(_ title: String, symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { quickActionLabel(title, symbol: symbol) }
-            .buttonStyle(.plain)
+    private func quickAction(_ title: String, symbol: String, color: Color, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { quickActionLabel(title, symbol: symbol, color: color) }
+            .buttonStyle(QuickActionButtonStyle())
             .accessibilityLabel(label)
     }
 
-    private func quickActionLabel(_ title: String, symbol: String) -> some View {
+    private func quickActionLabel(_ title: String, symbol: String, color: Color) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 21, weight: .medium)).foregroundStyle(Color.accentColor)
+            Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
                 .frame(width: 50, height: 50)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .background(color.gradient, in: Circle())
+                .shadow(color: color.opacity(0.35), radius: 6, y: 3)
             Text(title).font(.caption.weight(.medium)).foregroundStyle(.primary)
                 .lineLimit(1).minimumScaleFactor(0.75)
         }
@@ -1369,4 +1377,13 @@ private struct LiveSearchTrigger: Equatable {
     var origin: SIMD3<Float>
     var query: String
     var pointCount: Int
+}
+
+/// Quick actions shrink a little under the finger, like Home Screen icons.
+private struct QuickActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
 }
