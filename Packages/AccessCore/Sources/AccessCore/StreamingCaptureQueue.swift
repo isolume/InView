@@ -440,7 +440,8 @@ public actor StreamingCaptureQueue {
         if let backend = error as? BackendClientError {
             switch backend {
             case .http(let status, _, _): return (400...499).contains(status) && status != 408 && status != 429
-            case .invalidResponse, .invalidCapture, .invalidURL, .captureConflict, .archiveTooLarge: return true
+            case .invalidResponse, .invalidCapture, .invalidURL, .insecureTokenTransport, .captureConflict,
+                 .archiveTooLarge: return true
             case .connection: return false
             }
         }
