@@ -1,7 +1,7 @@
 # Hosting the backend on Vultr
 
-Terraform provisions a Debian 12 instance with Docker, a systemd backend service,
-and Caddy as the HTTPS reverse proxy. Only SSH, HTTP redirects/certificate
+Terraform provisions an Ubuntu 22.04 instance (Vultr os_id 1743) with Docker, a systemd backend service,
+and Caddy (official static binary) as the HTTPS reverse proxy. Only SSH, HTTP redirects/certificate
 renewal, and HTTPS are exposed. The backend port binds to loopback.
 
 Source scans, derived analyses, graphs, and continuous streams are stored under
