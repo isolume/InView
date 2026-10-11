@@ -16,6 +16,8 @@ struct RoomMapCanvas: UIViewRepresentable {
     var showsFullWalls = false
     var viewportBottomInset: CGFloat = 0
     var viewportTopInset: CGFloat = 0
+    /// Room taken by a side panel over the map, as on iPad; the floor is framed beside it.
+    var viewportLeadingInset: CGFloat = 0
     /// Floor coordinates are (map x, map z), in the capture's original meter frame.
     var routePoints: [SIMD2<Float>] = []
     var userPosition: SIMD2<Float>? = nil
@@ -64,7 +66,7 @@ struct RoomMapCanvas: UIViewRepresentable {
                     floorFootprints: floorFootprints,
                     topDown: topDown, resetID: resetID, showsDetails: showsDetails,
                     showsFullWalls: showsFullWalls, viewportBottomInset: viewportBottomInset, viewportTopInset: viewportTopInset,
-                    routePoints: routePoints, userPosition: userPosition, userHeading: userHeading,
+                    viewportLeadingInset: viewportLeadingInset, routePoints: routePoints, userPosition: userPosition, userHeading: userHeading,
                     floorY: floorY, destination: destination, destinationTitle: destinationTitle,
                     isNavigating: isNavigating)
         view.onIllustrationState = onIllustrationState
@@ -140,6 +142,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private var wallOpenings: [String: [(SceneSurface, WallRectangle)]] = [:]
     private var bottomInset: CGFloat = 0
     private var topInset: CGFloat = 0
+    private var leadingInset: CGFloat = 0
     private var lower = SIMD3<Float>(repeating: -0.5)
     private var upper = SIMD3<Float>(repeating: 0.5)
     private var framingPoints: [SIMD3<Float>] = []
@@ -290,7 +293,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     func update(_ source: ProcessedScene, selectedObjectID: String?, showsLabels: Bool,
                 floorFootprints: [Footprint],
                 topDown: Bool, resetID: Int, showsDetails: Bool, showsFullWalls: Bool,
-                viewportBottomInset: CGFloat, viewportTopInset: CGFloat, routePoints: [SIMD2<Float>], userPosition: SIMD2<Float>?,
+                viewportBottomInset: CGFloat, viewportTopInset: CGFloat, viewportLeadingInset: CGFloat = 0,
+                routePoints: [SIMD2<Float>], userPosition: SIMD2<Float>?,
                 userHeading: Float?, floorY: Float, destination: SIMD2<Float>?,
                 destinationTitle: String?, isNavigating: Bool) {
         let changed = self.source != source
@@ -302,7 +306,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         let labelsChanged = labelsVisible != (showsLabels && !isNavigating)
         let nextBottomInset = max(0, viewportBottomInset)
         let nextTopInset = max(0, viewportTopInset)
-        let insetsChanged = bottomInset != nextBottomInset || topInset != nextTopInset
+        let nextLeadingInset = max(0, viewportLeadingInset)
+        let insetsChanged = bottomInset != nextBottomInset || topInset != nextTopInset || leadingInset != nextLeadingInset
         let selectionChanged = changed || selection != selectedObjectID
         if floorGeometryChanged {
             savedFloors = floorFootprints
@@ -337,6 +342,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         }
         bottomInset = nextBottomInset
         topInset = nextTopInset
+        leadingInset = nextLeadingInset
         self.isNavigating = isNavigating
         labelsVisible = showsLabels && !isNavigating
         if navigationModeChanged {
@@ -1413,11 +1419,15 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         let framedCenter = center + right * projectedCenter.x + up * projectedCenter.y + offset
         let top = min(topInset, max(0, viewport.height - 160))
         let bottom = min(bottomInset, max(0, viewport.height - top - 120))
+        let leading = min(leadingInset, max(0, viewport.width - 200))
         let available = max(120, viewport.height - top - bottom)
         let fraction = Float(available / viewport.height)
+        let widthFraction = Float((viewport.width - leading) / viewport.width)
         let aspect = Float(viewport.width / viewport.height)
-        let scale = max(extent.y / (fraction * 0.88), extent.x / (aspect * 0.92)) / (2 * zoom)
+        let scale = max(extent.y / (fraction * 0.88), extent.x / (aspect * widthFraction * 0.92)) / (2 * zoom)
+        // Centre the floor in the uncovered area: below the top controls, above the sheet, beside a side panel.
         let target = framedCenter - up * scale * Float((bottom - top) / viewport.height)
+            - right * scale * aspect * Float(leading / viewport.width)
         let distance: Float
         if showsSplat {
             // Match the model's framing while drawing the photoreal layer in perspective.
@@ -1490,7 +1500,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private func positionLabels(_ positions: RoomMapMarkerPositions) {
         guard bounds.width > 0 else { return }
         var occupied: [CGRect] = []
-        let allowed = CGRect(x: 10, y: max(28, topInset), width: max(1, bounds.width - 20),
+        let allowed = CGRect(x: 10 + leadingInset, y: max(28, topInset), width: max(1, bounds.width - 20 - leadingInset),
                              height: max(1, bounds.height - bottomInset - max(28, topInset) - 10))
         if let label = destinationLabel, let point = positions.destination {
             let size = CGSize(width: min(label.intrinsicContentSize.width, allowed.width), height: label.intrinsicContentSize.height)

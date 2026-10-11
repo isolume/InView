@@ -1,7 +1,7 @@
 import AVFoundation
 
 /// Plays prompts in order, using ElevenLabs when configured and the system voice if synthesis
-/// fails or exceeds 2.5 seconds. Urgent prompts cancel queued and playing speech.
+/// fails or exceeds the timeout (2.5 seconds by default). Urgent prompts cancel queued and playing speech.
 @MainActor
 final class VoiceGuide: NSObject {
     private let synthesizer = AVSpeechSynthesizer()
@@ -13,22 +13,28 @@ final class VoiceGuide: NSObject {
     /// Keyed by exact line text; lines repeat verbatim often enough during a route to make this worth it.
     private var audioCache: [String: Data] = [:]
     private static let maxCachedLines = 60
-    private static let synthesisTimeout: TimeInterval = 2.5
+    private let synthesisTimeout: TimeInterval
     private var synthesisTask: Task<Void, Never>?
     private var pendingLines: [String] = []
     private var playbackCompletion: CheckedContinuation<Bool, Never>?
     private var utterance: AVSpeechUtterance?
     private var generation = 0
 
-    /// Audio session changes can block for a moment, so they happen off the main thread.
-    private static let sessionQueue = DispatchQueue(label: "VoiceGuide.audioSession")
+    /// Whether this guide activated the shared audio session, and so may deactivate it.
+    private var isActive = false
 
-    override init() {
+    /// Audio session changes can block for a moment, so they happen off the main thread. Anything else
+    /// that reconfigures the shared session uses this queue too, so changes apply in order.
+    nonisolated static let sessionQueue = DispatchQueue(label: "VoiceGuide.audioSession")
+
+    init(synthesisTimeout: TimeInterval = 2.5) {
+        self.synthesisTimeout = synthesisTimeout
         super.init()
         synthesizer.delegate = self
     }
 
     func activate() {
+        isActive = true
         Self.sessionQueue.async {
             let session = AVAudioSession.sharedInstance()
             try? session.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
@@ -46,8 +52,11 @@ final class VoiceGuide: NSObject {
         }
     }
 
+    /// Leaves the session alone unless this guide activated it, so it doesn't cut off other speech.
     func deactivate() {
         stop()
+        guard isActive else { return }
+        isActive = false
         Self.sessionQueue.async {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
@@ -67,7 +76,7 @@ final class VoiceGuide: NSObject {
                 let text = self.pendingLines.removeFirst()
                 var data = self.audioCache[text]
                 if data == nil, let elevenLabs = self.elevenLabs {
-                    data = try? await withTimeout(Self.synthesisTimeout) {
+                    data = try? await withTimeout(self.synthesisTimeout) {
                         try await elevenLabs.synthesize(text)
                     }
                     guard !Task.isCancelled else { return }
