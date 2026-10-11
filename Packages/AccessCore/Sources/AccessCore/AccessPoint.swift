@@ -39,6 +39,8 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
     public var slopeDegrees: Float?
     /// A staff member has to operate it or help through it, e.g. an attendant-run lift.
     public var requiresAssistance: Bool
+    /// Set when the place was read from a sign: what it said and the door and room it labels.
+    public var sign: SignTag?
 
     public init(
         id: UUID = UUID(),
@@ -48,7 +50,8 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
         source: Source,
         confidence: Float,
         slopeDegrees: Float? = nil,
-        requiresAssistance: Bool = false
+        requiresAssistance: Bool = false,
+        sign: SignTag? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -58,6 +61,7 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
         self.confidence = confidence
         self.slopeDegrees = slopeDegrees
         self.requiresAssistance = requiresAssistance
+        self.sign = sign
     }
 
     public var floorPoint: SIMD2<Float> { SIMD2(position.x, position.z) }
@@ -74,7 +78,7 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, name, position, source, confidence, slopeDegrees, requiresAssistance
+        case id, kind, name, position, source, confidence, slopeDegrees, requiresAssistance, sign
     }
 
     public init(from decoder: any Decoder) throws {
@@ -89,7 +93,9 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
             source: try container.decode(Source.self, forKey: .source),
             confidence: try container.decode(Float.self, forKey: .confidence),
             slopeDegrees: try container.decodeIfPresent(Float.self, forKey: .slopeDegrees),
-            requiresAssistance: try container.decodeIfPresent(Bool.self, forKey: .requiresAssistance) ?? false
+            requiresAssistance: try container.decodeIfPresent(Bool.self, forKey: .requiresAssistance) ?? false,
+            // A malformed sign tag drops the tag, never the place.
+            sign: (try? container.decodeIfPresent(SignTag.self, forKey: .sign)) ?? nil
         )
     }
 }

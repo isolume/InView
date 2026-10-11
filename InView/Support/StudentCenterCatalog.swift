@@ -2,7 +2,7 @@ import AccessCore
 import CryptoKit
 import Foundation
 
-/// The supplied scan is the map source. The walkthrough model is an independent visual reference.
+/// Measured routing coverage is constrained to the reconstructed floor's visible outline.
 enum StudentCenterCatalog {
     static let buildingName = "Student Center East"
     static let universityName = "Georgia State University"
@@ -12,6 +12,7 @@ enum StudentCenterCatalog {
     static let mapTitle = "Floor 2"
     static let coverageDescription = "Scanned area"
     static let illustrationTitle = "Floor 2"
+    static let navigationResourceName = "student-center-east-floor-2-navigation"
 
     enum Coverage: Equatable {
         case scannedArea
@@ -136,7 +137,7 @@ enum StudentCenterCatalog {
     }
 
     private static let bundledMap: Result<VenueMap, CatalogError> = {
-        guard let url = resourceURL("student-center-east-floor-2", extension: "json") else {
+        guard let url = resourceURL(navigationResourceName, extension: "json") else {
             return .failure(.missingResource)
         }
         guard let data = try? Data(contentsOf: url), data.count <= 10_000_000 else {

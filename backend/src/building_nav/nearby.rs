@@ -179,6 +179,24 @@ fn synonyms(category: &str) -> &'static str {
     }
 }
 
+/// A room number read from its door plate: "204" and "room 204" find Room 204 even when the
+/// place's name is a department rather than the number.
+fn room_score(query: &str, detail: &Value) -> u8 {
+    let Some(number) = detail.get("room_number").and_then(Value::as_str).map(normalize) else {
+        return 0;
+    };
+    if number.is_empty() {
+        return 0;
+    }
+    if query == number || query.split(' ').any(|token| token == number) {
+        4
+    } else if number.starts_with(query) {
+        3
+    } else {
+        0
+    }
+}
+
 /// 0 = no match; higher is a better name match.
 fn score(query: &str, name: Option<&str>, category: &str) -> u8 {
     let name = name.map(normalize).unwrap_or_default();
@@ -484,7 +502,9 @@ pub fn nearby(model: &NavModel, request: &NearbyRequest) -> Result<NearbyRespons
             continue;
         }
         let score = match &query {
-            Some(q) => match score(q, candidate.name.as_deref(), &candidate.category) {
+            Some(q) => match score(q, candidate.name.as_deref(), &candidate.category)
+                .max(room_score(q, &candidate.detail))
+            {
                 0 => continue,
                 s => s,
             },
@@ -619,6 +639,16 @@ mod tests {
             score(&normalize("pizza"), Some("McDonald's"), "restaurant"),
             0
         );
+    }
+
+    #[test]
+    fn room_numbers_from_door_plates_are_searchable() {
+        let detail = json!({"room_number": "204A"});
+        assert_eq!(room_score(&normalize("204A"), &detail), 4);
+        assert_eq!(room_score(&normalize("Room 204a"), &detail), 4);
+        assert_eq!(room_score(&normalize("204"), &detail), 3);
+        assert_eq!(room_score(&normalize("205"), &detail), 0);
+        assert_eq!(room_score(&normalize("204"), &json!({"room_number": null})), 0);
     }
 
     #[test]

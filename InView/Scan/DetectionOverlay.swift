@@ -10,6 +10,7 @@ struct DetectionOverlay: View {
     @ObservedObject var detector: AccessibilityDetector
     let session: ARSession
     var signs: [CaptureTextObservation] = []
+    var floors: [Footprint] = []
 
     /// Tags sit this far above the floor spot, so they don't cover the find itself.
     private static let tagHeight: Float = 0.3
@@ -21,6 +22,11 @@ struct DetectionOverlay: View {
         GeometryReader { geometry in
             TimelineView(.periodic(from: .now, by: Self.refreshInterval)) { _ in
                 ZStack(alignment: .topLeading) {
+                    Canvas { context, size in
+                        let paths = measuredPaths(in: size)
+                        context.stroke(paths.floors, with: .color(.mint.opacity(0.85)), style: StrokeStyle(lineWidth: 2, dash: [6, 3]))
+                        context.stroke(paths.stairs, with: .color(.orange), lineWidth: 2)
+                    }
                     ForEach(signPlacements(in: geometry.size)) { placement in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(placement.observation.text).font(.caption.weight(.bold)).lineLimit(2)
@@ -49,6 +55,41 @@ struct DetectionOverlay: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private func measuredPaths(in size: CGSize) -> (floors: Path, stairs: Path) {
+        var floorPath = Path(), stairsPath = Path()
+        guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return (floorPath, stairsPath) }
+        let camera = frame.camera, inverse = camera.transform.inverse
+        func edge(_ a: SIMD3<Float>, _ b: SIMD3<Float>, into path: inout Path) {
+            guard (inverse * SIMD4(a, 1)).z < -0.15, (inverse * SIMD4(b, 1)).z < -0.15 else { return }
+            let p = camera.projectPoint(a, orientation: .portrait, viewportSize: size)
+            let q = camera.projectPoint(b, orientation: .portrait, viewportSize: size)
+            guard p.x.isFinite, p.y.isFinite, q.x.isFinite, q.y.isFinite else { return }
+            path.move(to: p); path.addLine(to: q)
+        }
+        let cameraXZ = SIMD2(camera.transform.translation.x, camera.transform.translation.z)
+        let nearby = floors.sorted { simd_distance($0.center, cameraXZ) < simd_distance($1.center, cameraXZ) }.prefix(16)
+        for floor in nearby {
+            guard let y = floor.bottom, floor.corners.count <= 128 else { continue }
+            let corners = floor.corners
+            for index in corners.indices {
+                let a = corners[index], b = corners[(index + 1) % corners.count]
+                edge(SIMD3(a.x, y + 0.015, a.y), SIMD3(b.x, y + 0.015, b.y), into: &floorPath)
+            }
+        }
+        for sighting in detector.nearbySightings(to: camera.transform.translation) {
+            guard let measured = sighting.measuredStairs, let footprint = measured.footprint() else { continue }
+            let bottom = footprint.corners.map { SIMD3($0.x, measured.minimum.y, $0.y) }
+            let top = footprint.corners.map { SIMD3($0.x, measured.maximum.y, $0.y) }
+            for i in bottom.indices {
+                edge(bottom[i], bottom[(i + 1) % bottom.count], into: &stairsPath)
+                edge(top[i], top[(i + 1) % top.count], into: &stairsPath)
+                edge(bottom[i], top[i], into: &stairsPath)
+            }
+        }
+        return (floorPath, stairsPath)
     }
 
     private struct SignPlacement: Identifiable {
@@ -126,6 +167,11 @@ private struct FindTag: View {
                 if !sighting.isConfirmed {
                     Capsule().strokeBorder(.white.opacity(0.9), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                 }
+            }
+            if let measured = sighting.measuredStairs {
+                Text(String(format: "%d treads · %.1fm rise · visible extent", measured.treadCount, measured.rise))
+                    .font(.system(size: 9, weight: .medium)).padding(4)
+                    .background(.black.opacity(0.8), in: Capsule()).foregroundStyle(.white)
             }
             Rectangle().fill(tint).frame(width: 2, height: 10)
             Circle().fill(tint).frame(width: 6, height: 6)

@@ -6,7 +6,16 @@ The Mogo sign-recognition approach is integrated into InView's existing calibrat
 
 Readable room numbers/room labels, direction signs, exits, elevators/lifts, stairs and restrooms produce mint-bordered camera labels **only when matched LiDAR depth supports a position**. Labels include measured local `x`, `y`, `z` in meters and height above the reference floor when available. The overlay projects fixed map positions through the current camera pose; it does not pin labels to their original screen pixels. It culls behind-camera/off-screen points and limits the display to ten nearby deduplicated labels.
 
-Rules recognize English keywords, room-number patterns, explicit direction words, and arrow characters returned by Vision. Pictograms and arrows that Vision does not transcribe are not detected. A directional exit sign is the position of the *sign*, not the door it points toward. Signs never automatically become verified destinations, routing portals, or evacuation instructions.
+Rules recognize English keywords, room-number patterns, explicit direction words, and arrow characters returned by Vision. Pictograms and arrows that Vision does not transcribe are not detected. A directional exit sign is the position of the *sign*, not the door it points toward. Signs never become routing portals or evacuation instructions.
+
+## Signs to doors and rooms
+
+`SignInterpreter` (AccessCore) normalizes a plate's lines into a `SignReading` ("RM. 204A / CHEMISTRY LAB" → Room 204A · Chemistry Lab; EXIT, WOMEN, MAIN LOBBY). `SignPlaceBinder` snaps a measured sign to the door or opening on its own wall (beside or above the frame, within 2.2 m past its edge), places the destination 0.6 m in front of that door on the reader's side, and records the measured floor of the room behind it. Directional signs are never bound to a door. The result is an ordinary `AccessPoint` with an additive `sign` tag, so it is searchable, routable and shared like any destination; `VenueMap.applySign` updates rather than duplicates a re-read door.
+
+- **Live, in AR on a saved floor:** *Read a sign* OCRs the middle of the view a few times a second (`SignReader`), measures the plate with that frame's LiDAR depth, and locks after two agreeing reads. One tap tags the door. With `OPENAI_API_KEY`, the locked crop is checked by a vision model (`SignAIClient`), which can also identify pictogram-only signs on request. AI output only renames a reading; positions always come from depth.
+- **While scanning:** the *Sign* button reads signs into the scan; at review, those plus room/exit/restroom text the keyframes read twice or beside a door label RoomPlan's final doors (*Read from signs*).
+- **Maps:** tagged doors get a tinted pane, the room behind a colored wash; *Nearest exit* and *Rooms* filters appear once a floor has them.
+- **Server:** the worker's own sign→door binding (`room_number`, `door_id`) is kept in the nav model, and nearby search matches room numbers.
 
 ## Reusable components
 

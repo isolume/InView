@@ -98,8 +98,12 @@ def main():
     # Union a 12cm threshold overlap to join the independent lounge scan's
     # roughly 5cm boundary residual without retaining duplicate floor layers.
     threshold=Polygon([[-2.85,-5.2],[4.5,-5.2],[4.5,-4.85],[-2.85,-4.85]])
+    # The two captures leave a 2cm sliver at the measured lounge doorway.
+    # Complete its threshold between the existing jambs, inside the earlier
+    # measured floor; a route must not cross an empty seam in the illustration.
+    lounge_door_threshold=box(.27,-3.84,1.87,-3.77)
     recycling_pad=box(-28.35,28.75,-25.9,30.2)
-    floor=unary_union([lounge,balcony,seating,gallery,spur,cafe,threshold,recycling_pad])
+    floor=unary_union([lounge,balcony,seating,gallery,spur,cafe,threshold,lounge_door_threshold,recycling_pad])
     assert floor.geom_type=="Polygon" and floor.is_valid
     tile=floor.difference(lounge)
     assert tile.geom_type=="Polygon"

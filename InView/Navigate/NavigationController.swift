@@ -48,6 +48,8 @@ final class NavigationController: ObservableObject {
 
     let isDemo: Bool
     lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+    /// Reads room, exit and restroom signs in the same relocalized session, so they land on the saved map.
+    lazy var signReader = SignReader(session: arView.session)
 
     private static let rerouteInterval: TimeInterval = 1
     /// Reading depth is the costliest tick; a newly moved chair can wait a second.
@@ -61,6 +63,8 @@ final class NavigationController: ObservableObject {
     private static let rerouteDistance: Float = 0.4
 
     private var worldMap: ARWorldMap?
+    private var mapFromWorld: simd_float4x4?
+    private var sessionAlignment = NavigationSessionAlignment()
     private var planner: RoutePlanner?
     private let voice = VoiceGuide()
     private let narrator = Narrator()
@@ -130,6 +134,8 @@ final class NavigationController: ObservableObject {
         let planner: RoutePlanner?
         let startView: UIImage?
         let placeEditSource: MapStore.PlaceEditSource?
+        let mapFromWorld: simd_float4x4?
+        let unavailableReason: String?
     }
 
     /// Loads what directions need. The demo starts moving; a real map waits for `beginGuidance`.
@@ -145,14 +151,21 @@ final class NavigationController: ObservableObject {
         loadingGeneration += 1
         let generation = loadingGeneration
         let bundled = usesBundledMap
+        let requestedMap = map ?? (bundled ? StudentCenterCatalog.map() : nil)
         Task { [weak self] in
             let started = Date.now
             let loaded = await Task.detached(priority: .userInitiated) {
                 let assets = bundled ? nil : MapStore.loadEditableNavigationAssets()
-                let map = bundled ? StudentCenterCatalog.map() : assets?.map
-                return Loaded(map: map, worldMap: assets?.worldMap,
+                let map = bundled ? requestedMap : assets?.map
+                let localization = bundled ? map.map(StudentCenterLocalization.load) : nil
+                let located = try? localization?.get()
+                let reason: String?
+                if case .failure(let error) = localization { reason = error.localizedDescription }
+                else { reason = nil }
+                return Loaded(map: map, worldMap: located?.worldMap ?? assets?.worldMap,
                               planner: map.map(RoutePlanner.init), startView: assets?.startView,
-                              placeEditSource: assets?.source)
+                              placeEditSource: assets?.source, mapFromWorld: located?.mapFromWorld,
+                              unavailableReason: reason)
             }.value
             guard let self, generation == loadingGeneration else { return }
             Log.navigation.info("map loaded in \(String(format: "%.2f", Date.now.timeIntervalSince(started)), privacy: .public) s · \(loaded.map?.footprints.count ?? 0) footprints, \(loaded.map?.points.count ?? 0) points, world map \(loaded.worldMap == nil ? "missing" : "present", privacy: .public)")
@@ -160,13 +173,14 @@ final class NavigationController: ObservableObject {
             map = loaded.map
             placeEditSource = loaded.placeEditSource
             worldMap = loaded.worldMap
+            mapFromWorld = loaded.mapFromWorld
             planner = loaded.planner
             startView = loaded.startView
             canGuide = map != nil && worldMap != nil && map?.requiresOptimizedLocalization != true
             hasRefreshedWorldMap = false
             unavailableReason = map?.requiresOptimizedLocalization == true
                 ? "Live positioning is not ready for this map yet. You can still explore the floor."
-                : worldMap == nil ? "AR guidance is not available for this floor yet. You can still explore the map and preview a route." : nil
+                : worldMap == nil ? loaded.unavailableReason ?? "Live location hasn’t been added for this floor. You can still preview a route." : nil
             phase = map == nil ? .noMap : .browsing
             if canGuide, locatesAutomatically || locatesWhenLoaded {
                 locatesWhenLoaded = false
@@ -207,6 +221,7 @@ final class NavigationController: ObservableObject {
         map = newMap
         self.usesBundledMap = usesBundledMap
         worldMap = nil
+        mapFromWorld = nil
         planner = nil
         startView = nil
         renderer = nil
@@ -225,6 +240,10 @@ final class NavigationController: ObservableObject {
 
     /// Public releases contain map geometry; live positioning requires separate, matching evidence.
     func showSharedMap(_ newMap: VenueMap?) {
+        if let newMap, StudentCenterLocalization.mapFromWorld(for: newMap) != nil {
+            reload(map: newMap, usesBundledMap: true)
+            return
+        }
         stop()
         loadingGeneration += 1
         isLoading = false
@@ -233,6 +252,7 @@ final class NavigationController: ObservableObject {
         isSavingPlaces = false
         map = newMap
         worldMap = nil
+        mapFromWorld = nil
         planner = nil
         startView = nil
         renderer = nil
@@ -292,6 +312,8 @@ final class NavigationController: ObservableObject {
         if !isDemo, sessionIsRunning { arView.session.pause(); sessionIsRunning = false }
         cameraPreview = nil
         locatingHint = nil
+        renderer?.remove()
+        renderer = nil
         isPositionReliable = false
     }
 
@@ -317,14 +339,28 @@ final class NavigationController: ObservableObject {
         return try await publishPlaces(edited)
     }
 
+    /// Signs can be tagged while the camera is on and the rider is found: reading a sign needs the
+    /// live session in the saved map's frame, which is what positions the door it labels.
+    var canTagSigns: Bool {
+        !isDemo && !usesBundledMap && map != nil && placeEditSource != nil && !isSavingPlaces
+    }
+
+    /// Adds a place read from a sign, or updates the one already on that door.
+    func tagSign(_ point: AccessPoint) async throws -> (point: AccessPoint, isNew: Bool) {
+        guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
+        let result = edited.applySign(point)
+        _ = try await publishPlaces(edited, whileLive: true)
+        return result
+    }
+
     func removePlace(id: UUID) async throws -> AccessibilityReport {
         guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
         edited.removePoint(id: id)
         return try await publishPlaces(edited)
     }
 
-    private func publishPlaces(_ edited: VenueMap) async throws -> AccessibilityReport {
-        guard canEditPlaces, let previous = map, let source = placeEditSource else {
+    private func publishPlaces(_ edited: VenueMap, whileLive: Bool = false) async throws -> AccessibilityReport {
+        guard whileLive ? canTagSigns : canEditPlaces, let previous = map, let source = placeEditSource else {
             throw CaptureValidationError.invalid("Places can be changed on a saved map while directions are off.")
         }
         let request = UUID()
@@ -379,7 +415,8 @@ final class NavigationController: ObservableObject {
     /// GPS may adjust the map origin only when camera tracking is current and reliable.
     var placementPosition: SIMD2<Float>? {
         if isDemo { return position }
-        guard let frame = arView.session.currentFrame,
+        guard sessionIsRunning, sessionAlignment.isReady,
+              let frame = arView.session.currentFrame,
               case .normal = frame.camera.trackingState,
               ProcessInfo.processInfo.systemUptime - frame.timestamp < 1 else { return nil }
         let translation = frame.camera.transform.translation
@@ -458,7 +495,7 @@ final class NavigationController: ObservableObject {
     }
 
     func selectDestination(_ destination: AccessPoint?) {
-        if phase == .browsing || phase == .locating {
+        if phase == .loading || phase == .browsing || phase == .locating {
             selectedDestination = destination
             return
         }
@@ -515,9 +552,13 @@ final class NavigationController: ObservableObject {
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             configuration.frameSemantics.insert(.sceneDepth)
         }
-        // Without a delegate that allows it, ARKit restarts tracking after an interruption such as
-        // switching apps, losing the scan's coordinates. Relocalizing keeps them.
+        // Preserve the captured coordinate system after interruptions.
         arView.session.delegate = relocalizer
+        sessionAlignment.reset(startedAt: ProcessInfo.processInfo.systemUptime,
+                               needsOriginChange: mapFromWorld != nil)
+        obstacles.reset()
+        renderer?.remove()
+        renderer = nil
         arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         sessionIsRunning = true
         unalignedSince = nil
@@ -545,9 +586,18 @@ final class NavigationController: ObservableObject {
         }
         updateLocatingFeedback(frame)
         guard phase != .locating else {
-            if case .normal = frame.camera.trackingState {
-                didLocate()
-            } else if !isRelocalizationSlow, Date.now.timeIntervalSince(locatingSince) > Self.slowRelocalization {
+            let normal: Bool
+            if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
+            switch sessionAlignment.next(timestamp: frame.timestamp, trackingIsNormal: normal) {
+            case .changeOrigin:
+                // ARKit expects the desired origin expressed in the captured world's coordinates.
+                // All subsequent camera, plane, depth and route coordinates then share the map frame.
+                if let mapFromWorld { arView.session.setWorldOrigin(relativeTransform: mapFromWorld.inverse) }
+                sessionAlignment.didChangeOrigin(at: ProcessInfo.processInfo.systemUptime)
+            case .ready: didLocate()
+            case .wait: break
+            }
+            if phase == .locating, !isRelocalizationSlow, Date.now.timeIntervalSince(locatingSince) > Self.slowRelocalization {
                 isRelocalizationSlow = true
             }
             return
@@ -699,7 +749,7 @@ final class NavigationController: ObservableObject {
     }
 
     private var conditions: RouteConditions {
-        routePreference.navigationConditions(obstacles: obstacles.obstacles)
+        routePreference.navigationConditions(map: map, obstacles: obstacles.obstacles)
     }
 
     /// Requests during computation run afterward; stopped or replaced sessions reject stale results.
@@ -836,7 +886,8 @@ final class NavigationController: ObservableObject {
 
     private func userPosition() -> SIMD2<Float>? {
         if isDemo { return position }
-        guard let frame = arView.session.currentFrame else { return nil }
+        guard sessionIsRunning, sessionAlignment.isReady,
+              let frame = arView.session.currentFrame else { return nil }
         guard Self.isAligned(frame.camera.trackingState) else { return nil }
         let translation = frame.camera.transform.translation
         return SIMD2(translation.x, translation.z)
@@ -846,9 +897,11 @@ final class NavigationController: ObservableObject {
 extension RoutePreference {
     /// Directions may cross space the scan saw but didn't record as floor, like a hallway walked past,
     /// when there's no other way. Routes say how far they do, so the person can check it's clear.
-    func navigationConditions(obstacles: [SIMD2<Float>] = []) -> RouteConditions {
+    func navigationConditions(map: VenueMap? = nil, obstacles: [SIMD2<Float>] = []) -> RouteConditions {
         var conditions = conditions(obstacles: obstacles)
-        conditions.allowsUnmappedSpace = true
+        // The reconstructed Floor 2 boundary includes an open atrium: never
+        // restore the off-floor shortcut by falling back to unmapped space.
+        conditions.allowsUnmappedSpace = map.flatMap(StudentCenterLocalization.mapFromWorld) == nil
         return conditions
     }
 }

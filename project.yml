@@ -18,6 +18,14 @@ targets:
     platform: iOS
     sources:
       - path: InView
+        excludes:
+          - Resources/StudentCenter/*.arworldmap
+      # Preserve the original archive bytes; Copy Bundle Resources rewrites
+      # binary property lists, including ARWorldMap's keyed archive.
+      - path: InView/Resources/StudentCenter/student-center-east-floor-2.arworldmap
+        buildPhase:
+          copyFiles:
+            destination: resources
     dependencies:
       - package: AccessCore
       - package: MapboxMaps

@@ -19,7 +19,7 @@
   "files": [
     {
       "file": "building.glb",
-      "sha256": "ee62689842c1ddd2ee9c7ec1902af315aaf681259b00378468988c1f5f892d6f",
+      "sha256": "2242d2e12698770387d60cc11d675ccc0d9145a930610af0afb46b5ad276905d",
       "bytes": 5940896,
       "passed": true,
       "errors": [],
@@ -82,7 +82,7 @@
     },
     {
       "file": "floor-2.glb",
-      "sha256": "141dc20762af3a3c90c3bd2e51505f448f4460dcf467cbee5e5795b09c954e70",
+      "sha256": "e8410911a260ea4c19e03386f21d16f3020bd2e4760afa568c6033f3b87a7981",
       "bytes": 3627548,
       "passed": true,
       "errors": [],
@@ -210,7 +210,7 @@
   },
   "viewer_comparison": {
     "file": "viewer-scene.json",
-    "sha256": "963e00068e467dafff8e01e15f31a5430d0fd4853cf402992bbfd7b4b2037929",
+    "sha256": "8458549c92c3c3fd13a1440aafa88571f397c5239d040d8f0135570ca8af0918",
     "passed": true,
     "errors": [],
     "triangle_count": 311392,
@@ -274,9 +274,9 @@
     "errors": [],
     "mode": "video_lidar_reconstruction",
     "source_file": "reconstruction.json",
-    "source_sha256": "d37c3c8bf78d3c2c1ed23a377f0f39372f5249d7144763200f48e36013d2cd33",
+    "source_sha256": "aac5a05b6ef07e2da3459c72377bf8d87e4d0a011e626b6f0ef43399a9780925",
     "registration_sha256": "576a2a267f280dc297475433c40474883be5705fc64b8b93b5c9687022212e63",
-    "manifest_sha256": "2c7f2edc23835a08ef7c3b442877520e906e66fb2f4d1e516357e2ae729ff190",
+    "manifest_sha256": "231ed80284a6dbae5387a6d747711b84fa34669009bfb8b7c83268c3f98d2a77",
     "preserved_resources": {
       "student-center-east-floor-2.json": {
         "expected_sha256": "a2c0993c064ab9d664b3e4db2fef64bbb06c34268a89ee1c2f29ea3fdbb9e473",
@@ -292,23 +292,23 @@
     "model_to_map_scale_from_elevators": 1.2467168944905882,
     "scan_registration_scale": 1,
     "source_display_floor_regions": 2,
-    "source_area_sum_m2": 570.4336020955001,
-    "exported_top_area_sum_m2": 570.4336390547185,
+    "source_area_sum_m2": 570.466483508016,
+    "exported_top_area_sum_m2": 570.466520868454,
     "overlapping_triangle_pairs": 0,
     "maximum_overlap_m2": 0.0,
     "triangle_coordinate_tolerance_m": 0.0001,
     "floors": [
       {
         "id": "continuous-tile-floor",
-        "declared_area_m2": 482.6808645505132,
-        "outline_area_m2": 482.6808645505126,
-        "source_triangle_area_m2": 482.68086455170953,
-        "exported_top_area_m2": 482.6809020404886,
+        "declared_area_m2": 482.71374596302917,
+        "outline_area_m2": 482.71374596302957,
+        "source_triangle_area_m2": 482.7137459117095,
+        "exported_top_area_m2": 482.7137838542241,
         "source_triangles": 94,
         "exported_top_triangles": 94,
         "matched_triangles": 94,
         "maximum_triangle_coordinate_difference_m": 3.253840166195232e-06,
-        "area_tolerance_m2": 0.0004826808645505132
+        "area_tolerance_m2": 0.00048271374596302915
       },
       {
         "id": "lounge-carpet",
@@ -331,15 +331,15 @@
       {
         "export": "floor-2.usdz",
         "app_resource": "student-center-east-floor-2-model.usdz",
-        "export_sha256": "af372d70b3260f111ff2a9894668a810e85cc5577b669b77f12044aca73f84da",
-        "app_sha256": "af372d70b3260f111ff2a9894668a810e85cc5577b669b77f12044aca73f84da",
+        "export_sha256": "7e33fb3161f5821f3e4e2974253c4d994c10bd10c2751a00792f81236c8b95bc",
+        "app_sha256": "7e33fb3161f5821f3e4e2974253c4d994c10bd10c2751a00792f81236c8b95bc",
         "matches": true
       },
       {
         "export": "floor-2.png",
         "app_resource": "student-center-east-floor-2-model.png",
-        "export_sha256": "755887d7c0eaf9afc4bc9226537d11d8490e789c6216ecda5309890e501cc6a2",
-        "app_sha256": "755887d7c0eaf9afc4bc9226537d11d8490e789c6216ecda5309890e501cc6a2",
+        "export_sha256": "ef927903203a7748e013e8245f70ee353e4a3caf926b8df3633b5d10b291a656",
+        "app_sha256": "ef927903203a7748e013e8245f70ee353e4a3caf926b8df3633b5d10b291a656",
         "matches": true
       },
       {
@@ -359,8 +359,8 @@
       {
         "export": "layout.json",
         "app_resource": "student-center-east-model-layout.json",
-        "export_sha256": "91dffda02cce22227085cdc13765565e63ea1cc24585aa45bb185216e96ffb8b",
-        "app_sha256": "91dffda02cce22227085cdc13765565e63ea1cc24585aa45bb185216e96ffb8b",
+        "export_sha256": "9e01b6d4fb6892902defb0aab0e878526f057793c8851e610062effcb67e8627",
+        "app_sha256": "9e01b6d4fb6892902defb0aab0e878526f057793c8851e610062effcb67e8627",
         "matches": true
       }
     ]

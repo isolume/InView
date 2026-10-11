@@ -212,7 +212,7 @@ enum VenueModelBuilder {
     private static func marker(for point: AccessPoint, floorY: Float) -> Entity {
         let entity = Entity()
         entity.position = SIMD3(point.position.x, floorY, point.position.z)
-        let color = point.isTooSteep ? Theme.uiColor(for: .warning) : point.kind.uiTint
+        let color = point.isTooSteep ? Theme.uiColor(for: .warning) : point.signCategory?.uiTint ?? point.kind.uiTint
         let material = SimpleMaterial(color: color, roughness: 0.4, isMetallic: false)
         switch point.kind {
         case .elevator:

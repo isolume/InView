@@ -193,7 +193,7 @@ struct RouteCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                KindBadge(kind: route.destination.kind, size: 44)
+                KindBadge(point: route.destination, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(route.destination.title).font(.title3.bold())
                     Text(details).font(.subheadline).foregroundStyle(.secondary)

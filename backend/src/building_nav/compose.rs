@@ -234,7 +234,14 @@ pub fn compose(layers: &[ScanLayer], manual: &[ManualConnector]) -> NavModel {
                 position: t.point(position),
                 level: 0,
                 accessible: None,
-                detail: json!({"confidence": place.get("confidence"), "access_point_kind": place.get("access_point_kind")}),
+                // The worker's sign binding: which door and room a "Room 204" plate labels.
+                detail: json!({
+                    "confidence": place.get("confidence"),
+                    "access_point_kind": place.get("access_point_kind"),
+                    "room_number": place.get("room_number"),
+                    "door_id": place.get("door_id"),
+                    "region_id": place.get("region_id"),
+                }),
             });
         }
         for (index, hazard) in list(analysis, "hazards").enumerate() {
