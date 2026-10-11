@@ -47,7 +47,13 @@ final class NavigationController: ObservableObject {
     @Published private(set) var routePreference = RoutePreference.stepFree
 
     let isDemo: Bool
-    lazy var arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+    lazy var arView: ARView = {
+        let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+        // Everything drawn in AR is unlit, so the post effects only cost camera frames.
+        view.renderOptions = [.disableMotionBlur, .disableDepthOfField, .disableCameraGrain, .disableHDR,
+                              .disableGroundingShadows, .disableAREnvironmentLighting]
+        return view
+    }()
     /// Reads room, exit and restroom signs in the same relocalized session, so they land on the saved map.
     lazy var signReader = SignReader(session: arView.session)
 
@@ -612,16 +618,19 @@ final class NavigationController: ObservableObject {
             if isPositionReliable {
                 say(Narrator.Line(text: "Position lost. Stop and look around to reconnect.", isUrgent: true))
             }
-            isPositionReliable = false
-            position = nil
+            if isPositionReliable { isPositionReliable = false }
+            if position != nil { position = nil }
             renderer?.clearRoute()
             return
         }
         if !isPositionReliable, let route { renderer?.show(route) }
-        isPositionReliable = true
+        if !isPositionReliable { isPositionReliable = true }
+        // Each write re-renders the map screen; skip moves too small to see.
         let transform = frame.camera.transform
-        position = SIMD2(transform.columns.3.x, transform.columns.3.z)
-        heading = atan2(-transform.columns.2.x, transform.columns.2.z)
+        let newPosition = SIMD2(transform.columns.3.x, transform.columns.3.z)
+        if position.map({ simd_distance($0, newPosition) > 0.03 }) ?? true { position = newPosition }
+        let newHeading = atan2(-transform.columns.2.x, transform.columns.2.z)
+        if abs(remainder(heading - newHeading, 2 * .pi)) > 0.03 { heading = newHeading }
         updateFloorHeight(from: frame)
         refreshWorldMapIfSettled(frame)
         // A preference change may have happened while tracking was unavailable.
@@ -689,7 +698,8 @@ final class NavigationController: ObservableObject {
             if cameraPreview != nil || locatingHint != nil { cameraPreview = nil; locatingHint = nil }
             return
         }
-        if Date.now.timeIntervalSince(lastPreviewAt) >= 0.2 {
+        // The full-screen AR view already shows the camera; the small preview is for the map.
+        if arView.window == nil, Date.now.timeIntervalSince(lastPreviewAt) >= 0.2 {
             lastPreviewAt = .now
             cameraPreview = Self.preview(of: frame)
         }

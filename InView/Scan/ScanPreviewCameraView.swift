@@ -17,6 +17,7 @@ final class ScanPreviewCameraView: MTKView, MTKViewDelegate {
     private var selectionWorker: Task<Void, Never>?
     private var pendingRoom: (room: CapturedRoom, observedAt: TimeInterval?)?
     private var generation = 0
+    private var lastDrawnTimestamp: TimeInterval = 0
     private var indexRevision = 0
     var onMeasurementsReady: ((ScanLiveRoomMeasurements) -> Void)?
 
@@ -28,8 +29,9 @@ final class ScanPreviewCameraView: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         framebufferOnly = true
         autoResizeDrawable = false
-        (layer as? CAMetalLayer)?.maximumDrawableCount = 2
-        preferredFramesPerSecond = 30
+        (layer as? CAMetalLayer)?.maximumDrawableCount = 3
+        // Match ARKit's 60 Hz feed; a draw with no new camera frame is skipped below.
+        preferredFramesPerSecond = 60
         isPaused = true
         delegate = self
         if let device { renderer = ScanPreviewRenderer(device: device, pixelFormat: colorPixelFormat) }
@@ -152,7 +154,9 @@ final class ScanPreviewCameraView: MTKView, MTKViewDelegate {
 
     nonisolated func draw(in view: MTKView) {
         MainActor.assumeIsolated {
-            renderer?.draw(view: self, frame: session?.currentFrame,
+            guard let frame = session?.currentFrame, frame.timestamp != lastDrawnTimestamp else { return }
+            lastDrawnTimestamp = frame.timestamp
+            renderer?.draw(view: self, frame: frame,
                            orientation: window?.windowScene?.effectiveGeometry.interfaceOrientation ?? .portrait)
         }
     }

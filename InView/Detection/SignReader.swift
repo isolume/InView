@@ -56,7 +56,7 @@ final class SignReader: ObservableObject {
     /// Signs already put on the map this session.
     private var handled: [(title: String, position: SIMD3<Float>)] = []
 
-    private static let interval: TimeInterval = 0.35
+    private static let interval: TimeInterval = 0.5
     private static let locksAfter = 2
     private static let sameSign: Float = 0.75
     /// A lock survives brief glances away, so the card doesn't flicker while someone taps it.
@@ -116,7 +116,8 @@ final class SignReader: ObservableObject {
         guard isRunning, !inFlight, !isAskingAI, let input = Self.copy(session.currentFrame) else { return }
         inFlight = true
         let request = generation
-        Task.detached(priority: .userInitiated) {
+        // Below the camera and RoomPlan, so reading never costs a frame of video.
+        Task.detached(priority: .utility) {
             let plate = Self.read(input)
             await MainActor.run { [weak self] in
                 guard let self, self.generation == request else { return }

@@ -64,9 +64,6 @@ final class ScanController: ObservableObject {
     @Published private(set) var signObservations: [CaptureTextObservation] = []
     /// Signs the mapper pointed the reader at; they label their doors when the map is ready.
     @Published private(set) var readSigns: [SignReader.Sighting] = []
-    @Published private(set) var tracedFloors: [Footprint] = []
-    @Published private(set) var liveWalkTrace: ScanWalkTrace?
-    private var lastTraceRefresh: TimeInterval = 0
     @Published private(set) var currentFloor: ScanFloorIdentity?
     @Published private(set) var buildingName = "Building"
     @Published private(set) var isChangingFloors = false
@@ -249,7 +246,6 @@ final class ScanController: ObservableObject {
             }) { return floor.bottom }
             return self.rawCapture.hasMeasuredFloor(at: position) ? self.rawCapture.measuredFloorElevation(near: position) : nil
         }
-        tracedFloors = []; liveWalkTrace = nil; lastTraceRefresh = 0
         signObservations = []
         readSigns = []
         let captureID = scanID
@@ -265,8 +261,8 @@ final class ScanController: ObservableObject {
             let video = ScanVideoCapture()
             let id = scanID
             video.onStatus = { [weak self] status in
-                guard self?.scanID == id else { return }
-                self?.videoStatus = status
+                guard let self, scanID == id, videoStatus != status else { return }
+                videoStatus = status
             }
             video.onDepthAvailability = { [weak self] available in
                 guard self?.scanID == id, !available else { return }
@@ -791,20 +787,17 @@ final class ScanController: ObservableObject {
         if case .normal = frame.camera.trackingState {
             normal = abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1
         } else { normal = false }
-        trackingNotice = normal ? nil : "Move slowly while positioning recovers."
-        if frame.timestamp - lastTraceRefresh >= 1 {
-            lastTraceRefresh = frame.timestamp
-            // Preserve measured polygon boundaries. Never fill a convex hull across rooms/gaps.
-            tracedFloors = Array((rawCapture.tracedFloors + liveFloors).prefix(128))
-            liveWalkTrace = rawCapture.liveWalkTrace
-        }
+        // @Published fires on every write; equal values would still redraw the scan screen five times a second.
+        let notice = normal ? nil : "Move slowly while positioning recovers."
+        if trackingNotice != notice { trackingNotice = notice }
         let position = frame.camera.transform.translation
         let floorObserved = rawCapture.hasMeasuredFloor(at: position)
             || liveFloors.contains { Polygon.contains(SIMD2(position.x, position.z), in: $0.corners) }
-        scanGuidance = roomInstruction.flatMap {
+        let guidance = roomInstruction.flatMap {
             ProcessInfo.processInfo.systemUptime - roomInstructionTime < 4 ? $0 : nil
         } ?? (floorObserved ? "Keep moving slowly and include the floor."
                            : "Tilt down to capture the floor around you.")
+        if scanGuidance != guidance { scanGuidance = guidance }
     }
 
     private func updateInstruction(_ instruction: RoomCaptureSession.Instruction) {

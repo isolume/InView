@@ -23,10 +23,13 @@ struct SignReaderOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                TimelineView(.animation(minimumInterval: 1 / 30)) { _ in
-                    brackets(in: geometry.size)
+                // Track the sign only while there is one; otherwise nothing redraws over the camera.
+                if reader.focus != nil {
+                    TimelineView(.animation(minimumInterval: 1 / 30)) { _ in
+                        brackets(in: geometry.size)
+                    }
+                    .allowsHitTesting(false)
                 }
-                .allowsHitTesting(false)
                 VStack(spacing: 10) {
                     statusPill.padding(.top, geometry.safeAreaInsets.top + 70)
                     Spacer()
@@ -57,9 +60,11 @@ struct SignReaderOverlay: View {
             let width = max(110, min(size.width * 0.9, focus.box.width * size.height * 0.75 * 1.25))
             let height = max(70, min(size.height * 0.5, focus.box.height * size.height * 1.4))
             ZStack {
+                // A dark rim instead of a shadow, which would need an offscreen pass every frame.
+                CornerBrackets()
+                    .stroke(.black.opacity(0.35), style: StrokeStyle(lineWidth: reader.isLocked ? 7 : 6, lineCap: .round, lineJoin: .round))
                 CornerBrackets()
                     .stroke(tint, style: StrokeStyle(lineWidth: reader.isLocked ? 4 : 3, lineCap: .round, lineJoin: .round))
-                    .shadow(color: tint.opacity(0.8), radius: reader.isLocked ? 8 : 3)
                 if reader.isLocked {
                     RoundedRectangle(cornerRadius: 10).fill(tint.opacity(0.14))
                 } else {

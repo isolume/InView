@@ -10,7 +10,6 @@ struct DetectionOverlay: View {
     @ObservedObject var detector: AccessibilityDetector
     let session: ARSession
     var signs: [CaptureTextObservation] = []
-    var floors: [Footprint] = []
 
     /// Tags sit this far above the floor spot, so they don't cover the find itself.
     private static let tagHeight: Float = 0.3
@@ -23,9 +22,7 @@ struct DetectionOverlay: View {
             TimelineView(.periodic(from: .now, by: Self.refreshInterval)) { _ in
                 ZStack(alignment: .topLeading) {
                     Canvas { context, size in
-                        let paths = measuredPaths(in: size)
-                        context.stroke(paths.floors, with: .color(.mint.opacity(0.85)), style: StrokeStyle(lineWidth: 2, dash: [6, 3]))
-                        context.stroke(paths.stairs, with: .color(.orange), lineWidth: 2)
+                        context.stroke(stairsPath(in: size), with: .color(.orange), lineWidth: 2)
                     }
                     ForEach(signPlacements(in: geometry.size)) { placement in
                         // Just the words, where they hang; the sign reader does the rest.
@@ -50,10 +47,11 @@ struct DetectionOverlay: View {
         .accessibilityHidden(true)
     }
 
-    private func measuredPaths(in size: CGSize) -> (floors: Path, stairs: Path) {
-        var floorPath = Path(), stairsPath = Path()
+    /// The measured outline of each staircase found, as a wireframe box.
+    private func stairsPath(in size: CGSize) -> Path {
+        var stairsPath = Path()
         guard let frame = session.currentFrame, case .normal = frame.camera.trackingState,
-              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return (floorPath, stairsPath) }
+              abs(ProcessInfo.processInfo.systemUptime - frame.timestamp) < 1 else { return stairsPath }
         let camera = frame.camera, inverse = camera.transform.inverse
         func edge(_ a: SIMD3<Float>, _ b: SIMD3<Float>, into path: inout Path) {
             guard (inverse * SIMD4(a, 1)).z < -0.15, (inverse * SIMD4(b, 1)).z < -0.15 else { return }
@@ -61,16 +59,6 @@ struct DetectionOverlay: View {
             let q = camera.projectPoint(b, orientation: .portrait, viewportSize: size)
             guard p.x.isFinite, p.y.isFinite, q.x.isFinite, q.y.isFinite else { return }
             path.move(to: p); path.addLine(to: q)
-        }
-        let cameraXZ = SIMD2(camera.transform.translation.x, camera.transform.translation.z)
-        let nearby = floors.sorted { simd_distance($0.center, cameraXZ) < simd_distance($1.center, cameraXZ) }.prefix(16)
-        for floor in nearby {
-            guard let y = floor.bottom, floor.corners.count <= 128 else { continue }
-            let corners = floor.corners
-            for index in corners.indices {
-                let a = corners[index], b = corners[(index + 1) % corners.count]
-                edge(SIMD3(a.x, y + 0.015, a.y), SIMD3(b.x, y + 0.015, b.y), into: &floorPath)
-            }
         }
         for sighting in detector.nearbySightings(to: camera.transform.translation) {
             guard let measured = sighting.measuredStairs, let footprint = measured.footprint() else { continue }
@@ -82,7 +70,7 @@ struct DetectionOverlay: View {
                 edge(bottom[i], top[i], into: &stairsPath)
             }
         }
-        return (floorPath, stairsPath)
+        return stairsPath
     }
 
     private struct SignPlacement: Identifiable {
