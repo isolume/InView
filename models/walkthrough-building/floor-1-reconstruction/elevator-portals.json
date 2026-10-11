@@ -1,0 +1,272 @@
+{
+  "coordinate_system": "native per-capture XYZ metres; all belong to display Floor 1; lower/raised-L are physical landing heights",
+  "method": "Visible inner jamb endpoints projected through paired calibrated frame depth; widths repeat at floor, middle, and upper door. Doors closed; estimated jamb aperture, not an operational clearance certification.",
+  "portals": [
+    {
+      "kind": "lower_left",
+      "captureID": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+      "frame": "video-0001.mp4 @6s",
+      "threshold_xyz": [
+        -10.11,
+        -1.496,
+        -0.093
+      ],
+      "threshold_endpoints_xyz": [
+        [
+          -9.57,
+          -1.4955,
+          -0.104
+        ],
+        [
+          -10.651,
+          -1.4955,
+          -0.082
+        ]
+      ],
+      "landing_footprint_xyz": [
+        [
+          -9.57,
+          -1.496,
+          -0.104
+        ],
+        [
+          -10.651,
+          -1.496,
+          -0.082
+        ],
+        [
+          -10.671,
+          -1.496,
+          -0.682
+        ],
+        [
+          -9.59,
+          -1.496,
+          -0.704
+        ]
+      ],
+      "estimated_opening_width_m": 1.081,
+      "width_range_m": [
+        1.081,
+        1.095
+      ],
+      "uncertainty_m": 0.08,
+      "confidence": "high geometric estimate",
+      "visual_verification": "Blue center-split elevator leaves, call-button panel and above-door direction indicator are visible.",
+      "route_use": "wide doorway supported above 0.9m threshold with margin; use user-established elevator connection"
+    },
+    {
+      "kind": "upper_right",
+      "captureID": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+      "frame": "video-0001.mp4 @8s",
+      "threshold_xyz": [
+        6.828,
+        0.036,
+        0.27
+      ],
+      "threshold_endpoints_xyz": [
+        [
+          7.331,
+          0.036000000000000004,
+          0.541
+        ],
+        [
+          6.325,
+          0.036000000000000004,
+          -0.001
+        ]
+      ],
+      "landing_footprint_xyz": [
+        [
+          7.331,
+          0.036,
+          0.541
+        ],
+        [
+          6.325,
+          0.036,
+          -0.001
+        ],
+        [
+          6.458,
+          0.036,
+          -0.586
+        ],
+        [
+          7.464,
+          0.036,
+          -0.044
+        ]
+      ],
+      "estimated_opening_width_m": 1.143,
+      "width_range_m": [
+        1.143,
+        1.156
+      ],
+      "uncertainty_m": 0.08,
+      "confidence": "high geometric estimate",
+      "visual_verification": "Blue center-split elevator leaves, call-button panel and above-door direction indicator are visible.",
+      "route_use": "wide doorway supported above 0.9m threshold with margin; use user-established elevator connection"
+    },
+    {
+      "kind": "upper_right",
+      "captureID": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+      "frame": "video-0000.mp4 @6s",
+      "threshold_xyz": [
+        3.377,
+        -1.367,
+        -6.073
+      ],
+      "threshold_endpoints_xyz": [
+        [
+          3.343,
+          -1.367,
+          -6.622
+        ],
+        [
+          3.411,
+          -1.367,
+          -5.524
+        ]
+      ],
+      "landing_footprint_xyz": [
+        [
+          3.343,
+          -1.367,
+          -6.622
+        ],
+        [
+          3.411,
+          -1.367,
+          -5.524
+        ],
+        [
+          2.863,
+          -1.367,
+          -5.28
+        ],
+        [
+          2.795,
+          -1.367,
+          -6.378
+        ]
+      ],
+      "estimated_opening_width_m": 1.1,
+      "width_range_m": [
+        1.097,
+        1.122
+      ],
+      "uncertainty_m": 0.08,
+      "confidence": "high geometric estimate",
+      "visual_verification": "Blue center-split elevator leaves, call-button panel and above-door direction indicator are visible.",
+      "route_use": "wide doorway supported above 0.9m threshold with margin; use user-established elevator connection"
+    },
+    {
+      "kind": "upper_left",
+      "captureID": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+      "frame": "video-0000.mp4 @8s",
+      "threshold_xyz": [
+        2.865,
+        -1.344,
+        -8.625
+      ],
+      "threshold_endpoints_xyz": [
+        [
+          2.738,
+          -1.3439999999999999,
+          -9.115
+        ],
+        [
+          2.992,
+          -1.3439999999999999,
+          -8.136
+        ]
+      ],
+      "landing_footprint_xyz": [
+        [
+          2.738,
+          -1.344,
+          -9.115
+        ],
+        [
+          2.992,
+          -1.344,
+          -8.136
+        ],
+        [
+          2.601,
+          -1.344,
+          -7.681
+        ],
+        [
+          2.347,
+          -1.344,
+          -8.66
+        ]
+      ],
+      "estimated_opening_width_m": 0.97,
+      "width_range_m": [
+        0.947,
+        1.011
+      ],
+      "uncertainty_m": 0.1,
+      "confidence": "moderate; oblique view",
+      "visual_verification": "Blue center-split elevator leaves, call-button panel and above-door direction indicator are visible.",
+      "route_use": "do not declare >=0.9m based on this evidence"
+    },
+    {
+      "kind": "lower_right",
+      "captureID": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+      "frame": "video-0001.mp4 @5s",
+      "threshold_xyz": [
+        -12.742,
+        -1.476,
+        -0.346
+      ],
+      "threshold_endpoints_xyz": [
+        [
+          -12.325,
+          -1.4755,
+          -0.281
+        ],
+        [
+          -13.16,
+          -1.4755,
+          -0.411
+        ]
+      ],
+      "landing_footprint_xyz": [
+        [
+          -12.325,
+          -1.476,
+          -0.281
+        ],
+        [
+          -13.16,
+          -1.476,
+          -0.411
+        ],
+        [
+          -12.787,
+          -1.476,
+          -0.881
+        ],
+        [
+          -11.952,
+          -1.476,
+          -0.751
+        ]
+      ],
+      "estimated_opening_width_m": 0.845,
+      "width_range_m": [
+        0.823,
+        0.875
+      ],
+      "uncertainty_m": 0.1,
+      "confidence": "moderate; oblique view",
+      "visual_verification": "Blue center-split elevator leaves, call-button panel and above-door direction indicator are visible.",
+      "route_use": "do not declare >=0.9m based on this evidence"
+    }
+  ],
+  "pairing_note": "The wide lower-left 92ED door is approximately 1.08m; the wide upper-right 6114/081D door is approximately 1.10-1.15m. They plausibly are opposite faces of the same through-car lift, but exact shaft/car association is inferred, not read from a lift label. Other lower door measures only 0.82-0.88m and must not be advertised >=0.9m."
+}

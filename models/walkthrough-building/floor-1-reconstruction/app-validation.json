@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "verified_at_utc": "2026-10-11T10:58:03.611080+00:00",
+  "base_commit": "3286b2255226ed26fad93bc0d7828c4c42391684",
+  "device": "iPhone 17 Pro simulator, iOS 27.0",
+  "app_test_count": 25,
+  "app_test_failures": 0,
+  "app_test_result": "/private/tmp/inview-floor1-renderer-app-tests.xcresult",
+  "core_test_result": {
+    "full_run_tests": 600,
+    "full_run_passes": 599,
+    "isolated_rerun_passed": "streamEvidenceExportCleansPartialFilesWhenCancelledDuringWriting",
+    "note": "The cancellation timing test passed on its isolated rerun; all remaining tests passed in the full run."
+  },
+  "model_native_validation_passed": true,
+  "navigation_cases_passed": 380,
+  "route_surface_samples_clear": 1602246,
+  "ui_checks": [
+    {
+      "case": "Floor 1 model loads without graphics crash",
+      "evidence": "ui-evidence/model.png"
+    },
+    {
+      "case": "Information to Auditorium, Step-free",
+      "result": "24 m, elevator, one final arrival",
+      "evidence": "ui-evidence/step-free.txt"
+    },
+    {
+      "case": "Information to Auditorium, Fastest",
+      "result": "13 m, steps, one final arrival",
+      "evidence": "ui-evidence/fastest.txt"
+    },
+    {
+      "case": "Swap named endpoints",
+      "result": "Auditorium to Information, 13 m, steps",
+      "evidence": "ui-evidence/reverse.txt"
+    },
+    {
+      "case": "Two map-selected points, Fastest",
+      "result": "23 m route with final arrival",
+      "evidence": "ui-evidence/arbitrary-fastest.txt"
+    },
+    {
+      "case": "Two map-selected points, Step-free",
+      "result": "23 m route with final arrival",
+      "evidence": "ui-evidence/arbitrary-step-free.txt"
+    },
+    {
+      "case": "Swap map-selected endpoints",
+      "result": "23 m reverse route with final arrival",
+      "evidence": "ui-evidence/arbitrary-reverse.txt"
+    },
+    {
+      "case": "Switch from model to measured floor and back",
+      "result": "Stable rendering in both modes with route retained"
+    },
+    {
+      "case": "Cancel replacement destination selection",
+      "result": "Same 23 m Step-free reverse route and arrival retained"
+    }
+  ],
+  "source_sha256": {
+    "InView/App/MapScreen.swift": "44dda516825e8e9262f5ebbe477b10bffd7e9335acdca8f459d88978edd72632",
+    "InView/Map/RoomMapCanvas.swift": "ef73a5ccaf313dfcc52e814d80730329a78254cead49b8cec27aa16a4a7dc28b",
+    "InView/Map/NavigationMapSurface.swift": "851589d011a666d32945b91367616ace1032ae445dadfaddb593eb30236130a2",
+    "InView/Support/StudentCenterFloor1Catalog.swift": "8ab37a7946798a3b0be01b9b05998c9515e546f7b0c60c26afad240804095b81",
+    "InView/Resources/StudentCenter/student-center-east-floor-1-navigation.json": "66b49e9a5e4d98b105f48cd2bf48d3717349bb173686f1b52637db3b3e57624c",
+    "InView/Resources/StudentCenter/student-center-east-floor-1-model.usdz": "0f259db5f5657678d2f596ce91ef6a3835280bda55dc704a49d61a191bb2dae0"
+  },
+  "limitations": "Simulator route previews and mesh validation do not prove physical AR localization. Refer to navigation-limitations.json for unreachable measured pockets and visual-only surfaces.",
+  "final_ui_state": "Floor 1, 3D model, Step-free preference restored"
+}

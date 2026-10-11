@@ -31,6 +31,11 @@ struct RoomMapCanvas: UIViewRepresentable {
     var places: [MapPlace] = []
     var onSelectPlace: ((MapPlace) -> Void)? = nil
     var onSelectFloorPoint: ((SIMD2<Float>) -> Void)? = nil
+    var elevatedMap: ElevatedFloorMap? = nil
+    var elevatedRoute: ElevatedFloorRoute? = nil
+    var elevatedUserLocation: ElevatedFloorLocation? = nil
+    var elevatedDestination: ElevatedFloorLocation? = nil
+    var onSelectElevatedFloorPoint: ((ElevatedFloorLocation) -> Void)? = nil
     var initialYaw: Float? = nil
     var illustrationURL: URL? = nil
     var mapFromIllustration: simd_float4x4? = nil
@@ -58,9 +63,15 @@ struct RoomMapCanvas: UIViewRepresentable {
         view.onSelection = { selection.wrappedValue = $0 }
         view.onSelectPlace = onSelectPlace
         view.onSelectFloorPoint = onSelectFloorPoint
+        view.onSelectElevatedFloorPoint = onSelectElevatedFloorPoint
         view.initialYaw = initialYaw ?? .pi * 3 / 4
         view.onSplatState = onSplatState
-        view.updatePlaces(places, floorY: floorY)
+        // Select the visual layer before preparing geometry. A dense measured floor must
+        // not submit a transient frame while its requested illustration is loading.
+        view.onIllustrationState = onIllustrationState
+        view.updateIllustration(url: illustrationURL, transform: mapFromIllustration,
+                               shown: showsIllustration, showsScanOutline: showsScanOutline)
+        view.updatePlaces(places, floorY: floorY, usesPlaceElevations: elevatedMap != nil)
         view.updateSplat(splatURL, ceiling: splatCeiling, paused: pausesSplat)
         view.update(scene, selectedObjectID: selectedObjectID, showsLabels: showsLabels,
                     floorFootprints: floorFootprints,
@@ -68,20 +79,87 @@ struct RoomMapCanvas: UIViewRepresentable {
                     showsFullWalls: showsFullWalls, viewportBottomInset: viewportBottomInset, viewportTopInset: viewportTopInset,
                     viewportLeadingInset: viewportLeadingInset, routePoints: routePoints, userPosition: userPosition, userHeading: userHeading,
                     floorY: floorY, destination: destination, destinationTitle: destinationTitle,
-                    isNavigating: isNavigating)
-        view.onIllustrationState = onIllustrationState
-        view.updateIllustration(url: illustrationURL, transform: mapFromIllustration,
-                               shown: showsIllustration, showsScanOutline: showsScanOutline)
+                    isNavigating: isNavigating, elevatedMap: elevatedMap, elevatedRoute: elevatedRoute,
+                    elevatedUserLocation: elevatedUserLocation, elevatedDestination: elevatedDestination)
     }
 }
 
 enum IllustrationLayerState: Equatable { case loading, ready, failed }
+
+/// Shared map-preview geometry keeps picking, markers and route ribbons in the measured frame.
+enum ElevatedFloorMapPresentation {
+    static func surfacePaths(in route: ElevatedFloorRoute?) -> [[SIMD3<Float>]] {
+        guard let route else { return [] }
+        var paths: [[SIMD3<Float>]] = []
+        var count = 0
+        for segment in route.segments {
+            let points: [SIMD3<Float>]
+            switch segment {
+            case .surface(let surface): points = surface.points
+            case .transition(let transition) where transition.kind == .ramp:
+                points = [transition.from.position, transition.to.position]
+            case .transition: continue
+            }
+            count += points.count
+            guard count <= 4_096, points.allSatisfy(valid) else { return [] }
+            paths.append(points)
+        }
+        return paths
+    }
+
+    /// Intersect each measured surface independently. Visual gap filling is never selectable.
+    static func pick(on map: ElevatedFloorMap, rayStart: SIMD3<Float>, rayEnd: SIMD3<Float>) -> ElevatedFloorLocation? {
+        guard valid(rayStart), valid(rayEnd) else { return nil }
+        let direction = rayEnd - rayStart
+        guard abs(direction.y) > 0.0001 else { return nil }
+        var closest: (fraction: Float, location: ElevatedFloorLocation)?
+        for zone in map.zones {
+            let fraction = (zone.map.floorY - rayStart.y) / direction.y
+            guard fraction.isFinite, (0...1).contains(fraction), fraction < (closest?.fraction ?? .infinity) else { continue }
+            var point = rayStart + direction * fraction
+            point.y = zone.map.floorY
+            guard valid(point), contains(SIMD2(point.x, point.z), in: zone) else { continue }
+            closest = (fraction, ElevatedFloorLocation(zoneID: zone.id, position: point))
+        }
+        return closest?.location
+    }
+
+    static func markerPosition(_ point: SIMD2<Float>?, location: ElevatedFloorLocation?,
+                               fallback: SIMD3<Float>?, map: ElevatedFloorMap?, floorY: Float) -> SIMD3<Float>? {
+        guard let map else {
+            guard let point, point.x.isFinite, point.y.isFinite, floorY.isFinite else { return nil }
+            return SIMD3(point.x, floorY, point.y)
+        }
+        if let location {
+            guard valid(location.position), let zone = map.zones.first(where: { $0.id == location.zoneID }),
+                  abs(location.position.y - zone.map.floorY) <= ElevatedFloorMap.elevationTolerance else { return nil }
+            return location.position
+        }
+        if let fallback, valid(fallback), point.map({ simd_distance($0, SIMD2(fallback.x, fallback.z)) < 0.05 }) ?? true {
+            return fallback
+        }
+        guard let point, point.x.isFinite, point.y.isFinite else { return nil }
+        let candidates = map.zones.filter { contains(point, in: $0) }
+        // A bare x/z coordinate cannot distinguish overlapping levels.
+        guard candidates.count == 1, let zone = candidates.first else { return nil }
+        return SIMD3(point.x, zone.map.floorY, point.y)
+    }
+
+    private static func contains(_ point: SIMD2<Float>, in zone: ElevatedFloorZone) -> Bool {
+        zone.map.footprints.contains { $0.kind == .floor && Polygon.contains(point, in: $0.corners) }
+    }
+
+    private static func valid(_ point: SIMD3<Float>) -> Bool {
+        point.x.isFinite && point.y.isFinite && point.z.isFinite
+    }
+}
 
 @MainActor
 final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     var onSelection: ((String?) -> Void)?
     var onSelectPlace: ((MapPlace) -> Void)?
     var onSelectFloorPoint: ((SIMD2<Float>) -> Void)?
+    var onSelectElevatedFloorPoint: ((ElevatedFloorLocation) -> Void)?
     var initialYaw: Float = .pi * 3 / 4
     var onIllustrationState: ((IllustrationLayerState) -> Void)?
     var onSplatState: ((SplatLayer.State?) -> Void)?
@@ -158,6 +236,11 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     private var needsViewportRefresh = true
     private var isNavigating = false
     private var routePoints: [SIMD2<Float>] = []
+    private var elevatedMap: ElevatedFloorMap?
+    private var elevatedRoute: ElevatedFloorRoute?
+    private var elevatedRoutePaths: [[SIMD3<Float>]] = []
+    private var userElevation: Float = 0
+    private var destinationElevation: Float = 0
     private var userPosition: SIMD2<Float>?
     private var userHeading: Float?
     private var floorY: Float = 0
@@ -299,7 +382,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                 viewportBottomInset: CGFloat, viewportTopInset: CGFloat, viewportLeadingInset: CGFloat = 0,
                 routePoints: [SIMD2<Float>], userPosition: SIMD2<Float>?,
                 userHeading: Float?, floorY: Float, destination: SIMD2<Float>?,
-                destinationTitle: String?, isNavigating: Bool) {
+                destinationTitle: String?, isNavigating: Bool,
+                elevatedMap: ElevatedFloorMap? = nil, elevatedRoute: ElevatedFloorRoute? = nil,
+                elevatedUserLocation: ElevatedFloorLocation? = nil,
+                elevatedDestination: ElevatedFloorLocation? = nil) {
         let changed = self.source != source
         let floorGeometryChanged = changed || savedFloors != floorFootprints
         let floorElevationChanged = self.floorY != floorY
@@ -347,13 +433,16 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         topInset = nextTopInset
         leadingInset = nextLeadingInset
         self.isNavigating = isNavigating
+        self.elevatedMap = elevatedMap
         labelsVisible = showsLabels && !isNavigating
         if navigationModeChanged {
             canvas.accessibilityLabel = isNavigating ? "Navigation map" : "Room model"
             canvas.accessibilityHint = isNavigating ? "Drag to move, pinch to zoom or twist to rotate" : "Drag to move, pinch to zoom, twist to rotate, or tap an item"
         }
         let navigationChanged = updateNavigation(routePoints: routePoints, userPosition: userPosition, userHeading: userHeading,
-                                                 floorY: floorY, destination: destination, destinationTitle: destinationTitle)
+                                                 floorY: floorY, destination: destination, destinationTitle: destinationTitle,
+                                                 elevatedRoute: elevatedRoute, elevatedUserLocation: elevatedUserLocation,
+                                                 elevatedDestination: elevatedDestination)
         if floorGeometryChanged || floorElevationChanged { rebuildScanOutline() }
         // Scan evidence is opt-in. Finished maps use structural presentation geometry.
         detailsRequested = showsDetails
@@ -434,15 +523,17 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     /// With the splat showing, only the route, your position, the destination and pins are drawn over it.
     private func applyModelVisibility() {
         let illustrated = illustrationRequested && illustrationReady && !showsSplat
+        let awaitingIllustration = illustrationRequested && !illustrationReady && illustrationState != .failed
+        let concealsMeasured = showsSplat || illustrated || awaitingIllustration
         func setHidden(_ node: SCNNode, _ hidden: Bool) {
             if node.isHidden != hidden { node.isHidden = hidden }
         }
         setHidden(illustration, !illustrated)
         setHidden(scanOutline, !illustrated || !scanOutlineRequested)
-        setHidden(shell, showsSplat || illustrated)
-        for child in room.childNodes where child.name?.hasPrefix("object:") == true { setHidden(child, showsSplat || illustrated) }
-        setHidden(details, !detailsRequested || showsSplat || illustrated)
-        setHidden(highlight, isNavigating || showsSplat || illustrated)
+        setHidden(shell, concealsMeasured)
+        for child in room.childNodes where child.name?.hasPrefix("object:") == true { setHidden(child, concealsMeasured) }
+        setHidden(details, !detailsRequested || concealsMeasured)
+        setHidden(highlight, isNavigating || concealsMeasured)
     }
 
     // The detached importer owns the tree exclusively until it is handed to the main actor.
@@ -475,6 +566,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         }
         // Visibility and placement can change while the asset URL stays the same.
         if urlChanged || transformChanged || outlineChanged || wasRequested != illustrationRequested {
+            if outlineChanged || wasRequested != illustrationRequested { rebuildScanOutline() }
             refreshPresentation()
             needsViewportRefresh = true
         } else {
@@ -486,7 +578,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         let loadID = illustrationLoadID
         // These static bundled assets repeat the same named USD material on hundreds of meshes.
         // Arbitrary imported assets may reuse a name for different materials, so leave those intact.
-        let batchesMaterials = [2, 3].contains { StudentCenterCatalog.illustrationURL(for: $0) == url }
+        let batchesMaterials = StudentCenterFloor1Catalog.modelURL() == url
+            || [2, 3].contains { StudentCenterCatalog.illustrationURL(for: $0) == url }
         reportIllustration(.loading, loadID: loadID)
         illustrationTask = Task { [weak self] in
             do {
@@ -528,6 +621,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                       extent.x > 0, extent.z > 0 else {
                     illustrationTask = nil
                     reportIllustration(.failed, loadID: loadID)
+                    refreshPresentation()
                     return
                 }
                 // Import as one child so the asset's own axis conversion stays intact.
@@ -543,8 +637,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
                       self.illustrationLoadID == loadID else { return }
                 illustrationReady = false
                 illustrationTask = nil
-                refreshPresentation()
                 reportIllustration(.failed, loadID: loadID)
+                refreshPresentation()
             }
         }
     }
@@ -560,6 +654,7 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
 
     private func rebuildScanOutline() {
         scanOutline.childNodes.forEach { $0.removeFromParentNode() }
+        guard illustrationRequested, scanOutlineRequested else { return }
         for (elevation, region) in floorRegions {
             for ring in [region.exterior] + region.holes where ring.count >= 3 {
                 let points = ring + [ring[0]]
@@ -737,7 +832,11 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         guard !shell.isHidden, let source else { return }
         if !floorsBuilt || floorDrop != detailFloorDrop {
             floorShell.childNodes.forEach { $0.removeFromParentNode() }
-            for floor in floorRegions { buildMeasuredFloor(floor.region, elevation: floor.elevation) }
+            if floorRegions.count > 128 {
+                buildBatchedMeasuredFloors()
+            } else {
+                for floor in floorRegions { buildMeasuredFloor(floor.region, elevation: floor.elevation) }
+            }
             if floorRegions.isEmpty {
                 for surface in source.surfaces where surface.kind == "floor" { buildFloor(surface) }
             }
@@ -827,6 +926,74 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         node.simdPosition.y = elevation - 0.09 - detailFloorDrop
         node.categoryBitMask = 4
         floorShell.addChildNode(node)
+    }
+
+    /// Dense captures can contain thousands of measured triangles when the polygon union
+    /// reaches its work limit. Preserve every piece while bounding SceneKit draw commands.
+    private func buildBatchedMeasuredFloors() {
+        let materials = [matte("#F7F7F2"), matte("#D5DBD3")]
+        var vertices: [SCNVector3] = [], normals: [SCNVector3] = []
+        var topIndices: [UInt32] = [], sideIndices: [UInt32] = []
+        var batch = 0
+        func flush() {
+            guard !vertices.isEmpty else { return }
+            let geometry = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices), SCNGeometrySource(normals: normals)],
+                elements: [SCNGeometryElement(indices: topIndices, primitiveType: .triangles),
+                           SCNGeometryElement(indices: sideIndices, primitiveType: .triangles)])
+            geometry.materials = materials
+            let node = SCNNode(geometry: geometry)
+            node.name = "measured-floor-batch-\(batch)"
+            node.categoryBitMask = 4
+            floorShell.addChildNode(node)
+            batch += 1
+            vertices.removeAll(keepingCapacity: true); normals.removeAll(keepingCapacity: true)
+            topIndices.removeAll(keepingCapacity: true); sideIndices.removeAll(keepingCapacity: true)
+        }
+        for floor in floorRegions {
+            var points = floor.region.exterior
+            // Leave concave outlines and holes with SceneKit's exact shape tessellator.
+            // The numerous captured triangles and convex pieces need no tessellator.
+            guard floor.region.holes.isEmpty, Self.isConvexFloor(points) else {
+                buildMeasuredFloor(floor.region, elevation: floor.elevation)
+                continue
+            }
+            if vertices.count + points.count * 6 > 30_000 { flush() }
+            if Polygon.signedArea(points) < 0 { points.reverse() }
+            let top = floor.elevation - detailFloorDrop, bottom = top - 0.18
+            let offset = UInt32(vertices.count), count = UInt32(points.count)
+            vertices.append(contentsOf: points.map { SCNVector3($0.x, top, $0.y) })
+            normals.append(contentsOf: Array(repeating: SCNVector3(0, 1, 0), count: points.count))
+            vertices.append(contentsOf: points.map { SCNVector3($0.x, bottom, $0.y) })
+            normals.append(contentsOf: Array(repeating: SCNVector3(0, -1, 0), count: points.count))
+            for index in 1..<(points.count - 1) {
+                topIndices.append(contentsOf: [offset, offset + UInt32(index + 1), offset + UInt32(index)])
+                sideIndices.append(contentsOf: [offset + count, offset + count + UInt32(index), offset + count + UInt32(index + 1)])
+            }
+            for (a, b) in zip(points, points.dropFirst() + [points[0]]) {
+                let delta = b - a
+                guard simd_length_squared(delta) > 1e-12 else { continue }
+                let normal = simd_normalize(SIMD3(delta.y, 0, -delta.x))
+                let offset = UInt32(vertices.count)
+                vertices.append(contentsOf: [SCNVector3(a.x, top, a.y), SCNVector3(b.x, top, b.y),
+                                             SCNVector3(a.x, bottom, a.y), SCNVector3(b.x, bottom, b.y)])
+                normals.append(contentsOf: Array(repeating: scn(normal), count: 4))
+                sideIndices.append(contentsOf: [offset, offset + 1, offset + 2, offset + 1, offset + 3, offset + 2])
+            }
+        }
+        flush()
+    }
+
+    private static func isConvexFloor(_ points: [SIMD2<Float>]) -> Bool {
+        guard points.count >= 3, abs(Polygon.signedArea(points)) > 1e-6 else { return false }
+        var sign: Float = 0
+        for index in points.indices {
+            let a = points[index], b = points[(index + 1) % points.count], c = points[(index + 2) % points.count]
+            let turn = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+            guard abs(turn) > 1e-7 else { continue }
+            if sign != 0, turn * sign < 0 { return false }
+            sign = turn
+        }
+        return true
     }
 
     private func buildFloor(_ surface: SceneSurface) {
@@ -1093,7 +1260,9 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
 
     private func updateNavigation(routePoints: [SIMD2<Float>], userPosition: SIMD2<Float>?,
                                   userHeading: Float?, floorY: Float, destination: SIMD2<Float>?,
-                                  destinationTitle: String?) -> (changed: Bool, framingChanged: Bool) {
+                                  destinationTitle: String?, elevatedRoute: ElevatedFloorRoute?,
+                                  elevatedUserLocation: ElevatedFloorLocation?,
+                                  elevatedDestination: ElevatedFloorLocation?) -> (changed: Bool, framingChanged: Bool) {
         let hidden = !isNavigating || !floorY.isFinite
         if navigation.isHidden != hidden { navigation.isHidden = hidden }
         guard floorY.isFinite else {
@@ -1101,6 +1270,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             heading.childNodes.forEach { $0.removeFromParentNode() }
             goal.isHidden = true
             self.routePoints = []
+            self.elevatedRoute = nil
+            elevatedRoutePaths = []
             self.userPosition = nil
             self.userHeading = nil
             self.destination = nil
@@ -1111,19 +1282,41 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
             return (true, true)
         }
         func valid(_ point: SIMD2<Float>) -> Bool { point.x.isFinite && point.y.isFinite }
-        let path = routePoints.count <= 4_096 && routePoints.allSatisfy(valid) ? routePoints : []
-        let position = userPosition.flatMap { valid($0) ? $0 : nil }
+        let elevatedPaths = ElevatedFloorMapPresentation.surfacePaths(in: elevatedRoute)
+        let path = elevatedMap == nil && routePoints.count <= 4_096 && routePoints.allSatisfy(valid) ? routePoints : []
+        let user = ElevatedFloorMapPresentation.markerPosition(userPosition, location: elevatedUserLocation,
+            fallback: elevatedPaths.first?.first, map: elevatedMap, floorY: floorY)
+        let targetPosition = ElevatedFloorMapPresentation.markerPosition(destination, location: elevatedDestination,
+            fallback: elevatedRoute?.destination.position, map: elevatedMap, floorY: floorY)
+        let position = user.map { SIMD2($0.x, $0.z) }
+        locationDot.accessibilityLabel = elevatedUserLocation == nil ? "Your location" : "Starting point"
         let bearing = userHeading.flatMap { $0.isFinite ? $0 : nil }
-        let target = destination.flatMap { valid($0) ? $0 : nil }
+        let target = targetPosition.map { SIMD2($0.x, $0.z) }
+        let userY = user?.y ?? floorY
+        let targetY = targetPosition?.y ?? floorY
         let title = destinationTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
         let floorChanged = self.floorY != floorY
-        let framingChanged = self.routePoints != path || self.userPosition != position || self.destination != target || floorChanged
-        guard self.routePoints != path || self.userPosition != position || self.userHeading != bearing
-            || self.destination != target || self.destinationTitle != title || floorChanged else { return (false, false) }
-        if self.routePoints != path || floorChanged {
+        let pathChanged = self.routePoints != path || elevatedRoutePaths != elevatedPaths
+            || (self.elevatedRoute == nil) != (elevatedRoute == nil)
+        let userChanged = self.userPosition != position || userElevation != userY
+        let targetChanged = self.destination != target || destinationElevation != targetY
+        let framingChanged = pathChanged || userChanged || targetChanged || floorChanged
+        guard framingChanged || self.userHeading != bearing || self.destinationTitle != title else { return (false, false) }
+        if pathChanged || floorChanged {
             self.routePoints = path
+            self.elevatedRoute = elevatedRoute
+            elevatedRoutePaths = elevatedPaths
             route.childNodes.forEach { $0.removeFromParentNode() }
-            if path.count > 1 {
+            if elevatedRoute != nil {
+                for (index, points) in elevatedPaths.enumerated() where points.count > 1 {
+                    let border = routeRibbon(points.map { $0 + SIMD3(0, 0.020, 0) }, width: 0.20, color: .white)
+                    let line = routeRibbon(points.map { $0 + SIMD3(0, 0.026, 0) }, width: 0.13, color: Theme.routeUIColor)
+                    border.name = "elevated-route-surface-\(index)-border"
+                    line.name = "elevated-route-surface-\(index)"
+                    route.addChildNode(border)
+                    route.addChildNode(line)
+                }
+            } else if path.count > 1 {
                 route.addChildNode(routeRibbon(path, width: 0.20, altitude: floorY + 0.020, color: .white))
                 route.addChildNode(routeRibbon(path, width: 0.13, altitude: floorY + 0.026, color: Theme.routeUIColor))
             }
@@ -1149,12 +1342,13 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         }
         self.userPosition = position
         self.userHeading = bearing
+        userElevation = userY
         heading.isHidden = position == nil || bearing == nil
         if let position {
-            heading.simdPosition = SIMD3(position.x, floorY + 0.030, position.y)
+            heading.simdPosition = SIMD3(position.x, userY + 0.030, position.y)
             heading.eulerAngles.y = -(bearing ?? 0)
         }
-        if self.destination != target || self.destinationTitle != title || floorChanged {
+        if targetChanged || self.destinationTitle != title || floorChanged {
             goal.childNodes.forEach { $0.removeFromParentNode() }
             destinationLabel?.removeFromSuperview()
             destinationLabel = nil
@@ -1194,9 +1388,10 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         }
         self.floorY = floorY
         self.destination = target
+        destinationElevation = targetY
         self.destinationTitle = title
         goal.isHidden = target == nil
-        if let target { goal.simdPosition = SIMD3(target.x, floorY + 0.035, target.y) }
+        if let target { goal.simdPosition = SIMD3(target.x, targetY + 0.035, target.y) }
         refreshAccessibility()
         return (true, framingChanged)
     }
@@ -1211,25 +1406,30 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func routeRibbon(_ points: [SIMD2<Float>], width: Float, altitude: Float, color: UIColor) -> SCNNode {
+        routeRibbon(points.map { SIMD3($0.x, altitude, $0.y) }, width: width, color: color)
+    }
+
+    /// Each surface is a separate ribbon; a level transition never becomes a sloping walk line.
+    private func routeRibbon(_ points: [SIMD3<Float>], width: Float, color: UIColor) -> SCNNode {
         var positions: [SCNVector3] = []
         var indices: [UInt32] = []
         for (start, end) in zip(points, points.dropFirst()) {
-            let delta = end - start
+            let delta = SIMD2(end.x - start.x, end.z - start.z)
             guard simd_length_squared(delta) > 0.000001 else { continue }
             let direction = simd_normalize(delta)
-            let normal = SIMD2(-direction.y, direction.x) * width / 2
+            let normal = SIMD3(-direction.y, 0, direction.x) * width / 2
             let offset = UInt32(positions.count)
             for point in [start + normal, end + normal, start - normal, end - normal] {
-                positions.append(SCNVector3(point.x, altitude, point.y))
+                positions.append(scn(point))
             }
             indices.append(contentsOf: [offset, offset + 1, offset + 2, offset + 1, offset + 3, offset + 2])
         }
         for point in points {
             let offset = UInt32(positions.count)
-            positions.append(SCNVector3(point.x, altitude, point.y))
+            positions.append(scn(point))
             for step in 0..<12 {
                 let angle = Float(step) * .pi / 6
-                positions.append(SCNVector3(point.x + cos(angle) * width / 2, altitude, point.y + sin(angle) * width / 2))
+                positions.append(SCNVector3(point.x + cos(angle) * width / 2, point.y, point.z + sin(angle) * width / 2))
                 indices.append(contentsOf: [offset, offset + UInt32((step + 1) % 12) + 1, offset + UInt32(step) + 1])
             }
         }
@@ -1370,8 +1570,9 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         if !details.isHidden { points.append(contentsOf: detailFramingPoints) }
         if isNavigating {
             points.append(contentsOf: routePoints.map { SIMD3($0.x, floorY, $0.y) })
-            if let userPosition { points.append(SIMD3(userPosition.x, floorY, userPosition.y)) }
-            if let destination { points.append(SIMD3(destination.x, floorY + 0.45, destination.y)) }
+            points.append(contentsOf: elevatedRoutePaths.flatMap { $0 })
+            if let userPosition { points.append(SIMD3(userPosition.x, userElevation, userPosition.y)) }
+            if let destination { points.append(SIMD3(destination.x, destinationElevation + 0.45, destination.y)) }
         }
         framingPoints = points.filter { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }
         guard let first = framingPoints.first else {
@@ -1458,15 +1659,18 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     }
 
     /// Rebuilds the place pins when the places change. Pins sit on the floor and win any overlap with item labels.
-    func updatePlaces(_ newPlaces: [MapPlace], floorY: Float) {
-        guard newPlaces != places || placeLabels.first.map({ $0.position.y != floorY + 0.05 }) == true else { return }
+    func updatePlaces(_ newPlaces: [MapPlace], floorY: Float, usesPlaceElevations: Bool = false) {
+        let positions = newPlaces.map { place in
+            SIMD3(place.position.x, (usesPlaceElevations ? place.elevation : floorY) + 0.05, place.position.y)
+        }
+        guard newPlaces != places || placeLabels.map(\.position) != positions else { return }
         places = newPlaces
         placeLabels.forEach { $0.view.removeFromSuperview() }
-        placeLabels = newPlaces.map { place in
+        placeLabels = zip(newPlaces, positions).map { place, position in
             let label = RoomObjectLabel(title: place.title, symbol: place.symbol, tint: place.tint)
             label.onTap = { [weak self] in self?.onSelectPlace?(place) }
             addSubview(label)
-            return (place, SIMD3(place.position.x, floorY + 0.05, place.position.y), label)
+            return (place, position, label)
         }
         buildSignedPlaces(newPlaces, floorY: floorY)
         refreshAccessibility()
@@ -1568,12 +1772,12 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
 
     private func updateMarkerPositions() {
         let destinationPosition = destination.map {
-            SIMD3($0.x, floorY + 0.44 * goal.simdScale.y + 0.03, $0.y)
+            SIMD3($0.x, destinationElevation + 0.44 * goal.simdScale.y + 0.03, $0.y)
         }
         markerRevision = markerProjector.update(RoomMapMarkerPositions(
             destination: destinationLabel == nil ? nil : destinationPosition,
             places: placeLabels.map(\.position), objects: labels.map(\.position),
-            user: userPosition.map { SIMD3($0.x, floorY + 0.065, $0.y) }))
+            user: userPosition.map { SIMD3($0.x, userElevation + 0.065, $0.y) }))
     }
 
     private func positionLabels(_ positions: RoomMapMarkerPositions) {
@@ -1595,7 +1799,8 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
         var visiblePlaces: [(view: RoomObjectLabel, badge: CGRect, full: CGRect)] = []
         for (label, point) in zip(placeLabels, positions.places) {
             // The destination has its own pin while navigating.
-            let isDestination = isNavigating && destination.map { simd_distance($0, label.place.position) < 0.05 } == true
+            let isDestination = isNavigating && destination.map { simd_distance($0, label.place.position) < 0.05
+                && (elevatedMap == nil || abs(destinationElevation - label.place.elevation) < 0.05) } == true
             let size = label.view.intrinsicContentSize
             let badge = CGRect(x: CGFloat(point.x) - size.height / 2, y: CGFloat(point.y) - size.height / 2, width: size.height, height: size.height)
             label.view.isHidden = isDestination || point.z < 0 || point.z > 1 || !allowed.contains(badge)
@@ -1656,6 +1861,17 @@ final class RoomMapRenderView: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func selectObject(_ gesture: UITapGestureRecognizer) {
+        if let elevatedMap {
+            guard let onSelectElevatedFloorPoint else { return }
+            let point = gesture.location(in: canvas)
+            let near = canvas.unprojectPoint(SCNVector3(Float(point.x), Float(point.y), 0))
+            let far = canvas.unprojectPoint(SCNVector3(Float(point.x), Float(point.y), 1))
+            if let location = ElevatedFloorMapPresentation.pick(on: elevatedMap,
+                rayStart: SIMD3(near.x, near.y, near.z), rayEnd: SIMD3(far.x, far.y, far.z)) {
+                onSelectElevatedFloorPoint(location)
+            }
+            return
+        }
         if let onSelectFloorPoint {
             let point = gesture.location(in: canvas)
             let near = canvas.unprojectPoint(SCNVector3(Float(point.x), Float(point.y), 0))

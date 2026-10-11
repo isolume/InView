@@ -1,0 +1,1102 @@
+{
+  "schema_version": 1,
+  "coordinate_contract": "Every XYZ is native to named source scan in meters, Y-up; apply per-scan rigid registration. All areas remain displayFloor1. Distinct physical raised L elevation retained.",
+  "areas": [
+    {
+      "scan_prefix": "7714E8C3",
+      "observed_areas": [
+        "Food court and dining seating",
+        "Lower lobby and curved information counter",
+        "Wide stair to raised L",
+        "Window lounge at scan end"
+      ],
+      "key_segments": {
+        "food_court": [
+          0,
+          8,
+          10,
+          12
+        ],
+        "main_lobby": [
+          14,
+          16,
+          18
+        ],
+        "window_lounge": [
+          21
+        ]
+      },
+      "permanent_visuals": [
+        "Polished brown-gray floor with pale cream guide strips",
+        "Cobalt blue booth partitions, blue/green dining chairs",
+        "Round gray columns with cobalt lower bands",
+        "Banded cream/tan masonry by broad stairs",
+        "Tall silver-framed windows"
+      ]
+    },
+    {
+      "scan_prefix": "611423DC",
+      "observed_areas": [
+        "Raised L window/elevator lobby",
+        "Auditorium foyer curved corridor",
+        "Auditorium seating and stage",
+        "Dark backstage corridor",
+        "Main information counter"
+      ],
+      "key_segments": {
+        "raised_lobby": [
+          0,
+          3
+        ],
+        "foyer_corridor": [
+          4,
+          5,
+          6
+        ],
+        "auditorium": [
+          7,
+          9,
+          12,
+          15
+        ],
+        "backstage": [
+          18
+        ],
+        "foyer_return": [
+          21
+        ],
+        "information": [
+          25
+        ]
+      },
+      "permanent_visuals": [
+        "Gray auditorium seats in regular rows with narrow armrests",
+        "Dark navy rectangular acoustic wall panels",
+        "Honey-colored wood stage wall and stage deck",
+        "Blue-gray aisle/foyer carpet",
+        "Plain pale corridor walls with black baseboard",
+        "Broad cream/tan masonry entry piers"
+      ]
+    },
+    {
+      "scan_prefix": "081DA781",
+      "observed_areas": [
+        "Wide lower-to-L stair",
+        "Raised window lounge",
+        "Masonry auditorium entry corner"
+      ],
+      "key_segments": {
+        "stairs": [
+          0
+        ],
+        "raised_lounge": [
+          1,
+          2,
+          3
+        ],
+        "entry_corner": [
+          4
+        ]
+      },
+      "permanent_visuals": [
+        "Approximately 11 shallow gray stair risers across a broad flight",
+        "Silver center and side stair handrails",
+        "Teal upholstered window benches with multicolor fabric backs",
+        "Silver-framed glazing"
+      ]
+    },
+    {
+      "scan_prefix": "785D48F6",
+      "observed_areas": [
+        "Exterior glazed vestibule beside auditorium",
+        "Auditorium side aisles and seating",
+        "Stage",
+        "Dark backstage corridor"
+      ],
+      "key_segments": {
+        "vestibule": [
+          0
+        ],
+        "auditorium": [
+          2,
+          4,
+          6,
+          8,
+          10
+        ],
+        "stage_steps": [
+          13
+        ],
+        "backstage": [
+          12,
+          14,
+          15
+        ]
+      },
+      "permanent_visuals": [
+        "Honey wood stage and wall",
+        "Approx three small stage access steps",
+        "Curved outer auditorium foyer wall",
+        "Continuous sidewall handrails",
+        "Dark backstage narrow corridor with red exit illumination"
+      ]
+    },
+    {
+      "scan_prefix": "92ED4CB7",
+      "observed_areas": [
+        "Wide-stair lower entrance",
+        "Blue elevator and separate taller stair",
+        "Double-height atrium lounge",
+        "Balcony beside dining/atrium opening"
+      ],
+      "key_segments": {
+        "wide_stair": [
+          0
+        ],
+        "elevator_and_tall_stair": [
+          1
+        ],
+        "sculpture_and_lounge": [
+          2,
+          3,
+          4,
+          5
+        ],
+        "exterior_glazing": [
+          6,
+          7,
+          8
+        ],
+        "balcony": [
+          9,
+          10
+        ]
+      },
+      "permanent_visuals": [
+        "Cobalt elevator surround",
+        "Navy metal horizontal-rod balustrades with silver handrail",
+        "Tall silver-framed exterior glazing with vertical blue fabric panels",
+        "Blue low chairs and cylindrical tables",
+        "Curved upholstered benches",
+        "Built-in blue planter partitions"
+      ]
+    },
+    {
+      "scan_prefix": "3F8FE86D",
+      "observed_areas": [
+        "Balcony continuation and GSU sculpture",
+        "Main circulation toward ballroom",
+        "Red locker and vending alcove",
+        "State Ballroom foyer",
+        "Court Salon double doorway"
+      ],
+      "key_segments": {
+        "balcony": [
+          0
+        ],
+        "circulation": [
+          1,
+          2
+        ],
+        "lockers": [
+          3
+        ],
+        "ballroom_frontage": [
+          4,
+          5
+        ],
+        "court_salon_door": [
+          6
+        ]
+      },
+      "permanent_visuals": [
+        "Red locker bank",
+        "Blue accent entry walls",
+        "Light wood double doors",
+        "Long perimeter dining tables",
+        "Plain pale walls and wall sconces"
+      ]
+    },
+    {
+      "scan_prefix": "D598D846",
+      "observed_areas": [
+        "Court Salon entrance",
+        "Large ballroom event hall",
+        "Raised stage",
+        "Perimeter tables",
+        "Return to same entry"
+      ],
+      "key_segments": {
+        "entrance": [
+          0,
+          15
+        ],
+        "hall": [
+          2,
+          4,
+          6,
+          8,
+          10,
+          12
+        ],
+        "stage": [
+          2,
+          8,
+          12
+        ]
+      },
+      "permanent_visuals": [
+        "Broad blue-gray carpet",
+        "Large rectangular hall",
+        "High pale walls with gray lower band",
+        "Recessed ceiling coffers",
+        "Modular raised dark stage and stage steps",
+        "Rectangular tables and simple blue chairs"
+      ],
+      "temporary_appearance": [
+        "Magenta event lighting, balloon decorations, Hacklanta signage, stanchions and people should be omitted or abstracted for stable default model"
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "wide_stair_main_to_L",
+      "display_floor": 1,
+      "base_scan": "081DA781",
+      "type": "stairs",
+      "rise_m": 1.58,
+      "estimated_riser_count": 11,
+      "samples": [
+        {
+          "xyz": [
+            0.056,
+            -1.552,
+            -2.614
+          ],
+          "depth": 1.932,
+          "confidence": 2,
+          "pixel": [
+            550,
+            1170
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.341,
+            -1.393,
+            -3.006
+          ],
+          "depth": 2.27,
+          "confidence": 2,
+          "pixel": [
+            650,
+            990
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.38,
+            -1.301,
+            -3.224
+          ],
+          "depth": 2.463,
+          "confidence": 2,
+          "pixel": [
+            650,
+            913
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.432,
+            -1.169,
+            -3.516
+          ],
+          "depth": 2.719,
+          "confidence": 2,
+          "pixel": [
+            650,
+            824
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.488,
+            -1.048,
+            -3.832
+          ],
+          "depth": 3.0,
+          "confidence": 2,
+          "pixel": [
+            650,
+            751
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.538,
+            -0.918,
+            -4.113
+          ],
+          "depth": 3.246,
+          "confidence": 2,
+          "pixel": [
+            650,
+            691
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.583,
+            -0.759,
+            -4.352
+          ],
+          "depth": 3.445,
+          "confidence": 2,
+          "pixel": [
+            650,
+            634
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.645,
+            -0.619,
+            -4.701
+          ],
+          "depth": 3.756,
+          "confidence": 2,
+          "pixel": [
+            650,
+            584
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.706,
+            -0.467,
+            -5.042
+          ],
+          "depth": 4.055,
+          "confidence": 2,
+          "pixel": [
+            650,
+            539
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.775,
+            -0.296,
+            -5.424
+          ],
+          "depth": 4.391,
+          "confidence": 2,
+          "pixel": [
+            650,
+            496
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.826,
+            -0.149,
+            -5.705
+          ],
+          "depth": 4.633,
+          "confidence": 2,
+          "pixel": [
+            650,
+            464
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        },
+        {
+          "xyz": [
+            0.883,
+            0.01,
+            -6.018
+          ],
+          "depth": 4.904,
+          "confidence": 1,
+          "pixel": [
+            650,
+            433
+          ],
+          "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+          "segment": 0,
+          "pts": 4.083658,
+          "camera_xyz": [
+            0.07,
+            -0.035,
+            -0.957
+          ]
+        }
+      ],
+      "upper_landing_sample": {
+        "xyz": [
+          6.236,
+          0.025,
+          -5.359
+        ],
+        "depth": 1.975,
+        "confidence": 2,
+        "pixel": [
+          480,
+          1100
+        ],
+        "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+        "segment": 1,
+        "pts": 4.000287,
+        "camera_xyz": [
+          4.955,
+          1.469,
+          -6.449
+        ]
+      },
+      "notes": "All sample coordinates are native to this source, before registration. Most confidence2; approximately 0.14m risers. Raised L remains part of displayFloor1, physically elevated. No ramp."
+    },
+    {
+      "id": "blue_elevator_lower",
+      "display_floor": 1,
+      "base_scan": "92ED4CB7",
+      "type": "elevator",
+      "samples": [
+        {
+          "xyz": [
+            -12.883,
+            -0.367,
+            -0.273
+          ],
+          "depth": 4.645,
+          "confidence": 1,
+          "pixel": [
+            60,
+            620
+          ],
+          "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "segment": 1,
+          "pts": 4.000291,
+          "camera_xyz": [
+            -9.237,
+            0.033,
+            -3.857
+          ]
+        },
+        {
+          "xyz": [
+            -12.707,
+            -1.324,
+            -0.283
+          ],
+          "depth": 4.594,
+          "confidence": 2,
+          "pixel": [
+            50,
+            809
+          ],
+          "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "segment": 1,
+          "pts": 4.000291,
+          "camera_xyz": [
+            -9.237,
+            0.033,
+            -3.857
+          ]
+        },
+        {
+          "xyz": [
+            -13.163,
+            -1.396,
+            -0.467
+          ],
+          "depth": 4.969,
+          "confidence": 2,
+          "pixel": [
+            141,
+            800
+          ],
+          "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "segment": 1,
+          "pts": 4.000291,
+          "camera_xyz": [
+            -9.237,
+            0.033,
+            -3.857
+          ]
+        },
+        {
+          "xyz": [
+            -13.326,
+            0.489,
+            -0.535
+          ],
+          "depth": 4.867,
+          "confidence": 2,
+          "pixel": [
+            148,
+            456
+          ],
+          "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "segment": 1,
+          "pts": 4.000291,
+          "camera_xyz": [
+            -9.237,
+            0.033,
+            -3.857
+          ]
+        }
+      ],
+      "notes": "Confirmed by elevator pictogram above blue surround. Beside light-wood door and taller staircase. This source frame still at lower floor:cameraY~0.033, floorY~-1.5. User establishes elevator as step-free link to auditorium/L; do not infer ramp."
+    },
+    {
+      "id": "taller_stair_near_elevator",
+      "base_scan": "92ED4CB7",
+      "type": "stairs",
+      "samples": [
+        {
+          "xyz": [
+            -14.466,
+            -1.519,
+            -3.901
+          ],
+          "depth": 5.07,
+          "confidence": 1,
+          "pixel": [
+            796,
+            802
+          ],
+          "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "segment": 1,
+          "pts": 4.000291,
+          "camera_xyz": [
+            -9.237,
+            0.033,
+            -3.857
+          ]
+        },
+        {
+          "xyz": [
+            -16.542,
+            -0.532,
+            -3.987
+          ],
+          "depth": 6.863,
+          "confidence": 1,
+          "pixel": [
+            810,
+            600
+          ],
+          "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "segment": 1,
+          "pts": 4.000291,
+          "camera_xyz": [
+            -9.237,
+            0.033,
+            -3.857
+          ]
+        },
+        {
+          "xyz": [
+            -14.438,
+            -1.547,
+            -3.441
+          ],
+          "depth": 5.199,
+          "confidence": 1,
+          "pixel": [
+            712,
+            802
+          ],
+          "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+          "segment": 1,
+          "pts": 4.000291,
+          "camera_xyz": [
+            -9.237,
+            0.033,
+            -3.857
+          ]
+        }
+      ],
+      "notes": "Separate narrower flight alongside elevator and wood door, visibly continues upward with navy balustrade. Do not confuse with broad L stair."
+    },
+    {
+      "id": "auditorium_stage_steps",
+      "base_scan": "785D48F6",
+      "type": "stage_steps",
+      "samples": [
+        {
+          "xyz": [
+            13.357,
+            -1.464,
+            15.563
+          ],
+          "depth": 1.82,
+          "confidence": 2,
+          "pixel": [
+            673,
+            1136
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 13,
+          "pts": 4.083615,
+          "camera_xyz": [
+            12.021,
+            -0.046,
+            16.386
+          ]
+        },
+        {
+          "xyz": [
+            13.584,
+            -1.604,
+            14.356
+          ],
+          "depth": 2.801,
+          "confidence": 1,
+          "pixel": [
+            364,
+            966
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 13,
+          "pts": 4.083615,
+          "camera_xyz": [
+            12.021,
+            -0.046,
+            16.386
+          ]
+        },
+        {
+          "xyz": [
+            13.524,
+            -1.843,
+            13.954
+          ],
+          "depth": 3.072,
+          "confidence": 1,
+          "pixel": [
+            282,
+            1002
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 13,
+          "pts": 4.083615,
+          "camera_xyz": [
+            12.021,
+            -0.046,
+            16.386
+          ]
+        }
+      ],
+      "notes": "Approx3 short wood stage steps and silver wall-mounted handrail. Stage top sourceY=-1.46; lower sampled tread=-1.84."
+    }
+  ],
+  "registration_frame_pairs": [
+    {
+      "a": {
+        "scan": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+        "segment": 10,
+        "presentation_time_seconds": 4,
+        "description": "Final frame looking along blue-balustrade corridor"
+      },
+      "b": {
+        "scan": "3F8FE86D-8F9E-47A8-A010-49417284BD8E",
+        "segment": 0,
+        "presentation_time_seconds": 0,
+        "description": "Same corridor, slightly closer"
+      },
+      "quality": "strong",
+      "sheet": "match-bridge.jpg"
+    },
+    {
+      "a": {
+        "scan": "3F8FE86D-8F9E-47A8-A010-49417284BD8E",
+        "segment": 6,
+        "presentation_time_seconds": 2,
+        "description": "Court Salon doorway looking inward"
+      },
+      "b": {
+        "scan": "D598D846-F87F-491F-B446-19BA52295D4D",
+        "segment": 0,
+        "presentation_time_seconds": 2,
+        "description": "Same silver divider/open right wood door and interior"
+      },
+      "quality": "very strong",
+      "sheet": "match-ballroom.jpg"
+    },
+    {
+      "a": {
+        "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+        "segment": 3,
+        "presentation_time_seconds": 4,
+        "description": "Cream/tan masonry auditorium entry corner"
+      },
+      "b": {
+        "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+        "segment": 4,
+        "presentation_time_seconds": 2,
+        "description": "Same corner, finalshortsegment"
+      },
+      "quality": "visually strong; exacttime within segment ends may need nearest frame"
+    },
+    {
+      "a": {
+        "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+        "segment": 21,
+        "presentation_time_seconds": 4,
+        "description": "Window lounge, plant and tealbench"
+      },
+      "b": {
+        "scan": "081DA781-19B1-4A3F-91BE-8DF0094E5032",
+        "segment": 3,
+        "presentation_time_seconds": 4,
+        "description": "Same window lounge corner"
+      },
+      "quality": "strong shared structure; viewing angle differs"
+    },
+    {
+      "a": {
+        "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+        "segment": 25,
+        "presentation_time_seconds": 2,
+        "description": "Curved information counter"
+      },
+      "b": {
+        "scan": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+        "segment": 18,
+        "presentation_time_seconds": 4,
+        "description": "Informationcounter and wide stairs"
+      },
+      "quality": "shared landmark; larger viewpoint change"
+    }
+  ],
+  "dark_completion": [
+    {
+      "id": "backstage_dark_A",
+      "evidence": {
+        "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+        "segment": 18,
+        "presentation_time_seconds": 4,
+        "description": "Narrow plain-wall corridor, dark carpet, both handrails, end turn"
+      },
+      "samples": [
+        {
+          "xyz": [
+            6.678,
+            -1.631,
+            35.591
+          ],
+          "depth": 2.039,
+          "confidence": 2,
+          "pixel": [
+            440,
+            1100
+          ],
+          "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+          "segment": 18,
+          "pts": 4.000295,
+          "camera_xyz": [
+            4.995,
+            -0.089,
+            35.4
+          ]
+        },
+        {
+          "xyz": [
+            7.646,
+            -1.603,
+            35.747
+          ],
+          "depth": 2.977,
+          "confidence": 2,
+          "pixel": [
+            450,
+            870
+          ],
+          "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+          "segment": 18,
+          "pts": 4.000295,
+          "camera_xyz": [
+            4.995,
+            -0.089,
+            35.4
+          ]
+        },
+        {
+          "xyz": [
+            8.443,
+            -1.437,
+            36.09
+          ],
+          "depth": 3.746,
+          "confidence": 2,
+          "pixel": [
+            505,
+            732
+          ],
+          "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+          "segment": 18,
+          "pts": 4.000295,
+          "camera_xyz": [
+            4.995,
+            -0.089,
+            35.4
+          ]
+        },
+        {
+          "xyz": [
+            8.358,
+            -0.383,
+            35.156
+          ],
+          "depth": 3.238,
+          "confidence": 2,
+          "pixel": [
+            258,
+            483
+          ],
+          "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+          "segment": 18,
+          "pts": 4.000295,
+          "camera_xyz": [
+            4.995,
+            -0.089,
+            35.4
+          ]
+        },
+        {
+          "xyz": [
+            8.465,
+            -0.505,
+            36.818
+          ],
+          "depth": 3.637,
+          "confidence": 2,
+          "pixel": [
+            681,
+            504
+          ],
+          "scan": "611423DC-EDB2-4FCE-91B1-F47573C20F8B",
+          "segment": 18,
+          "pts": 4.000295,
+          "camera_xyz": [
+            4.995,
+            -0.089,
+            35.4
+          ]
+        }
+      ]
+    },
+    {
+      "id": "backstage_dark_B",
+      "evidence": {
+        "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+        "segment": 14,
+        "presentation_time_seconds": 4,
+        "description": "Same backstage route from similar direction, red exit lighting"
+      },
+      "samples": [
+        {
+          "xyz": [
+            15.909,
+            -1.66,
+            22.329
+          ],
+          "depth": 1.953,
+          "confidence": 2,
+          "pixel": [
+            494,
+            1100
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 14,
+          "pts": 4.000276,
+          "camera_xyz": [
+            14.533,
+            -0.083,
+            22.984
+          ]
+        },
+        {
+          "xyz": [
+            17.106,
+            -1.75,
+            21.711
+          ],
+          "depth": 3.256,
+          "confidence": 2,
+          "pixel": [
+            488,
+            820
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 14,
+          "pts": 4.000276,
+          "camera_xyz": [
+            14.533,
+            -0.083,
+            22.984
+          ]
+        },
+        {
+          "xyz": [
+            19.356,
+            -1.867,
+            20.869
+          ],
+          "depth": 5.551,
+          "confidence": 2,
+          "pixel": [
+            530,
+            640
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 14,
+          "pts": 4.000276,
+          "camera_xyz": [
+            14.533,
+            -0.083,
+            22.984
+          ]
+        },
+        {
+          "xyz": [
+            16.103,
+            -0.583,
+            21.494
+          ],
+          "depth": 2.127,
+          "confidence": 2,
+          "pixel": [
+            223,
+            555
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 14,
+          "pts": 4.000276,
+          "camera_xyz": [
+            14.533,
+            -0.083,
+            22.984
+          ]
+        },
+        {
+          "xyz": [
+            16.377,
+            -0.64,
+            22.605
+          ],
+          "depth": 1.896,
+          "confidence": 1,
+          "pixel": [
+            717,
+            616
+          ],
+          "scan": "785D48F6-4754-46A8-B07D-D001BCAAC621",
+          "segment": 14,
+          "pts": 4.000276,
+          "camera_xyz": [
+            14.533,
+            -0.083,
+            22.984
+          ]
+        }
+      ]
+    }
+  ],
+  "reconstruction_guidance": [
+    "Preserve main-to-L stair and elevator paths; never introduce a ramp.",
+    "Dark footage has measured confidence2 floor/wall samples. Extend only supported wall segments/planes to bridge measurement gaps; preserve actual corridor turns and door recesses.",
+    "Do not infer rooms beyond closed doors or glass.",
+    "Use durable plain materials, fixed furnishings and regular seating rows. Omit people, personal items, event trash, balloons and temporary signs.",
+    "The Court Salon doorway adjoins State Ballroom lettering in foyer; treat labels as observed, not assumptions about formal room hierarchy."
+  ]
+}

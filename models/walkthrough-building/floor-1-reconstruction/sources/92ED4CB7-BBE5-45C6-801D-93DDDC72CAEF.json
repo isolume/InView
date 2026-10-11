@@ -1,0 +1,7080 @@
+{
+  "capture_id": "92ED4CB7-BBE5-45C6-801D-93DDDC72CAEF",
+  "floor_id": "64F52A20-6C12-481F-B3B6-C3C9E9AF1BEC",
+  "metadata": {
+    "walk_trace_storage": "local_raw_scan_archive",
+    "walk_trace_use": "coverage_review_only_not_walkable_geometry",
+    "floor_name": "Floor 1",
+    "roomplan_section_ids": [
+      "889EF57F-E96A-4379-829A-E6447C96A667"
+    ],
+    "source": "iphone_roomplan_arkit",
+    "live_room_recovery": "original_evidence_only",
+    "raw_capture": {
+      "depth_keyframe_minimum_interval_seconds": 2,
+      "skipped_oversize_depth_samples": 0,
+      "depth_read_failures": 0,
+      "sensor_stream_complete": false,
+      "status": "bounded_depth_keyframes_and_observed_geometry",
+      "maximum_small_obstacle_cells": 4096,
+      "maximum_small_obstacle_clusters": 128,
+      "maximum_depth_keyframes": 6,
+      "mesh_omitted_anchor_count": 0,
+      "small_obstacle_interval_seconds": 1.5,
+      "mesh_anchor_count": 0,
+      "small_obstacle_retained_cells": 87,
+      "mesh_role": "optional_display_evidence_not_routing_geometry",
+      "maximum_native_mesh_bytes": 67108864,
+      "depth_selection": "tracking_normal_and_fresh; at_least_2_seconds; pose_space_coverage_within_memory_budget",
+      "small_obstacle_evidence": "measured_floor; high_confidence_supported_sides; repeated_frames; floor_ramp_and_near_camera_rejection",
+      "color_keyframe_count": 6,
+      "native_buffer_archive": "local_only_includes_row_stride_and_original_float_bits",
+      "mesh_read_failures": 0,
+      "camera_track_pose_count": 1055,
+      "maximum_native_depth_frame_bytes": 2097152,
+      "maximum_retained_depth_bytes": 8388608,
+      "evicted_depth_keyframes": 46,
+      "mesh_requested": false,
+      "mesh_available": false,
+      "scene_depth_requested": true,
+      "skipped_busy_depth_samples": 16,
+      "depth_keyframe_count": 6,
+      "color_frames_collected": true
+    },
+    "roomplan_original_storage": "local_roomplan_archive",
+    "depth_obstacle_count": 0,
+    "observed_surface_count": 2,
+    "raw_original_storage": "local_raw_scan_archive",
+    "floor_level": 1,
+    "building_id": "1CF0205A-F4E9-41F4-9A82-A5587A6F03E3",
+    "coordinate_space": "shared_arkit_session",
+    "section_count": 1,
+    "assembly": "native_single_room",
+    "surface_representation": "centered_dimensions_and_transform_with_measured_floor_polygon_corners",
+    "walk_trace_sample_count": 348
+  },
+  "native_rooms": [
+    {
+      "walls": [
+        {
+          "identifier": "48AA282B-9023-4E85-9B47-10F16A52EDE6",
+          "parentIdentifier": null,
+          "category": {
+            "wall": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            -0.14394826,
+            0,
+            -0.98958504,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.9895852,
+            0,
+            -0.14394827,
+            0,
+            -20.69525,
+            -0.06280783,
+            -11.204539,
+            1
+          ],
+          "dimensions": [
+            6.006699,
+            3.54,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        },
+        {
+          "identifier": "5833F646-D3DB-4DC2-B718-3CF69AF2DDE2",
+          "parentIdentifier": null,
+          "category": {
+            "wall": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            -0.061035335,
+            0,
+            -0.9981355,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.99813557,
+            0,
+            -0.061035335,
+            0,
+            -23.612043,
+            -0.06280783,
+            -33.173622,
+            1
+          ],
+          "dimensions": [
+            5.831634,
+            3.54,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        },
+        {
+          "identifier": "6A4B6DB3-02C9-4494-8540-08599E178ACF",
+          "parentIdentifier": null,
+          "category": {
+            "wall": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            0.9895853,
+            0,
+            -0.14394753,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.14394753,
+            0,
+            0.9895853,
+            0,
+            -20.383493,
+            -0.06280783,
+            -14.284847,
+            1
+          ],
+          "dimensions": [
+            1.5038276,
+            3.54,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        },
+        {
+          "identifier": "2B134D46-F048-41EF-B1C5-F3A93CCCE844",
+          "parentIdentifier": null,
+          "category": {
+            "wall": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            0.9895856,
+            0,
+            -0.14394455,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.14394455,
+            0,
+            0.9895857,
+            0,
+            -22.364647,
+            -0.06280783,
+            -28.183056,
+            1
+          ],
+          "dimensions": [
+            0.48385134,
+            3.54,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        },
+        {
+          "identifier": "8BDFC1FD-BD88-4D97-8E25-92B1E0D8E5C8",
+          "parentIdentifier": null,
+          "category": {
+            "wall": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            -0.1439472,
+            0,
+            -0.98958516,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.9895853,
+            0,
+            -0.14394721,
+            0,
+            -19.666304,
+            -0.06280783,
+            -14.577974,
+            1
+          ],
+          "dimensions": [
+            0.37367696,
+            3.54,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        },
+        {
+          "identifier": "D4B9AC04-0A3F-4630-B020-C58113C82D9E",
+          "parentIdentifier": null,
+          "category": {
+            "wall": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            -0.8892137,
+            0,
+            0.45749187,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.45749187,
+            0,
+            -0.8892136,
+            0,
+            -21.083406,
+            -0.06280783,
+            -19.69142,
+            1
+          ],
+          "dimensions": [
+            1.1793795,
+            3.54,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        },
+        {
+          "identifier": "FF89D513-5B66-46EB-8C65-05FD6C0D264E",
+          "parentIdentifier": null,
+          "category": {
+            "wall": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            -0.14394927,
+            0,
+            -0.98958504,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.98958504,
+            0,
+            -0.14394927,
+            0,
+            -22.151518,
+            -0.06280783,
+            -28.398521,
+            1
+          ],
+          "dimensions": [
+            0.36508012,
+            3.54,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        }
+      ],
+      "doors": [],
+      "openings": [],
+      "windows": [
+        {
+          "identifier": "D47A7C67-871B-4A91-8E53-43C3F7E4C6B0",
+          "parentIdentifier": "48AA282B-9023-4E85-9B47-10F16A52EDE6",
+          "category": {
+            "window": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.14394918,
+            0,
+            -0.9895849,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.98958504,
+            0,
+            -0.1439492,
+            0,
+            -20.413465,
+            -0.424504,
+            -9.267386,
+            1
+          ],
+          "dimensions": [
+            1.0189931,
+            0.953351,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        },
+        {
+          "identifier": "B66A6A8F-15D6-407D-B723-128C45722DB8",
+          "parentIdentifier": "5833F646-D3DB-4DC2-B718-3CF69AF2DDE2",
+          "category": {
+            "window": {}
+          },
+          "confidence": {
+            "medium": {}
+          },
+          "transform": [
+            -0.06103513,
+            0,
+            -0.99813545,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.99813545,
+            0,
+            -0.06103513,
+            0,
+            -23.700232,
+            0.051629394,
+            -34.61582,
+            1
+          ],
+          "dimensions": [
+            1.5360117,
+            2.696844,
+            0
+          ],
+          "polygonCorners": [],
+          "curve": null,
+          "story": 0
+        }
+      ],
+      "floors": [
+        {
+          "identifier": "B432FE67-E862-407C-BFB0-8C6421D54FFB",
+          "parentIdentifier": null,
+          "category": {
+            "floor": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            0.99440926,
+            0,
+            -0.10559365,
+            0,
+            -0.10559352,
+            0,
+            -0.99440926,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -13.143077,
+            -1.8328078,
+            -22.5054,
+            1
+          ],
+          "dimensions": [
+            18.828573,
+            56.432285,
+            0
+          ],
+          "polygonCorners": [
+            [
+              -9.4142885,
+              28.216146,
+              1.1920929e-07
+            ],
+            [
+              9.414286,
+              28.216146,
+              1.1920929e-07
+            ],
+            [
+              9.414287,
+              -28.21614,
+              1.1920929e-07
+            ],
+            [
+              -9.414287,
+              -28.216139,
+              1.1920929e-07
+            ]
+          ],
+          "curve": null,
+          "story": 0
+        }
+      ],
+      "objects": [
+        {
+          "identifier": "A1D6E226-C071-4D7B-A3DB-39EF3D6C0599",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.45749146,
+            0,
+            0.8892139,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.8892139,
+            0,
+            0.45749146,
+            0,
+            -17.474472,
+            -1.3522755,
+            -24.634993,
+            1
+          ],
+          "dimensions": [
+            1.0625203,
+            0.9610648,
+            0.8181345
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "2D567F8D-7C8D-4459-BE2E-10E673C710BF",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.8899508,
+            0,
+            -0.4560566,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.4560566,
+            0,
+            0.8899508,
+            0,
+            -22.053242,
+            -1.4327333,
+            -40.70112,
+            1
+          ],
+          "dimensions": [
+            0.526387,
+            0.80014896,
+            0.63307893
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "76C9BFB9-F1A8-49FD-8389-C842BC26078C",
+          "parentIdentifier": null,
+          "category": {
+            "stairs": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.99479884,
+            0,
+            -0.101858824,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.10185884,
+            0,
+            -0.99479884,
+            0,
+            -2.0735152,
+            -1.146114,
+            3.9940293,
+            1
+          ],
+          "dimensions": [
+            2.263203,
+            0.65478516,
+            0.9453322
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "DFB0F108-8D51-498D-92E3-187B4DF311CA",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.5590617,
+            0,
+            -0.82912594,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            0.8291258,
+            0,
+            0.55906165,
+            0,
+            -23.147648,
+            -1.3003237,
+            -40.029705,
+            1
+          ],
+          "dimensions": [
+            0.6484585,
+            1.0649679,
+            0.7592938
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "09CB319D-FE8E-4F10-BE70-18E72A05DDA8",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            -0.9981356,
+            0,
+            0.061035004,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.06103501,
+            0,
+            -0.99813557,
+            0,
+            -21.501919,
+            -1.4112579,
+            -38.38522,
+            1
+          ],
+          "dimensions": [
+            1.6274594,
+            0.84310013,
+            0.98821735
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "23311F21-0F4C-4FD4-9951-8CC9A4DD0569",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.7258339,
+            0,
+            0.68786985,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.6878698,
+            0,
+            0.72583383,
+            0,
+            -19.377563,
+            -1.154361,
+            -13.485838,
+            1
+          ],
+          "dimensions": [
+            0.54323095,
+            1.3568933,
+            0.6474813
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "6A501021-C2C1-400A-8178-72948C996280",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.09263392,
+            0,
+            -0.9957002,
+            0,
+            0,
+            1.0000001,
+            0,
+            0,
+            0.99570024,
+            0,
+            0.09263392,
+            0,
+            -21.834074,
+            -1.3098818,
+            -39.703648,
+            1
+          ],
+          "dimensions": [
+            0.6799537,
+            1.0458522,
+            0.80592877
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "DEAC9DE0-D093-4D0C-977F-AA719DD87D13",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.60481805,
+            0,
+            0.7963636,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.7963636,
+            0,
+            -0.60481805,
+            0,
+            -20.021023,
+            -1.3012005,
+            -38.627495,
+            1
+          ],
+          "dimensions": [
+            0.6450404,
+            1.0632147,
+            0.7588078
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "D399C89C-4E77-4B05-A8E0-7F6F5B78B7D9",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.14394364,
+            0,
+            -0.9895859,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.98958594,
+            0,
+            -0.14394364,
+            0,
+            -18.915018,
+            -1.4050499,
+            -25.206419,
+            1
+          ],
+          "dimensions": [
+            0.81227636,
+            0.8555157,
+            0.7317096
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "B605918B-5BC5-4979-A54B-AFC806F813CC",
+          "parentIdentifier": null,
+          "category": {
+            "stairs": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.14394797,
+            0,
+            -0.98958504,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            0.98958504,
+            0,
+            -0.14394797,
+            0,
+            -15.4431,
+            -1.210652,
+            -4.2620406,
+            1
+          ],
+          "dimensions": [
+            1.6582221,
+            0.6188965,
+            0.984393
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "EEB0EC08-D3A2-4CC7-B7E4-938C1FB1E7E3",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.085103355,
+            0,
+            0.99637204,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.996372,
+            0,
+            -0.08510335,
+            0,
+            -18.73799,
+            -1.226682,
+            -28.329023,
+            1
+          ],
+          "dimensions": [
+            0.75074965,
+            1.2122514,
+            0.8010447
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "0358F2BA-C4DE-4876-A7FA-9A95EBE602C3",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.15574946,
+            0,
+            -0.98779655,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.98779655,
+            0,
+            -0.15574946,
+            0,
+            -13.810467,
+            -1.3018677,
+            -49.096302,
+            1
+          ],
+          "dimensions": [
+            0.6633519,
+            1.0618799,
+            0.7278032
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "BFA39CB0-802A-4FCD-BA41-760765CB190A",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.70293385,
+            0,
+            -0.7112551,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.711255,
+            0,
+            0.70293385,
+            0,
+            -19.155037,
+            -1.4052107,
+            -23.907671,
+            1
+          ],
+          "dimensions": [
+            0.6645711,
+            0.8551941,
+            0.6418657
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "94862E7E-67F9-4807-9725-0C729FC4DF5C",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.40025976,
+            0,
+            0.9164016,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.9164016,
+            0,
+            -0.40025976,
+            0,
+            -21.868635,
+            -1.1230613,
+            -26.213642,
+            1
+          ],
+          "dimensions": [
+            0.6643274,
+            1.419493,
+            0.6523628
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "345E0FAF-77B0-4883-803F-314149F03F1E",
+          "parentIdentifier": null,
+          "category": {
+            "table": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            0.67762136,
+            0,
+            -0.7354109,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.7354109,
+            0,
+            0.67762136,
+            0,
+            -19.127047,
+            -1.4890195,
+            -11.302556,
+            1
+          ],
+          "dimensions": [
+            1.0990895,
+            0.6875768,
+            1.0965767
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "240D2F88-05E1-42A1-9357-585F006E931A",
+          "parentIdentifier": null,
+          "category": {
+            "table": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            -0.061035484,
+            0,
+            -0.99813557,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.99813557,
+            0,
+            -0.06103548,
+            0,
+            -20.463463,
+            -1.5553405,
+            -35.646957,
+            1
+          ],
+          "dimensions": [
+            0.69150454,
+            0.5549344,
+            0.58895594
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "5BD51A37-D9CC-4098-83E1-2F1074905AF6",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.7495447,
+            0,
+            -0.6619536,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            0.66195357,
+            0,
+            0.7495446,
+            0,
+            -19.316488,
+            -1.2445279,
+            -26.850977,
+            1
+          ],
+          "dimensions": [
+            0.869159,
+            1.1765597,
+            0.92067224
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "57B7A2B9-364B-4314-BDB0-481CE74F82AF",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.47027072,
+            0,
+            0.8825222,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.8825222,
+            0,
+            -0.4702707,
+            0,
+            -19.43783,
+            -1.2279336,
+            -35.6954,
+            1
+          ],
+          "dimensions": [
+            0.60866183,
+            1.209748,
+            0.70314354
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "6DF04A26-CF74-45C0-BC65-DC2805EC032E",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.49874508,
+            0,
+            -0.86674863,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.8667486,
+            0,
+            0.49874508,
+            0,
+            -20.687994,
+            -1.4057868,
+            -32.144867,
+            1
+          ],
+          "dimensions": [
+            0.9045593,
+            0.85404193,
+            0.7531935
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "B5205F6D-C3C8-4B2F-9347-2B67D14D7012",
+          "parentIdentifier": null,
+          "category": {
+            "table": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.06103547,
+            0,
+            0.9981355,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.9981355,
+            0,
+            0.061035465,
+            0,
+            -9.741875,
+            -1.4641443,
+            -43.473137,
+            1
+          ],
+          "dimensions": [
+            1.6255089,
+            0.7373271,
+            0.9170118
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "1AEED490-E601-434A-9AC9-B95AE313D100",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.9153168,
+            0,
+            -0.40273422,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            0.4027342,
+            0,
+            0.91531676,
+            0,
+            -13.764835,
+            -1.4219415,
+            -50.243893,
+            1
+          ],
+          "dimensions": [
+            0.8152042,
+            0.8217324,
+            0.9304398
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "50379496-F87C-46E6-829C-C98C71359388",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.7965078,
+            0,
+            0.60462826,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.6046282,
+            0,
+            0.7965077,
+            0,
+            -21.672989,
+            -1.2226547,
+            -30.831867,
+            1
+          ],
+          "dimensions": [
+            0.55666035,
+            1.220306,
+            0.7224327
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "6A71D4E2-CEE3-475D-A9DD-E1E86C22D9AB",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.9734929,
+            0,
+            0.22871637,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.22871634,
+            0,
+            0.97349286,
+            0,
+            -18.447203,
+            -1.3388851,
+            -12.096041,
+            1
+          ],
+          "dimensions": [
+            0.86159027,
+            0.9878453,
+            0.7038766
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "9457E5A3-2218-42FB-9253-D8F831B5BE8F",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.8776484,
+            0,
+            -0.47930494,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.47930494,
+            0,
+            -0.87764835,
+            0,
+            -20.745739,
+            -1.3888361,
+            -27.948929,
+            1
+          ],
+          "dimensions": [
+            0.8156942,
+            0.88794315,
+            0.8286337
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "C298E39C-8F7D-4B32-B75C-DAA1BECE91C6",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.9994781,
+            0,
+            0.03230026,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.032300264,
+            0,
+            0.9994781,
+            0,
+            -21.147043,
+            -1.4490439,
+            -40.88415,
+            1
+          ],
+          "dimensions": [
+            0.6245317,
+            0.76752806,
+            0.6819025
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "780C5CDA-CB89-43A3-B9AD-398B44D8F749",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.620389,
+            0,
+            0.7842941,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.78429407,
+            0,
+            0.6203889,
+            0,
+            -21.296656,
+            -1.4175947,
+            -35.070164,
+            1
+          ],
+          "dimensions": [
+            0.842551,
+            0.8304262,
+            0.8418152
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "DF9D296C-D7AD-4AE2-890E-228B40407F7D",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.5610981,
+            0,
+            0.82774925,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.8277492,
+            0,
+            0.56109804,
+            0,
+            -22.441517,
+            -1.2171614,
+            -31.600893,
+            1
+          ],
+          "dimensions": [
+            0.6100055,
+            1.2312927,
+            0.69093776
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "BFFE13AE-6994-4F9F-8A2E-E4CE962F641C",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.1570451,
+            0,
+            0.9875914,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.9875913,
+            0,
+            -0.15704511,
+            0,
+            -19.367107,
+            -1.2330945,
+            -28.604156,
+            1
+          ],
+          "dimensions": [
+            0.65065426,
+            1.1994267,
+            0.7055858
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "2DC61879-E74D-40B7-B87C-B1F14BBA5568",
+          "parentIdentifier": null,
+          "category": {
+            "table": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.83699733,
+            0,
+            -0.54720676,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.54720676,
+            0,
+            -0.83699733,
+            0,
+            -19.323877,
+            -1.5397989,
+            -31.34775,
+            1
+          ],
+          "dimensions": [
+            0.7319559,
+            0.5860177,
+            0.6801974
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "6E871B02-5DD4-4CE0-80D0-B12F430373FE",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.6488801,
+            0,
+            -0.76089054,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.76089054,
+            0,
+            -0.64888006,
+            0,
+            -17.904476,
+            -1.2229913,
+            -23.001015,
+            1
+          ],
+          "dimensions": [
+            0.60597676,
+            1.2196327,
+            0.70192194
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "D7A0A2C4-6F1D-4E43-BBBE-D0C8E2C684C9",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.9613779,
+            0,
+            0.27523136,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -0.27523136,
+            0,
+            0.9613779,
+            0,
+            -19.563437,
+            -1.2277472,
+            -22.47117,
+            1
+          ],
+          "dimensions": [
+            0.6191615,
+            1.2101209,
+            0.6484561
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "3841D37C-368C-4696-A01E-9503EC090E54",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.6821095,
+            0,
+            0.7312499,
+            0,
+            0,
+            1.0000001,
+            0,
+            0,
+            -0.73125,
+            0,
+            -0.6821096,
+            0,
+            -21.632402,
+            -1.4043556,
+            -33.973877,
+            1
+          ],
+          "dimensions": [
+            0.8215533,
+            0.85690427,
+            0.84572214
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "6143B6E2-8531-44BC-97E2-D19E6440CBF4",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            -0.5937223,
+            0,
+            -0.80467,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.80467,
+            0,
+            -0.5937223,
+            0,
+            -19.475904,
+            -1.4112236,
+            -25.702831,
+            1
+          ],
+          "dimensions": [
+            0.6064667,
+            0.84316826,
+            0.61452144
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "27C6433C-958D-4448-BF89-92ED0BF89F2A",
+          "parentIdentifier": null,
+          "category": {
+            "chair": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.94838715,
+            0,
+            -0.31711432,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            0.3171143,
+            0,
+            0.9483871,
+            0,
+            -22.332115,
+            -1.1375867,
+            -27.614115,
+            1
+          ],
+          "dimensions": [
+            0.7033888,
+            1.3904421,
+            0.70216817
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "A121F396-999D-4A46-8A65-145FF5F6881D",
+          "parentIdentifier": null,
+          "category": {
+            "table": {}
+          },
+          "confidence": {
+            "low": {}
+          },
+          "transform": [
+            0.9895855,
+            0,
+            -0.14394599,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0.14394599,
+            0,
+            0.9895855,
+            0,
+            -19.780704,
+            -1.5544363,
+            -27.866352,
+            1
+          ],
+          "dimensions": [
+            0.79469925,
+            0.5567429,
+            0.7365904
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "224972EB-5884-48D1-9572-A78B17003911",
+          "parentIdentifier": null,
+          "category": {
+            "table": {}
+          },
+          "confidence": {
+            "high": {}
+          },
+          "transform": [
+            0.061035823,
+            0,
+            0.99813557,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            -0.9981355,
+            0,
+            0.06103583,
+            0,
+            -20.669962,
+            -1.6370914,
+            -39.666653,
+            1
+          ],
+          "dimensions": [
+            0.9277593,
+            0.39143276,
+            0.8715413
+          ],
+          "story": 0
+        },
+        {
+          "identifier": "32586448-4714-45FF-9660-B4F685C9AB98",
+          "parentIdentifier": null,
+          "category": {
+            "sofa": {}
+          },
+          "confidence": {
+            "medium": {}
+          },
+          "transform": [
+            -0.14394914,
+            0,
+            -0.989585,
+            0,
+            0,
+            0.99999994,
+            0,
+            0,
+            0.9895849,
+            0,
+            -0.14394914,
+            0,
+            -20.20726,
+            -1.3418148,
+            -11.347943,
+            1
+          ],
+          "dimensions": [
+            0.8615932,
+            0.981986,
+            0.75978714
+          ],
+          "story": 0
+        }
+      ]
+    }
+  ],
+  "captured_surfaces": [
+    {
+      "map_from_surface": [
+        0.9895856,
+        0,
+        -0.14394455,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.14394455,
+        0,
+        0.9895857,
+        0,
+        -22.364647,
+        -0.06280783,
+        -28.183056,
+        1
+      ],
+      "dimensions_m": [
+        0.48385134,
+        3.54,
+        0
+      ],
+      "id": "2B134D46-F048-41EF-B1C5-F3A93CCCE844",
+      "kind": "wall"
+    },
+    {
+      "map_from_surface": [
+        -0.14394826,
+        0,
+        -0.98958504,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.9895852,
+        0,
+        -0.14394827,
+        0,
+        -20.69525,
+        -0.06280783,
+        -11.204539,
+        1
+      ],
+      "dimensions_m": [
+        6.006699,
+        3.54,
+        0
+      ],
+      "id": "48AA282B-9023-4E85-9B47-10F16A52EDE6",
+      "kind": "wall"
+    },
+    {
+      "map_from_surface": [
+        -0.061035335,
+        0,
+        -0.9981355,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.99813557,
+        0,
+        -0.061035335,
+        0,
+        -23.612043,
+        -0.06280783,
+        -33.173622,
+        1
+      ],
+      "dimensions_m": [
+        5.831634,
+        3.54,
+        0
+      ],
+      "id": "5833F646-D3DB-4DC2-B718-3CF69AF2DDE2",
+      "kind": "wall"
+    },
+    {
+      "map_from_surface": [
+        0.9895853,
+        0,
+        -0.14394753,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.14394753,
+        0,
+        0.9895853,
+        0,
+        -20.383493,
+        -0.06280783,
+        -14.284847,
+        1
+      ],
+      "dimensions_m": [
+        1.5038276,
+        3.54,
+        0
+      ],
+      "id": "6A4B6DB3-02C9-4494-8540-08599E178ACF",
+      "kind": "wall"
+    },
+    {
+      "map_from_surface": [
+        -0.1439472,
+        0,
+        -0.98958516,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.9895853,
+        0,
+        -0.14394721,
+        0,
+        -19.666304,
+        -0.06280783,
+        -14.577974,
+        1
+      ],
+      "dimensions_m": [
+        0.37367696,
+        3.54,
+        0
+      ],
+      "id": "8BDFC1FD-BD88-4D97-8E25-92B1E0D8E5C8",
+      "kind": "wall"
+    },
+    {
+      "map_from_surface": [
+        0.99440926,
+        0,
+        -0.10559365,
+        0,
+        -0.10559352,
+        0,
+        -0.99440926,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -13.143077,
+        -1.8328078,
+        -22.5054,
+        1
+      ],
+      "dimensions_m": [
+        18.828573,
+        56.432285,
+        0
+      ],
+      "id": "B432FE67-E862-407C-BFB0-8C6421D54FFB",
+      "polygon_corners": [
+        [
+          -9.4142885,
+          28.216146,
+          1.1920929e-07
+        ],
+        [
+          9.414286,
+          28.216146,
+          1.1920929e-07
+        ],
+        [
+          9.414287,
+          -28.21614,
+          1.1920929e-07
+        ],
+        [
+          -9.414287,
+          -28.216139,
+          1.1920929e-07
+        ]
+      ],
+      "kind": "floor"
+    },
+    {
+      "map_from_surface": [
+        -0.06103513,
+        0,
+        -0.99813545,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.99813545,
+        0,
+        -0.06103513,
+        0,
+        -23.700232,
+        0.051629394,
+        -34.61582,
+        1
+      ],
+      "dimensions_m": [
+        1.5360117,
+        2.696844,
+        0
+      ],
+      "id": "B66A6A8F-15D6-407D-B723-128C45722DB8",
+      "kind": "window"
+    },
+    {
+      "map_from_surface": [
+        -0.14394918,
+        0,
+        -0.9895849,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.98958504,
+        0,
+        -0.1439492,
+        0,
+        -20.413465,
+        -0.424504,
+        -9.267386,
+        1
+      ],
+      "dimensions_m": [
+        1.0189931,
+        0.953351,
+        0
+      ],
+      "id": "D47A7C67-871B-4A91-8E53-43C3F7E4C6B0",
+      "kind": "window"
+    },
+    {
+      "map_from_surface": [
+        -0.8892137,
+        0,
+        0.45749187,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.45749187,
+        0,
+        -0.8892136,
+        0,
+        -21.083406,
+        -0.06280783,
+        -19.69142,
+        1
+      ],
+      "dimensions_m": [
+        1.1793795,
+        3.54,
+        0
+      ],
+      "id": "D4B9AC04-0A3F-4630-B020-C58113C82D9E",
+      "kind": "wall"
+    },
+    {
+      "map_from_surface": [
+        -0.14394927,
+        0,
+        -0.98958504,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.98958504,
+        0,
+        -0.14394927,
+        0,
+        -22.151518,
+        -0.06280783,
+        -28.398521,
+        1
+      ],
+      "dimensions_m": [
+        0.36508012,
+        3.54,
+        0
+      ],
+      "id": "FF89D513-5B66-46EB-8C65-05FD6C0D264E",
+      "kind": "wall"
+    },
+    {
+      "map_from_surface": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -1,
+        0,
+        0,
+        -24.933685,
+        -1.8027979,
+        -44.272434,
+        1
+      ],
+      "dimensions_m": [
+        0.11779022,
+        0.88300323,
+        0
+      ],
+      "id": "observed-0",
+      "polygon_corners": [
+        [
+          -0.05889511,
+          0.09828186,
+          0
+        ],
+        [
+          -0.03486824,
+          -0.44150162,
+          0
+        ],
+        [
+          0.05889511,
+          0.44150162,
+          0
+        ],
+        [
+          -0.04808426,
+          0.14709854,
+          0
+        ]
+      ],
+      "kind": "floor"
+    },
+    {
+      "id": "observed-1",
+      "polygon_corners": [
+        [
+          -1.4129276,
+          0.2455635,
+          0
+        ],
+        [
+          0.115180016,
+          -0.110565186,
+          0
+        ],
+        [
+          0.70098305,
+          -0.2403183,
+          0
+        ],
+        [
+          0.9558792,
+          -0.2455635,
+          0
+        ],
+        [
+          1.0643263,
+          -0.21837234,
+          0
+        ],
+        [
+          1.4129286,
+          -0.05450821,
+          0
+        ]
+      ],
+      "map_from_surface": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -1,
+        0,
+        0,
+        -14.820587,
+        -1.8027979,
+        -50.797573,
+        1
+      ],
+      "dimensions_m": [
+        2.8258562,
+        0.491127,
+        0
+      ],
+      "kind": "floor"
+    }
+  ],
+  "captured_objects": [
+    {
+      "dimensions_m": [
+        0.6633519,
+        1.0618799,
+        0.7278032
+      ],
+      "map_from_object": [
+        -0.15574946,
+        0,
+        -0.98779655,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.98779655,
+        0,
+        -0.15574946,
+        0,
+        -13.810467,
+        -1.3018677,
+        -49.096302,
+        1
+      ],
+      "id": "0358F2BA-C4DE-4876-A7FA-9A95EBE602C3",
+      "category": "chair",
+      "confidence": "low"
+    },
+    {
+      "id": "09CB319D-FE8E-4F10-BE70-18E72A05DDA8",
+      "dimensions_m": [
+        1.6274594,
+        0.84310013,
+        0.98821735
+      ],
+      "confidence": "high",
+      "category": "sofa",
+      "map_from_object": [
+        -0.9981356,
+        0,
+        0.061035004,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.06103501,
+        0,
+        -0.99813557,
+        0,
+        -21.501919,
+        -1.4112579,
+        -38.38522,
+        1
+      ]
+    },
+    {
+      "id": "1AEED490-E601-434A-9AC9-B95AE313D100",
+      "dimensions_m": [
+        0.8152042,
+        0.8217324,
+        0.9304398
+      ],
+      "confidence": "low",
+      "category": "sofa",
+      "map_from_object": [
+        0.9153168,
+        0,
+        -0.40273422,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        0.4027342,
+        0,
+        0.91531676,
+        0,
+        -13.764835,
+        -1.4219415,
+        -50.243893,
+        1
+      ]
+    },
+    {
+      "id": "224972EB-5884-48D1-9572-A78B17003911",
+      "dimensions_m": [
+        0.9277593,
+        0.39143276,
+        0.8715413
+      ],
+      "confidence": "high",
+      "category": "table",
+      "map_from_object": [
+        0.061035823,
+        0,
+        0.99813557,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.9981355,
+        0,
+        0.06103583,
+        0,
+        -20.669962,
+        -1.6370914,
+        -39.666653,
+        1
+      ]
+    },
+    {
+      "category": "chair",
+      "confidence": "low",
+      "map_from_object": [
+        0.7258339,
+        0,
+        0.68786985,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.6878698,
+        0,
+        0.72583383,
+        0,
+        -19.377563,
+        -1.154361,
+        -13.485838,
+        1
+      ],
+      "dimensions_m": [
+        0.54323095,
+        1.3568933,
+        0.6474813
+      ],
+      "id": "23311F21-0F4C-4FD4-9951-8CC9A4DD0569"
+    },
+    {
+      "category": "table",
+      "confidence": "high",
+      "map_from_object": [
+        -0.061035484,
+        0,
+        -0.99813557,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.99813557,
+        0,
+        -0.06103548,
+        0,
+        -20.463463,
+        -1.5553405,
+        -35.646957,
+        1
+      ],
+      "dimensions_m": [
+        0.69150454,
+        0.5549344,
+        0.58895594
+      ],
+      "id": "240D2F88-05E1-42A1-9357-585F006E931A"
+    },
+    {
+      "id": "27C6433C-958D-4448-BF89-92ED0BF89F2A",
+      "category": "chair",
+      "confidence": "low",
+      "dimensions_m": [
+        0.7033888,
+        1.3904421,
+        0.70216817
+      ],
+      "map_from_object": [
+        0.94838715,
+        0,
+        -0.31711432,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        0.3171143,
+        0,
+        0.9483871,
+        0,
+        -22.332115,
+        -1.1375867,
+        -27.614115,
+        1
+      ]
+    },
+    {
+      "id": "2D567F8D-7C8D-4459-BE2E-10E673C710BF",
+      "category": "chair",
+      "confidence": "low",
+      "dimensions_m": [
+        0.526387,
+        0.80014896,
+        0.63307893
+      ],
+      "map_from_object": [
+        0.8899508,
+        0,
+        -0.4560566,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.4560566,
+        0,
+        0.8899508,
+        0,
+        -22.053242,
+        -1.4327333,
+        -40.70112,
+        1
+      ]
+    },
+    {
+      "id": "2DC61879-E74D-40B7-B87C-B1F14BBA5568",
+      "category": "table",
+      "confidence": "low",
+      "dimensions_m": [
+        0.7319559,
+        0.5860177,
+        0.6801974
+      ],
+      "map_from_object": [
+        -0.83699733,
+        0,
+        -0.54720676,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.54720676,
+        0,
+        -0.83699733,
+        0,
+        -19.323877,
+        -1.5397989,
+        -31.34775,
+        1
+      ]
+    },
+    {
+      "id": "32586448-4714-45FF-9660-B4F685C9AB98",
+      "category": "sofa",
+      "confidence": "medium",
+      "dimensions_m": [
+        0.8615932,
+        0.981986,
+        0.75978714
+      ],
+      "map_from_object": [
+        -0.14394914,
+        0,
+        -0.989585,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        0.9895849,
+        0,
+        -0.14394914,
+        0,
+        -20.20726,
+        -1.3418148,
+        -11.347943,
+        1
+      ]
+    },
+    {
+      "id": "345E0FAF-77B0-4883-803F-314149F03F1E",
+      "category": "table",
+      "confidence": "high",
+      "dimensions_m": [
+        1.0990895,
+        0.6875768,
+        1.0965767
+      ],
+      "map_from_object": [
+        0.67762136,
+        0,
+        -0.7354109,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.7354109,
+        0,
+        0.67762136,
+        0,
+        -19.127047,
+        -1.4890195,
+        -11.302556,
+        1
+      ]
+    },
+    {
+      "category": "sofa",
+      "dimensions_m": [
+        0.8215533,
+        0.85690427,
+        0.84572214
+      ],
+      "id": "3841D37C-368C-4696-A01E-9503EC090E54",
+      "confidence": "low",
+      "map_from_object": [
+        -0.6821095,
+        0,
+        0.7312499,
+        0,
+        0,
+        1.0000001,
+        0,
+        0,
+        -0.73125,
+        0,
+        -0.6821096,
+        0,
+        -21.632402,
+        -1.4043556,
+        -33.973877,
+        1
+      ]
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.55666035,
+        1.220306,
+        0.7224327
+      ],
+      "id": "50379496-F87C-46E6-829C-C98C71359388",
+      "confidence": "low",
+      "map_from_object": [
+        0.7965078,
+        0,
+        0.60462826,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.6046282,
+        0,
+        0.7965077,
+        0,
+        -21.672989,
+        -1.2226547,
+        -30.831867,
+        1
+      ]
+    },
+    {
+      "confidence": "low",
+      "category": "chair",
+      "dimensions_m": [
+        0.60866183,
+        1.209748,
+        0.70314354
+      ],
+      "id": "57B7A2B9-364B-4314-BDB0-481CE74F82AF",
+      "map_from_object": [
+        -0.47027072,
+        0,
+        0.8825222,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.8825222,
+        0,
+        -0.4702707,
+        0,
+        -19.43783,
+        -1.2279336,
+        -35.6954,
+        1
+      ]
+    },
+    {
+      "confidence": "low",
+      "category": "sofa",
+      "dimensions_m": [
+        0.869159,
+        1.1765597,
+        0.92067224
+      ],
+      "id": "5BD51A37-D9CC-4098-83E1-2F1074905AF6",
+      "map_from_object": [
+        0.7495447,
+        0,
+        -0.6619536,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        0.66195357,
+        0,
+        0.7495446,
+        0,
+        -19.316488,
+        -1.2445279,
+        -26.850977,
+        1
+      ]
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.6064667,
+        0.84316826,
+        0.61452144
+      ],
+      "map_from_object": [
+        -0.5937223,
+        0,
+        -0.80467,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.80467,
+        0,
+        -0.5937223,
+        0,
+        -19.475904,
+        -1.4112236,
+        -25.702831,
+        1
+      ],
+      "category": "chair",
+      "id": "6143B6E2-8531-44BC-97E2-D19E6440CBF4"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.6799537,
+        1.0458522,
+        0.80592877
+      ],
+      "map_from_object": [
+        0.09263392,
+        0,
+        -0.9957002,
+        0,
+        0,
+        1.0000001,
+        0,
+        0,
+        0.99570024,
+        0,
+        0.09263392,
+        0,
+        -21.834074,
+        -1.3098818,
+        -39.703648,
+        1
+      ],
+      "category": "chair",
+      "id": "6A501021-C2C1-400A-8178-72948C996280"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.86159027,
+        0.9878453,
+        0.7038766
+      ],
+      "map_from_object": [
+        0.9734929,
+        0,
+        0.22871637,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.22871634,
+        0,
+        0.97349286,
+        0,
+        -18.447203,
+        -1.3388851,
+        -12.096041,
+        1
+      ],
+      "category": "sofa",
+      "id": "6A71D4E2-CEE3-475D-A9DD-E1E86C22D9AB"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.9045593,
+        0.85404193,
+        0.7531935
+      ],
+      "map_from_object": [
+        0.49874508,
+        0,
+        -0.86674863,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.8667486,
+        0,
+        0.49874508,
+        0,
+        -20.687994,
+        -1.4057868,
+        -32.144867,
+        1
+      ],
+      "category": "sofa",
+      "id": "6DF04A26-CF74-45C0-BC65-DC2805EC032E"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.60597676,
+        1.2196327,
+        0.70192194
+      ],
+      "map_from_object": [
+        -0.6488801,
+        0,
+        -0.76089054,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.76089054,
+        0,
+        -0.64888006,
+        0,
+        -17.904476,
+        -1.2229913,
+        -23.001015,
+        1
+      ],
+      "category": "chair",
+      "id": "6E871B02-5DD4-4CE0-80D0-B12F430373FE"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        2.263203,
+        0.65478516,
+        0.9453322
+      ],
+      "map_from_object": [
+        -0.99479884,
+        0,
+        -0.101858824,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.10185884,
+        0,
+        -0.99479884,
+        0,
+        -2.0735152,
+        -1.146114,
+        3.9940293,
+        1
+      ],
+      "category": "stairs",
+      "id": "76C9BFB9-F1A8-49FD-8389-C842BC26078C"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.842551,
+        0.8304262,
+        0.8418152
+      ],
+      "map_from_object": [
+        0.620389,
+        0,
+        0.7842941,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.78429407,
+        0,
+        0.6203889,
+        0,
+        -21.296656,
+        -1.4175947,
+        -35.070164,
+        1
+      ],
+      "category": "sofa",
+      "id": "780C5CDA-CB89-43A3-B9AD-398B44D8F749"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.8156942,
+        0.88794315,
+        0.8286337
+      ],
+      "map_from_object": [
+        -0.8776484,
+        0,
+        -0.47930494,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.47930494,
+        0,
+        -0.87764835,
+        0,
+        -20.745739,
+        -1.3888361,
+        -27.948929,
+        1
+      ],
+      "category": "sofa",
+      "id": "9457E5A3-2218-42FB-9253-D8F831B5BE8F"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.6643274,
+        1.419493,
+        0.6523628
+      ],
+      "map_from_object": [
+        -0.40025976,
+        0,
+        0.9164016,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.9164016,
+        0,
+        -0.40025976,
+        0,
+        -21.868635,
+        -1.1230613,
+        -26.213642,
+        1
+      ],
+      "category": "chair",
+      "id": "94862E7E-67F9-4807-9725-0C729FC4DF5C"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        0.79469925,
+        0.5567429,
+        0.7365904
+      ],
+      "map_from_object": [
+        0.9895855,
+        0,
+        -0.14394599,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.14394599,
+        0,
+        0.9895855,
+        0,
+        -19.780704,
+        -1.5544363,
+        -27.866352,
+        1
+      ],
+      "category": "table",
+      "id": "A121F396-999D-4A46-8A65-145FF5F6881D"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        1.0625203,
+        0.9610648,
+        0.8181345
+      ],
+      "map_from_object": [
+        0.45749146,
+        0,
+        0.8892139,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.8892139,
+        0,
+        0.45749146,
+        0,
+        -17.474472,
+        -1.3522755,
+        -24.634993,
+        1
+      ],
+      "category": "sofa",
+      "id": "A1D6E226-C071-4D7B-A3DB-39EF3D6C0599"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        1.6255089,
+        0.7373271,
+        0.9170118
+      ],
+      "map_from_object": [
+        0.06103547,
+        0,
+        0.9981355,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.9981355,
+        0,
+        0.061035465,
+        0,
+        -9.741875,
+        -1.4641443,
+        -43.473137,
+        1
+      ],
+      "category": "table",
+      "id": "B5205F6D-C3C8-4B2F-9347-2B67D14D7012"
+    },
+    {
+      "confidence": "low",
+      "dimensions_m": [
+        1.6582221,
+        0.6188965,
+        0.984393
+      ],
+      "map_from_object": [
+        -0.14394797,
+        0,
+        -0.98958504,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        0.98958504,
+        0,
+        -0.14394797,
+        0,
+        -15.4431,
+        -1.210652,
+        -4.2620406,
+        1
+      ],
+      "category": "stairs",
+      "id": "B605918B-5BC5-4979-A54B-AFC806F813CC"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.6645711,
+        0.8551941,
+        0.6418657
+      ],
+      "id": "BFA39CB0-802A-4FCD-BA41-760765CB190A",
+      "map_from_object": [
+        0.70293385,
+        0,
+        -0.7112551,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.711255,
+        0,
+        0.70293385,
+        0,
+        -19.155037,
+        -1.4052107,
+        -23.907671,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.65065426,
+        1.1994267,
+        0.7055858
+      ],
+      "id": "BFFE13AE-6994-4F9F-8A2E-E4CE962F641C",
+      "map_from_object": [
+        -0.1570451,
+        0,
+        0.9875914,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.9875913,
+        0,
+        -0.15704511,
+        0,
+        -19.367107,
+        -1.2330945,
+        -28.604156,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.6245317,
+        0.76752806,
+        0.6819025
+      ],
+      "id": "C298E39C-8F7D-4B32-B75C-DAA1BECE91C6",
+      "map_from_object": [
+        0.9994781,
+        0,
+        0.03230026,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.032300264,
+        0,
+        0.9994781,
+        0,
+        -21.147043,
+        -1.4490439,
+        -40.88415,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "sofa",
+      "dimensions_m": [
+        0.81227636,
+        0.8555157,
+        0.7317096
+      ],
+      "id": "D399C89C-4E77-4B05-A8E0-7F6F5B78B7D9",
+      "map_from_object": [
+        -0.14394364,
+        0,
+        -0.9895859,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.98958594,
+        0,
+        -0.14394364,
+        0,
+        -18.915018,
+        -1.4050499,
+        -25.206419,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.6191615,
+        1.2101209,
+        0.6484561
+      ],
+      "id": "D7A0A2C4-6F1D-4E43-BBBE-D0C8E2C684C9",
+      "map_from_object": [
+        0.9613779,
+        0,
+        0.27523136,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.27523136,
+        0,
+        0.9613779,
+        0,
+        -19.563437,
+        -1.2277472,
+        -22.47117,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.6450404,
+        1.0632147,
+        0.7588078
+      ],
+      "id": "DEAC9DE0-D093-4D0C-977F-AA719DD87D13",
+      "map_from_object": [
+        -0.60481805,
+        0,
+        0.7963636,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -0.7963636,
+        0,
+        -0.60481805,
+        0,
+        -20.021023,
+        -1.3012005,
+        -38.627495,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.6100055,
+        1.2312927,
+        0.69093776
+      ],
+      "id": "DF9D296C-D7AD-4AE2-890E-228B40407F7D",
+      "map_from_object": [
+        0.5610981,
+        0,
+        0.82774925,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.8277492,
+        0,
+        0.56109804,
+        0,
+        -22.441517,
+        -1.2171614,
+        -31.600893,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.6484585,
+        1.0649679,
+        0.7592938
+      ],
+      "id": "DFB0F108-8D51-498D-92E3-187B4DF311CA",
+      "map_from_object": [
+        0.5590617,
+        0,
+        -0.82912594,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        0.8291258,
+        0,
+        0.55906165,
+        0,
+        -23.147648,
+        -1.3003237,
+        -40.029705,
+        1
+      ],
+      "confidence": "low"
+    },
+    {
+      "category": "chair",
+      "dimensions_m": [
+        0.75074965,
+        1.2122514,
+        0.8010447
+      ],
+      "id": "EEB0EC08-D3A2-4CC7-B7E4-938C1FB1E7E3",
+      "map_from_object": [
+        -0.085103355,
+        0,
+        0.99637204,
+        0,
+        0,
+        0.99999994,
+        0,
+        0,
+        -0.996372,
+        0,
+        -0.08510335,
+        0,
+        -18.73799,
+        -1.226682,
+        -28.329023,
+        1
+      ],
+      "confidence": "low"
+    }
+  ],
+  "observed_footprints": [
+    {
+      "kind": "wall",
+      "bottom": -1.5922031,
+      "size": [
+        0.44417667,
+        0.15
+      ],
+      "height": 2.249918,
+      "center": [
+        -22.187439,
+        -28.186947
+      ],
+      "id": "03AF496B-1907-4EF7-9714-99119D497B6E",
+      "yaw": -0.84800786
+    },
+    {
+      "center": [
+        -16.670265,
+        -44.157272
+      ],
+      "kind": "floor",
+      "size": [
+        16.644632,
+        13.771732
+      ],
+      "bottom": -1.8027979,
+      "id": "0D8108B3-C210-4A8F-BFD7-825624E75A64",
+      "polygon": [
+        [
+          -24.98177,
+          -44.125336
+        ],
+        [
+          -23.276693,
+          -39.433033
+        ],
+        [
+          -19.145555,
+          -37.428986
+        ],
+        [
+          -18.977478,
+          -37.363792
+        ],
+        [
+          -18.809402,
+          -37.298595
+        ],
+        [
+          -18.700956,
+          -37.271404
+        ],
+        [
+          -18.65214,
+          -37.28222
+        ],
+        [
+          -18.50569,
+          -37.314655
+        ],
+        [
+          -18.456873,
+          -37.32547
+        ],
+        [
+          -17.268888,
+          -37.742237
+        ],
+        [
+          -10.389681,
+          -41.36563
+        ],
+        [
+          -10.0804,
+          -41.58777
+        ],
+        [
+          -10.042396,
+          -41.6474
+        ],
+        [
+          -8.407897,
+          -44.672447
+        ],
+        [
+          -8.347948,
+          -45.09542
+        ],
+        [
+          -8.439057,
+          -46.662804
+        ],
+        [
+          -8.493121,
+          -46.90689
+        ],
+        [
+          -9.97209,
+          -49.19111
+        ],
+        [
+          -10.497942,
+          -49.48433
+        ],
+        [
+          -13.756261,
+          -51.015945
+        ],
+        [
+          -13.864708,
+          -51.043137
+        ],
+        [
+          -14.119604,
+          -51.03789
+        ],
+        [
+          -14.705407,
+          -50.90814
+        ],
+        [
+          -23.56845,
+          -48.842594
+        ],
+        [
+          -23.839727,
+          -48.680084
+        ],
+        [
+          -24.10019,
+          -48.468758
+        ],
+        [
+          -24.83833,
+          -47.63951
+        ],
+        [
+          -24.99258,
+          -44.174152
+        ]
+      ],
+      "height": 0,
+      "yaw": 0
+    },
+    {
+      "center": [
+        -23.355637,
+        -42.782776
+      ],
+      "kind": "wall",
+      "size": [
+        0.5997391,
+        0.15
+      ],
+      "bottom": -1.8027976,
+      "id": "1C85836B-0E90-4B21-A659-D5BD7A0A47DE",
+      "height": 2.4231193,
+      "yaw": -1.6948135
+    },
+    {
+      "center": [
+        -0.23785904,
+        2.8437283
+      ],
+      "kind": "wall",
+      "height": 2.7501066,
+      "id": "2F9F215C-ADF6-4BAA-AE63-668243CC77B6",
+      "yaw": -3.091542,
+      "size": [
+        1.099899,
+        0.15
+      ],
+      "bottom": -1.5119461
+    },
+    {
+      "center": [
+        -15.335589,
+        -47.420914
+      ],
+      "kind": "wall",
+      "height": 2.3499718,
+      "id": "4274C660-5234-4007-957F-3BCDEABEF0E5",
+      "yaw": 1.2692014,
+      "size": [
+        0.35087967,
+        0.15
+      ],
+      "bottom": -1.7583362
+    },
+    {
+      "center": [
+        -20.19733,
+        -24.49841
+      ],
+      "polygon": [
+        [
+          -21.849072,
+          -24.257109
+        ],
+        [
+          -21.746191,
+          -24.023838
+        ],
+        [
+          -21.686562,
+          -23.985834
+        ],
+        [
+          -21.236397,
+          -24.03433
+        ],
+        [
+          -19.457367,
+          -24.325953
+        ],
+        [
+          -18.432215,
+          -24.55302
+        ],
+        [
+          -18.453838,
+          -24.650654
+        ],
+        [
+          -18.535093,
+          -24.786291
+        ],
+        [
+          -18.605536,
+          -24.873112
+        ],
+        [
+          -21.913628,
+          -25.010986
+        ],
+        [
+          -21.962444,
+          -25.000175
+        ],
+        [
+          -21.957197,
+          -24.745277
+        ]
+      ],
+      "kind": "floor",
+      "height": 0,
+      "id": "55360FA5-C195-4818-9C4B-90F624F7FB8C",
+      "yaw": 0,
+      "size": [
+        3.5302296,
+        1.0251522
+      ],
+      "bottom": -1.691432
+    },
+    {
+      "center": [
+        -13.837509,
+        -1.6759412
+      ],
+      "kind": "wall",
+      "yaw": -1.6960337,
+      "height": 3.3002136,
+      "bottom": -1.4957654,
+      "id": "67ABEF2F-30BF-4151-89E7-98C71AF5DBDA",
+      "size": [
+        2.0331917,
+        0.15
+      ]
+    },
+    {
+      "center": [
+        -11.083661,
+        -0.44066912
+      ],
+      "kind": "wall",
+      "yaw": -3.0524724,
+      "height": 3.399899,
+      "bottom": -1.5456591,
+      "id": "67DD73EB-0F97-42AD-AAC8-9B1A1CDD3B23",
+      "size": [
+        5.3997793,
+        0.15
+      ]
+    },
+    {
+      "id": "7CD17781-E76F-47F8-8C89-74980336E3E2",
+      "kind": "wall",
+      "size": [
+        1.3000987,
+        0.15
+      ],
+      "bottom": -1.4659266,
+      "center": [
+        -8.610912,
+        -1.2705954
+      ],
+      "height": 0.7001562,
+      "yaw": -1.6990124
+    },
+    {
+      "id": "84EA4E19-B644-4C6E-80DD-1FF999236002",
+      "kind": "wall",
+      "size": [
+        2.2498684,
+        0.15
+      ],
+      "bottom": -1.7146782,
+      "center": [
+        -24.74189,
+        -49.845665
+      ],
+      "height": 4.3997107,
+      "yaw": -0.14573056
+    },
+    {
+      "id": "96430105-3750-4FED-8D46-78F10EFB2E1C",
+      "kind": "wall",
+      "size": [
+        4.2868423,
+        0.15
+      ],
+      "bottom": -1.516188,
+      "center": [
+        -8.185016,
+        1.9206312
+      ],
+      "height": 3.4433603,
+      "yaw": -1.6853042
+    },
+    {
+      "kind": "wall",
+      "size": [
+        3.1497612,
+        0.15
+      ],
+      "yaw": -1.7058674,
+      "id": "99397329-D87E-4E07-B9F0-77EA290B3F2C",
+      "center": [
+        -17.35146,
+        -20.120779
+      ],
+      "height": 1.2007532,
+      "bottom": -1.5445116
+    },
+    {
+      "kind": "wall",
+      "size": [
+        0.3505969,
+        0.15
+      ],
+      "yaw": 2.4558153,
+      "id": "A2CFC6A7-1560-4F1D-BAA4-439F6484C162",
+      "center": [
+        -9.216381,
+        -2.4431026
+      ],
+      "height": 2.2000852,
+      "bottom": -1.4980751
+    },
+    {
+      "kind": "wall",
+      "size": [
+        0.40350807,
+        0.15
+      ],
+      "yaw": -1.2864318,
+      "id": "A44121A2-13A1-4E9D-8318-057D778565BD",
+      "center": [
+        -8.892432,
+        -2.2387388
+      ],
+      "height": 3.0999975,
+      "bottom": -1.4064139
+    },
+    {
+      "kind": "wall",
+      "size": [
+        1.6503868,
+        0.15
+      ],
+      "yaw": -0.6831657,
+      "id": "AE5BFAEE-F65B-48C4-BDEB-2162EE94842C",
+      "center": [
+        -0.11147308,
+        -2.5120623
+      ],
+      "height": 0.7005979,
+      "bottom": -1.4567966
+    },
+    {
+      "kind": "wall",
+      "size": [
+        0.39641953,
+        0.15
+      ],
+      "yaw": 1.5049212,
+      "id": "B4430D3B-37B2-4B79-938F-EC829CEF33E6",
+      "center": [
+        -18.976198,
+        -35.595882
+      ],
+      "height": 1.0477203,
+      "bottom": -1.5703927
+    },
+    {
+      "kind": "wall",
+      "size": [
+        2.549984,
+        0.15
+      ],
+      "yaw": 1.4590997,
+      "id": "B4636D8B-515C-41D9-8AB2-0CD6D19367A7",
+      "center": [
+        -8.662884,
+        -43.15481
+      ],
+      "height": 3.100039,
+      "bottom": -1.6723086
+    },
+    {
+      "kind": "wall",
+      "size": [
+        0.3506477,
+        0.15
+      ],
+      "yaw": -1.6319429,
+      "id": "C745FCF5-F855-4F75-9946-73F23E51ADF4",
+      "center": [
+        -8.858582,
+        -2.308233
+      ],
+      "height": 2.5000482,
+      "bottom": -1.5043066
+    },
+    {
+      "kind": "wall",
+      "size": [
+        2.4999466,
+        0.15
+      ],
+      "yaw": -1.6962794,
+      "id": "CD6E40AF-6DF7-4C39-A025-361D8017F3DE",
+      "center": [
+        -18.85609,
+        -37.593567
+      ],
+      "height": 1.2997512,
+      "bottom": -1.797143
+    },
+    {
+      "kind": "wall",
+      "size": [
+        5.2007008,
+        0.15
+      ],
+      "yaw": -3.0487082,
+      "id": "D9B917B0-0DF0-4D82-B2E8-F2AD5C2FAA53",
+      "center": [
+        -11.010632,
+        -0.39476162
+      ],
+      "height": 3.3807087,
+      "bottom": -1.5231247
+    },
+    {
+      "kind": "wall",
+      "size": [
+        0.39927673,
+        0.15
+      ],
+      "yaw": -1.2961168,
+      "id": "E35BA93C-A09F-458A-8B29-23D465D13BBF",
+      "center": [
+        -23.337664,
+        -42.65004
+      ],
+      "height": 2.5498965,
+      "bottom": -1.692916
+    },
+    {
+      "kind": "wall",
+      "size": [
+        4.814274,
+        0.15
+      ],
+      "yaw": -1.7027206,
+      "id": "E5B4D32A-067B-4CE9-94DB-49212799D556",
+      "center": [
+        -16.630192,
+        -20.232374
+      ],
+      "height": 1.3396809,
+      "bottom": -1.6524018
+    },
+    {
+      "kind": "wall",
+      "size": [
+        0.4009514,
+        0.15
+      ],
+      "yaw": 1.2998984,
+      "id": "EAFE3F9A-118E-4D10-9158-BAB66DE970A8",
+      "center": [
+        -15.2565975,
+        -47.44101
+      ],
+      "height": 2.832767,
+      "bottom": -1.8027982
+    },
+    {
+      "kind": "wall",
+      "size": [
+        4.8000526,
+        0.15
+      ],
+      "yaw": -1.6749221,
+      "id": "F82CCEFC-018F-4639-863A-3FE8DB7E30A6",
+      "center": [
+        -19.319183,
+        -38.147987
+      ],
+      "height": 1.3493582,
+      "bottom": -1.7814507
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.1436863,
+        0.1
+      ],
+      "yaw": 0,
+      "height": 0.2731228,
+      "bottom": -1.7429311,
+      "center": [
+        -20.771992,
+        -40.07186
+      ]
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.1,
+        0.14240265
+      ],
+      "yaw": 0,
+      "height": 0.2332828,
+      "bottom": -1.2175413,
+      "center": [
+        -19.459,
+        -27.224401
+      ]
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.2994728,
+        0.1
+      ],
+      "yaw": 0,
+      "height": 0.66960573,
+      "bottom": -1.612417,
+      "center": [
+        -18.74988,
+        -35.44451
+      ]
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.1,
+        0.14899063
+      ],
+      "yaw": 0,
+      "height": 0.52863467,
+      "bottom": -1.60426,
+      "center": [
+        -18.536345,
+        -24.97528
+      ]
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.1,
+        0.1489029
+      ],
+      "yaw": 0,
+      "height": 0.65722376,
+      "bottom": -1.4611037,
+      "center": [
+        -16.75473,
+        -21.075325
+      ]
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.1,
+        0.29817772
+      ],
+      "yaw": 0,
+      "height": 0.30570942,
+      "bottom": -1.0721371,
+      "center": [
+        -16.573895,
+        -9.150638
+      ]
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.1,
+        0.14423752
+      ],
+      "yaw": 0,
+      "height": 0.29694247,
+      "bottom": -1.0688682,
+      "center": [
+        -16.450193,
+        -8.774993
+      ]
+    },
+    {
+      "kind": "obstacle",
+      "size": [
+        0.1,
+        0.14803314
+      ],
+      "yaw": 0,
+      "height": 0.3086052,
+      "bottom": -1.374306,
+      "center": [
+        -16.315626,
+        -8.775695
+      ]
+    }
+  ],
+  "walk_trace": {
+    "samples": [
+      {
+        "startsSegment": true,
+        "cameraPosition": [
+          0.00181758,
+          0.0037937975,
+          -0.0152109405
+        ],
+        "timestampSeconds": 568504.184936958
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -0.047980957,
+          0.03514504,
+          -0.055597033
+        ],
+        "timestampSeconds": 568504.434956041
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -0.39541695,
+          0.039442364,
+          -0.039403174
+        ],
+        "timestampSeconds": 568504.934994541
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -0.6333679,
+          0.04292167,
+          -0.0073432326
+        ],
+        "timestampSeconds": 568505.685051875
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -0.66608644,
+          0.033991452,
+          0.035972938
+        ],
+        "timestampSeconds": 568505.93507075
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -0.5169176,
+          0.04715129,
+          0.30345234
+        ],
+        "timestampSeconds": 568506.935145833
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -0.49655363,
+          0.056395717,
+          0.36751163
+        ],
+        "timestampSeconds": 568507.185164333
+      },
+      {
+        "cameraPosition": [
+          -0.5173322,
+          0.055243805,
+          0.4173354
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568507.435182958
+      },
+      {
+        "cameraPosition": [
+          -0.7744857,
+          0.040642437,
+          0.51026875
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568508.1852385
+      },
+      {
+        "cameraPosition": [
+          -1.076933,
+          0.027124792,
+          0.65323097
+        ],
+        "timestampSeconds": 568509.185312666,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -1.3510956,
+          0.05552546,
+          0.80964935
+        ],
+        "timestampSeconds": 568509.685349541,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -1.79713,
+          0.019655474,
+          0.9000907
+        ],
+        "timestampSeconds": 568510.185386375,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -2.0702894,
+          0.045728207,
+          0.9246615
+        ],
+        "timestampSeconds": 568510.435404833,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -2.344853,
+          0.026429225,
+          0.927729
+        ],
+        "timestampSeconds": 568510.685423083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -2.6325912,
+          0.03231481,
+          0.9200732
+        ],
+        "timestampSeconds": 568510.935441375,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -2.8848784,
+          0.040940464,
+          0.86328787
+        ],
+        "timestampSeconds": 568511.18545975,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -3.1698096,
+          0.018970476,
+          0.7778281
+        ],
+        "timestampSeconds": 568511.43547825,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -3.4680953,
+          0.040903572,
+          0.708732
+        ],
+        "timestampSeconds": 568511.685496416,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -3.726642,
+          0.015524921,
+          0.64902824
+        ],
+        "timestampSeconds": 568511.93551475,
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568512.185533083,
+        "startsSegment": false,
+        "cameraPosition": [
+          -3.9956899,
+          0.0125045115,
+          0.5880399
+        ]
+      },
+      {
+        "timestampSeconds": 568512.435551458,
+        "startsSegment": false,
+        "cameraPosition": [
+          -4.2348046,
+          0.0040456173,
+          0.4981645
+        ]
+      },
+      {
+        "timestampSeconds": 568512.685569791,
+        "startsSegment": false,
+        "cameraPosition": [
+          -4.4931355,
+          -0.017891413,
+          0.3685949
+        ]
+      },
+      {
+        "timestampSeconds": 568512.935588125,
+        "startsSegment": false,
+        "cameraPosition": [
+          -4.752371,
+          0.008847782,
+          0.22309965
+        ]
+      },
+      {
+        "timestampSeconds": 568513.1856065,
+        "startsSegment": false,
+        "cameraPosition": [
+          -5.007052,
+          -0.021732807,
+          0.061414372
+        ]
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -5.2377224,
+          -0.021849357,
+          -0.11444838
+        ],
+        "timestampSeconds": 568513.435624958
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -5.419023,
+          -0.042667832,
+          -0.3466205
+        ],
+        "timestampSeconds": 568513.685643125
+      },
+      {
+        "cameraPosition": [
+          -5.59858,
+          -0.016317971,
+          -0.6093216
+        ],
+        "timestampSeconds": 568513.9356615,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -5.7976437,
+          -0.0054291557,
+          -0.8535908
+        ],
+        "timestampSeconds": 568514.185679833,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -6.0223303,
+          -0.027553402,
+          -1.0903642
+        ],
+        "timestampSeconds": 568514.435698125,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -6.2346163,
+          -0.0002499283,
+          -1.3131704
+        ],
+        "timestampSeconds": 568514.685716291,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -6.43207,
+          -0.018255021,
+          -1.5686208
+        ],
+        "timestampSeconds": 568514.935734625,
+        "startsSegment": false
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -6.6295958,
+          0.011415288,
+          -1.8125345
+        ],
+        "timestampSeconds": 568515.185752958
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -6.824049,
+          -0.0014403025,
+          -2.0234108
+        ],
+        "timestampSeconds": 568515.41910325
+      },
+      {
+        "timestampSeconds": 568515.685789375,
+        "cameraPosition": [
+          -7.076518,
+          0.018467737,
+          -2.2636707
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568515.935807541,
+        "cameraPosition": [
+          -7.305714,
+          0.008648905,
+          -2.4999013
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568516.18582575,
+        "cameraPosition": [
+          -7.5155096,
+          0.001365677,
+          -2.7345984
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568516.435844041,
+        "cameraPosition": [
+          -7.7257686,
+          0.02512182,
+          -2.922855
+        ],
+        "startsSegment": false
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -7.9500227,
+          0.0033701821,
+          -3.0849063
+        ],
+        "timestampSeconds": 568516.685862166
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -8.184417,
+          0.032266345,
+          -3.2565873
+        ],
+        "timestampSeconds": 568516.935880375
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -8.417456,
+          0.005875411,
+          -3.4388914
+        ],
+        "timestampSeconds": 568517.185898708
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -8.641387,
+          0.016886596,
+          -3.6123881
+        ],
+        "timestampSeconds": 568517.435916875
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -9.1048355,
+          0.012764149,
+          -3.819729
+        ],
+        "timestampSeconds": 568517.93595325
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -9.502182,
+          0.037470073,
+          -3.9086199
+        ],
+        "timestampSeconds": 568518.435989708
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -9.830646,
+          0.044065326,
+          -3.9025161
+        ],
+        "timestampSeconds": 568518.919357833
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568519.436062041,
+        "cameraPosition": [
+          -10.102388,
+          0.06465538,
+          -3.7880583
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568519.686080125,
+        "cameraPosition": [
+          -10.121723,
+          0.06819261,
+          -3.7228582
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568520.436134208,
+        "cameraPosition": [
+          -10.319138,
+          0.06833243,
+          -3.683846
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568520.936170291,
+        "cameraPosition": [
+          -10.326163,
+          0.02401709,
+          -3.581917
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568521.43620625,
+        "cameraPosition": [
+          -10.64739,
+          0.047178548,
+          -3.4035044
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568521.936242,
+        "cameraPosition": [
+          -11.126619,
+          0.0111913495,
+          -3.4811304
+        ]
+      },
+      {
+        "timestampSeconds": 568522.436277708,
+        "startsSegment": false,
+        "cameraPosition": [
+          -11.513913,
+          0.006349989,
+          -3.6569493
+        ]
+      },
+      {
+        "timestampSeconds": 568522.936313625,
+        "startsSegment": false,
+        "cameraPosition": [
+          -11.886638,
+          0.012306948,
+          -3.8914099
+        ]
+      },
+      {
+        "timestampSeconds": 568523.186331458,
+        "startsSegment": false,
+        "cameraPosition": [
+          -12.055805,
+          -0.008848372,
+          -4.075571
+        ]
+      },
+      {
+        "timestampSeconds": 568523.436349458,
+        "startsSegment": false,
+        "cameraPosition": [
+          -12.216146,
+          0.025362361,
+          -4.2972713
+        ]
+      },
+      {
+        "timestampSeconds": 568523.686367166,
+        "startsSegment": false,
+        "cameraPosition": [
+          -12.373373,
+          0.00201476,
+          -4.5068398
+        ]
+      },
+      {
+        "timestampSeconds": 568523.93638525,
+        "startsSegment": false,
+        "cameraPosition": [
+          -12.526598,
+          -0.0022217305,
+          -4.726311
+        ]
+      },
+      {
+        "timestampSeconds": 568524.18640325,
+        "startsSegment": false,
+        "cameraPosition": [
+          -12.631074,
+          -0.010927677,
+          -4.99961
+        ]
+      },
+      {
+        "timestampSeconds": 568524.436421291,
+        "startsSegment": false,
+        "cameraPosition": [
+          -12.736272,
+          -0.036014453,
+          -5.2996616
+        ]
+      },
+      {
+        "timestampSeconds": 568524.686439208,
+        "startsSegment": false,
+        "cameraPosition": [
+          -12.856719,
+          0.0024609976,
+          -5.590889
+        ]
+      },
+      {
+        "timestampSeconds": 568524.936457291,
+        "startsSegment": false,
+        "cameraPosition": [
+          -13.007803,
+          -0.0249383,
+          -5.880641
+        ]
+      },
+      {
+        "timestampSeconds": 568525.18647525,
+        "startsSegment": false,
+        "cameraPosition": [
+          -13.16125,
+          -0.005238717,
+          -6.174125
+        ]
+      },
+      {
+        "timestampSeconds": 568525.419825333,
+        "startsSegment": false,
+        "cameraPosition": [
+          -13.250777,
+          -0.014316453,
+          -6.481029
+        ]
+      },
+      {
+        "timestampSeconds": 568525.686511125,
+        "cameraPosition": [
+          -13.360777,
+          -0.0032539428,
+          -6.829934
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568525.936529125,
+        "cameraPosition": [
+          -13.473466,
+          -0.021246087,
+          -7.127116
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568526.186547125,
+        "cameraPosition": [
+          -13.611772,
+          -0.07601296,
+          -7.4065485
+        ],
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.742027,
+          -0.04842161,
+          -7.6659594
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568526.436565125
+      },
+      {
+        "cameraPosition": [
+          -13.876405,
+          -0.08190022,
+          -7.969313
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568526.686583083
+      },
+      {
+        "cameraPosition": [
+          -14.038504,
+          -0.033172913,
+          -8.269087
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568526.936601166
+      },
+      {
+        "cameraPosition": [
+          -14.24551,
+          -0.03699643,
+          -8.540201
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568527.18661925
+      },
+      {
+        "cameraPosition": [
+          -14.471558,
+          -0.02214853,
+          -8.801371
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568527.436637333
+      },
+      {
+        "cameraPosition": [
+          -14.6746,
+          -0.0342768,
+          -9.055428
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568527.68665525
+      },
+      {
+        "cameraPosition": [
+          -14.892673,
+          -0.028598532,
+          -9.311906
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568527.936673291
+      },
+      {
+        "cameraPosition": [
+          -15.109607,
+          -0.008298745,
+          -9.537659
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568528.186691333
+      },
+      {
+        "cameraPosition": [
+          -15.343957,
+          -0.03854574,
+          -9.740902
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568528.436709333
+      },
+      {
+        "cameraPosition": [
+          -15.563534,
+          -0.017869918,
+          -9.926386
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568528.686727375
+      },
+      {
+        "cameraPosition": [
+          -15.78052,
+          -0.041223165,
+          -10.090822
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568528.936745416
+      },
+      {
+        "cameraPosition": [
+          -16.00165,
+          -0.009398757,
+          -10.223842
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568529.186763333
+      },
+      {
+        "cameraPosition": [
+          -16.250187,
+          -0.028709004,
+          -10.311841
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568529.436781625
+      },
+      {
+        "cameraPosition": [
+          -16.503164,
+          -0.01359886,
+          -10.320155
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568529.686799625
+      },
+      {
+        "cameraPosition": [
+          -16.97537,
+          -0.016968844,
+          -10.265577
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568530.1868355
+      },
+      {
+        "cameraPosition": [
+          -17.305996,
+          -0.053068336,
+          -10.050944
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568530.686871458
+      },
+      {
+        "cameraPosition": [
+          -17.548983,
+          -0.042113245,
+          -9.756157
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568531.186907375
+      },
+      {
+        "timestampSeconds": 568531.670275541,
+        "cameraPosition": [
+          -17.794498,
+          -0.017700046,
+          -9.537247
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568531.920293416,
+        "cameraPosition": [
+          -17.85913,
+          -0.02981607,
+          -9.503074
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568532.186979291,
+        "cameraPosition": [
+          -17.865944,
+          -0.05523456,
+          -9.54617
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568532.687015333,
+        "cameraPosition": [
+          -17.698605,
+          -0.044582408,
+          -9.819806
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568532.937033375,
+        "cameraPosition": [
+          -17.523706,
+          -0.04032027,
+          -10.02273
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568533.420401666,
+        "cameraPosition": [
+          -17.283335,
+          -0.078082666,
+          -10.367018
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568533.920437916,
+        "cameraPosition": [
+          -17.152365,
+          -0.061634738,
+          -10.849812
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568534.187123666,
+        "cameraPosition": [
+          -17.028585,
+          -0.091882676,
+          -11.13693
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568534.437141916,
+        "cameraPosition": [
+          -16.933212,
+          -0.054718684,
+          -11.434361
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568534.670492083,
+        "cameraPosition": [
+          -16.872238,
+          -0.057680286,
+          -11.701137
+        ],
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.821445,
+          -0.068116,
+          -11.999284
+        ],
+        "timestampSeconds": 568534.920510208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.745628,
+          -0.05031428,
+          -12.315026
+        ],
+        "timestampSeconds": 568535.170528416,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.65488,
+          -0.08190743,
+          -12.635977
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568535.420546375
+      },
+      {
+        "cameraPosition": [
+          -16.565918,
+          -0.07086173,
+          -12.9739685
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568535.687232333
+      },
+      {
+        "cameraPosition": [
+          -16.49599,
+          -0.122787796,
+          -13.281664
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568535.920582583
+      },
+      {
+        "cameraPosition": [
+          -16.432898,
+          -0.13942993,
+          -13.609754
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568536.170600666
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568536.420618791,
+        "cameraPosition": [
+          -16.34467,
+          -0.15356003,
+          -13.913244
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568536.68730475,
+        "cameraPosition": [
+          -16.241007,
+          -0.14715846,
+          -14.266944
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568536.920654875,
+        "cameraPosition": [
+          -16.167006,
+          -0.12508728,
+          -14.554756
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568537.170673125,
+        "cameraPosition": [
+          -16.098745,
+          -0.15181185,
+          -14.886446
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568537.420691291,
+        "cameraPosition": [
+          -16.019821,
+          -0.14169773,
+          -15.196598
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568537.670709208,
+        "cameraPosition": [
+          -15.914658,
+          -0.1673752,
+          -15.479805
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568537.920727333,
+        "cameraPosition": [
+          -15.834018,
+          -0.122881964,
+          -15.759465
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568538.1874135,
+        "cameraPosition": [
+          -15.779947,
+          -0.11511752,
+          -16.007679
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568538.420763791,
+        "cameraPosition": [
+          -15.739671,
+          -0.1279789,
+          -16.255692
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568538.68744975,
+        "cameraPosition": [
+          -15.690266,
+          -0.11316006,
+          -16.521164
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568538.920799875,
+        "cameraPosition": [
+          -15.621389,
+          -0.14024405,
+          -16.765722
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568539.170818166,
+        "cameraPosition": [
+          -15.53713,
+          -0.11234155,
+          -17.02598
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568539.420836333,
+        "cameraPosition": [
+          -15.459451,
+          -0.11909536,
+          -17.293303
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568539.670854541,
+        "cameraPosition": [
+          -15.400323,
+          -0.13036932,
+          -17.59522
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568539.920872625,
+        "cameraPosition": [
+          -15.341262,
+          -0.102456935,
+          -17.890123
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568540.170890791,
+        "cameraPosition": [
+          -15.263669,
+          -0.11795642,
+          -18.193033
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568540.420908916,
+        "cameraPosition": [
+          -15.22154,
+          -0.08212227,
+          -18.503508
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568540.687595041,
+        "cameraPosition": [
+          -15.209332,
+          -0.11783739,
+          -18.8258
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568540.937613208,
+        "cameraPosition": [
+          -15.215003,
+          -0.117977984,
+          -19.137846
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568541.170963541,
+        "cameraPosition": [
+          -15.2078705,
+          -0.12784256,
+          -19.399939
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568541.420981708,
+        "cameraPosition": [
+          -15.198958,
+          -0.124747425,
+          -19.69388
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568541.670999916,
+        "cameraPosition": [
+          -15.218556,
+          -0.12307996,
+          -19.991581
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568541.921018083,
+        "cameraPosition": [
+          -15.264098,
+          -0.17298889,
+          -20.282063
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568542.187704,
+        "cameraPosition": [
+          -15.32087,
+          -0.15944883,
+          -20.599276
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568542.421054625,
+        "cameraPosition": [
+          -15.35407,
+          -0.18966605,
+          -20.889017
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568542.687740625,
+        "cameraPosition": [
+          -15.401146,
+          -0.1795825,
+          -21.217876
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568542.921090958,
+        "cameraPosition": [
+          -15.455101,
+          -0.20471676,
+          -21.473757
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568543.171109166,
+        "cameraPosition": [
+          -15.537545,
+          -0.23395804,
+          -21.761425
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568543.421127541,
+        "cameraPosition": [
+          -15.602279,
+          -0.22826861,
+          -22.02383
+        ]
+      },
+      {
+        "timestampSeconds": 568543.671145708,
+        "startsSegment": false,
+        "cameraPosition": [
+          -15.652974,
+          -0.22890368,
+          -22.29092
+        ]
+      },
+      {
+        "timestampSeconds": 568543.921163916,
+        "startsSegment": false,
+        "cameraPosition": [
+          -15.701315,
+          -0.21032055,
+          -22.550842
+        ]
+      },
+      {
+        "timestampSeconds": 568544.187850083,
+        "startsSegment": false,
+        "cameraPosition": [
+          -15.782697,
+          -0.24766228,
+          -22.840889
+        ]
+      },
+      {
+        "timestampSeconds": 568544.421200416,
+        "startsSegment": false,
+        "cameraPosition": [
+          -15.862899,
+          -0.23861593,
+          -23.10274
+        ]
+      },
+      {
+        "timestampSeconds": 568544.687886541,
+        "startsSegment": false,
+        "cameraPosition": [
+          -15.945595,
+          -0.26233432,
+          -23.405685
+        ]
+      },
+      {
+        "cameraPosition": [
+          -16.047815,
+          -0.25078893,
+          -23.684381
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568544.921236875
+      },
+      {
+        "cameraPosition": [
+          -16.180481,
+          -0.24311493,
+          -23.95021
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568545.171255083
+      },
+      {
+        "cameraPosition": [
+          -16.357334,
+          -0.27009982,
+          -24.205833
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568545.421273458
+      },
+      {
+        "cameraPosition": [
+          -16.528559,
+          -0.26848304,
+          -24.437132
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568545.671291666
+      },
+      {
+        "cameraPosition": [
+          -16.680271,
+          -0.2981384,
+          -24.693449
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568545.921309916
+      },
+      {
+        "cameraPosition": [
+          -16.850971,
+          -0.27273673,
+          -24.942518
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568546.171328083
+      },
+      {
+        "cameraPosition": [
+          -17.03774,
+          -0.30619222,
+          -25.15897
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568546.421346458
+      },
+      {
+        "cameraPosition": [
+          -17.28171,
+          -0.2966684,
+          -25.373657
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568546.688032583
+      },
+      {
+        "cameraPosition": [
+          -17.48651,
+          -0.28058732,
+          -25.54148
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568546.921382916
+      },
+      {
+        "cameraPosition": [
+          -17.728249,
+          -0.28052703,
+          -25.701757
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568547.17140125
+      },
+      {
+        "cameraPosition": [
+          -18.21291,
+          -0.29270622,
+          -25.871143
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568547.671437916
+      },
+      {
+        "cameraPosition": [
+          -18.506674,
+          -0.30172524,
+          -25.925539
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568547.921456208
+      },
+      {
+        "cameraPosition": [
+          -18.791918,
+          -0.3277768,
+          -25.946188
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568548.188142458
+      },
+      {
+        "cameraPosition": [
+          -19.046064,
+          -0.3312065,
+          -25.906927
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568548.421492916
+      },
+      {
+        "cameraPosition": [
+          -19.287315,
+          -0.32333747,
+          -25.784567
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568548.688179166
+      },
+      {
+        "cameraPosition": [
+          -19.514048,
+          -0.35435164,
+          -25.611746
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568548.921529791
+      },
+      {
+        "cameraPosition": [
+          -19.709028,
+          -0.30351654,
+          -25.426447
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568549.171548166
+      },
+      {
+        "cameraPosition": [
+          -19.932644,
+          -0.33813277,
+          -25.271635
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568549.421566541
+      },
+      {
+        "cameraPosition": [
+          -20.166925,
+          -0.30085817,
+          -25.127993
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568549.671585041
+      },
+      {
+        "cameraPosition": [
+          -20.519228,
+          -0.32978898,
+          -24.846508
+        ],
+        "startsSegment": false,
+        "timestampSeconds": 568550.17162175
+      },
+      {
+        "timestampSeconds": 568550.688326583,
+        "cameraPosition": [
+          -20.830128,
+          -0.34548604,
+          -24.617262
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568550.921677166,
+        "cameraPosition": [
+          -20.934536,
+          -0.30592194,
+          -24.481968
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568551.171695541,
+        "cameraPosition": [
+          -20.9036,
+          -0.27430826,
+          -24.3627
+        ],
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568551.421714166,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.820396,
+          -0.26914814,
+          -24.335335
+        ]
+      },
+      {
+        "timestampSeconds": 568552.171769625,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.616844,
+          -0.3020454,
+          -24.55417
+        ]
+      },
+      {
+        "timestampSeconds": 568552.421788083,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.560398,
+          -0.3105199,
+          -24.64744
+        ]
+      },
+      {
+        "timestampSeconds": 568552.921824916,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.639051,
+          -0.3235933,
+          -24.952095
+        ]
+      },
+      {
+        "timestampSeconds": 568553.421862,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.841307,
+          -0.28097796,
+          -25.33822
+        ]
+      },
+      {
+        "timestampSeconds": 568553.921898833,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.912962,
+          -0.2636204,
+          -25.591702
+        ]
+      },
+      {
+        "timestampSeconds": 568554.42193575,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.829643,
+          -0.23585626,
+          -25.964743
+        ]
+      },
+      {
+        "timestampSeconds": 568554.921972708,
+        "startsSegment": false,
+        "cameraPosition": [
+          -20.868965,
+          -0.24894057,
+          -26.382414
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568555.422009541,
+        "cameraPosition": [
+          -21.000652,
+          -0.23065701,
+          -26.843233
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568555.672027916,
+        "cameraPosition": [
+          -21.078438,
+          -0.22917835,
+          -27.114952
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568555.922046333,
+        "cameraPosition": [
+          -21.18188,
+          -0.20858218,
+          -27.364935
+        ]
+      },
+      {
+        "cameraPosition": [
+          -21.294855,
+          -0.23177543,
+          -27.626274
+        ],
+        "timestampSeconds": 568556.172064666,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.363697,
+          -0.20788266,
+          -27.886036
+        ],
+        "timestampSeconds": 568556.422083083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.361229,
+          -0.21721636,
+          -28.156893
+        ],
+        "timestampSeconds": 568556.688769458,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.330225,
+          -0.19229034,
+          -28.42557
+        ],
+        "timestampSeconds": 568556.922119916,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.29593,
+          -0.17623235,
+          -28.688978
+        ],
+        "timestampSeconds": 568557.172138333,
+        "startsSegment": false
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568557.422156875,
+        "cameraPosition": [
+          -21.262133,
+          -0.19235507,
+          -28.955029
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568557.672175208,
+        "cameraPosition": [
+          -21.200619,
+          -0.16889508,
+          -29.215479
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568557.922193541,
+        "cameraPosition": [
+          -21.118792,
+          -0.2009264,
+          -29.461933
+        ]
+      },
+      {
+        "cameraPosition": [
+          -21.0082,
+          -0.19824967,
+          -29.701035
+        ],
+        "timestampSeconds": 568558.172211875,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.90041,
+          -0.21132657,
+          -30.112858
+        ],
+        "timestampSeconds": 568558.688916416,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.945862,
+          -0.21351837,
+          -30.549109
+        ],
+        "timestampSeconds": 568559.172285333,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.95089,
+          -0.20740664,
+          -30.805649
+        ],
+        "timestampSeconds": 568559.42230375,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.036903,
+          -0.23095912,
+          -31.284851
+        ],
+        "timestampSeconds": 568559.922340375,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.12972,
+          -0.2482674,
+          -31.542618
+        ],
+        "timestampSeconds": 568560.172358708,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.183935,
+          -0.25572544,
+          -32.05984
+        ],
+        "timestampSeconds": 568560.689063125,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.168522,
+          -0.24312346,
+          -32.5106
+        ],
+        "timestampSeconds": 568561.172431958,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.99875,
+          -0.2548049,
+          -32.893364
+        ],
+        "timestampSeconds": 568561.672468458,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.813152,
+          -0.26064336,
+          -33.106266
+        ],
+        "timestampSeconds": 568561.922486916,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.623354,
+          -0.23432527,
+          -33.319736
+        ],
+        "timestampSeconds": 568562.172505208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.4277,
+          -0.26073545,
+          -33.516376
+        ],
+        "timestampSeconds": 568562.422523541,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.1983,
+          -0.2512623,
+          -33.68906
+        ],
+        "timestampSeconds": 568562.689209833,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.95043,
+          -0.27523652,
+          -33.802288
+        ],
+        "timestampSeconds": 568562.922560041,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.672224,
+          -0.24033378,
+          -33.90723
+        ],
+        "timestampSeconds": 568563.172578458,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.44117,
+          -0.24195687,
+          -34.01493
+        ],
+        "timestampSeconds": 568563.422596875,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.211533,
+          -0.27165648,
+          -34.171413
+        ],
+        "timestampSeconds": 568563.67261525,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.987688,
+          -0.2749092,
+          -34.33321
+        ],
+        "timestampSeconds": 568563.922633625,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.742659,
+          -0.31119645,
+          -34.504654
+        ],
+        "timestampSeconds": 568564.18931975,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.563494,
+          -0.29705855,
+          -34.68381
+        ],
+        "timestampSeconds": 568564.422670291,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.421335,
+          -0.33165443,
+          -34.934708
+        ],
+        "timestampSeconds": 568564.6893565,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.340693,
+          -0.34273976,
+          -35.20277
+        ],
+        "timestampSeconds": 568564.922707041,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.26807,
+          -0.3426131,
+          -35.47417
+        ],
+        "timestampSeconds": 568565.172725416,
+        "startsSegment": false
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568565.422743875,
+        "cameraPosition": [
+          -18.196089,
+          -0.33773533,
+          -35.8092
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568565.67276225,
+        "cameraPosition": [
+          -18.159073,
+          -0.29422903,
+          -36.122326
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568565.922780625,
+        "cameraPosition": [
+          -18.137487,
+          -0.32783768,
+          -36.46632
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568566.172798875,
+        "cameraPosition": [
+          -18.144295,
+          -0.29909185,
+          -36.77988
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568566.422817458,
+        "cameraPosition": [
+          -18.137108,
+          -0.34500957,
+          -37.071133
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568566.68950375,
+        "cameraPosition": [
+          -18.124842,
+          -0.33028966,
+          -37.40109
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568566.922854083,
+        "cameraPosition": [
+          -18.124128,
+          -0.34332487,
+          -37.693993
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568567.172872583,
+        "cameraPosition": [
+          -18.137205,
+          -0.3880143,
+          -38.03281
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568567.422891,
+        "cameraPosition": [
+          -18.166803,
+          -0.38649315,
+          -38.344067
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568567.6729095,
+        "cameraPosition": [
+          -18.179081,
+          -0.42567748,
+          -38.69184
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568567.922927958,
+        "cameraPosition": [
+          -18.205406,
+          -0.39876723,
+          -39.034073
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568568.172946291,
+        "cameraPosition": [
+          -18.268322,
+          -0.4453843,
+          -39.350964
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568568.42296475,
+        "cameraPosition": [
+          -18.349707,
+          -0.44597712,
+          -39.670673
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568568.689651208,
+        "cameraPosition": [
+          -18.425344,
+          -0.46299025,
+          -40.002605
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568568.92300175,
+        "cameraPosition": [
+          -18.498056,
+          -0.44880018,
+          -40.30495
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568569.173020208,
+        "cameraPosition": [
+          -18.610126,
+          -0.43783158,
+          -40.574112
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568569.423038625,
+        "cameraPosition": [
+          -18.785172,
+          -0.4662392,
+          -40.825848
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568569.673057041,
+        "cameraPosition": [
+          -19.020977,
+          -0.44030142,
+          -41.025658
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568569.923075583,
+        "cameraPosition": [
+          -19.27231,
+          -0.43041408,
+          -41.169292
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568570.423112458,
+        "cameraPosition": [
+          -19.677023,
+          -0.4059656,
+          -41.15188
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568570.92314925,
+        "cameraPosition": [
+          -19.922874,
+          -0.39154142,
+          -41.039097
+        ]
+      },
+      {
+        "startsSegment": false,
+        "timestampSeconds": 568571.423186291,
+        "cameraPosition": [
+          -20.083622,
+          -0.39900967,
+          -41.050842
+        ]
+      },
+      {
+        "cameraPosition": [
+          -20.111626,
+          -0.3975239,
+          -41.09687
+        ],
+        "timestampSeconds": 568571.673204541,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.126928,
+          -0.38116592,
+          -41.383465
+        ],
+        "timestampSeconds": 568572.423260083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.344759,
+          -0.35364026,
+          -41.599724
+        ],
+        "timestampSeconds": 568572.923297,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.60042,
+          -0.35227227,
+          -41.898754
+        ],
+        "timestampSeconds": 568573.423334125,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.838346,
+          -0.37909305,
+          -42.18771
+        ],
+        "timestampSeconds": 568573.923371083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.057673,
+          -0.35658586,
+          -42.544224
+        ],
+        "timestampSeconds": 568574.423408083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.269869,
+          -0.35113648,
+          -43.069305
+        ],
+        "timestampSeconds": 568574.940113083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.353321,
+          -0.3551711,
+          -43.325546
+        ],
+        "timestampSeconds": 568575.190131625,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.424948,
+          -0.36541727,
+          -43.566277
+        ],
+        "timestampSeconds": 568575.423482208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.460077,
+          -0.3372564,
+          -43.82796
+        ],
+        "timestampSeconds": 568575.673500875,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.452637,
+          -0.3666563,
+          -44.09065
+        ],
+        "timestampSeconds": 568575.923519333,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.39796,
+          -0.33878666,
+          -44.364136
+        ],
+        "timestampSeconds": 568576.173537833,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.310202,
+          -0.34886953,
+          -44.60783
+        ],
+        "timestampSeconds": 568576.423556416,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -21.182253,
+          -0.369344,
+          -44.841385
+        ],
+        "timestampSeconds": 568576.673574791,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.997084,
+          -0.35696757,
+          -45.02691
+        ],
+        "timestampSeconds": 568576.9235935,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.767897,
+          -0.39043224,
+          -45.192207
+        ],
+        "timestampSeconds": 568577.173612125,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.537846,
+          -0.359139,
+          -45.37105
+        ],
+        "timestampSeconds": 568577.42363075,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.34332,
+          -0.39751434,
+          -45.564003
+        ],
+        "timestampSeconds": 568577.673649083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -20.127686,
+          -0.39306012,
+          -45.758644
+        ],
+        "timestampSeconds": 568577.923667875,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.90548,
+          -0.3953118,
+          -45.940933
+        ],
+        "timestampSeconds": 568578.173686291,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.628265,
+          -0.41646957,
+          -46.1168
+        ],
+        "timestampSeconds": 568578.423704958,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.34676,
+          -0.37366673,
+          -46.281815
+        ],
+        "timestampSeconds": 568578.6737235,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -19.080988,
+          -0.4212688,
+          -46.460136
+        ],
+        "timestampSeconds": 568578.923742083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.801651,
+          -0.39536962,
+          -46.652115
+        ],
+        "timestampSeconds": 568579.190428416,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.562117,
+          -0.41669583,
+          -46.811527
+        ],
+        "timestampSeconds": 568579.42377925,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.260826,
+          -0.4107846,
+          -46.95841
+        ],
+        "timestampSeconds": 568579.673797833,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.98322,
+          -0.37891674,
+          -47.076035
+        ],
+        "timestampSeconds": 568579.923816666,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.695656,
+          -0.40966535,
+          -47.204693
+        ],
+        "timestampSeconds": 568580.17383525,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.428656,
+          -0.3740121,
+          -47.317738
+        ],
+        "timestampSeconds": 568580.423854083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.15762,
+          -0.39297158,
+          -47.40987
+        ],
+        "timestampSeconds": 568580.673872583,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.849537,
+          -0.36393464,
+          -47.51837
+        ],
+        "timestampSeconds": 568580.923891208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.547665,
+          -0.37498763,
+          -47.635162
+        ],
+        "timestampSeconds": 568581.190577625,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.28424,
+          -0.37361744,
+          -47.752037
+        ],
+        "timestampSeconds": 568581.423928208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.002676,
+          -0.37599912,
+          -47.83454
+        ],
+        "timestampSeconds": 568581.673946625,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -15.681175,
+          -0.38085803,
+          -47.915337
+        ],
+        "timestampSeconds": 568581.923964958,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -15.368214,
+          -0.35539883,
+          -47.973465
+        ],
+        "timestampSeconds": 568582.17398325,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -15.037132,
+          -0.38917923,
+          -48.025154
+        ],
+        "timestampSeconds": 568582.4240015,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -14.75637,
+          -0.3564336,
+          -48.039234
+        ],
+        "timestampSeconds": 568582.674019625,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -14.4809475,
+          -0.36463088,
+          -47.995804
+        ],
+        "timestampSeconds": 568582.924037708,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -14.197003,
+          -0.32885334,
+          -47.91972
+        ],
+        "timestampSeconds": 568583.174055791,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.924799,
+          -0.3366977,
+          -47.831593
+        ],
+        "timestampSeconds": 568583.424074041,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.657255,
+          -0.36078888,
+          -47.741634
+        ],
+        "timestampSeconds": 568583.674092208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.2553215,
+          -0.38748887,
+          -47.430923
+        ],
+        "timestampSeconds": 568584.174128125,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.073112,
+          -0.35401928,
+          -47.2371
+        ],
+        "timestampSeconds": 568584.424146166,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -12.893211,
+          -0.37736064,
+          -47.046547
+        ],
+        "timestampSeconds": 568584.674164166,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -12.753775,
+          -0.3916221,
+          -46.833138
+        ],
+        "timestampSeconds": 568584.924182083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -12.641101,
+          -0.4104719,
+          -46.32207
+        ],
+        "timestampSeconds": 568585.440885833,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -12.631319,
+          -0.37400177,
+          -46.048485
+        ],
+        "timestampSeconds": 568585.690903708,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -12.691276,
+          -0.41181853,
+          -45.550247
+        ],
+        "timestampSeconds": 568586.174271375,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -12.917891,
+          -0.41888714,
+          -45.08124
+        ],
+        "timestampSeconds": 568586.674306666,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.087943,
+          -0.40694922,
+          -44.835632
+        ],
+        "timestampSeconds": 568586.924324291,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.280231,
+          -0.44722307,
+          -44.617443
+        ],
+        "timestampSeconds": 568587.174341833,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.501694,
+          -0.42804232,
+          -44.426758
+        ],
+        "timestampSeconds": 568587.424359583,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -13.746584,
+          -0.47202817,
+          -44.27733
+        ],
+        "timestampSeconds": 568587.674377333,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -14.041942,
+          -0.43583938,
+          -44.105267
+        ],
+        "timestampSeconds": 568587.924395208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -14.324618,
+          -0.43770525,
+          -43.947792
+        ],
+        "timestampSeconds": 568588.174412916,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -14.612291,
+          -0.46873605,
+          -43.80249
+        ],
+        "timestampSeconds": 568588.42443075,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -14.884693,
+          -0.46852,
+          -43.63929
+        ],
+        "timestampSeconds": 568588.674448458,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -15.186195,
+          -0.47179878,
+          -43.466846
+        ],
+        "timestampSeconds": 568588.924466458,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -15.47542,
+          -0.4109119,
+          -43.259254
+        ],
+        "timestampSeconds": 568589.174484375,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -15.746304,
+          -0.44276056,
+          -43.04958
+        ],
+        "timestampSeconds": 568589.42450225,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.044273,
+          -0.41811973,
+          -42.866264
+        ],
+        "timestampSeconds": 568589.674520208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.353716,
+          -0.45850706,
+          -42.741444
+        ],
+        "timestampSeconds": 568589.92453825,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.679613,
+          -0.43132982,
+          -42.59614
+        ],
+        "timestampSeconds": 568590.174556125,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -16.975061,
+          -0.4379321,
+          -42.407852
+        ],
+        "timestampSeconds": 568590.424574083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.259106,
+          -0.46649978,
+          -42.199467
+        ],
+        "timestampSeconds": 568590.674592166,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.500782,
+          -0.43831158,
+          -41.983803
+        ],
+        "timestampSeconds": 568590.924610083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.763905,
+          -0.4399324,
+          -41.732273
+        ],
+        "timestampSeconds": 568591.174628083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -17.96604,
+          -0.38304576,
+          -41.455482
+        ],
+        "timestampSeconds": 568591.424646208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.124054,
+          -0.42315513,
+          -41.15646
+        ],
+        "timestampSeconds": 568591.674664083,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.252243,
+          -0.38877195,
+          -40.840218
+        ],
+        "timestampSeconds": 568591.92468225,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.344767,
+          -0.4050022,
+          -40.524437
+        ],
+        "timestampSeconds": 568592.174700208,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.408077,
+          -0.37476662,
+          -40.19498
+        ],
+        "timestampSeconds": 568592.42471825,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.448551,
+          -0.38210845,
+          -39.874413
+        ],
+        "timestampSeconds": 568592.674736375,
+        "startsSegment": false
+      },
+      {
+        "cameraPosition": [
+          -18.480991,
+          -0.38096583,
+          -39.542156
+        ],
+        "timestampSeconds": 568592.9247545,
+        "startsSegment": false
+      },
+      {
+        "timestampSeconds": 568593.174772458,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.50458,
+          -0.35428885,
+          -39.24788
+        ]
+      },
+      {
+        "timestampSeconds": 568593.424790666,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.528011,
+          -0.35034707,
+          -38.927654
+        ]
+      },
+      {
+        "timestampSeconds": 568593.674808708,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.517159,
+          -0.30042902,
+          -38.617863
+        ]
+      },
+      {
+        "timestampSeconds": 568593.924826708,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.47716,
+          -0.3353797,
+          -38.296
+        ]
+      },
+      {
+        "timestampSeconds": 568594.17484475,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.418673,
+          -0.2965796,
+          -37.969948
+        ]
+      },
+      {
+        "timestampSeconds": 568594.424862916,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.380249,
+          -0.30222413,
+          -37.665604
+        ]
+      },
+      {
+        "timestampSeconds": 568594.674880875,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.343714,
+          -0.279056,
+          -37.345913
+        ]
+      },
+      {
+        "timestampSeconds": 568594.924898958,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.293993,
+          -0.24874462,
+          -37.042603
+        ]
+      },
+      {
+        "timestampSeconds": 568595.174917125,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.2283,
+          -0.2743509,
+          -36.715435
+        ]
+      },
+      {
+        "timestampSeconds": 568595.424935125,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.172102,
+          -0.22497001,
+          -36.422237
+        ]
+      },
+      {
+        "timestampSeconds": 568595.674953291,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.13373,
+          -0.26177695,
+          -36.121017
+        ]
+      },
+      {
+        "timestampSeconds": 568595.924971333,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.098412,
+          -0.19963433,
+          -35.79752
+        ]
+      },
+      {
+        "timestampSeconds": 568596.174989333,
+        "startsSegment": false,
+        "cameraPosition": [
+          -18.044104,
+          -0.20733848,
+          -35.504826
+        ]
+      },
+      {
+        "timestampSeconds": 568596.425007458,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.98491,
+          -0.2227916,
+          -35.2201
+        ]
+      },
+      {
+        "timestampSeconds": 568596.675025458,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.95673,
+          -0.2008537,
+          -34.94763
+        ]
+      },
+      {
+        "timestampSeconds": 568596.925043541,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.907112,
+          -0.22595866,
+          -34.65136
+        ]
+      },
+      {
+        "timestampSeconds": 568597.175061625,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.816011,
+          -0.19852594,
+          -34.342907
+        ]
+      },
+      {
+        "timestampSeconds": 568597.425079833,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.705662,
+          -0.23821071,
+          -34.031815
+        ]
+      },
+      {
+        "timestampSeconds": 568597.675097791,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.618698,
+          -0.21452472,
+          -33.72871
+        ]
+      },
+      {
+        "timestampSeconds": 568597.925115916,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.56804,
+          -0.23361078,
+          -33.43331
+        ]
+      },
+      {
+        "timestampSeconds": 568598.175134041,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.535017,
+          -0.23913845,
+          -33.10867
+        ]
+      },
+      {
+        "timestampSeconds": 568598.425152041,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.498611,
+          -0.22389354,
+          -32.788437
+        ]
+      },
+      {
+        "timestampSeconds": 568598.691838041,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.433687,
+          -0.251423,
+          -32.428123
+        ]
+      },
+      {
+        "timestampSeconds": 568598.941856083,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.393211,
+          -0.22436921,
+          -32.12961
+        ]
+      },
+      {
+        "timestampSeconds": 568599.191874125,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.371479,
+          -0.24798901,
+          -31.821106
+        ]
+      },
+      {
+        "timestampSeconds": 568599.425224416,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.34287,
+          -0.20754686,
+          -31.510456
+        ]
+      },
+      {
+        "timestampSeconds": 568599.675242416,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.291962,
+          -0.23069088,
+          -31.196575
+        ]
+      },
+      {
+        "timestampSeconds": 568599.925260416,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.232483,
+          -0.21353947,
+          -30.88626
+        ]
+      },
+      {
+        "timestampSeconds": 568600.175278291,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.184488,
+          -0.21712217,
+          -30.58645
+        ]
+      },
+      {
+        "timestampSeconds": 568600.4252965,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.155018,
+          -0.2180305,
+          -30.25018
+        ]
+      },
+      {
+        "timestampSeconds": 568600.675314416,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.11515,
+          -0.19264358,
+          -29.941824
+        ]
+      },
+      {
+        "timestampSeconds": 568600.925332416,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.064432,
+          -0.23999614,
+          -29.614424
+        ]
+      },
+      {
+        "timestampSeconds": 568601.175350541,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.035418,
+          -0.19419536,
+          -29.299812
+        ]
+      },
+      {
+        "timestampSeconds": 568601.425368583,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.050688,
+          -0.22514956,
+          -28.980696
+        ]
+      },
+      {
+        "timestampSeconds": 568601.675386708,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.109594,
+          -0.20816262,
+          -28.662554
+        ]
+      },
+      {
+        "timestampSeconds": 568601.925404791,
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.167297,
+          -0.22174245,
+          -28.39254
+        ]
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.231543,
+          -0.2479978,
+          -28.00176
+        ],
+        "timestampSeconds": 568602.42544075
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.348534,
+          -0.23307522,
+          -27.736555
+        ],
+        "timestampSeconds": 568602.92547675
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.325146,
+          -0.22580379,
+          -27.688145
+        ],
+        "timestampSeconds": 568603.175494666
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.115347,
+          -0.21189044,
+          -27.63272
+        ],
+        "timestampSeconds": 568603.92554875
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.246397,
+          -0.22100052,
+          -27.311842
+        ],
+        "timestampSeconds": 568604.675602916
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.21447,
+          -0.23460439,
+          -27.033348
+        ],
+        "timestampSeconds": 568604.925620791
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -17.09299,
+          -0.27300155,
+          -26.718538
+        ],
+        "timestampSeconds": 568605.175638958
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.92098,
+          -0.30398935,
+          -26.395617
+        ],
+        "timestampSeconds": 568605.425657083
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.749825,
+          -0.34487066,
+          -26.093845
+        ],
+        "timestampSeconds": 568605.675675166
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.653223,
+          -0.34346947,
+          -25.745468
+        ],
+        "timestampSeconds": 568605.925693166
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.585312,
+          -0.3116236,
+          -25.393595
+        ],
+        "timestampSeconds": 568606.175711333
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.50865,
+          -0.3141596,
+          -24.989363
+        ],
+        "timestampSeconds": 568606.425729416
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.446348,
+          -0.2743304,
+          -24.603466
+        ],
+        "timestampSeconds": 568606.675747458
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.436974,
+          -0.307855,
+          -24.225925
+        ],
+        "timestampSeconds": 568606.9257655
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.42048,
+          -0.2659349,
+          -23.837534
+        ],
+        "timestampSeconds": 568607.17578375
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.38685,
+          -0.2752819,
+          -23.477146
+        ],
+        "timestampSeconds": 568607.425801916
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.352358,
+          -0.26159176,
+          -23.097132
+        ],
+        "timestampSeconds": 568607.675819958
+      },
+      {
+        "startsSegment": false,
+        "cameraPosition": [
+          -16.32876,
+          -0.2721199,
+          -22.74481
+        ],
+        "timestampSeconds": 568607.925838041
+      }
+    ],
+    "isTruncated": false
+  },
+  "text_observations": [
+    {
+      "bbox_norm": [
+        0.85,
+        0.304687,
+        0.025,
+        0.010937
+      ],
+      "bbox_sensor_norm": [
+        0.304687,
+        0.125,
+        0.010937,
+        0.025
+      ],
+      "confidence": 1,
+      "frame_id": "3528279B-4B35-461D-B047-8375AEC53D25",
+      "image_asset": "3528279B-4B35-461D-B047-8375AEC53D25.color.jpg",
+      "image_orientation": "upright_rotated_right_from_sensor",
+      "image_size_px": [
+        960,
+        1280
+      ],
+      "languages": [],
+      "text": "TO"
+    },
+    {
+      "bbox_norm": [
+        0.849579,
+        0.315729,
+        0.148914,
+        0.016191
+      ],
+      "bbox_sensor_norm": [
+        0.315729,
+        0.001507,
+        0.016191,
+        0.148914
+      ],
+      "confidence": 1,
+      "frame_id": "3528279B-4B35-461D-B047-8375AEC53D25",
+      "image_asset": "3528279B-4B35-461D-B047-8375AEC53D25.color.jpg",
+      "image_orientation": "upright_rotated_right_from_sensor",
+      "image_size_px": [
+        960,
+        1280
+      ],
+      "languages": [
+        "ro",
+        "hr"
+      ],
+      "text": "STUDENT CE"
+    },
+    {
+      "bbox_norm": [
+        0.85,
+        0.332812,
+        0.066667,
+        0.014062
+      ],
+      "bbox_sensor_norm": [
+        0.332812,
+        0.083333,
+        0.014062,
+        0.066667
+      ],
+      "confidence": 1,
+      "frame_id": "3528279B-4B35-461D-B047-8375AEC53D25",
+      "image_asset": "3528279B-4B35-461D-B047-8375AEC53D25.color.jpg",
+      "image_orientation": "upright_rotated_right_from_sensor",
+      "image_size_px": [
+        960,
+        1280
+      ],
+      "languages": [],
+      "text": "WEST"
+    },
+    {
+      "bbox_norm": [
+        0.849372,
+        0.344257,
+        0.149056,
+        0.018535
+      ],
+      "bbox_sensor_norm": [
+        0.344257,
+        0.001572,
+        0.018535,
+        0.149056
+      ],
+      "confidence": 1,
+      "frame_id": "3528279B-4B35-461D-B047-8375AEC53D25",
+      "image_asset": "3528279B-4B35-461D-B047-8375AEC53D25.color.jpg",
+      "image_orientation": "upright_rotated_right_from_sensor",
+      "image_size_px": [
+        960,
+        1280
+      ],
+      "languages": [
+        "en"
+      ],
+      "text": "PROCEED TO LEVEL"
+    },
+    {
+      "bbox_norm": [
+        0.491227,
+        0.206561,
+        0.234473,
+        0.046528
+      ],
+      "bbox_sensor_norm": [
+        0.206561,
+        0.2743,
+        0.046528,
+        0.234473
+      ],
+      "confidence": 1,
+      "frame_id": "6AA38A63-A369-4178-8D09-48E5695CA376",
+      "image_asset": "6AA38A63-A369-4178-8D09-48E5695CA376.color.jpg",
+      "image_orientation": "upright_rotated_right_from_sensor",
+      "image_size_px": [
+        960,
+        1280
+      ],
+      "languages": [
+        "en"
+      ],
+      "text": "THESTATEW"
+    },
+    {
+      "bbox_norm": [
+        0.229167,
+        0.284375,
+        0.014583,
+        0.042187
+      ],
+      "bbox_sensor_norm": [
+        0.284375,
+        0.75625,
+        0.042187,
+        0.014583
+      ],
+      "confidence": 0.30000001192092896,
+      "frame_id": "A5D876B4-D5CB-4813-AF54-0DDE57434DC8",
+      "image_asset": "A5D876B4-D5CB-4813-AF54-0DDE57434DC8.color.jpg",
+      "image_orientation": "upright_rotated_right_from_sensor",
+      "image_size_px": [
+        960,
+        1280
+      ],
+      "languages": [
+        "th"
+      ],
+      "text": "\u0e22\u0e07\u0e1a\u0e21"
+    }
+  ],
+  "native_roomplan_only": false
+}

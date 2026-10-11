@@ -1,0 +1,549 @@
+{
+  "schema_version": 1,
+  "navigation_map_sha256": "66b49e9a5e4d98b105f48cd2bf48d3717349bb173686f1b52637db3b3e57624c",
+  "all_named_destinations_connected_both_profiles": true,
+  "all_points_universally_reachable": false,
+  "coverage": [
+    {
+      "zone_id": "main",
+      "clearance_m": 0.45,
+      "clear_cells": 125000,
+      "largest_network_clear_cells": 111611,
+      "largest_network_fraction": 0.892888,
+      "component_count": 114,
+      "components_at_least_1m2": [
+        {
+          "area_m2": 1116.1100000000001,
+          "id": 1,
+          "sample_xz": [
+            -16.42796516418457,
+            36.459007263183594
+          ]
+        },
+        {
+          "area_m2": 96.89,
+          "id": 0,
+          "sample_xz": [
+            -30.727964401245117,
+            -0.24099349975585938
+          ]
+        },
+        {
+          "area_m2": 10.040000000000001,
+          "id": 57,
+          "sample_xz": [
+            9.472034454345703,
+            28.759008407592773
+          ]
+        },
+        {
+          "area_m2": 6.3500000000000005,
+          "id": 34,
+          "sample_xz": [
+            -5.4279632568359375,
+            16.259008407592773
+          ]
+        },
+        {
+          "area_m2": 3.67,
+          "id": 31,
+          "sample_xz": [
+            -29.327964782714844,
+            12.659006118774414
+          ]
+        },
+        {
+          "area_m2": 3.25,
+          "id": 36,
+          "sample_xz": [
+            -33.22796630859375,
+            15.859006881713867
+          ]
+        },
+        {
+          "area_m2": 2.24,
+          "id": 25,
+          "sample_xz": [
+            -3.7279624938964844,
+            6.259006500244141
+          ]
+        },
+        {
+          "area_m2": 2.1,
+          "id": 69,
+          "sample_xz": [
+            7.0720367431640625,
+            37.759010314941406
+          ]
+        },
+        {
+          "area_m2": 1.41,
+          "id": 11,
+          "sample_xz": [
+            -27.027963638305664,
+            0.15900611877441406
+          ]
+        }
+      ]
+    },
+    {
+      "zone_id": "main",
+      "clearance_m": 0.3,
+      "clear_cells": 131823,
+      "largest_network_clear_cells": 129241,
+      "largest_network_fraction": 0.9804131297269824,
+      "component_count": 134,
+      "components_at_least_1m2": [
+        {
+          "area_m2": 1292.41,
+          "id": 0,
+          "sample_xz": [
+            -1.4279632568359375,
+            50.459007263183594
+          ]
+        },
+        {
+          "area_m2": 12.08,
+          "id": 60,
+          "sample_xz": [
+            9.772037506103516,
+            28.659006118774414
+          ]
+        },
+        {
+          "area_m2": 3.64,
+          "id": 41,
+          "sample_xz": [
+            -33.12796401977539,
+            15.859006881713867
+          ]
+        },
+        {
+          "area_m2": 2.52,
+          "id": 28,
+          "sample_xz": [
+            -2.8279647827148438,
+            6.359006881713867
+          ]
+        }
+      ]
+    },
+    {
+      "zone_id": "raised-l",
+      "clearance_m": 0.45,
+      "clear_cells": 16676,
+      "largest_network_clear_cells": 16584,
+      "largest_network_fraction": 0.9944830894698968,
+      "component_count": 15,
+      "components_at_least_1m2": [
+        {
+          "area_m2": 165.84,
+          "id": 0,
+          "sample_xz": [
+            6.795875549316406,
+            -9.755608558654785
+          ]
+        }
+      ]
+    },
+    {
+      "zone_id": "raised-l",
+      "clearance_m": 0.3,
+      "clear_cells": 18111,
+      "largest_network_clear_cells": 17940,
+      "largest_network_fraction": 0.9905582242835845,
+      "component_count": 12,
+      "components_at_least_1m2": [
+        {
+          "area_m2": 179.4,
+          "id": 0,
+          "sample_xz": [
+            4.495876312255859,
+            -7.955608367919922
+          ]
+        },
+        {
+          "area_m2": 1.21,
+          "id": 5,
+          "sample_xz": [
+            -6.30412483215332,
+            -7.255608558654785
+          ]
+        }
+      ]
+    },
+    {
+      "zone_id": "dining-terrace",
+      "clearance_m": 0.45,
+      "clear_cells": 4125,
+      "largest_network_clear_cells": 4076,
+      "largest_network_fraction": 0.9881212121212121,
+      "component_count": 7,
+      "components_at_least_1m2": [
+        {
+          "area_m2": 40.76,
+          "id": 1,
+          "sample_xz": [
+            -33.5910758972168,
+            -10.007851600646973
+          ]
+        }
+      ]
+    },
+    {
+      "zone_id": "dining-terrace",
+      "clearance_m": 0.3,
+      "clear_cells": 4550,
+      "largest_network_clear_cells": 4482,
+      "largest_network_fraction": 0.9850549450549451,
+      "component_count": 6,
+      "components_at_least_1m2": [
+        {
+          "area_m2": 44.82,
+          "id": 1,
+          "sample_xz": [
+            -33.4910774230957,
+            -9.907852172851562
+          ]
+        }
+      ]
+    }
+  ],
+  "sampling": "Every component of at least 1 m\u00b2 was sampled in both directions to/from Information. Smaller raster fragments are included in the complete cell counts. The largest network was sampled once per 8 m plan tile.",
+  "food_court_wider_clearance": {
+    "affected_component_area_m2": 96.89,
+    "established_route_clearance_m": 0.3,
+    "unestablished_route_clearance_m": 0.45,
+    "physical_aisle_width_m": null,
+    "representative_bottleneck_xz": [
+      -26.03973,
+      0.17665
+    ],
+    "route_clearance_to_native_chair_at_representative_m": 0.37939,
+    "distance_to_measured_floor_boundary_at_representative_m": 0.09478,
+    "interpretation": "The 0.45m obstacle margin meets the boundary of measured floor. A 0.30m route exists, but this does not measure physical aisle width or prove physical inaccessibility; extra unmeasured floor may permit a wider route.",
+    "obstacle_source": "Native 7714 RoomPlan detected chair bounding boxes, separate from the visual model furnishing layout. Retain detection uncertainty; this check does not establish physical inaccessibility.",
+    "representative_samples": [
+      {
+        "position_xz": [
+          -24.681809792151817,
+          0.7359300760122446
+        ],
+        "measured_floor_edge_distance_m": 0.48435796473483894,
+        "nearest_obstacles": [
+          {
+            "distance_m": 0.453328120560831,
+            "footprint": {
+              "id": "732215CF-6384-519A-8749-F14DC96D12EF",
+              "kind": "obstacle",
+              "center": [
+                -25.4372536190806,
+                1.1148813676550882
+              ],
+              "size": [
+                0.5378422,
+                0.5751956
+              ],
+              "yaw": 0.28200296083646154,
+              "bottom": 0.0,
+              "height": 0.97375464,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "732215CF-6384-519A-8749-F14DC96D12EF",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "5009F212-BEFF-4AFE-903F-71AE4D5D2CE0",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          },
+          {
+            "distance_m": 0.8914659613596612,
+            "footprint": {
+              "id": "01A1CD26-6CED-5CF4-8BE7-1B43B23F505A",
+              "kind": "obstacle",
+              "center": [
+                -25.917613306327393,
+                0.9095777275867167
+              ],
+              "size": [
+                0.49645972,
+                0.5393064
+              ],
+              "yaw": 0.4896075189215138,
+              "bottom": 0.0,
+              "height": 0.948074,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "01A1CD26-6CED-5CF4-8BE7-1B43B23F505A",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "83444A85-A17E-4F04-A085-C728667B37F7",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          }
+        ]
+      },
+      {
+        "position_xz": [
+          -25.372226152263703,
+          0.4016299951271933
+        ],
+        "measured_floor_edge_distance_m": 0.10230101996009909,
+        "nearest_obstacles": [
+          {
+            "distance_m": 0.41557597667355334,
+            "footprint": {
+              "id": "732215CF-6384-519A-8749-F14DC96D12EF",
+              "kind": "obstacle",
+              "center": [
+                -25.4372536190806,
+                1.1148813676550882
+              ],
+              "size": [
+                0.5378422,
+                0.5751956
+              ],
+              "yaw": 0.28200296083646154,
+              "bottom": 0.0,
+              "height": 0.97375464,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "732215CF-6384-519A-8749-F14DC96D12EF",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "5009F212-BEFF-4AFE-903F-71AE4D5D2CE0",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          },
+          {
+            "distance_m": 0.43510399121597726,
+            "footprint": {
+              "id": "01A1CD26-6CED-5CF4-8BE7-1B43B23F505A",
+              "kind": "obstacle",
+              "center": [
+                -25.917613306327393,
+                0.9095777275867167
+              ],
+              "size": [
+                0.49645972,
+                0.5393064
+              ],
+              "yaw": 0.4896075189215138,
+              "bottom": 0.0,
+              "height": 0.948074,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "01A1CD26-6CED-5CF4-8BE7-1B43B23F505A",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "83444A85-A17E-4F04-A085-C728667B37F7",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          }
+        ]
+      },
+      {
+        "position_xz": [
+          -26.039728725657742,
+          0.17665324491613052
+        ],
+        "measured_floor_edge_distance_m": 0.09478141330944727,
+        "nearest_obstacles": [
+          {
+            "distance_m": 0.37939032898873115,
+            "footprint": {
+              "id": "01A1CD26-6CED-5CF4-8BE7-1B43B23F505A",
+              "kind": "obstacle",
+              "center": [
+                -25.917613306327393,
+                0.9095777275867167
+              ],
+              "size": [
+                0.49645972,
+                0.5393064
+              ],
+              "yaw": 0.4896075189215138,
+              "bottom": 0.0,
+              "height": 0.948074,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "01A1CD26-6CED-5CF4-8BE7-1B43B23F505A",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "83444A85-A17E-4F04-A085-C728667B37F7",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          },
+          {
+            "distance_m": 0.7243648605523655,
+            "footprint": {
+              "id": "732215CF-6384-519A-8749-F14DC96D12EF",
+              "kind": "obstacle",
+              "center": [
+                -25.4372536190806,
+                1.1148813676550882
+              ],
+              "size": [
+                0.5378422,
+                0.5751956
+              ],
+              "yaw": 0.28200296083646154,
+              "bottom": 0.0,
+              "height": 0.97375464,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "732215CF-6384-519A-8749-F14DC96D12EF",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "5009F212-BEFF-4AFE-903F-71AE4D5D2CE0",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          }
+        ]
+      },
+      {
+        "position_xz": [
+          -28.828320995344384,
+          0.15900611877441406
+        ],
+        "measured_floor_edge_distance_m": 0.11737231924236807,
+        "nearest_obstacles": [
+          {
+            "distance_m": 0.38228202583676857,
+            "footprint": {
+              "id": "9C3C4F4A-311D-5104-8216-572DD6179E7F",
+              "kind": "obstacle",
+              "center": [
+                -29.13396509023235,
+                0.7899517624437165
+              ],
+              "size": [
+                0.51038474,
+                0.58459467
+              ],
+              "yaw": 0.17528957812711157,
+              "bottom": 0.0,
+              "height": 0.93502796,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "9C3C4F4A-311D-5104-8216-572DD6179E7F",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "4F3CC2C7-653C-4393-B4B3-308F9BA816A8",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          },
+          {
+            "distance_m": 0.4915867251265727,
+            "footprint": {
+              "id": "C43FE3A8-D8B1-53FF-B105-507A88CC9747",
+              "kind": "obstacle",
+              "center": [
+                -28.390359174214147,
+                0.9216508167446866
+              ],
+              "size": [
+                0.51038486,
+                0.58459425
+              ],
+              "yaw": 0.1752872362560193,
+              "bottom": 0.0,
+              "height": 0.93502796,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "C43FE3A8-D8B1-53FF-B105-507A88CC9747",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "643C9C23-D9D2-4A18-A6CF-FDE9A488E74C",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          }
+        ]
+      },
+      {
+        "position_xz": [
+          -29.43078997983771,
+          -0.09071175526764433
+        ],
+        "measured_floor_edge_distance_m": 0.05789437955195549,
+        "nearest_obstacles": [
+          {
+            "distance_m": 0.5259003561738084,
+            "footprint": {
+              "id": "43D0F923-9AFA-582A-B40D-44579B07DBD1",
+              "kind": "obstacle",
+              "center": [
+                -29.877569706688,
+                0.6582542907788893
+              ],
+              "size": [
+                0.51038474,
+                0.58459353
+              ],
+              "yaw": 0.17528957812711157,
+              "bottom": 0.0,
+              "height": 0.93502796,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "43D0F923-9AFA-582A-B40D-44579B07DBD1",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "7101C3AA-7ADF-489B-9954-4DD6325C05C0",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          },
+          {
+            "distance_m": 0.5567711067598462,
+            "footprint": {
+              "id": "9C3C4F4A-311D-5104-8216-572DD6179E7F",
+              "kind": "obstacle",
+              "center": [
+                -29.13396509023235,
+                0.7899517624437165
+              ],
+              "size": [
+                0.51038474,
+                0.58459467
+              ],
+              "yaw": 0.17528957812711157,
+              "bottom": 0.0,
+              "height": 0.93502796,
+              "furniture": "chair"
+            },
+            "source": {
+              "id": "9C3C4F4A-311D-5104-8216-572DD6179E7F",
+              "capture_id": "7714E8C3-1C81-47F7-ADBF-A8CD2350FAEC",
+              "source_id": "4F3CC2C7-653C-4393-B4B3-308F9BA816A8",
+              "zone_id": "main",
+              "kind": "obstacle"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "atrium_pocket": {
+    "sample_xz": [
+      9.47203,
+      28.75901
+    ],
+    "area_m2_step_free": 10.04,
+    "area_m2_fastest": 12.08,
+    "interpretation": "A measured floor pocket beyond the native chair cluster is disconnected at both clearances. Missing measured coverage and obstacle inflation prevent establishing a route; this is not a claim of physical inaccessibility."
+  },
+  "other_limits": [
+    "Auditorium interior rake and stage transitions remain visual only. The named Auditorium destination uses the measured rear foyer.",
+    "Arbitrary points must lie on clear measured coverage. Walls, voids, unmeasured floor and sloped transition interiors are not flat-floor targets.",
+    "Court Salon doors retain center posts and uncertainty-adjusted bay widths. One measured bay per set reaches the existing 0.81 m doorway threshold, but no bay is established to be at least 0.90 m wide.",
+    "All level connections belong to displayed Floor 1. Main-to-raised-L routes use stairs or the elevator. There is no ramp between these two levels."
+  ]
+}

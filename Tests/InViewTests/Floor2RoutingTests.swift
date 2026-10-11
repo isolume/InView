@@ -96,10 +96,29 @@ final class Floor2RoutingTests: XCTestCase {
             "Expected actual bundled floor triangles; stop before testing route samples")
     }
 
-    private func contains(_ p: SIMD2<Float>, triangle: [SIMD2<Float>]) -> Bool {
-        func cross(_ a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float { a.x * b.y - a.y * b.x }
-        let edges = (0..<3).map { i in cross(triangle[(i + 1) % 3] - triangle[i], p - triangle[i]) }
-        return edges.allSatisfy { $0 >= -0.0001 } || edges.allSatisfy { $0 <= 0.0001 }
+    private struct FloorTriangle {
+        let a: SIMD2<Float>
+        let b: SIMD2<Float>
+        let c: SIMD2<Float>
+        let lower: SIMD2<Float>
+        let upper: SIMD2<Float>
+
+        init(_ corners: [SIMD2<Float>]) {
+            a = corners[0]; b = corners[1]; c = corners[2]
+            lower = simd_min(a, simd_min(b, c)) - SIMD2(repeating: 0.0001)
+            upper = simd_max(a, simd_max(b, c)) + SIMD2(repeating: 0.0001)
+        }
+
+        func contains(_ point: SIMD2<Float>) -> Bool {
+            guard point.x >= lower.x, point.x <= upper.x,
+                  point.y >= lower.y, point.y <= upper.y else { return false }
+            func cross(_ a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float { a.x * b.y - a.y * b.x }
+            let ab = cross(b - a, point - a)
+            let bc = cross(c - b, point - b)
+            let ca = cross(a - c, point - c)
+            return (ab >= -0.0001 && bc >= -0.0001 && ca >= -0.0001)
+                || (ab <= 0.0001 && bc <= 0.0001 && ca <= 0.0001)
+        }
     }
 
     private func distance(_ point: SIMD2<Float>, to a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float {
@@ -108,41 +127,113 @@ final class Floor2RoutingTests: XCTestCase {
         return simd_distance(point, a + edge * t)
     }
 
-    func testLoungeRoutesStayOnTheBundledFloorAtStepFreeClearance() throws {
-        let map = try load("student-center-east-floor-2-navigation")
-        XCTAssertTrue(StudentCenterCatalog.isDisplayable(map))
-        let triangles = try floorTriangles(map: map)
+    private func registeredLandmarks(map: VenueMap) throws -> [AccessPoint] {
         let transform = try XCTUnwrap(StudentCenterModelAlignment.transform(for: map))
-        let lounge = try XCTUnwrap(StudentCenterCatalog.modelLandmarks(for: 2).first { $0.title == "Lounge" })
-        let position = transform * SIMD4(lounge.position.x, 0, lounge.position.z, 1)
-        let starts = [SIMD2(position.x, position.z), SIMD2<Float>(12.827781, -7.452379)]
+        let elevation = try XCTUnwrap(StudentCenterCatalog.modelFloorY(for: 2))
+        return StudentCenterCatalog.modelLandmarks(for: 2).map { landmark in
+            let position = transform * SIMD4(landmark.position.x, elevation, landmark.position.z, 1)
+            return AccessPoint(id: landmark.id, kind: landmark.title == "Lifts" ? .elevator : .destination,
+                               name: landmark.title, position: SIMD3(position.x, position.y, position.z),
+                               source: .manual, confidence: 0.5)
+        }
+    }
+
+    private func navigationTriangles(map: VenueMap) throws -> [FloorTriangle] {
+        let floors = map.footprints.filter { $0.kind == .floor }
+        XCTAssertFalse(floors.isEmpty)
+        return try floors.flatMap { floor in
+            let corners = floor.corners
+            if corners.count == 3 { return [FloorTriangle(corners)] }
+            let indices = Polygon.triangulate(corners)
+            _ = try XCTUnwrap(!indices.isEmpty && indices.count.isMultiple(of: 3) ? true : nil)
+            return stride(from: 0, to: indices.count, by: 3).map { offset in
+                FloorTriangle((0..<3).map { corners[indices[offset + $0]] })
+            }
+        }
+    }
+
+    private func assertSafeRoute(_ route: Route, start: SIMD2<Float>, destination: AccessPoint,
+                                 preference: RoutePreference, grid: OccupancyGrid,
+                                 visibleFloor: [FloorTriangle], measuredFloor: [FloorTriangle],
+                                 file: StaticString = #filePath, line: UInt = #line) throws {
+        let description = "\(preference.title) route to \(destination.title) from \(start)"
+        XCTAssertEqual(route.destination.id, destination.id, description, file: file, line: line)
+        XCTAssertEqual(route.preference, preference, description, file: file, line: line)
+        XCTAssertEqual(route.unmappedLength, 0, accuracy: 0.0001, description, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(route.clearance, preference == .stepFree ? 0.45 : 0.3,
+                                   description, file: file, line: line)
+        XCTAssertGreaterThan(route.length, 0, description, file: file, line: line)
+        XCTAssertLessThanOrEqual(simd_distance(try XCTUnwrap(route.waypoints.first), start), 1.5,
+                                 "\(description) starts too far from the selected place", file: file, line: line)
+        XCTAssertLessThanOrEqual(simd_distance(try XCTUnwrap(route.waypoints.last), destination.floorPoint), 1.5,
+                                 "\(description) stops before reaching the selected place", file: file, line: line)
         // The measured balcony edge in the same canonical map coordinates.
         // Source principalUV runs from (-21.15, -7.25) to (19.42, -7.25).
         let balconyA = SIMD2<Float>(37.198100, -2.201427)
         let balconyB = SIMD2<Float>(-2.801309, 4.578849)
+
+        for (a, b) in zip(route.waypoints, route.waypoints.dropFirst()) {
+            let count = max(1, Int(ceil(simd_distance(a, b) / 0.01)))
+            for i in 0...count {
+                let point = a + (b - a) * (Float(i) / Float(count))
+                guard visibleFloor.contains(where: { $0.contains(point) }) else {
+                    XCTFail("\(description) leaves actual USDZ floor at \(point)", file: file, line: line)
+                    return
+                }
+                guard measuredFloor.contains(where: { $0.contains(point) }) else {
+                    XCTFail("\(description) leaves navigation coverage at \(point)", file: file, line: line)
+                    return
+                }
+                guard distance(point, to: balconyA, balconyB) >= 0.45 else {
+                    XCTFail("\(description) approaches the exposed balcony edge at \(point)", file: file, line: line)
+                    return
+                }
+                let cell = try XCTUnwrap(grid.index(containing: point), description, file: file, line: line)
+                guard !grid.isBlocked(cell), !grid.isUnmapped(cell) else {
+                    XCTFail("\(description) crosses a blocked or unmapped cell at \(point)", file: file, line: line)
+                    return
+                }
+            }
+        }
+    }
+
+    func testLoungeRoutesToEveryRegisteredFloor2PlaceStayOnTheBundledFloor() throws {
+        let map = try load("student-center-east-floor-2-navigation")
+        XCTAssertTrue(StudentCenterCatalog.isDisplayable(map))
+        let visibleFloor = try floorTriangles(map: map).map(FloorTriangle.init)
+        let measuredFloor = try navigationTriangles(map: map)
+        let landmarks = try registeredLandmarks(map: map)
+        XCTAssertEqual(Set(landmarks.map(\.title)),
+                       Set(["Lounge", "Balcony", "Lifts", "Gallery", "Restroom passage", "Seating", "West seating"]))
+        let lounge = try XCTUnwrap(landmarks.first { $0.title == "Lounge" })
         let planner = RoutePlanner(map: map)
         let elevators = map.points.filter { $0.kind == .elevator }
         XCTAssertEqual(elevators.count, 2)
-        for start in starts {
-            for elevator in elevators {
-                let route = try XCTUnwrap(planner.route(from: start, to: elevator,
-                    conditions: RoutePreference.stepFree.navigationConditions(map: map)), "Known lounge route must remain available")
-                XCTAssertGreaterThanOrEqual(route.clearance, 0.45)
-                XCTAssertGreaterThan(route.length, 20)
-                let grid = OccupancyGrid(map: map, clearance: route.clearance)
-                for (a, b) in zip(route.waypoints, route.waypoints.dropFirst()) {
-                    let count = max(1, Int(ceil(simd_distance(a, b) / 0.01)))
-                    for i in 0...count {
-                        let point = a + (b - a) * (Float(i) / Float(count))
-                        XCTAssertTrue(triangles.contains { contains(point, triangle: $0) },
-                                      "\(elevator.title) leaves visible floor at \(point)")
-                        XCTAssertGreaterThanOrEqual(distance(point, to: balconyA, balconyB), 0.45,
-                                                    "Route approaches exposed balcony edge")
-                        let cell = try XCTUnwrap(grid.index(containing: point))
-                        XCTAssertFalse(grid.isBlocked(cell), "Route crosses inflated obstacle")
-                    }
+        let destinations = landmarks.filter { $0.id != lounge.id } + elevators
+
+        for preference in [RoutePreference.stepFree, .fastest] {
+            for destination in destinations {
+                for (start, goal) in [(lounge, destination), (destination, lounge)] {
+                    let route = try XCTUnwrap(planner.route(from: start.floorPoint, to: goal,
+                        conditions: preference.navigationConditions(map: map)),
+                        "\(preference.title): \(start.title) → \(goal.title) must remain available")
+                    let grid = try XCTUnwrap(planner.grids.first { $0.clearance == route.clearance })
+                    try assertSafeRoute(route, start: start.floorPoint, destination: goal,
+                                        preference: preference, grid: grid,
+                                        visibleFloor: visibleFloor, measuredFloor: measuredFloor)
                 }
             }
+        }
+
+        // Retain the original balcony-corner regression, independently of the lounge label.
+        let cornerStart = SIMD2<Float>(12.827781, -7.452379)
+        for elevator in elevators {
+            let route = try XCTUnwrap(planner.route(from: cornerStart, to: elevator,
+                conditions: RoutePreference.stepFree.navigationConditions(map: map)))
+            let grid = try XCTUnwrap(planner.grids.first { $0.clearance == route.clearance })
+            try assertSafeRoute(route, start: cornerStart, destination: elevator,
+                                preference: .stepFree, grid: grid,
+                                visibleFloor: visibleFloor, measuredFloor: measuredFloor)
         }
     }
 
@@ -159,8 +250,16 @@ final class Floor2RoutingTests: XCTestCase {
         let original = try load("student-center-east-floor-2")
         let navigation = try load("student-center-east-floor-2-navigation")
         XCTAssertEqual(navigation.points, original.points)
+        XCTAssertEqual(navigation.points.filter { $0.kind == .elevator }.count, 2)
         XCTAssertEqual(navigation.floorY, original.floorY)
-        XCTAssertEqual(navigation.footprints.filter { $0.kind != .floor }, original.footprints.filter { $0.kind != .floor })
+        _ = try XCTUnwrap(original.footprints.count > 65 ? true : nil)
+        let measuredLoungeObstacles = Array(original.footprints[54...65])
+        XCTAssertEqual(measuredLoungeObstacles.count, 12)
+        for obstacle in measuredLoungeObstacles {
+            XCTAssertEqual(obstacle.kind, .obstacle)
+            XCTAssertEqual(navigation.footprints.filter { $0 == obstacle }.count, 1,
+                           "Retain each original measured lounge obstacle exactly once")
+        }
         XCTAssertEqual(navigation.requiresMeasuredFloorCoverage, true)
     }
 }
