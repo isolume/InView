@@ -20,6 +20,8 @@ final class SignReader: ObservableObject {
             case checking
             case confirmed
             case corrected(from: String)
+            /// The model looked and saw no place sign (a poster, a screen): it isn't tagged automatically.
+            case rejected
             case failed
         }
 
@@ -183,10 +185,12 @@ final class SignReader: ObservableObject {
         focus?.check = .checking
         let id = sighting.id
         Task {
-            let reading = try? await ai.read(jpeg: crop, ocrText: sighting.text)
+            let answer: SignReading??
+            do { answer = .some(try await ai.read(jpeg: crop, ocrText: sighting.text)) } catch { answer = nil }
             guard focus?.id == id else { return }
-            // No answer, or the model doesn't think it's a place sign: the OCR reading stands.
-            guard let reading else { focus?.check = .failed; return }
+            // No answer: the OCR reading stands. An answer that it's no place sign stops it being tagged.
+            guard let answer else { focus?.check = .failed; return }
+            guard let reading = answer else { focus?.check = .rejected; return }
             let before = focus?.reading.fullTitle ?? ""
             focus?.reading.category = reading.category
             focus?.reading.title = reading.title

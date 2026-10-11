@@ -55,6 +55,8 @@ struct MapScreen: View {
     @State private var showsAR = false
     /// The AR camera reads signs and tags the doors they label.
     @State private var readsSigns = false
+    /// What each sign tagged this session replaced, so Undo can put it back.
+    @State private var replacedPlaces: [UUID: AccessPoint?] = [:]
     @State private var detent = PresentationDetent.height(240)
     @State private var showsMainSheet = false
     @State private var previewRoute: Route?
@@ -302,9 +304,12 @@ struct MapScreen: View {
         if showsAR, controller.canGuide {
             ViewContainer(view: controller.arView)
                 .overlay {
-                    if readsSigns, controller.isPositionReliable {
+                    // Signs are read whenever the camera is up, and tagged on their own; "Read signs"
+                    // only adds the full card and controls.
+                    if controller.isPositionReliable, controller.canTagSigns, !isDemo {
                         SignReaderOverlay(reader: controller.signReader, session: controller.arView.session,
                                           preview: signPreview, onAdd: tagSign, onShowOnMap: showTaggedPlace,
+                                          onUndo: untagSign, isPassive: !readsSigns,
                                           onClose: { readsSigns = false })
                     }
                 }
@@ -1313,9 +1318,14 @@ struct MapScreen: View {
     private func tagSign(_ point: AccessPoint) async -> String? {
         guard controller.canTagSigns else { return nil }
         guard let result = try? await controller.tagSign(point) else { return nil }
+        replacedPlaces[result.point.id] = result.previous
         UIAccessibility.post(notification: .announcement, argument: "\(result.point.title) added to the map")
         if !result.isNew { return "Updated the place already on this door" }
         return result.point.sign?.door != nil ? "Door tagged · searchable and routable now" : "Pinned on the map"
+    }
+
+    private func untagSign(_ point: AccessPoint) async {
+        try? await controller.untagSign(id: point.id, restoring: replacedPlaces.removeValue(forKey: point.id) ?? nil)
     }
 
     private func showTaggedPlace(_ point: AccessPoint) {

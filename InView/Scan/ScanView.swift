@@ -81,12 +81,14 @@ struct ScanView: View {
                 SignReaderOverlay(reader: signReader, session: controller.session, preview: { sighting in
                     // No finished map yet: the door link is made at review, against RoomPlan's final doors.
                     SignPlaceBinder.place(for: sighting.reading, text: sighting.text, sign: sighting.position,
-                                          viewer: sighting.viewer, in: VenueMap(floorY: sighting.viewer.y - 1.3, footprints: [], points: []))
+                                          viewer: sighting.viewer, in: VenueMap(floorY: sighting.viewer.y - 1.3, footprints: [], points: []),
+                                          id: sighting.id)
                 }, onAdd: { place in
                     guard let sighting = signReader.focus else { return nil }
                     controller.recordSign(sighting)
                     return "\(controller.readSigns.count) sign\(controller.readSigns.count == 1 ? "" : "s") saved · doors are labeled when you finish"
-                }, pendingLink: "Links to the nearest measured door when you finish",
+                }, onUndo: { place in controller.forgetSign(id: place.id) },
+                pendingLink: "Links to the nearest measured door when you finish",
                 onClose: { self.signReader = nil })
                 .ignoresSafeArea()
             }

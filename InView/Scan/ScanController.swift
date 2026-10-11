@@ -610,6 +610,10 @@ final class ScanController: ObservableObject {
     }
 
     /// Keeps a sign the mapper read; the same sign read again replaces the earlier reading.
+    func forgetSign(id: UUID) {
+        readSigns.removeAll { $0.id == id }
+    }
+
     func recordSign(_ sighting: SignReader.Sighting) {
         readSigns.removeAll { $0.reading.title == sighting.reading.title && simd_distance($0.position, sighting.position) < 1 }
         readSigns.append(sighting)

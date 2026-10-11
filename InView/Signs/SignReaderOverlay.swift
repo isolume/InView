@@ -2,8 +2,8 @@ import ARKit
 import AccessCore
 import SwiftUI
 
-/// The live sign-reading layer over an AR camera: brackets that lock onto the sign in 3D, what it
-/// says, which door and room it will label, and one tap to put it on the map.
+/// The live sign-reading layer over an AR camera: brackets that lock onto the sign in 3D, then the sign
+/// goes on the map by itself once it's read (and the AI check, if any, has had its say), with Undo.
 struct SignReaderOverlay: View {
     @ObservedObject var reader: SignReader
     let session: ARSession
@@ -12,6 +12,10 @@ struct SignReaderOverlay: View {
     /// Adds the place. Returns a message for the toast, or nil when it couldn't be saved.
     let onAdd: (AccessPoint) async -> String?
     var onShowOnMap: ((AccessPoint) -> Void)? = nil
+    /// Takes a just-added place back off the map.
+    var onUndo: ((AccessPoint) async -> Void)? = nil
+    /// Reading in the background of the AR view: only the brackets and a small toast, no controls.
+    var isPassive = false
     /// While scanning there's no finished map yet: says how the sign will be linked instead.
     var pendingLink: String? = nil
     var onClose: () -> Void
@@ -19,6 +23,15 @@ struct SignReaderOverlay: View {
     @State private var isAdding = false
     @State private var added: (point: AccessPoint, message: String)?
     @State private var addError: String?
+
+    /// What decides whether, and when, the locked sign is tagged.
+    private struct AutoTag: Equatable {
+        var focus: UUID?
+        var check: SignReader.Sighting.Check?
+    }
+    private var autoTag: AutoTag {
+        AutoTag(focus: reader.isLocked ? reader.focus?.id : nil, check: reader.focus?.check)
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -30,22 +43,33 @@ struct SignReaderOverlay: View {
                     }
                     .allowsHitTesting(false)
                 }
-                VStack(spacing: 10) {
-                    statusPill.padding(.top, geometry.safeAreaInsets.top + 70)
-                    Spacer()
-                    if let added {
-                        addedToast(added.point, message: added.message).transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else if reader.isLocked, let focus = reader.focus {
-                        card(for: focus).transition(.move(edge: .bottom).combined(with: .opacity))
+                if isPassive {
+                    // Under the next-step banner, clear of the directions sheet.
+                    VStack {
+                        if let added { addedToast(added.point, message: added.message).transition(.move(edge: .top).combined(with: .opacity)) }
+                        Spacer()
                     }
-                    controls
+                    .padding(.horizontal, 16)
+                    .padding(.top, geometry.safeAreaInsets.top + 160)
+                } else {
+                    VStack(spacing: 10) {
+                        statusPill.padding(.top, geometry.safeAreaInsets.top + 70)
+                        Spacer()
+                        if let added {
+                            addedToast(added.point, message: added.message).transition(.move(edge: .bottom).combined(with: .opacity))
+                        } else if reader.isLocked, let focus = reader.focus {
+                            card(for: focus).transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        controls
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, max(16, geometry.safeAreaInsets.bottom + 8))
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, max(16, geometry.safeAreaInsets.bottom + 8))
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: reader.isLocked)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: added?.point.id)
         }
+        .task(id: autoTag) { await tagWhenReady() }
         .onAppear { reader.start() }
         .onDisappear { reader.stop() }
         .sensoryFeedback(.success, trigger: added?.point.id) { _, new in new != nil }
@@ -170,18 +194,25 @@ struct SignReaderOverlay: View {
             if let addError {
                 Text(addError).font(.caption).foregroundStyle(.red)
             }
-            Button {
-                guard let place else { return }
-                add(place)
-            } label: {
-                HStack {
-                    if isAdding { ProgressView().tint(.white) }
-                    Text(pendingLink != nil ? "Save this sign" : place?.sign?.door != nil ? "Tag this door on the map" : "Add to the map")
+            if focus.check == .rejected || addError != nil {
+                // The only time it waits for a person: the AI saw no place sign, or saving failed.
+                Button {
+                    guard let place else { return }
+                    add(place)
+                } label: {
+                    Text(addError != nil ? "Try again" : "Add it anyway").font(.headline).frame(maxWidth: .infinity).frame(height: 46)
                 }
-                .font(.headline).frame(maxWidth: .infinity).frame(height: 50)
+                .buttonStyle(.bordered).tint(tint)
+                .disabled(place == nil || isAdding)
+            } else {
+                Label {
+                    Text(place == nil ? "Waiting for the map…" : focus.check == .checking ? "Checking, then adding to the map…" : "Adding to the map…")
+                } icon: {
+                    ProgressView().controlSize(.small)
+                }
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.borderedProminent).tint(tint)
-            .disabled(place == nil || isAdding)
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
@@ -218,6 +249,8 @@ struct SignReaderOverlay: View {
             Label("Confirmed by AI", systemImage: "sparkles").font(.footnote.weight(.medium)).foregroundStyle(.purple)
         case .corrected(let from):
             Label("AI corrected “\(from)”", systemImage: "sparkles").font(.footnote.weight(.medium)).foregroundStyle(.purple)
+        case .rejected:
+            Label("AI doesn’t think this is a place sign", systemImage: "sparkles").font(.footnote.weight(.medium)).foregroundStyle(.orange)
         case .failed:
             Label("On-device reading only", systemImage: "iphone").font(.footnote).foregroundStyle(.secondary)
         }
@@ -231,12 +264,40 @@ struct SignReaderOverlay: View {
                 Text(message).font(.footnote).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if let onShowOnMap {
+            if let onUndo {
+                Button("Undo") {
+                    self.added = nil
+                    Task {
+                        await onUndo(point)
+                        UIAccessibility.post(notification: .announcement, argument: "Removed \(point.title)")
+                    }
+                }
+                .buttonStyle(.bordered).buttonBorderShape(.capsule)
+            }
+            if let onShowOnMap, !isPassive {
                 Button("View") { onShowOnMap(point) }.buttonStyle(.bordered).buttonBorderShape(.capsule)
             }
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+    }
+
+    /// Tags the locked sign without asking. A running AI check gets a few seconds to fix the name first;
+    /// a sign the AI says isn't a place sign waits for "Add it anyway".
+    private func tagWhenReady() async {
+        guard reader.isLocked, let focus = reader.focus, !isAdding else { return }
+        switch focus.check {
+        case .rejected:
+            return
+        case .checking:
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, reader.isLocked, let current = reader.focus, current.id == focus.id,
+                  current.check == .checking, let place = preview(current) else { return }
+            add(place)
+        default:
+            guard let place = preview(focus) else { return }
+            add(place)
+        }
     }
 
     private func add(_ place: AccessPoint) {
@@ -248,7 +309,7 @@ struct SignReaderOverlay: View {
             guard let message else { addError = "Couldn’t save it to this map."; return }
             reader.markHandled()
             added = (place, message)
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(5))
             if added?.point.id == place.id { added = nil }
         }
     }

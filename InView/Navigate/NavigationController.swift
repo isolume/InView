@@ -58,7 +58,8 @@ final class NavigationController: ObservableObject {
     lazy var signReader: SignReader = {
         let reader = SignReader(session: arView.session)
         // Signs are read aloud in the same voice as the directions.
-        reader.speak = { [weak self] text in self?.say(Narrator.Line(text: text, isUrgent: true)) }
+        // Not urgent: a sign glimpsed mid-route waits for the current direction to finish.
+        reader.speak = { [weak self] text in self?.say(Narrator.Line(text: text, isUrgent: false)) }
         return reader
     }()
 
@@ -357,11 +358,24 @@ final class NavigationController: ObservableObject {
     }
 
     /// Adds a place read from a sign, or updates the one already on that door.
-    func tagSign(_ point: AccessPoint) async throws -> (point: AccessPoint, isNew: Bool) {
+    /// Puts a sign's place on the live map. `previous` is the place it replaced, for Undo.
+    func tagSign(_ point: AccessPoint) async throws -> (point: AccessPoint, isNew: Bool, previous: AccessPoint?) {
         guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
+        let before = edited.points
         let result = edited.applySign(point)
         _ = try await publishPlaces(edited, whileLive: true)
-        return result
+        return (result.point, result.isNew, result.isNew ? nil : before.first { $0.id == result.point.id })
+    }
+
+    /// Undoes `tagSign`: puts back the place it replaced, or removes the new one.
+    func untagSign(id: UUID, restoring previous: AccessPoint?) async throws {
+        guard var edited = map else { throw CaptureValidationError.invalid("There's no map open.") }
+        if let previous, let index = edited.points.firstIndex(where: { $0.id == id }) {
+            edited.points[index] = previous
+        } else {
+            edited.removePoint(id: id)
+        }
+        _ = try await publishPlaces(edited, whileLive: true)
     }
 
     func removePlace(id: UUID) async throws -> AccessibilityReport {
