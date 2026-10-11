@@ -19,3 +19,12 @@ import Testing
     let route = Route(destination: point(.elevator, 0, -4), waypoints: [[0, 0], [0.05, -2], [0, -4]], length: 4, clearance: 0.45, level: 0, goalIndex: 0)
     #expect(route.nextManeuver == nil)
 }
+
+@Test func listsEveryTurnInOrder() {
+    // Forward (-z), right (+x), forward (-z), then left (-x): right, left, left.
+    let waypoints: [SIMD2<Float>] = [[0, 0], [0, -2], [2, -2], [2, -5], [0, -5]]
+    let route = Route(destination: point(.elevator, 0, -5), waypoints: waypoints, length: 9, clearance: 0.45, level: 0, goalIndex: 0)
+    #expect(route.maneuvers.map(\.turn) == [.right, .left, .left])
+    #expect(route.maneuvers.map(\.distance) == [2, 4, 7])
+    #expect(route.nextManeuver == route.maneuvers.first)
+}

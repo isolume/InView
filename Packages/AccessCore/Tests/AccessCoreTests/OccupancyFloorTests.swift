@@ -116,3 +116,50 @@ private func measuredRectangle(_ lower: SIMD2<Float>, _ upper: SIMD2<Float>, ele
     #expect(!grid.isBlocked(try #require(grid.index(containing: .zero))))
     #expect(RoutePlanner(map: map).route(from: [-2, 0], to: destination) != nil)
 }
+
+@Test func navigationMayCrossUnmappedSpaceAndReportsHowFar() throws {
+    // The elevator lobby wasn't recorded as floor, like a hallway walked past while scanning.
+    let destination = point(.elevator, 3, 0)
+    let map = VenueMap(floorY: 0, footprints: [
+        measuredRectangle([-4, -2], [-1, 2]), measuredRectangle([1, -2], [4, 2]),
+    ], points: [destination])
+    let planner = RoutePlanner(map: map)
+    var conditions = RoutePreference.stepFree.conditions()
+    #expect(planner.route(from: [-3, 0], to: destination, conditions: conditions) == nil)
+    conditions.allowsUnmappedSpace = true
+    let route = try #require(planner.route(from: [-3, 0], to: destination, conditions: conditions))
+    #expect(abs(route.unmappedLength - 2) < 0.3)
+    #expect(route.length > 5 && route.length < 7)
+    let far = point(.elevator, 9, 0)
+    let lobby = VenueMap(floorY: 0, footprints: [measuredRectangle([-2, -2], [2, 2])], points: [far])
+    let toLobby = try #require(RoutePlanner(map: lobby).route(from: .zero, to: far, conditions: conditions))
+    #expect(toLobby.unmappedLength > 6)
+}
+
+@Test func unmappedSpaceIsOnlyUsedWhenMeasuredFloorHasNoWay() throws {
+    // A measured detour exists, so the route keeps to it despite the shorter unmapped gap.
+    let destination = point(.elevator, 3, 0)
+    let map = VenueMap(floorY: 0, footprints: [
+        measuredRectangle([-4, -2], [-1, 2]), measuredRectangle([1, -2], [4, 2]), measuredRectangle([-4, 2], [4, 5]),
+    ], points: [destination])
+    var conditions = RoutePreference.stepFree.conditions()
+    conditions.allowsUnmappedSpace = true
+    let route = try #require(RoutePlanner(map: map).route(from: [-3, 0], to: destination, conditions: conditions))
+    #expect(route.unmappedLength == 0)
+}
+
+@Test func unmappedSpaceStillRespectsWalls() throws {
+    let destination = point(.elevator, 3, 0)
+    let wall = Footprint(kind: .wall, center: [0, 0], size: [0.2, 20], yaw: 0)
+    let map = VenueMap(floorY: 0, footprints: [
+        measuredRectangle([-4, -2], [-1, 2]), measuredRectangle([1, -2], [4, 2]), wall,
+    ], points: [destination])
+    var conditions = RoutePreference.stepFree.conditions()
+    conditions.allowsUnmappedSpace = true
+    // The only way is around the end of the wall, never through it.
+    let route = try #require(RoutePlanner(map: map).route(from: [-3, 0], to: destination, conditions: conditions))
+    for (a, b) in zip(route.waypoints, route.waypoints.dropFirst()) where (a.x < 0) != (b.x < 0) {
+        let crossing = a.y + (b.y - a.y) * (-a.x / (b.x - a.x))
+        #expect(abs(crossing) >= 10)
+    }
+}

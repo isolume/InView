@@ -10,6 +10,9 @@ public struct OccupancyGrid: Sendable {
     /// Distance the route keeps from any obstacle.
     public let clearance: Float
     let blocked: [Bool]
+    /// Cells outside measured floor where no wall or obstacle was seen. They stay blocked
+    /// unless the grid is opened with `allowingUnmapped()`, and then cost more to cross.
+    let unmapped: [Bool]
 
     public var origin: SIMD2<Float> { shape.origin }
     public var cellSize: Float { shape.cellSize }
@@ -56,25 +59,42 @@ public struct OccupancyGrid: Sendable {
             shape.fill(&inflated, footprint: door, size: lane, grow: 0, value: false)
         }
 
+        var unmapped = [Bool](repeating: false, count: shape.count)
         if !floorFootprints.isEmpty || map.requiresMeasuredFloorCoverage == true {
             // A point or doorway outside a measured floor must not create walkable space.
             // Rasterize each observed polygon only within its bounds, preserving concave
             // gaps and disconnected islands. Apply this after doorway lanes are reopened.
             var observed = [Bool](repeating: false, count: shape.count)
             for floor in floors { shape.fill(&observed, floor: floor) }
-            for index in inflated.indices where !observed[index] { inflated[index] = true }
+            for index in inflated.indices where !observed[index] {
+                unmapped[index] = !inflated[index]
+                inflated[index] = true
+            }
         }
 
         self.shape = shape
         self.clearance = clearance
         self.blocked = inflated
+        self.unmapped = unmapped
     }
 
-    private init(shape: GridShape, clearance: Float, blocked: [Bool]) {
+    private init(shape: GridShape, clearance: Float, blocked: [Bool], unmapped: [Bool]) {
         self.shape = shape
         self.clearance = clearance
         self.blocked = blocked
+        self.unmapped = unmapped
     }
+
+    /// A copy that may also cross free space outside measured floor, where a scan saw no wall
+    /// or obstacle but didn't record the floor, such as a hallway walked past. Searches prefer
+    /// measured floor, and routes report how far they leave it.
+    func allowingUnmapped() -> OccupancyGrid {
+        var cells = blocked
+        for index in cells.indices where unmapped[index] { cells[index] = false }
+        return OccupancyGrid(shape: shape, clearance: clearance, blocked: cells, unmapped: unmapped)
+    }
+
+    public func isUnmapped(_ index: Int) -> Bool { unmapped[index] && !blocked[index] }
 
     /// A copy with round obstacles added, padded by this grid's clearance like everything else.
     func blocking(_ obstacles: [SIMD2<Float>], radius: Float) -> OccupancyGrid {
@@ -84,7 +104,7 @@ public struct OccupancyGrid: Sendable {
             let disc = Footprint(kind: .obstacle, center: obstacle, size: SIMD2(repeating: 2 * reach), yaw: 0)
             shape.fill(&cells, footprint: disc, size: disc.size, grow: 0, value: true) { simd_distance($0, obstacle) <= reach }
         }
-        return OccupancyGrid(shape: shape, clearance: clearance, blocked: cells)
+        return OccupancyGrid(shape: shape, clearance: clearance, blocked: cells, unmapped: unmapped)
     }
 
     public func isBlocked(_ index: Int) -> Bool { blocked[index] }

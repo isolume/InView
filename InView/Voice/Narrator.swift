@@ -89,6 +89,9 @@ final class Narrator {
         if route.isNarrow {
             text += " Some passages are tight."
         }
+        if route.unmappedLength >= 1 {
+            text += " Part of the way isn't mapped, so check it's clear."
+        }
         return text
     }
 }

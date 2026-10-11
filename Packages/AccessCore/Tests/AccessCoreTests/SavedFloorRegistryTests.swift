@@ -111,3 +111,51 @@ import Testing
     }
     #expect(registry == corrupt)
 }
+
+@Test func removingTheSelectedFloorSelectsTheLowestRemainingFloorOfItsBuilding() throws {
+    let buildingID = UUID()
+    let ground = ScanFloorIdentity(buildingID: buildingID, level: 0)
+    let first = ScanFloorIdentity(buildingID: buildingID, level: 1)
+    let second = ScanFloorIdentity(buildingID: buildingID, level: 2)
+    var registry = SavedFloorRegistry()
+    try registry.record(second, buildingName: "Library", storageID: UUID(), captureID: nil)
+    try registry.record(first, storageID: UUID(), captureID: nil)
+    try registry.record(ground, storageID: UUID(), captureID: nil)
+    try registry.record(second, storageID: UUID(), captureID: nil)
+    #expect(registry.selectedFloor?.id == second.id)
+
+    let removed = try registry.removeFloor(buildingID: buildingID, floorID: second.id)
+    #expect(removed.allVersions.count == 2)
+    #expect(registry.selectedFloor?.id == ground.id)
+    #expect(registry.selectedBuilding?.floors.map(\.level).sorted() == [0, 1])
+    try registry.validate()
+}
+
+@Test func removingAnUnselectedFloorKeepsTheSelectionAndTheLastFloorRemovesItsBuilding() throws {
+    let library = ScanFloorIdentity(level: 1)
+    let gym = ScanFloorIdentity(level: 1)
+    var registry = SavedFloorRegistry()
+    try registry.record(library, buildingName: "Library", storageID: UUID(), captureID: nil)
+    try registry.record(gym, buildingName: "Gym", storageID: UUID(), captureID: nil)
+    try registry.removeFloor(buildingID: library.buildingID, floorID: library.id)
+    #expect(registry.buildings.map(\.name) == ["Gym"])
+    #expect(registry.selectedFloor?.id == gym.id)
+    try registry.removeFloor(buildingID: gym.buildingID, floorID: gym.id)
+    #expect(registry.buildings.isEmpty)
+    #expect(registry.selection == nil)
+    try registry.validate()
+    #expect(throws: SavedFloorStorageError.missingFloor) {
+        try registry.removeFloor(buildingID: gym.buildingID, floorID: gym.id)
+    }
+}
+
+@Test func removingABuildingRemovesEveryFloorAndClearsItsSelection() throws {
+    let buildingID = UUID()
+    var registry = SavedFloorRegistry()
+    try registry.record(ScanFloorIdentity(buildingID: buildingID, level: 1), buildingName: "Library", storageID: UUID(), captureID: nil)
+    try registry.record(ScanFloorIdentity(buildingID: buildingID, level: 2), storageID: UUID(), captureID: nil)
+    let removed = try registry.removeBuilding(buildingID)
+    #expect(removed.count == 2)
+    #expect(registry.buildings.isEmpty && registry.selection == nil)
+    try registry.validate()
+}
