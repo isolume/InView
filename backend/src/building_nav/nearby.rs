@@ -411,8 +411,37 @@ fn candidates<'m>(model: &'m NavModel, kinds: &[Kind]) -> Vec<Candidate<'m>> {
 
 pub fn nearby(model: &NavModel, request: &NearbyRequest) -> Result<NearbyResponse, PlanError> {
     request.validate().map_err(PlanError::Invalid)?;
-    let (origin_node, snapped, origin_place) = plan::resolve(model, &request.at, "at")?;
-    let origin = model.nodes[origin_node].position;
+    let mut far_origin = None;
+    let (origin_node, snapped, origin_place) = match plan::resolve(model, &request.at, "at") {
+        Ok(found) => found,
+        // A phone position may be outside the walked graph (e.g. before tracking settles):
+        // search from the closest walkable spot on that floor instead of failing.
+        Err(PlanError::EndpointNotFound(_)) if request.at.position_m.is_some() => {
+            let position = request.at.position_m.unwrap_or_default();
+            let level = match &request.at.level_id {
+                Some(id) => model
+                    .level_by_id(id)
+                    .ok_or_else(|| PlanError::Invalid(format!("Unknown level {id}.")))?,
+                None => super::levels::level_of(&model.levels, position[1]),
+            };
+            let (node, distance) = model
+                .nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.level == level)
+                .map(|(i, n)| (i, horizontal_distance(n.position, position)))
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .ok_or(PlanError::EndpointNotFound("at"))?;
+            far_origin = Some(distance);
+            (node, distance, None)
+        }
+        Err(error) => return Err(error),
+    };
+    // Straight-line distances and bearings are measured from where the person is, not the node.
+    let origin = request
+        .at
+        .position_m
+        .unwrap_or(model.nodes[origin_node].position);
     let origin_level = model.nodes[origin_node].level;
     let speed = request.speed_mps;
     let walking = paths::tree(
@@ -471,7 +500,7 @@ pub fn nearby(model: &NavModel, request: &NearbyRequest) -> Result<NearbyRespons
         let target = plan::nearest(model, candidate.position, candidate.level);
         let walk = target.filter(|(n, _)| walking.cost[*n].is_finite());
         let distance = horizontal_distance(origin, candidate.position);
-        let walking_distance = walk.map(|(n, d)| walking.length_m[n] + d);
+        let walking_distance = walk.map(|(n, d)| walking.length_m[n] + d + snapped);
         if walking_distance.unwrap_or(distance) > request.radius_m {
             continue;
         }
@@ -509,7 +538,8 @@ pub fn nearby(model: &NavModel, request: &NearbyRequest) -> Result<NearbyRespons
             distance_m: round3(distance),
             reachable: walk.is_some(),
             walking_distance_m: walking_distance.map(round3),
-            walking_duration_s: walk.map(|(n, d)| round3(walking.seconds[n] + d / speed)),
+            walking_duration_s: walk
+                .map(|(n, d)| round3(walking.seconds[n] + (d + snapped) / speed)),
             accessible_route,
             bearing_deg: round3(bearing),
             compass: georef.map(|_| compass(bearing)),
@@ -540,6 +570,11 @@ pub fn nearby(model: &NavModel, request: &NearbyRequest) -> Result<NearbyRespons
     let total_matches = results.len();
     results.truncate(request.limit);
     let mut notices = model.notices.clone();
+    if let Some(distance) = far_origin {
+        notices.push(format!(
+            "Your position is {distance:.0} m from the mapped paths; walking distances start from the closest mapped spot."
+        ));
+    }
     if results.iter().any(|r| !r.reachable) {
         notices.push("Some results are not connected to your position in the captured map; distances for them are straight-line.".into());
     }

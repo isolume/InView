@@ -423,6 +423,20 @@ async fn nearby_finds_named_places_across_floors_like_a_maps_search() {
             .all(|r| r["walking_distance_m"].as_f64().unwrap() <= 3.0)
     );
 
+    // A phone position far from the walked paths still searches, from the closest mapped spot.
+    let (status, body) =
+        search(json!({"at": {"position_m": [10.0, 0.0, 30.0]}, "query": "restroom"})).await;
+    assert_eq!(status, StatusCode::OK, "{body:#}");
+    assert_eq!(body["results"][0]["name"], "Restrooms");
+    assert!(
+        body["notices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n.as_str().unwrap().contains("from the mapped paths"))
+    );
+    assert!(body["results"][0]["distance_m"].as_f64().unwrap() > 25.0);
+
     let (status, body) = search(json!({"at": {"place_id": "entrance"}, "radius_m": 0})).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["error"]["code"], "invalid_input");
