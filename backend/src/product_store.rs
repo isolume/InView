@@ -21,6 +21,8 @@ use uuid::Uuid;
 
 pub const VENUE_ID: &str = "student-center-east";
 const SESSION_SECONDS: u64 = 14 * 24 * 60 * 60;
+/// Administrators sign in again daily; their rights come from Auth0 at each sign-in.
+const ADMIN_SESSION_SECONDS: u64 = 8 * 60 * 60;
 const MAX_DATABASE_BYTES: usize = 128 * 1024 * 1024;
 static DUMMY_HASH: OnceLock<String> = OnceLock::new();
 
@@ -40,7 +42,22 @@ pub struct Account {
 #[derive(Clone, Deserialize, Serialize)]
 struct StoredAccount {
     account: Account,
-    password_hash: String,
+    /// Absent for passwordless accounts that only sign in through Auth0.
+    #[serde(default)]
+    password_hash: Option<String>,
+    /// The Auth0 subject (`apple|...`, `email|...`) linked to this account.
+    #[serde(default)]
+    auth0_sub: Option<String>,
+    /// Only explicit bootstrap configuration grants break-glass password access. Legacy stores
+    /// default to false; restarting with matching bootstrap credentials migrates that account.
+    #[serde(default)]
+    bootstrap_admin: bool,
+    /// Whether other signed-in people may find this account. Off until the person turns it on.
+    #[serde(default)]
+    discoverable: bool,
+    /// A name the person chose to be found by; unique, lower case.
+    #[serde(default)]
+    handle: Option<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Session {
@@ -197,6 +214,90 @@ fn hash_password(password: &str) -> Result<String, ApiError> {
 fn digest_token(token: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(token.as_bytes()))
 }
+
+/// How a person can be found by other signed-in people. Everything is opt-in.
+#[derive(Clone, Debug, Serialize)]
+pub struct Discovery {
+    pub discoverable: bool,
+    pub handle: Option<String>,
+    /// Whether someone typing this account's email can find it: only Auth0-verified addresses that
+    /// are not Apple "Hide My Email" relays.
+    pub email_searchable: bool,
+}
+/// What a lookup reveals about another person: a display name and the handle they chose. Never an
+/// email, account id or sign-in method.
+#[derive(Clone, Debug, Serialize)]
+pub struct Person {
+    pub person_id: String,
+    pub name: String,
+    pub handle: Option<String>,
+}
+const PRIVATE_RELAY_DOMAIN: &str = "privaterelay.appleid.com";
+const LOOKUPS_PER_WINDOW: u8 = 30;
+fn email_searchable(stored: &StoredAccount) -> bool {
+    stored.auth0_sub.is_some()
+        && !stored
+            .account
+            .email
+            .ends_with(&format!("@{PRIVATE_RELAY_DOMAIN}"))
+}
+pub fn validate_handle(handle: &str) -> Result<String, ApiError> {
+    let handle = handle.trim().trim_start_matches('@').to_ascii_lowercase();
+    let valid = (3..=24).contains(&handle.len())
+        && handle.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && handle
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    if valid {
+        Ok(handle)
+    } else {
+        Err(ApiError::invalid(
+            "Use 3 to 24 letters, numbers, dots or underscores, starting with a letter or number.",
+        ))
+    }
+}
+const MAX_CONTACT_HASHES: usize = 500;
+const CONTACT_MATCHES_PER_WINDOW: u8 = 10;
+const CONTACT_HASH_PREFIX: &str = "inview-contacts-v1:";
+/// The identifier an app sends for one contact email: lower-case hex SHA-256 of the prefix plus the
+/// trimmed, lower-cased address. Apps compute the same value on the device, so no address leaves it.
+pub fn contact_hash(email: &str) -> String {
+    let digest = Sha256::digest(
+        format!("{CONTACT_HASH_PREFIX}{}", email.trim().to_ascii_lowercase()).as_bytes(),
+    );
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct ContactMatch {
+    /// The hash the app sent, so it can map the match back to the contact it came from.
+    pub hash: String,
+    #[serde(flatten)]
+    pub person: Person,
+}
+fn person_of(stored: &StoredAccount) -> Person {
+    // Passwordless email sign-in often names the account after its address; never expose that.
+    let name = Some(stored.account.name.trim())
+        .filter(|n| !n.is_empty() && !n.contains('@'))
+        .map(str::to_owned)
+        .or_else(|| stored.handle.clone())
+        .unwrap_or_else(|| "InView user".to_owned());
+    Person {
+        person_id: person_id(&stored.account.id),
+        name,
+        handle: stored.handle.clone(),
+    }
+}
+fn person_not_found() -> ApiError {
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        "person_not_found",
+        "No one with that email or handle is available to find.",
+    )
+}
+fn person_id(account_id: &str) -> String {
+    let digest = Sha256::digest(format!("inview-person:{account_id}").as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)[..22].to_owned()
+}
 pub fn validate_email(email: &str) -> Result<String, ApiError> {
     let email = email.trim().to_ascii_lowercase();
     let parts: Vec<_> = email.split('@').collect();
@@ -316,12 +417,28 @@ impl ProductStore {
         validate_password(password)?;
         let password_hash = hash_password(password)?;
         self.transaction(|db| {
-            if let Some(stored)=db.accounts.get(&email) {
-                if stored.account.role==Role::Admin { return Ok(()); }
-                return Err(ApiError::new(StatusCode::CONFLICT,"admin_conflict","Bootstrap email is already a contributor account. Choose a dedicated administrator email."));
+            if let Some(stored) = db.accounts.get_mut(&email) {
+                if stored.account.role != Role::Admin {
+                    return Err(ApiError::new(StatusCode::CONFLICT, "admin_conflict",
+                        "Bootstrap email is already a contributor account. Choose a dedicated administrator email."));
+                }
+                let matches = stored.password_hash.as_deref()
+                    .and_then(|hash| PasswordHash::new(hash).ok())
+                    .is_some_and(|hash| Argon2::default().verify_password(password.as_bytes(), &hash).is_ok());
+                if !matches {
+                    return Err(ApiError::new(StatusCode::CONFLICT, "admin_conflict",
+                        "Bootstrap administrator has no matching password. Supply its existing bootstrap password or choose a dedicated administrator email; credentials were not changed."));
+                }
+                if !stored.bootstrap_admin {
+                    stored.bootstrap_admin = true;
+                    let id = stored.account.id.clone();
+                    db.sessions.retain(|_, session| session.account_id != id);
+                }
+                return Ok(());
             }
-            let account=Account{id:Uuid::new_v4().to_string(),email:email.clone(),name:"Administrator".into(),role:Role::Admin};
-            db.accounts.insert(email,StoredAccount{account,password_hash}); Ok(())
+            let account = Account { id: Uuid::new_v4().to_string(), email: email.clone(), name: "Administrator".into(), role: Role::Admin };
+            db.accounts.insert(email, StoredAccount { account, password_hash: Some(password_hash), auth0_sub: None, bootstrap_admin: true, discoverable: false, handle: None });
+            Ok(())
         })
     }
     pub fn register(
@@ -346,7 +463,11 @@ impl ProductStore {
                 name: name.into(),
                 role: Role::User,
             },
-            password_hash: hash_password(password)?,
+            password_hash: Some(hash_password(password)?),
+            auth0_sub: None,
+            bootstrap_admin: false,
+            discoverable: false,
+            handle: None,
         };
         self.transaction(|db| {
             if db.accounts.contains_key(&email) {
@@ -368,6 +489,15 @@ impl ProductStore {
         })
     }
     pub fn login(&self, email: &str, password: &str) -> Result<AuthResponse, ApiError> {
+        self.login_with(email, password, false)
+    }
+    /// `admin_only` is the break-glass mode used once Auth0 is the sign-in for everyone else.
+    pub fn login_with(
+        &self,
+        email: &str,
+        password: &str,
+        admin_only: bool,
+    ) -> Result<AuthResponse, ApiError> {
         let email = validate_email(email)?;
         if password.len() > 1024 {
             return Err(unauthorized());
@@ -383,20 +513,131 @@ impl ProductStore {
             .cloned();
         let hash = stored
             .as_ref()
-            .map(|s| s.password_hash.as_str())
+            .and_then(|s| s.password_hash.as_deref())
             .unwrap_or(&self.inner.dummy_hash);
         let parsed = PasswordHash::new(hash).map_err(storage_error)?;
         let verified = Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
             .is_ok();
-        let stored = stored.filter(|_| verified).ok_or_else(|| {
-            ApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "invalid_credentials",
-                "Email or password is incorrect.",
-            )
-        })?;
-        self.transaction(|db| create_session(db, stored.account))
+        let stored = stored
+            .filter(|s| verified && s.password_hash.is_some())
+            .filter(|s| !admin_only || (s.bootstrap_admin && s.account.role == Role::Admin))
+            .ok_or_else(|| {
+                ApiError::new(
+                    StatusCode::UNAUTHORIZED,
+                    "invalid_credentials",
+                    "Email or password is incorrect.",
+                )
+            })?;
+        self.transaction(|db| {
+            // Password verification runs outside the database lock. A concurrent identity binding
+            // or role change must not allow that earlier authentication to mint a new session.
+            let current = db.accounts.get(&email).ok_or_else(unauthorized)?;
+            if current.password_hash != stored.password_hash
+                || current.auth0_sub != stored.auth0_sub
+                || current.bootstrap_admin != stored.bootstrap_admin
+                || current.account.role != stored.account.role
+            {
+                return Err(unauthorized());
+            }
+            create_session(db, stored.account)
+        })
+    }
+    /// Signs in a verified Auth0 identity, creating or linking the account.
+    ///
+    /// Accounts are keyed by email, so only a **verified** email may link to an existing account
+    /// (keeping its id and submissions). `admin` comes from the token's claims at this sign-in and
+    /// is re-derived every time, so removing the role in Auth0 demotes on the next sign-in; the
+    /// password-bootstrapped administrator is kept as break-glass.
+    pub fn sign_in_external(
+        &self,
+        sub: &str,
+        email: &str,
+        name: Option<&str>,
+        admin: bool,
+    ) -> Result<AuthResponse, ApiError> {
+        let email = validate_email(email)?;
+        if sub.is_empty() || sub.len() > 256 {
+            return Err(unauthorized());
+        }
+        self.attempt(&format!("auth0:{sub}"), 30)?;
+        self.transaction(|db| {
+            let key = db
+                .accounts
+                .iter()
+                .find(|(_, a)| a.auth0_sub.as_deref() == Some(sub))
+                .map(|(k, _)| k.clone())
+                .or_else(|| db.accounts.contains_key(&email).then(|| email.clone()));
+            let ttl;
+            let account = if let Some(key) = key {
+                let stored = db.accounts.get_mut(&key).expect("key came from the map");
+                let first_binding = stored.auth0_sub.is_none();
+                let previous_role = stored.account.role.clone();
+                match stored.auth0_sub.as_deref() {
+                    Some(linked) if linked != sub => {
+                        return Err(ApiError::new(
+                            StatusCode::CONFLICT,
+                            "account_linked",
+                            "This email already belongs to a different sign-in.",
+                        ));
+                    }
+                    _ => stored.auth0_sub = Some(sub.to_owned()),
+                }
+                stored.account.role = if admin || stored.bootstrap_admin {
+                    Role::Admin
+                } else {
+                    Role::User
+                };
+                ttl = if stored.account.role == Role::Admin {
+                    ADMIN_SESSION_SECONDS
+                } else {
+                    SESSION_SECONDS
+                };
+                let account = stored.account.clone();
+                if first_binding || (previous_role != Role::Admin && account.role == Role::Admin) {
+                    db.sessions
+                        .retain(|_, session| session.account_id != account.id);
+                }
+                account
+            } else {
+                if db.accounts.len() >= 10000 {
+                    return Err(ApiError::new(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "accounts_full",
+                        "New accounts are temporarily unavailable.",
+                    ));
+                }
+                let display = name
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty() && n.chars().count() <= 80)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| email.split('@').next().unwrap_or("User").to_owned());
+                let account = Account {
+                    id: Uuid::new_v4().to_string(),
+                    email: email.clone(),
+                    name: display,
+                    role: if admin { Role::Admin } else { Role::User },
+                };
+                ttl = if admin {
+                    ADMIN_SESSION_SECONDS
+                } else {
+                    SESSION_SECONDS
+                };
+                db.accounts.insert(
+                    email.clone(),
+                    StoredAccount {
+                        account: account.clone(),
+                        password_hash: None,
+                        auth0_sub: Some(sub.to_owned()),
+                        bootstrap_admin: false,
+                        discoverable: false,
+                        handle: None,
+                    },
+                );
+                account
+            };
+            create_session_for(db, account, ttl)
+        })
     }
     fn attempt(&self, key: &str, limit: u8) -> Result<(), ApiError> {
         let mut attempts = self.inner.attempts.lock().map_err(storage_error)?;
@@ -419,6 +660,128 @@ impl ProductStore {
         }
         record.1 += 1;
         Ok(())
+    }
+    fn stored_by_id<'a>(db: &'a Database, id: &str) -> Option<&'a StoredAccount> {
+        db.accounts.values().find(|a| a.account.id == id)
+    }
+    pub fn discovery(&self, account: &Account) -> Result<Discovery, ApiError> {
+        let db = self.inner.data.lock().map_err(storage_error)?;
+        let stored = Self::stored_by_id(&db, &account.id).ok_or_else(unauthorized)?;
+        Ok(Discovery {
+            discoverable: stored.discoverable,
+            handle: stored.handle.clone(),
+            email_searchable: email_searchable(stored),
+        })
+    }
+    /// `handle`: `None` leaves it as is, `Some(None)` clears it, `Some(Some(h))` sets it.
+    pub fn set_discovery(
+        &self,
+        account: &Account,
+        discoverable: Option<bool>,
+        handle: Option<Option<String>>,
+    ) -> Result<Discovery, ApiError> {
+        let handle = match handle {
+            Some(Some(raw)) => Some(Some(validate_handle(&raw)?)),
+            other => other.map(|_| None),
+        };
+        self.transaction(|db| {
+            if let Some(Some(wanted)) = &handle
+                && db
+                    .accounts
+                    .values()
+                    .any(|a| a.account.id != account.id && a.handle.as_deref() == Some(wanted))
+            {
+                return Err(ApiError::new(
+                    StatusCode::CONFLICT,
+                    "handle_taken",
+                    "That handle is already in use.",
+                ));
+            }
+            let stored = db
+                .accounts
+                .values_mut()
+                .find(|a| a.account.id == account.id)
+                .ok_or_else(unauthorized)?;
+            if let Some(value) = discoverable {
+                stored.discoverable = value;
+            }
+            if let Some(value) = handle {
+                stored.handle = value;
+            }
+            Ok(Discovery {
+                discoverable: stored.discoverable,
+                handle: stored.handle.clone(),
+                email_searchable: email_searchable(stored),
+            })
+        })
+    }
+    /// Finds one person by exact verified email or exact handle. Not-found, not-discoverable, a
+    /// relay address and yourself all look the same, and lookups are rate limited per searcher, so
+    /// the directory cannot be browsed or probed for who has an account.
+    pub fn find_person(&self, searcher: &Account, query: &str) -> Result<Person, ApiError> {
+        self.attempt(&format!("lookup:{}", searcher.id), LOOKUPS_PER_WINDOW)?;
+        let query = query.trim();
+        let db = self.inner.data.lock().map_err(storage_error)?;
+        let (found, by_email) = if query.contains('@') && !query.starts_with('@') {
+            let email = validate_email(query).map_err(|_| person_not_found())?;
+            (db.accounts.get(&email), true)
+        } else {
+            let handle = validate_handle(query).map_err(|_| person_not_found())?;
+            (
+                db.accounts
+                    .values()
+                    .find(|a| a.handle.as_deref() == Some(handle.as_str())),
+                false,
+            )
+        };
+        let stored = found
+            .filter(|a| a.discoverable && a.account.id != searcher.id)
+            .filter(|a| !by_email || email_searchable(a))
+            .ok_or_else(person_not_found)?;
+        Ok(person_of(stored))
+    }
+    /// Matches an address book against opted-in people. The app sends SHA-256 hashes of its contacts'
+    /// normalised emails (see [`contact_hash`]); only discoverable accounts with a searchable email can
+    /// match, so a contact who never opted in is indistinguishable from a stranger. Uploaded hashes
+    /// are not stored.
+    pub fn match_contacts(
+        &self,
+        searcher: &Account,
+        hashes: &[String],
+    ) -> Result<Vec<ContactMatch>, ApiError> {
+        if hashes.len() > MAX_CONTACT_HASHES {
+            return Err(ApiError::invalid("Send at most 500 contacts at a time."));
+        }
+        if hashes.iter().any(|h| {
+            h.len() != 64
+                || !h
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        }) {
+            return Err(ApiError::invalid(
+                "Contacts must be lower-case SHA-256 hex digests.",
+            ));
+        }
+        self.attempt(
+            &format!("contacts:{}", searcher.id),
+            CONTACT_MATCHES_PER_WINDOW,
+        )?;
+        let wanted: std::collections::HashSet<&str> = hashes.iter().map(String::as_str).collect();
+        let db = self.inner.data.lock().map_err(storage_error)?;
+        let mut matches: Vec<ContactMatch> = db
+            .accounts
+            .values()
+            .filter(|a| a.discoverable && a.account.id != searcher.id && email_searchable(a))
+            .filter_map(|a| {
+                let hash = contact_hash(&a.account.email);
+                wanted.contains(hash.as_str()).then(|| ContactMatch {
+                    hash,
+                    person: person_of(a),
+                })
+            })
+            .collect();
+        matches.sort_by(|a, b| a.hash.cmp(&b.hash));
+        Ok(matches)
     }
     pub fn account(&self, token: &str) -> Result<Account, ApiError> {
         if token.len() != 43 {
@@ -705,10 +1068,22 @@ impl ProductStore {
     }
 }
 fn create_session(db: &mut Database, account: Account) -> Result<AuthResponse, ApiError> {
+    let ttl = if account.role == Role::Admin {
+        ADMIN_SESSION_SECONDS
+    } else {
+        SESSION_SECONDS
+    };
+    create_session_for(db, account, ttl)
+}
+fn create_session_for(
+    db: &mut Database,
+    account: Account,
+    ttl_seconds: u64,
+) -> Result<AuthResponse, ApiError> {
     let mut bytes = [0; 32];
     OsRng.fill_bytes(&mut bytes);
     let token = URL_SAFE_NO_PAD.encode(bytes);
-    let expires_at = now() + SESSION_SECONDS;
+    let expires_at = now() + ttl_seconds;
     let mut existing: Vec<_> = db
         .sessions
         .iter()
@@ -1101,4 +1476,154 @@ fn vector(value: Option<&Value>, len: usize, bound: f64) -> Result<Vec<f64>, Api
         .iter()
         .map(|value| number(Some(value), bound))
         .collect()
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    use axum::response::IntoResponse;
+    use serde_json::json;
+
+    const EMAIL: &str = "bootstrap@example.test";
+    const PASSWORD: &str = "the existing bootstrap password";
+    const LEGACY_TOKEN: &str = "1234567890123456789012345678901234567890123";
+
+    fn legacy_store(role: Role) -> ProductStore {
+        let root = std::env::temp_dir().join(format!("inview-legacy-identity-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        // Schema 1 before Auth0 had neither auth0_sub nor bootstrap_admin.
+        fs::write(root.join("product.json"), serde_json::to_vec(&json!({
+            "schema_version": 1,
+            "accounts": { EMAIL: { "account": {"id": "legacy-id", "email": EMAIL, "name": "Legacy", "role": role},
+                "password_hash": hash_password(PASSWORD).unwrap() } },
+            "sessions": { digest_token(LEGACY_TOKEN): {"account_id": "legacy-id", "expires_at": now() + SESSION_SECONDS} },
+            "submissions": {}, "retries": {}, "releases": []
+        })).unwrap()).unwrap();
+        ProductStore::open_inner(root, true).unwrap()
+    }
+
+    #[test]
+    fn legacy_provenance_defaults_false_and_matching_bootstrap_migrates_and_revokes() {
+        let store = legacy_store(Role::Admin);
+        assert!(!store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+        assert_eq!(store.account(LEGACY_TOKEN).unwrap().id, "legacy-id");
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_err());
+        store.bootstrap_admin(EMAIL, PASSWORD).unwrap();
+        assert!(store.account(LEGACY_TOKEN).is_err());
+        let session = store.login_with(EMAIL, PASSWORD, true).unwrap();
+        assert_eq!(session.account.id, "legacy-id");
+        assert!(session.expires_at <= now() + ADMIN_SESSION_SECONDS);
+        let saved: Database =
+            serde_json::from_slice(&fs::read(store.inner.root.join("product.json")).unwrap())
+                .unwrap();
+        assert!(saved.accounts[EMAIL].bootstrap_admin);
+        assert!(!saved.sessions.contains_key(&digest_token(LEGACY_TOKEN)));
+        // Repeated bootstrap is idempotent, not a logout on every server startup.
+        store.bootstrap_admin(EMAIL, PASSWORD).unwrap();
+        assert!(store.account(&session.token).is_ok());
+        let linked = store
+            .sign_in_external("email|bootstrap", EMAIL, None, false)
+            .unwrap();
+        assert_eq!(linked.account.role, Role::Admin);
+        assert!(store.account(&session.token).is_err());
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_ok());
+    }
+
+    #[test]
+    fn legacy_admin_without_explicit_bootstrap_is_demoted_on_external_sign_in() {
+        let store = legacy_store(Role::Admin);
+        let linked = store
+            .sign_in_external("email|legacy", EMAIL, None, false)
+            .unwrap();
+        assert_eq!(linked.account.role, Role::User);
+        assert_eq!(linked.account.id, "legacy-id");
+        assert!(store.account(LEGACY_TOKEN).is_err());
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_err());
+        assert!(!store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+    }
+
+    #[test]
+    fn bootstrap_conflicts_do_not_change_passwords_provenance_or_sessions() {
+        let store = legacy_store(Role::Admin);
+        let before = fs::read(store.inner.root.join("product.json")).unwrap();
+        let error = store
+            .bootstrap_admin(EMAIL, "a different long password")
+            .unwrap_err();
+        assert_eq!(error.into_response().status(), StatusCode::CONFLICT);
+        assert_eq!(
+            fs::read(store.inner.root.join("product.json")).unwrap(),
+            before
+        );
+        assert!(store.account(LEGACY_TOKEN).is_ok());
+        assert!(!store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+
+        let passwordless = ProductStore::default();
+        let external = passwordless
+            .sign_in_external("apple|admin", EMAIL, None, true)
+            .unwrap();
+        let before = fs::read(passwordless.inner.root.join("product.json")).unwrap();
+        let error = passwordless.bootstrap_admin(EMAIL, PASSWORD).unwrap_err();
+        assert_eq!(error.into_response().status(), StatusCode::CONFLICT);
+        assert_eq!(
+            fs::read(passwordless.inner.root.join("product.json")).unwrap(),
+            before
+        );
+        assert!(passwordless.account(&external.token).is_ok());
+        assert!(passwordless.login_with(EMAIL, PASSWORD, true).is_err());
+
+        let user = legacy_store(Role::User);
+        assert_eq!(
+            user.bootstrap_admin(EMAIL, PASSWORD)
+                .unwrap_err()
+                .into_response()
+                .status(),
+            StatusCode::CONFLICT
+        );
+        assert!(user.account(LEGACY_TOKEN).is_ok());
+    }
+
+    #[test]
+    fn explicit_bootstrap_provenance_and_revocation_survive_reopening() {
+        let root = std::env::temp_dir().join(format!("inview-bootstrap-reopen-{}", Uuid::new_v4()));
+        let store = ProductStore::open(&root).unwrap();
+        store.bootstrap_admin(EMAIL, PASSWORD).unwrap();
+        let old = store.login_with(EMAIL, PASSWORD, true).unwrap();
+        let linked = store
+            .sign_in_external("email|bootstrap", EMAIL, None, false)
+            .unwrap();
+        drop(store);
+        let store = ProductStore::open_inner(root, true).unwrap();
+        assert!(store.account(&old.token).is_err());
+        assert_eq!(store.account(&linked.token).unwrap().role, Role::Admin);
+        assert!(store.inner.data.lock().unwrap().accounts[EMAIL].bootstrap_admin);
+        assert!(store.login_with(EMAIL, PASSWORD, true).is_ok());
+    }
+
+    #[test]
+    fn failed_link_persistence_does_not_partially_revoke_or_bind() {
+        let store = legacy_store(Role::User);
+        // Force the atomic rename to fail without damaging the original file.
+        let path = store.inner.root.join("product.json");
+        let backup = store.inner.root.join("product.backup");
+        fs::rename(&path, &backup).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert!(
+            store
+                .sign_in_external("apple|owner", EMAIL, None, true)
+                .is_err()
+        );
+        assert_eq!(store.account(LEGACY_TOKEN).unwrap().role, Role::User);
+        assert!(
+            store.inner.data.lock().unwrap().accounts[EMAIL]
+                .auth0_sub
+                .is_none()
+        );
+        fs::remove_dir(&path).unwrap();
+        fs::rename(&backup, &path).unwrap();
+        let owner = store
+            .sign_in_external("apple|owner", EMAIL, None, true)
+            .unwrap();
+        assert!(store.account(LEGACY_TOKEN).is_err());
+        assert_eq!(store.account(&owner.token).unwrap().role, Role::Admin);
+    }
 }

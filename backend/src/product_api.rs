@@ -1,5 +1,6 @@
 use crate::{
     AppState,
+    auth0::VerifyError,
     error::ApiError,
     product_store::{
         self, Account, AuthResponse, EditRequest, PublishRequest, PublishedMap, Role, Submission,
@@ -61,7 +62,11 @@ fn json_error(error: JsonRejection) -> ApiError {
         "This request could not be read.",
     )
 }
-pub async fn protect_response(request: Request, next: Next) -> Response {
+pub async fn protect_response(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
     let is_api = !request.uri().path().starts_with("/studio/assets/");
     let is_admin = request.uri().path() == "/admin";
     let mut response = next.run(request).await;
@@ -77,7 +82,19 @@ pub async fn protect_response(request: Request, next: Next) -> Response {
             .insert("referrer-policy", "no-referrer".parse().unwrap());
     }
     if is_admin {
-        response.headers_mut().insert("content-security-policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'".parse().unwrap());
+        // The admin page signs in with Auth0 (PKCE, code exchange at the tenant's token endpoint).
+        let connect = match &state.auth0 {
+            Some(auth0) => format!("'self' https://{}", auth0.config().domain),
+            None => "'self'".to_owned(),
+        };
+        let policy = format!(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src {connect}; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+        );
+        if let Ok(value) = policy.parse() {
+            response
+                .headers_mut()
+                .insert("content-security-policy", value);
+        }
     }
     response
 }
@@ -97,6 +114,13 @@ pub async fn register(
     payload: Result<Json<RegisterRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<AuthResponse>), ApiError> {
     let Json(request) = payload.map_err(json_error)?;
+    if state.auth0.is_some() {
+        return Err(ApiError::new(
+            StatusCode::GONE,
+            "registration_closed",
+            "Create your account by signing in with Apple or your email.",
+        ));
+    }
     let permit = state
         .product
         .auth_workers
@@ -135,12 +159,170 @@ pub async fn login(
                 "Sign-in is busy. Try again shortly.",
             )
         })?;
+    let auth0_enabled = state.auth0.is_some();
     blocking(move || {
         let _permit = permit;
-        state.product.login(&request.email, &request.password)
+        // With Auth0 enabled, passwords remain only for the bootstrapped administrator.
+        state
+            .product
+            .login_with(&request.email, &request.password, auth0_enabled)
     })
     .await
     .map(Json)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Auth0Request {
+    /// The app's ID token (audience = its client ID), or an access token for the configured API.
+    #[serde(default)]
+    id_token: Option<String>,
+    #[serde(default)]
+    access_token: Option<String>,
+}
+/// Trades a verified Auth0 token for the backend's own revocable session.
+pub async fn auth0_exchange(
+    State(state): State<AppState>,
+    payload: Result<Json<Auth0Request>, JsonRejection>,
+) -> Result<Json<AuthResponse>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let Some(auth0) = state.auth0.clone() else {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "auth0_disabled",
+            "Sign-in with Apple or email isn't enabled on this server.",
+        ));
+    };
+    let token = match (&request.id_token, &request.access_token) {
+        (Some(token), None) | (None, Some(token)) => token.clone(),
+        _ => {
+            return Err(ApiError::invalid(
+                "Send exactly one of id_token or access_token.",
+            ));
+        }
+    };
+    let identity = auth0.verify(&token).await.map_err(|error| match error {
+        VerifyError::Unavailable => ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "auth_unavailable",
+            "Sign-in is unavailable right now. Try again shortly.",
+        ),
+        VerifyError::Invalid(reason) => {
+            tracing::debug!(reason, "Auth0 token rejected");
+            ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "invalid_token",
+                "This sign-in could not be verified.",
+            )
+        }
+    })?;
+    // A verified address is what links accounts; Apple and email codes always provide one.
+    if !identity.email_verified {
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "email_not_verified",
+            "Verify your email address with your sign-in provider and try again.",
+        ));
+    }
+    let admin = auth0.is_admin(&identity);
+    blocking(move || {
+        state.product.sign_in_external(
+            &identity.sub,
+            &identity.email,
+            identity.name.as_deref(),
+            admin,
+        )
+    })
+    .await
+    .map(Json)
+}
+/// What a client needs to start Auth0 sign-in; public values only.
+pub async fn auth_config(State(state): State<AppState>) -> Json<Value> {
+    Json(match &state.auth0 {
+        Some(auth0) => {
+            let config = auth0.config();
+            json!({"enabled": true, "domain": config.domain, "audience": config.api_audience,
+                   "client_id": config.client_id, "admin_client_id": config.admin_client_id})
+        }
+        None => json!({"enabled": false}),
+    })
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiscoveryRequest {
+    #[serde(default)]
+    discoverable: Option<bool>,
+    /// A new handle to be found by.
+    #[serde(default)]
+    handle: Option<String>,
+    /// Remove the handle.
+    #[serde(default)]
+    clear_handle: bool,
+}
+pub async fn discovery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<product_store::Discovery>, ApiError> {
+    let account = account(&state, &headers)?;
+    blocking(move || state.product.discovery(&account))
+        .await
+        .map(Json)
+}
+pub async fn set_discovery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<DiscoveryRequest>, JsonRejection>,
+) -> Result<Json<product_store::Discovery>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    let handle = match (request.handle, request.clear_handle) {
+        (Some(_), true) => {
+            return Err(ApiError::invalid("Send either handle or clear_handle."));
+        }
+        (Some(handle), false) => Some(Some(handle)),
+        (None, true) => Some(None),
+        (None, false) => None,
+    };
+    blocking(move || {
+        state
+            .product
+            .set_discovery(&account, request.discoverable, handle)
+    })
+    .await
+    .map(Json)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FindPersonRequest {
+    query: String,
+}
+pub async fn find_person(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<FindPersonRequest>, JsonRejection>,
+) -> Result<Json<product_store::Person>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    if request.query.len() > 254 {
+        return Err(ApiError::invalid("Enter an email address or handle."));
+    }
+    blocking(move || state.product.find_person(&account, &request.query))
+        .await
+        .map(Json)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MatchContactsRequest {
+    hashes: Vec<String>,
+}
+pub async fn match_contacts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<MatchContactsRequest>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    let account = account(&state, &headers)?;
+    let matches = blocking(move || state.product.match_contacts(&account, &request.hashes)).await?;
+    Ok(Json(json!({ "matches": matches })))
 }
 pub async fn me(
     State(state): State<AppState>,

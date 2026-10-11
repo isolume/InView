@@ -1,6 +1,7 @@
 pub mod alignment;
 pub mod api;
 pub mod auth;
+pub mod auth0;
 pub mod building_nav;
 pub mod buildings;
 pub mod capture;
@@ -50,6 +51,8 @@ pub struct AppState {
     pub product: product_store::ProductStore,
     pub maps: Option<PgPool>,
     pub api_token: Option<Arc<str>>,
+    /// Present when the Auth0 tenant is configured; account sign-in then goes through it.
+    pub auth0: Option<auth0::SharedAuth0>,
     pub processing_requests: Arc<tokio::sync::Semaphore>,
 }
 
@@ -63,6 +66,7 @@ impl Default for AppState {
             product: product_store::ProductStore::default(),
             maps: None,
             api_token: None,
+            auth0: None,
             processing_requests: Arc::new(tokio::sync::Semaphore::new(4)),
         }
     }
@@ -218,7 +222,28 @@ pub fn app(state: AppState) -> Router {
             "/api/accounts/login",
             axum::routing::post(product_api::login).layer(DefaultBodyLimit::max(16 * 1024)),
         )
+        .route(
+            "/api/accounts/auth0",
+            axum::routing::post(product_api::auth0_exchange)
+                .layer(DefaultBodyLimit::max(16 * 1024)),
+        )
+        .route("/api/auth/config", get(product_api::auth_config))
         .route("/api/accounts/me", get(product_api::me))
+        .route(
+            "/api/accounts/me/discovery",
+            get(product_api::discovery)
+                .put(product_api::set_discovery)
+                .layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
+            "/api/people/match",
+            axum::routing::post(product_api::match_contacts)
+                .layer(DefaultBodyLimit::max(48 * 1024)),
+        )
+        .route(
+            "/api/people/find",
+            axum::routing::post(product_api::find_person).layer(DefaultBodyLimit::max(4 * 1024)),
+        )
         .route(
             "/api/accounts/logout",
             axum::routing::post(product_api::logout),
@@ -251,6 +276,9 @@ pub fn app(state: AppState) -> Router {
         .method_not_allowed_fallback(api::method_not_allowed)
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
-        .layer(middleware::from_fn(product_api::protect_response))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            product_api::protect_response,
+        ))
         .with_state(state)
 }

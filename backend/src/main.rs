@@ -60,6 +60,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             tracing::warn!("Furniture recognition disabled; run recognition/setup.sh to enable it")
         }
     }
+    state.auth0 = inview_backend::auth0::Auth0::from_env()?.map(std::sync::Arc::new);
+    if let Some(auth0) = &state.auth0 {
+        tracing::info!(
+            domain = %auth0.config().domain,
+            admin_emails = auth0.config().admin_emails.len(),
+            "Auth0 sign-in enabled; password registration is closed"
+        );
+    }
     let product_path = env::var("INVIEW_PRODUCT_DIR").unwrap_or_else(|_| "data/product".into());
     let product = ProductStore::open(product_path)?;
     match (

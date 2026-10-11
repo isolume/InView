@@ -182,7 +182,11 @@ fn synonyms(category: &str) -> &'static str {
 /// A room number read from its door plate: "204" and "room 204" find Room 204 even when the
 /// place's name is a department rather than the number.
 fn room_score(query: &str, detail: &Value) -> u8 {
-    let Some(number) = detail.get("room_number").and_then(Value::as_str).map(normalize) else {
+    let Some(number) = detail
+        .get("room_number")
+        .and_then(Value::as_str)
+        .map(normalize)
+    else {
         return 0;
     };
     if number.is_empty() {
@@ -648,7 +652,10 @@ mod tests {
         assert_eq!(room_score(&normalize("Room 204a"), &detail), 4);
         assert_eq!(room_score(&normalize("204"), &detail), 3);
         assert_eq!(room_score(&normalize("205"), &detail), 0);
-        assert_eq!(room_score(&normalize("204"), &json!({"room_number": null})), 0);
+        assert_eq!(
+            room_score(&normalize("204"), &json!({"room_number": null})),
+            0
+        );
     }
 
     #[test]
