@@ -9,6 +9,7 @@ struct MapScreen: View {
     private enum RouteStart: Equatable {
         case myLocation
         case place(UUID)
+        case floorPlace(FloorNavigationDestination)
         case mapPoint(SIMD2<Float>)
         case elevatedPoint(ElevatedFloorLocation)
     }
@@ -50,6 +51,7 @@ struct MapScreen: View {
     @State private var displayedPublishedVersion: UInt64?
     @State private var selectedLevel = 2
     @State private var localFloor: SavedFloor?
+    @State private var savedFloorDestinations: [FloorNavigationDestination] = []
     @State private var panel = Panel.explore
     @State private var modal: Modal?
     @State private var cover: Cover?
@@ -67,6 +69,14 @@ struct MapScreen: View {
     @State private var elevatedPreviewRoute: ElevatedFloorRoute?
     @State private var elevatedPreviewStart: ElevatedFloorLocation?
     @State private var chosenElevatedDestination: ElevatedFloorLocation?
+    @State private var floorDestination: FloorNavigationDestination?
+    @State private var transferApproaches: [FloorTransferApproach] = []
+    @State private var previewFloor: FloorPreviewMap?
+    @State private var previewFloorGeneration = 0
+    @State private var arrivalPreview: FloorArrivalPreview?
+    @State private var arrivalPreviewGeneration = 0
+    @State private var isPreparingArrival = false
+    @State private var departureLanding: FloorPreviewLanding?
     @State private var routeStart: RouteStart?
     @State private var swapTurns = 0
     /// Shown for a moment when the camera finds the person.
@@ -81,6 +91,7 @@ struct MapScreen: View {
     @State private var lastFollowed: PersonLocation?
     /// A place the assistant was asked to show, opened once a map style change settles.
     @State private var pendingAssistantPlace: UUID?
+    @State private var pendingRouteSelection: FloorNavigationSelection?
     @FocusState private var searchFocused: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -98,7 +109,18 @@ struct MapScreen: View {
     }
 
     private var hasMap: Bool { controller.map != nil && selectedLevel == sourceLevel }
-    private var hasVisualFloor: Bool { hasMap || modelAvailable }
+    private var hasVisualFloor: Bool { viewedMap != nil || modelAvailable }
+    private var viewedMap: VenueMap? { selectedLevel == sourceLevel ? controller.map : previewFloor?.level == selectedLevel ? previewFloor?.map : nil }
+    private var viewedElevatedMap: ElevatedFloorMap? { selectedLevel == sourceLevel ? elevatedMap : previewFloor?.level == selectedLevel ? previewFloor?.elevatedMap : nil }
+    private var viewedArrival: FloorArrivalPreview? { arrivalPreview?.destination.level == selectedLevel ? arrivalPreview : nil }
+    private var viewedRoute: Route? { selectedLevel == sourceLevel ? activeRoute : viewedArrival?.route }
+    private var viewedStart: SIMD2<Float>? {
+        selectedLevel == sourceLevel ? previewStart ?? (controller.isPositionReliable ? controller.position : nil)
+            : viewedArrival?.landing?.point.floorPoint
+    }
+    private var viewedDestination: AccessPoint? {
+        selectedLevel == sourceLevel ? controller.selectedDestination : floorDestination?.level == selectedLevel ? floorDestination?.point : nil
+    }
     private var hasScanDetail: Bool {
         guard hasMap, let scene, let detailScene,
               detailScene.sourceScanID == scene.sourceScanID, detailScene.mapID == scene.mapID,
@@ -113,20 +135,55 @@ struct MapScreen: View {
     /// A route from a chosen start is a preview; from "My location" it's the live session's route.
     private var activeRoute: Route? { elevatedMap != nil ? nil : previewStart != nil ? previewRoute : controller.route }
     private var elevatedMap: ElevatedFloorMap? {
-        guard !isDemo, localFloor == nil, selectedLevel == 1, sourceLevel == 1,
+        guard !isDemo, localFloor == nil, sourceLevel == 1,
               displayedPublishedVersion == nil else { return nil }
         return StudentCenterFloor1Catalog.elevatedMap()
     }
     private var elevatedDestination: ElevatedFloorLocation? {
+        if floorDestination != nil { return departureLanding?.elevatedLocation }
         if let chosenElevatedDestination { return chosenElevatedDestination }
         guard let map = elevatedMap, let destination = controller.selectedDestination,
               let zoneID = map.destinationZones[destination.id] else { return nil }
         return ElevatedFloorLocation(zoneID: zoneID, position: destination.position)
     }
+    private var arrivalElevatedDestination: ElevatedFloorLocation? {
+        guard let preview = viewedArrival, let zoneID = preview.floor.elevatedMap?.destinationZones[preview.destination.point.id] else { return nil }
+        return ElevatedFloorLocation(zoneID: zoneID, position: preview.destination.point.position)
+    }
     /// Model places may be endpoints where the open map has matching measured coverage.
     private var routablePlaces: [AccessPoint] {
         guard hasMap else { return [] }
         return (controller.map?.points ?? []) + livePins + followedPin + (modelHasMatchingMap ? registeredModelPoints : [])
+    }
+    private var floorDestinations: [FloorNavigationDestination] {
+        let extraPlaces = (sourceLivePins + sourceFollowedPin).filter { pin in controller.map?.points.contains { $0.id == pin.id } != true }
+            .map { FloorNavigationDestination(level: sourceLevel,
+                floorName: localFloor?.name ?? ScanFloorIdentity.defaultName(for: sourceLevel),
+                point: $0, savedFloor: localFloor) }
+        if isDemo {
+            return FloorNavigationCatalog.destinations(level: sourceLevel, map: controller.map)
+        }
+        if let localFloor {
+            return savedFloorDestinations.filter {
+                $0.savedFloor?.identity.buildingID == localFloor.identity.buildingID && $0.savedFloor?.id != localFloor.id
+            }
+                + FloorNavigationCatalog.destinations(level: localFloor.level, name: localFloor.name,
+                    map: controller.map, savedFloor: localFloor) + extraPlaces
+        }
+        return StudentCenterCatalog.floorLevels.flatMap { level in
+            let map = level == sourceLevel ? controller.map : acceptedRelease(for: level)?.map
+                ?? (level == 1 ? StudentCenterFloor1Catalog.displayMap() : level == 2 ? StudentCenterCatalog.map() : nil)
+            return FloorNavigationCatalog.destinations(level: level, map: map, includesModel: true)
+        } + extraPlaces
+    }
+    private var destinationTitle: String? { floorDestination?.title ?? controller.selectedDestination?.title }
+    private var transferKind: BuildingConnectorKind? {
+        departureLanding?.kind ?? transferApproaches.first { $0.destination.id == controller.selectedDestination?.id }?.kind
+    }
+    private var departureLandings: [FloorPreviewLanding] {
+        guard let elevatedMap else { return [] }
+        return FloorArrivalPreview.landings(in: FloorPreviewMap(level: sourceLevel, map: controller.map, elevatedMap: elevatedMap),
+            preference: routePreference)
     }
     private var canUseMyLocation: Bool { elevatedMap == nil && (isDemo || controller.canGuide) }
     private var routePreference: RoutePreference {
@@ -139,7 +196,7 @@ struct MapScreen: View {
     }
     private var modelAvailable: Bool {
         if !isDemo, Self.showsCampus, localFloor == nil, selectedLevel == 1 {
-            return StudentCenterFloor1Catalog.modelURL() != nil && elevatedMap != nil
+            return StudentCenterFloor1Catalog.modelURL() != nil && viewedElevatedMap != nil
         }
         return !isDemo && Self.showsCampus && localFloor == nil && StudentCenterCatalog.hasEstimatedModel(on: selectedLevel)
             && registrationMap.flatMap { StudentCenterModelAlignment.transform(for: $0, floor: selectedLevel) } != nil
@@ -151,7 +208,7 @@ struct MapScreen: View {
     }
     private var selectedDestinationIsModelPlace: Bool {
         guard elevatedMap == nil, let destination = controller.selectedDestination else { return false }
-        return StudentCenterCatalog.modelLandmarks(for: selectedLevel).contains { $0.id == destination.id }
+        return StudentCenterCatalog.modelLandmarks(for: sourceLevel).contains { $0.id == destination.id }
     }
     private var registrationMap: VenueMap? {
         // The exported asset has a fixed registration. Edited place pins must not move the model.
@@ -190,8 +247,8 @@ struct MapScreen: View {
     private var modelPoints: [AccessPoint] { showsModel ? registeredModelPoints : [] }
 
     private var registeredModelPoints: [AccessPoint] {
-        if let elevatedMap {
-            let measuredIDs = Set(elevatedMap.destinationZones.keys)
+        if let viewedElevatedMap {
+            let measuredIDs = Set(viewedElevatedMap.destinationZones.keys)
             return StudentCenterFloor1Catalog.modelLandmarks().filter { !measuredIDs.contains($0.id) }.map { landmark in
                 AccessPoint(id: landmark.id, kind: .destination, name: landmark.title,
                             position: landmark.position, source: .manual, confidence: 0.5)
@@ -199,7 +256,7 @@ struct MapScreen: View {
         }
         guard modelAvailable, let transform = modelTransform else { return [] }
         return StudentCenterCatalog.modelLandmarks(for: selectedLevel).compactMap { landmark in
-            if hasMap, landmark.title == "Lifts", controller.map?.points.contains(where: { $0.kind == .elevator }) == true { return nil }
+            if landmark.title == "Lifts", viewedMap?.points.contains(where: { $0.kind == .elevator }) == true { return nil }
             let ground = SIMD4(landmark.position.x, StudentCenterCatalog.modelFloorY(for: selectedLevel) ?? 0, landmark.position.z, 1)
             let position = transform * ground
             return AccessPoint(id: landmark.id, kind: landmark.title == "Lifts" ? .elevator : .destination,
@@ -207,18 +264,20 @@ struct MapScreen: View {
         }
     }
 
-    private var displayPoints: [AccessPoint] { (hasMap ? controller.map?.points ?? [] : []) + livePins + followedPin + modelPoints }
+    private var displayPoints: [AccessPoint] { (viewedMap?.points ?? []) + livePins + followedPin + modelPoints }
 
     /// The server scan behind a saved floor; published and example maps have none to search.
     private var liveScanID: String? { isDemo ? nil : localFloor?.captureID }
     /// Live places from the scan server, pinned at the spot the scan measured them on this floor.
-    private var livePins: [AccessPoint] { hasMap && liveScanID != nil ? live.pins : [] }
-    /// Where the person being followed is, as a pin on this floor, when they are on it.
-    private var followedPin: [AccessPoint] {
-        guard hasMap, !isDemo, localFloor == nil, let location = people.followedLocation,
+    private var sourceLivePins: [AccessPoint] { controller.map != nil && liveScanID != nil ? live.pins : [] }
+    private var livePins: [AccessPoint] { hasMap ? sourceLivePins : [] }
+    /// The followed person stays available as a route endpoint while browsing another floor.
+    private var sourceFollowedPin: [AccessPoint] {
+        guard controller.map != nil, !isDemo, localFloor == nil, let location = people.followedLocation,
               location.isOn(venueID: SharedPosition.studentCenterVenueID, floor: sourceLevel) else { return [] }
         return [location.destination(floorY: controller.map?.floorY ?? 0)]
     }
+    private var followedPin: [AccessPoint] { hasMap ? sourceFollowedPin : [] }
     /// Your own position in the venue's shared frame, or nil when you aren't tracked on the shared map
     /// (a map scanned on this phone has a frame no one else can use).
     private var sharedPosition: SharedPosition? {
@@ -268,13 +327,18 @@ struct MapScreen: View {
         return SIMD3(point.x, controller.map?.floorY ?? 0, point.y)
     }
     private var liveTrigger: LiveSearchTrigger {
-        LiveSearchTrigger(scanID: hasMap ? liveScanID : nil, origin: liveOrigin, query: query,
+        LiveSearchTrigger(scanID: controller.map != nil ? liveScanID : nil, origin: liveOrigin, query: query,
                           pointCount: controller.map?.points.count ?? 0)
     }
     /// Matches on other floors are listed with how to get there, not pinned on this floor.
     private var otherFloorResults: [NearbyPlace] {
         guard hasMap, liveScanID != nil, liveAnswersQuery else { return [] }
         return Array(live.results.filter { $0.levelDelta != 0 }.prefix(5))
+    }
+    private var otherFloorDestinations: [FloorNavigationDestination] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return [] }
+        return floorDestinations.filter { $0.level != selectedLevel && $0.point.matches(query: text) }
     }
 
     /// Left, right or ahead from where the person stands now, when their position is known.
@@ -376,11 +440,26 @@ struct MapScreen: View {
                 else { controller.reload(map: nil); sceneGeneration += 1; scene = nil; isPreparedScene = false }
             }
         }
+        .task(id: localFloor?.storageID) {
+            guard let floor = localFloor else { savedFloorDestinations = []; return }
+            let places = await Task.detached(priority: .userInitiated) {
+                let floors = MapStore.savedBuildings().first { $0.id == floor.identity.buildingID }?.floors ?? []
+                return floors.sorted { $0.level < $1.level }.flatMap {
+                    FloorNavigationCatalog.destinations(level: $0.level, name: $0.name,
+                        map: MapStore.map(for: $0), savedFloor: $0)
+                }
+            }.value
+            guard !Task.isCancelled, localFloor?.storageID == floor.storageID else { return }
+            savedFloorDestinations = places
+        }
         .onDisappear { controller.stop(); assistant.dismiss() }
         .onChange(of: mapStyle) { _, _ in
+            let selection = pendingRouteSelection
+            pendingRouteSelection = nil
             if selectedModelPlace != nil { closeDestination() }
             resetID += 1
             if let id = pendingAssistantPlace { pendingAssistantPlace = nil; revealPlace(id) }
+            if let selection { restoreRouteSelection(selection) }
         }
         .onChange(of: routePreference) { _, _ in routePreferenceChanged() }
         .safeAreaInset(edge: .top, spacing: 0) { followBanner }
@@ -399,8 +478,18 @@ struct MapScreen: View {
             }
         }
         .onChange(of: controller.phase) { _, phase in
+            if phase != .loading, let selection = pendingRouteSelection, selection.continuesLiveGuidance {
+                pendingRouteSelection = nil
+                if let destination = selection.destination, destination.level == sourceLevel,
+                   destination.savedFloor?.id == localFloor?.id {
+                    restoreRouteSelection(selection)
+                }
+            }
             // Finding the person happens behind the map; AR only opens when they ask for it.
             if phase == .navigating || phase == .arrived { panel = .directions; detent = .height(440) }
+            if phase == .arrived, let destination = floorDestination, let kind = transferKind {
+                controller.announceFloorTransfer(to: destination.floorName, using: kind)
+            }
         }
         .sensoryFeedback(trigger: controller.phase) { _, phase in
             switch phase {
@@ -433,31 +522,31 @@ struct MapScreen: View {
                     }
                 }
         } else if hasVisualFloor {
-            NavigationMapSurface(scene: hasMap ? scene : StudentCenterCatalog.estimatedScene(for: selectedLevel),
-                map: hasMap ? controller.map : nil, presentation: .indoor,
+            NavigationMapSurface(scene: selectedLevel == sourceLevel ? scene : previewFloor?.scene ?? StudentCenterCatalog.estimatedScene(for: selectedLevel),
+                map: viewedMap, presentation: .indoor,
                 topDown: topDown, resetID: resetID, bottomInset: bottomInset, leadingInset: leadingInset,
-                groundFloorY: hasMap ? controller.map?.floorY : modelFloorY,
-                route: hasMap ? activeRoute : nil,
-                userPosition: hasMap ? previewStart ?? (controller.isPositionReliable ? controller.position : nil) : nil,
+                groundFloorY: viewedMap?.floorY ?? modelFloorY,
+                route: viewedRoute,
+                userPosition: viewedStart,
                 userHeading: hasMap && previewStart == nil && controller.isPositionReliable ? controller.heading : nil,
-                destination: hasMap ? controller.selectedDestination?.floorPoint : nil,
-                destinationTitle: hasMap ? controller.selectedDestination?.title : nil,
+                destination: viewedMap != nil ? viewedDestination?.floorPoint : nil,
+                destinationTitle: viewedDestination?.title,
                 places: displayPoints.map(MapPlace.init),
                 onSelectPlace: selectPlace,
                 onSelectFloorPoint: hasMap && (panel == .chooseStart || panel == .chooseDestination) ? {
                     if panel == .chooseDestination { chooseMapDestination($0) }
                     else { routeStart = .mapPoint($0); chooseStart($0) }
                 } : nil,
-                elevatedMap: elevatedMap,
-                elevatedRoute: elevatedPreviewRoute,
-                elevatedUserLocation: elevatedPreviewStart,
-                elevatedDestination: elevatedDestination,
+                elevatedMap: viewedElevatedMap,
+                elevatedRoute: selectedLevel == sourceLevel ? elevatedPreviewRoute : viewedArrival?.elevatedRoute,
+                elevatedUserLocation: selectedLevel == sourceLevel ? elevatedPreviewStart : viewedArrival?.landing?.elevatedLocation,
+                elevatedDestination: selectedLevel == sourceLevel ? elevatedDestination : arrivalElevatedDestination,
                 onSelectElevatedFloorPoint: elevatedMap != nil && (panel == .chooseStart || panel == .chooseDestination) ? {
                     if panel == .chooseDestination { chooseElevatedDestination($0) }
                     else { routeStart = .elevatedPoint($0); chooseElevatedStart($0) }
                 } : nil,
                 initialYaw: isDemo || localFloor != nil ? nil : showsModel ? 3.15 : 1.40,
-                isPreparedScene: !hasMap || isPreparedScene,
+                isPreparedScene: selectedLevel == sourceLevel ? isPreparedScene : previewFloor?.scene != nil,
                 illustrationURL: modelAvailable ? StudentCenterCatalog.illustrationURL(for: selectedLevel) : nil,
                 mapFromIllustration: modelTransform,
                 showsIllustration: showsModel,
@@ -480,7 +569,10 @@ struct MapScreen: View {
         } else {
             Color(red: 0.92, green: 0.93, blue: 0.91)
                 .overlay {
-                    if Self.showsCampus || localFloor != nil {
+                    if selectedLevel != sourceLevel, previewFloor == nil {
+                        ProgressView("Opening floor…")
+                            .padding(.bottom, bottomInset).padding(.leading, leadingInset)
+                    } else if Self.showsCampus || localFloor != nil {
                         ContentUnavailableView("No map for Floor \(selectedLevel)", systemImage: "map",
                             description: Text("This floor hasn’t been mapped yet."))
                             .padding(.bottom, bottomInset).padding(.leading, leadingInset)
@@ -665,8 +757,7 @@ struct MapScreen: View {
                               onOpen: selectSavedFloor)
             case .arUnavailable: arUnavailableSheet
             case .buildingDirections:
-                BuildingDirectionsView(venueID: "student-center-east", graphID: "student-center-east",
-                                       buildingName: StudentCenterCatalog.buildingName)
+                FloorDestinationPicker(destinations: floorDestinations, onSelect: selectFloorDestination)
             }
         }
         .fullScreenCover(item: active ? $cover : .constant(nil), onDismiss: scanDidClose) { cover in
@@ -690,7 +781,7 @@ struct MapScreen: View {
                         .submitLabel(.search)
                         .onSubmit {
                             searchFocused = false
-                            if points.isEmpty, otherFloorResults.isEmpty, !live.isLoading { askTypedQuestion() }
+                            if points.isEmpty, otherFloorResults.isEmpty, otherFloorDestinations.isEmpty, !live.isLoading { askTypedQuestion() }
                         }
                         .onChange(of: query) { _, value in if !value.isEmpty { detent = .height(440) } }
                     if !query.isEmpty {
@@ -747,7 +838,7 @@ struct MapScreen: View {
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.indigo)
                     }
-                    if !isDemo, Self.showsCampus, localFloor == nil {
+                    if !isDemo, Self.showsCampus || localFloor != nil {
                         Button { modal = .buildingDirections } label: {
                             Label("Between floors", systemImage: "arrow.up.arrow.down")
                                 .font(.subheadline.weight(.medium))
@@ -775,14 +866,14 @@ struct MapScreen: View {
             if hasVisualFloor {
                 if live.isLoading, points.isEmpty {
                     ProgressView("Finding nearby places…").frame(maxWidth: .infinity)
-                } else if points.isEmpty, otherFloorResults.isEmpty, assistant.isAvailable,
+                } else if points.isEmpty, otherFloorResults.isEmpty, otherFloorDestinations.isEmpty, assistant.isAvailable,
                           !query.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button(action: askTypedQuestion) {
                         Label("Ask InView “\(query)”", systemImage: "waveform")
                             .font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.bordered)
-                } else if points.isEmpty, otherFloorResults.isEmpty {
+                } else if points.isEmpty, otherFloorResults.isEmpty, otherFloorDestinations.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else {
                     VStack(spacing: 0) {
@@ -790,6 +881,27 @@ struct MapScreen: View {
                             Button { selectPlace(MapPlace(point)) } label: { placeRow(point) }
                                 .buttonStyle(.plain)
                             if point.id != points.last?.id { Divider().padding(.leading, 52) }
+                        }
+                    }
+                }
+                if !otherFloorDestinations.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Other floors").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.bottom, 4)
+                        ForEach(otherFloorDestinations) { place in
+                            Button { selectFloorDestination(place) } label: {
+                                HStack(spacing: 14) {
+                                    Image(systemName: place.point.kind.symbolName).font(.title2).foregroundStyle(Theme.accent).frame(width: 36)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(place.point.title).font(.body.weight(.medium)).foregroundStyle(.primary)
+                                        Text(place.floorName).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                                }
+                                .padding(.vertical, 10).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -958,7 +1070,7 @@ struct MapScreen: View {
                 Text(panel == .chooseStart ? "Choose your starting point"
                      : panel == .chooseDestination ? "Choose your destination"
                      : panel == .directions ? "Directions"
-                     : selectedModelPlace?.title ?? controller.selectedDestination?.title ?? "Directions")
+                     : selectedModelPlace?.title ?? destinationTitle ?? "Directions")
                     .font(.title2.bold())
                 Text("\(title) · Floor \(selectedLevel)").font(.subheadline).foregroundStyle(.secondary)
             }
@@ -984,6 +1096,8 @@ struct MapScreen: View {
                      : "Tap your destination on the Floor \(selectedLevel) map. You can drag and zoom to find it.")
                     .font(.subheadline).foregroundStyle(.secondary)
                 Button("Cancel") { panel = .directions; updateRoute() }.buttonStyle(.bordered)
+            } else if selectedLevel != sourceLevel {
+                routeResult
             } else if controller.phase == .locating, routeStart == .myLocation, panel == .directions {
                 LocatingPanel(startView: controller.startView, isSlow: controller.isRelocalizationSlow, hint: controller.locatingHint, onRetry: controller.retryLocalization)
                 Button("Cancel") { controller.endGuidance(); showsAR = false }.buttonStyle(.bordered)
@@ -992,7 +1106,10 @@ struct MapScreen: View {
                 if let caption = controller.caption { Text(caption).font(.subheadline).foregroundStyle(.secondary) }
                 RouteStepsList(route: route, isLive: true)
             } else if controller.phase == .arrived, previewStart == nil {
-                ArrivedPanel(destination: controller.route?.destination, onDone: closeDestination)
+                if floorDestination != nil {
+                    Label("You’re at the \(transferKind?.title.lowercased() ?? "floor connection").", systemImage: "checkmark.circle")
+                        .font(.headline)
+                } else { ArrivedPanel(destination: controller.route?.destination, onDone: closeDestination) }
             } else if isFindingRoute || (controller.phase == .routing && previewStart == nil) {
                 ProgressView("Finding a route…").frame(maxWidth: .infinity, minHeight: 70)
             } else if panel == .directions {
@@ -1000,10 +1117,11 @@ struct MapScreen: View {
             } else {
                 placeSummary
             }
+            if let floorDestination { floorTransferPanel(to: floorDestination) }
         }
     }
 
-    /// From and To, like Maps: the start can be "My location", a place on this floor or a point on the map.
+    /// Both place menus include all floors; choosing a start opens that floor's map for the preview.
     private var routeFields: some View {
         HStack(spacing: 10) {
             VStack(spacing: 0) {
@@ -1011,23 +1129,17 @@ struct MapScreen: View {
                     if canUseMyLocation {
                         Button("My location", systemImage: "location.fill") { setRouteStart(.myLocation) }
                     }
-                    Section("Places on Floor \(selectedLevel)") {
-                        ForEach(routablePlaces.filter { $0.id != controller.selectedDestination?.id }) { place in
-                            Button(place.title, systemImage: place.kind.symbolName) { setRouteStart(.place(place.id)) }
-                        }
-                    }
+                    FloorPlaceMenuSections(destinations: floorDestinations, onSelect: selectFloorStart)
                     Button("Choose on map", systemImage: "hand.tap") { beginChoosingStart() }
                 } label: {
                     routeField("From", value: routeStartTitle, symbol: "circle.circle.fill", tint: Theme.route)
                 }
                 Divider().padding(.leading, 44)
                 Menu {
-                    ForEach(routablePlaces.filter { routeStart != .place($0.id) }) { place in
-                        Button(place.title, systemImage: place.kind.symbolName) { setRouteDestination(place) }
-                    }
+                    FloorPlaceMenuSections(destinations: floorDestinations, onSelect: selectFloorDestination)
                     Button("Choose on map", systemImage: "hand.tap") { beginChoosingDestination() }
                 } label: {
-                    routeField("To", value: controller.selectedDestination?.title, symbol: "mappin.circle.fill", tint: .red)
+                    routeField("To", value: destinationTitle, symbol: "mappin.circle.fill", tint: .red)
                 }
             }
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1064,7 +1176,8 @@ struct MapScreen: View {
     private var routeStartTitle: String? {
         switch routeStart {
         case .myLocation: "My location"
-        case .place(let id): routablePlaces.first { $0.id == id }?.title
+        case .place(let id): floorDestinations.first { $0.level == sourceLevel && $0.point.id == id }?.title
+        case .floorPlace(let place): place.title
         case .mapPoint, .elevatedPoint: "Point on the map"
         case nil: nil
         }
@@ -1073,12 +1186,43 @@ struct MapScreen: View {
     /// The route between the chosen points, its length and time, and every turn.
     @ViewBuilder private var routeResult: some View {
         let route = previewStart != nil ? previewRoute : controller.phase == .ready ? controller.route : nil
-        if controller.selectedDestination == nil {
+        if selectedLevel != sourceLevel {
+            if floorDestination?.level == selectedLevel {
+                arrivalPreviewPanel
+            } else {
+                Button("Show the start on Floor \(sourceLevel)") { switchFloor(sourceLevel) }
+                    .buttonStyle(.bordered)
+            }
+        } else if floorDestination != nil, elevatedMap != nil {
+            Menu {
+                ForEach(departureLandings) { landing in
+                    Button(landing.title, systemImage: landing.kind == .stairs ? "figure.stairs" : "arrow.up.arrow.down") {
+                        departureLanding = landing
+                        controller.selectDestination(landing.point)
+                        updateRoute()
+                    }
+                }
+            } label: {
+                Label(departureLanding.map { "Go via \($0.title)" }
+                      ?? (routePreference == .stepFree ? "Choose an elevator" : "Choose an elevator or stairs"),
+                      systemImage: "arrow.up.arrow.down")
+            }
+            if let route = elevatedPreviewRoute {
+                ElevatedFloorRouteSummary(route: route, destinationName: departureLanding?.title ?? "Floor connection")
+            } else {
+                Text(routeMessage ?? (departureLanding == nil ? "Check the signs for a connection that serves your destination floor."
+                    : routeStart == nil ? "Choose your starting point to preview the walk." : "No walking route was found to this landing."))
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+        } else if floorDestination != nil, transferApproaches.isEmpty {
+            Text("Follow the building signs to the floor connection. A walking route isn’t mapped here yet.")
+                .font(.subheadline).foregroundStyle(.secondary)
+        } else if controller.selectedDestination == nil {
             Text("Choose where you’re going, or tap a place on the map.").font(.subheadline).foregroundStyle(.secondary)
         } else if controller.phase == .loading, routeStart == nil {
             ProgressView("Preparing saved location data…")
         } else if routeStart == nil {
-            Text("Choose a starting point: a place on this floor, or a point on the map.").font(.subheadline).foregroundStyle(.secondary)
+            Text("Choose a starting point on any floor, or tap a point on the map.").font(.subheadline).foregroundStyle(.secondary)
         } else if let message = routeMessage ?? (controller.phase == .noRoute ? controller.caption : nil) {
             Label(message, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(.secondary)
         } else if let elevatedPreviewRoute {
@@ -1109,6 +1253,62 @@ struct MapScreen: View {
             Text("InView finds where you are with the camera, then shows the way on the map.")
                 .font(.subheadline).foregroundStyle(.secondary)
             startButton
+        }
+    }
+
+    private func floorTransferPanel(to destination: FloorNavigationDestination) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            let connection = transferKind?.title.lowercased() ?? (routePreference == .stepFree ? "elevator" : "stairs or elevator")
+            Label("Take the \(connection) to \(destination.floorName).", systemImage: transferKind == .stairs ? "figure.stairs" : "arrow.up.arrow.down")
+                .font(.headline)
+            Text("Check the signs confirm it serves \(destination.floorName). Then continue to \(destination.point.title).")
+                .font(.subheadline).foregroundStyle(.secondary)
+            HStack {
+                Button("Floor \(sourceLevel)") { switchFloor(sourceLevel) }
+                Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                Button(destination.floorName) { switchFloor(destination.level) }
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Preview the route on either floor")
+            Button("I’m on \(destination.floorName)", action: completeFloorTransfer)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(.top, 10)
+    }
+
+    @ViewBuilder private var arrivalPreviewPanel: some View {
+        if isPreparingArrival {
+            ProgressView("Preparing this floor’s route…")
+        } else if let preview = viewedArrival {
+            if !preview.destination.isRoutable || preview.landings.isEmpty {
+                Text("The walking route on this floor isn’t mapped yet. Follow the signs to \(preview.destination.point.title).")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                Menu {
+                    ForEach(preview.landings) { landing in
+                        Button(landing.title, systemImage: landing.kind == .stairs ? "figure.stairs" : "arrow.up.arrow.down") {
+                            selectArrivalLanding(landing)
+                        }
+                    }
+                } label: {
+                    Label(preview.landing.map { "Preview from \($0.title)" }
+                          ?? (routePreference == .stepFree ? "Choose your arrival elevator" : "Choose your arrival elevator or stairs"),
+                          systemImage: "arrow.up.arrow.down")
+                }
+                if let route = preview.route {
+                    RouteSummaryCard(route: route)
+                    RouteStepsList(route: route)
+                } else if let route = preview.elevatedRoute {
+                    ElevatedFloorRouteSummary(route: route, destinationName: preview.destination.point.title)
+                } else if preview.landing != nil {
+                    Text(routePreference == .stepFree ? "No step-free walking route was found from this landing."
+                        : "No walking route was found from this landing.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                } else {
+                    Text("Choose where you’ll exit to preview the walk to \(preview.destination.point.title).")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -1183,6 +1383,14 @@ struct MapScreen: View {
     }
 
     private func switchFloor(_ level: Int) {
+        if !isDemo, panel == .directions, selectedFloorDestination != nil {
+            browsePreviewFloor(level)
+            return
+        }
+        openFloor(level)
+    }
+
+    private func openFloor(_ level: Int) {
         guard !isDemo else { return }
         closeDestination()
         selectedLevel = level
@@ -1191,7 +1399,10 @@ struct MapScreen: View {
         if StudentCenterCatalog.hasEstimatedModel(on: level), localFloor == nil { mapStyle = .model }
         if let localFloor {
             if let floor = MapStore.savedBuildings().first(where: { $0.id == localFloor.identity.buildingID })?.floors.first(where: { $0.identity.level == level }) {
-                selectSavedFloor(floor)
+                do {
+                    try MapStore.selectFloor(buildingID: floor.identity.buildingID, floorID: floor.id)
+                    openSavedFloor(MapStore.currentFloor ?? floor)
+                } catch { floorError = error.localizedDescription }
             }
         } else if let release = acceptedRelease(for: level) {
             openRelease(release)
@@ -1221,7 +1432,82 @@ struct MapScreen: View {
         resetID += 1
     }
 
+    /// Browsing never selects a saved floor or reloads the source camera session.
+    private func browsePreviewFloor(_ level: Int) {
+        selectedLevel = level
+        showsAR = false; showsScanDetail = false
+        previewFloorGeneration += 1
+        let generation = previewFloorGeneration
+        resetID += 1
+        if level == sourceLevel { previewFloor = nil; return }
+        if let arrivalPreview, arrivalPreview.destination.level == level {
+            previewFloor = arrivalPreview.floor
+            return
+        }
+        previewFloor = nil
+        Task {
+            let floor = await loadPreviewFloor(level)
+            guard generation == previewFloorGeneration, selectedLevel == level else { return }
+            previewFloor = floor
+        }
+    }
+
+    private func loadPreviewFloor(_ level: Int) async -> FloorPreviewMap {
+        let saved = localFloor.flatMap { local in
+            MapStore.savedBuildings().first { $0.id == local.identity.buildingID }?.floors.first { $0.level == level }
+        }
+        let isSavedBuilding = localFloor != nil
+        let release = isSavedBuilding ? nil : acceptedRelease(for: level)?.map
+        return await Task.detached(priority: .userInitiated) {
+            let map = saved.map { MapStore.map(for: $0) } ?? release
+                ?? (isSavedBuilding ? nil : level == 1 ? StudentCenterFloor1Catalog.displayMap()
+                    : level == 2 ? StudentCenterCatalog.map() : nil)
+            let elevated = !isSavedBuilding && release == nil && level == 1 ? StudentCenterFloor1Catalog.elevatedMap() : nil
+            let scene = elevated != nil ? StudentCenterFloor1Catalog.scene() : map.flatMap(VenueScene.make)
+            return FloorPreviewMap(level: level, map: map, elevatedMap: elevated, scene: scene)
+        }.value
+    }
+
+    private func prepareArrivalPreview(to destination: FloorNavigationDestination) {
+        arrivalPreviewGeneration += 1
+        let generation = arrivalPreviewGeneration
+        let oldLandingID = arrivalPreview?.destination == destination ? arrivalPreview?.landing?.id : nil
+        arrivalPreview = nil; isPreparingArrival = true
+        let preference = routePreference
+        Task {
+            let floor = await loadPreviewFloor(destination.level)
+            let preview = await Task.detached(priority: .userInitiated) {
+                let preview = FloorArrivalPreview(destination: destination, floor: floor, preference: preference)
+                if let landing = preview.landings.first(where: { $0.id == oldLandingID }) {
+                    return preview.selecting(landing, preference: preference)
+                }
+                return preview
+            }.value
+            guard generation == arrivalPreviewGeneration, floorDestination == destination else { return }
+            arrivalPreview = preview; isPreparingArrival = false
+            if selectedLevel == destination.level { previewFloor = floor }
+        }
+    }
+
+    private func selectArrivalLanding(_ landing: FloorPreviewLanding) {
+        guard let preview = arrivalPreview else { return }
+        arrivalPreviewGeneration += 1
+        let generation = arrivalPreviewGeneration
+        let preference = routePreference
+        isPreparingArrival = true
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { preview.selecting(landing, preference: preference) }.value
+            guard generation == arrivalPreviewGeneration else { return }
+            arrivalPreview = result; isPreparingArrival = false
+        }
+    }
+
     private func selectPlace(_ place: MapPlace) {
+        if selectedLevel != sourceLevel, panel == .directions,
+           let destination = floorDestinations.first(where: { $0.level == selectedLevel && $0.point.id == place.id }) {
+            selectFloorDestination(destination)
+            return
+        }
         if panel == .chooseStart {
             if routablePlaces.contains(where: { $0.id == place.id }) { setRouteStart(.place(place.id)) }
             return
@@ -1297,6 +1583,11 @@ struct MapScreen: View {
 
     private func showAssistantPlace() {
         guard let place = assistant.place else { return }
+        if assistant.wantsDirections, place.floor != selectedLevel,
+           let destination = floorDestinations.first(where: { $0.level == place.floor && $0.point.id == place.id }) {
+            selectFloorDestination(destination)
+            return
+        }
         let style = mapStyle
         if place.floor != selectedLevel { switchFloor(place.floor) }
         if !displayPoints.contains(where: { $0.id == place.id }), modelAvailable { mapStyle = .model }
@@ -1330,6 +1621,8 @@ struct MapScreen: View {
     }
 
     private func setRouteStart(_ start: RouteStart) {
+        pendingRouteSelection = nil
+        if selectedLevel != sourceLevel { browsePreviewFloor(sourceLevel) }
         if start != .myLocation, [.routing, .navigating, .arrived, .noRoute].contains(controller.phase) {
             controller.endNavigation()
         }
@@ -1339,19 +1632,31 @@ struct MapScreen: View {
     }
 
     private func setRouteDestination(_ place: AccessPoint) {
+        pendingRouteSelection = nil
+        floorDestination = nil; transferApproaches = []
+        departureLanding = nil
+        arrivalPreviewGeneration += 1; arrivalPreview = nil; isPreparingArrival = false
         panel = .directions
         chosenElevatedDestination = nil
         if routeStart == .place(place.id) { routeStart = nil }
+        if case .floorPlace(let start) = routeStart, start.level == selectedLevel, start.point.id == place.id { routeStart = nil }
         if [.routing, .navigating, .arrived, .noRoute].contains(controller.phase) { controller.endNavigation() }
         controller.selectDestination(place)
         updateRoute()
     }
 
     private var canSwapRoute: Bool {
-        routeStart != nil && routeStart != .myLocation && controller.selectedDestination != nil
+        if floorDestination != nil { return selectedFloorStart != nil }
+        return routeStart != nil && routeStart != .myLocation && controller.selectedDestination != nil
     }
 
     private func swapRoute() {
+        if let destination = floorDestination, let start = selectedFloorStart {
+            let swapped = FloorNavigationSelection(start: start, destination: destination).swapped
+            if let newStart = swapped.start { selectFloorStart(newStart, preserving: swapped.destination) }
+            return
+        }
+        if selectedLevel != sourceLevel { browsePreviewFloor(sourceLevel) }
         guard let destination = controller.selectedDestination else { return }
         let start: AccessPoint
         let newDestinationLocation: ElevatedFloorLocation?
@@ -1359,6 +1664,8 @@ struct MapScreen: View {
         case .place(let id):
             guard let point = routablePlaces.first(where: { $0.id == id }) else { return }
             start = point; newDestinationLocation = nil
+        case .floorPlace(let place):
+            start = place.point; newDestinationLocation = nil
         case .mapPoint(let point):
             start = AccessPoint(kind: .destination, name: "Point on the map",
                 position: SIMD3(point.x, controller.map?.floorY ?? 0, point.y), source: .manual, confidence: 1)
@@ -1382,8 +1689,15 @@ struct MapScreen: View {
         previewRoute = nil; previewStart = nil; routeMessage = nil; routeCheck = nil; isFindingRoute = false
         elevatedPreviewRoute = nil; elevatedPreviewStart = nil
         switch routeStart {
+        case .floorPlace(let start):
+            guard start.level == sourceLevel else { return }
+            if !start.isRoutable {
+                routeMessage = "A walking route isn’t mapped at this starting point yet."
+            } else if let zoneID = elevatedMap?.destinationZones[start.point.id] {
+                chooseElevatedStart(ElevatedFloorLocation(zoneID: zoneID, position: start.point.position))
+            } else { chooseStart(start.point.floorPoint) }
         case .place(let id):
-            if let start = routablePlaces.first(where: { $0.id == id }) {
+            if let start = floorDestinations.first(where: { $0.level == sourceLevel && $0.point.id == id })?.point {
                 if let zoneID = elevatedMap?.destinationZones[id] {
                     chooseElevatedStart(ElevatedFloorLocation(zoneID: zoneID, position: start.position))
                 } else { chooseStart(start.floorPoint) }
@@ -1413,6 +1727,11 @@ struct MapScreen: View {
     }
 
     private func startLiveDirections() {
+        if selectedLevel != sourceLevel { browsePreviewFloor(sourceLevel) }
+        if floorDestination != nil {
+            controller.navigate(to: transferApproaches)
+            return
+        }
         guard let destination = controller.selectedDestination else { return }
         if isDemo { controller.navigateToNearest() } else { controller.navigate(to: destination, nearestOfKind: false) }
     }
@@ -1430,6 +1749,14 @@ struct MapScreen: View {
     }
 
     private func beginChoosingStart() {
+        pendingRouteSelection = nil
+        if selectedLevel != sourceLevel {
+            let destination = selectedFloorDestination
+            let level = selectedLevel
+            controller.endGuidance()
+            openFloor(level)
+            if let destination { selectFloorDestination(destination) }
+        }
         guard hasMap, selectedModelPlace == nil else { return }
         // The planner uses the floor's routing coverage in either visual layer.
         if controller.isLocated { controller.endNavigation() }
@@ -1443,7 +1770,7 @@ struct MapScreen: View {
     }
 
     private func chooseStart(_ start: SIMD2<Float>) {
-        guard elevatedMap == nil, hasMap, let map = controller.map else { return }
+        guard elevatedMap == nil, let map = controller.map else { return }
         previewStart = start; panel = .directions; isFindingRoute = false
         routeGeneration += 1
         let generation = routeGeneration
@@ -1454,19 +1781,28 @@ struct MapScreen: View {
         guard let destination = controller.selectedDestination else { return }
         isFindingRoute = true
         let scanID = liveScanID
-        let placeID = live.result(for: destination).flatMap { $0.kind == "place" ? $0.sourceID : nil }
         let isModelDestination = selectedDestinationIsModelPlace
+        let approaches = floorDestination == nil ? [] : transferApproaches
         Task {
             let route = await Task.detached(priority: .userInitiated) {
-                RoutePlanner(map: map).route(from: start, to: destination, conditions: preference.navigationConditions(map: map))
+                let planner = RoutePlanner(map: map)
+                let conditions = preference.navigationConditions(map: map)
+                if !approaches.isEmpty {
+                    return FloorTransferApproach.nearestRoute(from: start, planner: planner,
+                        candidates: approaches, conditions: conditions)
+                }
+                return planner.route(from: start, to: destination, conditions: conditions)
             }.value
             guard generation == routeGeneration else { return }
             isFindingRoute = false
+            if !approaches.isEmpty, let route { controller.selectDestination(route.destination) }
             previewRoute = route
             // The device route is shown right away; the building map's check follows when it answers.
-            if let scanID, route != nil {
+            if let scanID, let route {
+                let routeDestination = route.destination
+                let placeID = live.result(for: routeDestination).flatMap { $0.kind == "place" ? $0.sourceID : nil }
                 Task {
-                    let check = await ServerRouteCheck.run(scanID: scanID, map: map, start: start, destination: destination,
+                    let check = await ServerRouteCheck.run(scanID: scanID, map: map, start: start, destination: routeDestination,
                                                            placeID: placeID, preference: preference)
                     guard generation == routeGeneration else { return }
                     routeCheck = check
@@ -1482,8 +1818,12 @@ struct MapScreen: View {
     }
 
     private func beginChoosingDestination() {
+        pendingRouteSelection = nil
+        if selectedLevel != sourceLevel { browsePreviewFloor(sourceLevel) }
         guard hasMap else { return }
         selectedModelPlace = nil
+        floorDestination = nil; transferApproaches = []
+        arrivalPreviewGeneration += 1; arrivalPreview = nil; isPreparingArrival = false
         if controller.isLocated { controller.endNavigation() }
         else if controller.phase != .loading { controller.endGuidance() }
         showsAR = false
@@ -1509,7 +1849,7 @@ struct MapScreen: View {
     }
 
     private func chooseElevatedStart(_ start: ElevatedFloorLocation) {
-        guard hasMap, let map = elevatedMap else { return }
+        guard let map = elevatedMap else { return }
         elevatedPreviewStart = start; elevatedPreviewRoute = nil
         previewStart = start.floorPoint; previewRoute = nil
         panel = .directions; isFindingRoute = false
@@ -1520,8 +1860,12 @@ struct MapScreen: View {
         let generation = routeGeneration
         let preference = routePreference
         let chosenDestination = chosenElevatedDestination
+        let departure = floorDestination == nil ? nil : departureLanding
         Task {
             let route = await Task.detached(priority: .userInitiated) {
+                if let departure {
+                    return FloorArrivalPreview.departureRoute(from: start, to: departure, in: map, preference: preference)
+                }
                 guard let planner = try? ElevatedFloorRoutePlanner(map: map) else { return nil as ElevatedFloorRoute? }
                 if let chosenDestination {
                     return planner.route(from: start, to: chosenDestination, conditions: preference.conditions())
@@ -1540,6 +1884,13 @@ struct MapScreen: View {
     }
 
     private func routePreferenceChanged() {
+        if let destination = floorDestination {
+            let wasNavigating = controller.phase == .navigating || controller.phase == .routing
+            controller.setRoutePreference(routePreference)
+            selectFloorDestination(destination)
+            if wasNavigating, routeStart == .myLocation { startLiveDirections() }
+            return
+        }
         controller.setRoutePreference(routePreference)
         routeGeneration += 1
         previewRoute = nil
@@ -1596,6 +1947,13 @@ struct MapScreen: View {
     }
 
     private func closeDestination() {
+        pendingRouteSelection = nil
+        if selectedLevel != sourceLevel { resetID += 1 }
+        selectedLevel = sourceLevel
+        previewFloorGeneration += 1; previewFloor = nil
+        arrivalPreviewGeneration += 1; arrivalPreview = nil; isPreparingArrival = false
+        departureLanding = nil
+        floorDestination = nil; transferApproaches = []
         controller.clearDirections()
         routeStart = nil
         showsAR = false; panel = .explore
@@ -1605,6 +1963,111 @@ struct MapScreen: View {
         chosenElevatedDestination = nil
         selectedModelPlace = nil
         detent = .height(240)
+    }
+
+    private var selectedFloorStart: FloorNavigationDestination? {
+        switch routeStart {
+        case .floorPlace(let place): return place
+        case .place(let id):
+            return floorDestinations.first { $0.level == sourceLevel && $0.point.id == id }
+        default: return nil
+        }
+    }
+
+    private var selectedFloorDestination: FloorNavigationDestination? {
+        if let floorDestination { return floorDestination }
+        guard let point = controller.selectedDestination ?? selectedModelPlace else { return nil }
+        return floorDestinations.first { $0.level == sourceLevel && $0.point.id == point.id }
+            ?? FloorNavigationDestination(level: sourceLevel,
+                floorName: localFloor?.name ?? ScanFloorIdentity.defaultName(for: sourceLevel),
+                point: point, savedFloor: localFloor, isRoutable: selectedModelPlace == nil)
+    }
+
+    private func selectFloorStart(_ start: FloorNavigationDestination) {
+        selectFloorStart(start, preserving: selectedFloorDestination)
+    }
+
+    private func selectFloorStart(_ start: FloorNavigationDestination, preserving destination: FloorNavigationDestination?) {
+        if start.level == sourceLevel {
+            setRouteStart(.floorPlace(start))
+            return
+        }
+        let previousStyle = mapStyle
+        if let saved = start.savedFloor {
+            do { try MapStore.selectFloor(buildingID: saved.identity.buildingID, floorID: saved.id) }
+            catch { floorError = error.localizedDescription; return }
+            controller.endGuidance()
+            openSavedFloor(MapStore.currentFloor ?? saved)
+        } else {
+            controller.endGuidance()
+            openFloor(start.level)
+        }
+        let selection = FloorNavigationSelection(start: start, destination: destination)
+        if mapStyle == previousStyle { restoreRouteSelection(selection) }
+        else { pendingRouteSelection = selection }
+    }
+
+    private func restoreRouteSelection(_ selection: FloorNavigationSelection) {
+        if selection.continuesLiveGuidance { routeStart = .myLocation }
+        else if let start = selection.start { routeStart = .floorPlace(start) }
+        if let destination = selection.destination { selectFloorDestination(destination) }
+        else { openDirections() }
+        guard selection.continuesLiveGuidance, let destination = selection.destination,
+              destination.level == sourceLevel, destination.isRoutable else { return }
+        // A confirmed live handoff waits for this floor's positioning evidence, even
+        // when automatic tracking is off. Merely inspecting a floor never starts it.
+        if controller.phase == .loading { pendingRouteSelection = selection }
+        else if controller.canGuide { startLiveDirections() }
+        else { routeStart = nil; updateRoute() }
+    }
+
+    private func selectFloorDestination(_ destination: FloorNavigationDestination) {
+        pendingRouteSelection = nil
+        modal = nil
+        searchFocused = false
+        if destination.level == sourceLevel {
+            if selectedLevel != sourceLevel { browsePreviewFloor(sourceLevel) }
+            if destination.isRoutable {
+                setRouteDestination(destination.point)
+                openDirections()
+            } else {
+                closeDestination()
+                selectedModelPlace = destination.point
+                panel = .place; detent = .height(440)
+            }
+            return
+        }
+        controller.clearDirections()
+        selectedModelPlace = nil
+        floorDestination = destination
+        // Raised areas within one displayed floor have their own connections;
+        // those never establish service to a different building floor.
+        transferApproaches = elevatedMap == nil
+            ? controller.map.map { FloorTransferApproach.candidates(in: $0, preference: routePreference) } ?? [] : []
+        if let departureLanding, !departureLandings.contains(where: { $0.id == departureLanding.id }) {
+            self.departureLanding = nil
+        }
+        controller.selectDestination(departureLanding?.point ?? transferApproaches.first?.destination)
+        openDirections()
+        prepareArrivalPreview(to: destination)
+    }
+
+    private func completeFloorTransfer() {
+        guard let destination = floorDestination else { return }
+        let selection = FloorNavigationSelection(destination: destination,
+            continuesLiveGuidance: routeStart == .myLocation)
+        let previousStyle = mapStyle
+        if let saved = destination.savedFloor {
+            do { try MapStore.selectFloor(buildingID: saved.identity.buildingID, floorID: saved.id) }
+            catch { floorError = error.localizedDescription; return }
+            controller.endGuidance()
+            openSavedFloor(saved)
+        } else {
+            controller.endGuidance()
+            openFloor(destination.level)
+        }
+        if mapStyle == previousStyle { restoreRouteSelection(selection) }
+        else { pendingRouteSelection = selection }
     }
 
     private func selectSavedFloor(_ floor: SavedFloor) {
