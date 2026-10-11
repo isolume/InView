@@ -242,6 +242,13 @@ struct MapScreen: View {
             controller.locatesAutomatically = findsMeAutomatically && !isDemo
             showsMainSheet = !usesSidePanel
         }
+        .onReceive(NotificationCenter.default.publisher(for: InViewIntents.nearestElevator)) { _ in
+            if InViewIntents.takeNearestElevatorRequest() { showNearestElevator() }
+        }
+        .task {
+            // Siri may have asked before the map existed.
+            if InViewIntents.takeNearestElevatorRequest() { showNearestElevator() }
+        }
         .onChange(of: findsMeAutomatically) { _, automatic in
             controller.locatesAutomatically = automatic && !isDemo
             if automatic, !isDemo, controller.canGuide, controller.phase == .browsing { controller.findRider() }
@@ -1259,6 +1266,21 @@ struct MapScreen: View {
             chooseStart(point)
         case .myLocation, nil:
             break
+        }
+    }
+
+    /// From Siri or Shortcuts: directions to the closest elevator, from the person where InView can find them.
+    private func showNearestElevator() {
+        guard !isDemo, cover == nil, let elevator = routablePlaces.first(where: { $0.kind == .elevator }) else { return }
+        modal = nil
+        closeDestination()
+        if controller.canGuide {
+            routeStart = .myLocation
+            controller.navigate(to: elevator, nearestOfKind: true)
+            panel = .directions; detent = .height(440)
+        } else {
+            controller.selectDestination(elevator)
+            openDirections()
         }
     }
 
