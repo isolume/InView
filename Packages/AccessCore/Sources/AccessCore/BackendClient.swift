@@ -19,7 +19,7 @@ public struct CaptureUploadSummary: Codable, Equatable, Sendable {
 }
 
 public enum BackendRequestStage: Equatable, Sendable {
-    case upload, original, scene, health, analysis
+    case upload, original, scene, health, analysis, nearby
 }
 
 public enum BackendClientError: Error, LocalizedError, Equatable {
@@ -48,6 +48,7 @@ public enum BackendClientError: Error, LocalizedError, Equatable {
                 case .scene: return "The 3D map took too long to respond. Try again."
                 case .health: return "The scan server took too long to respond. Check its address and your connection."
                 case .analysis: return "The scan's navigation details took too long to load. Try again."
+                case .nearby: return "Nearby places took too long to load. Try again."
                 }
             case .cannotFindHost: return "Could not find the scan server. Check its address."
             case .notConnectedToInternet: return "Could not connect to the scan server. Check your connection."
@@ -290,6 +291,12 @@ public struct BackendClient: Sendable {
             throw BackendClientError.invalidResponse("The backend returned a scene that is too large.")
         }
         return data
+    }
+
+    /// Shared request path for feature extensions in this module.
+    func send(path: [String], method: String, stage: BackendRequestStage,
+              timeout: TimeInterval = 45, body: Data? = nil) async throws -> Data {
+        try await request(path: path, method: method, stage: stage, timeout: timeout, body: body)
     }
 
     private func decode<T: Decodable>(_ data: Data) throws -> T {

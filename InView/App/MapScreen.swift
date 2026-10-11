@@ -18,6 +18,7 @@ struct MapScreen: View {
     let isDemo: Bool
     @StateObject private var controller: NavigationController
     @StateObject private var library = BuildingMapLibrary()
+    @StateObject private var live = LivePlaceSearch()
     @ObservedObject private var account = AccountSession.shared
     @State private var scene: ProcessedScene?
     @State private var detailScene: ProcessedScene?
@@ -49,6 +50,7 @@ struct MapScreen: View {
     @State private var previewStart: SIMD2<Float>?
     @State private var isFindingRoute = false
     @State private var routeMessage: String?
+    @State private var routeCheck: ServerRouteCheck?
     @State private var routeGeneration = 0
     @State private var floorError: String?
     @State private var selectedModelPlace: AccessPoint?
@@ -129,16 +131,46 @@ struct MapScreen: View {
         }
     }
 
-    private var displayPoints: [AccessPoint] { (hasMap ? controller.map?.points ?? [] : []) + modelPoints }
+    private var displayPoints: [AccessPoint] { (hasMap ? controller.map?.points ?? [] : []) + livePins + modelPoints }
+
+    /// The server scan behind a saved floor; published and example maps have none to search.
+    private var liveScanID: String? { isDemo ? nil : localFloor?.captureID }
+    /// Live places from the scan server, pinned at the spot the scan measured them on this floor.
+    private var livePins: [AccessPoint] { hasMap && liveScanID != nil ? live.pins : [] }
+    private var liveAnswersQuery: Bool { live.answeredQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// Search from the person when tracked, else a chosen start, else the scan's origin, which is
+    /// where the walk began and so lies on the mapped paths.
+    private var liveOrigin: SIMD3<Float> {
+        let point = (controller.isPositionReliable ? controller.position : nil) ?? previewStart ?? .zero
+        return SIMD3(point.x, controller.map?.floorY ?? 0, point.y)
+    }
+    private var liveTrigger: LiveSearchTrigger {
+        LiveSearchTrigger(scanID: hasMap ? liveScanID : nil, origin: liveOrigin, query: query,
+                          pointCount: controller.map?.points.count ?? 0)
+    }
+    /// Matches on other floors are listed with how to get there, not pinned on this floor.
+    private var otherFloorResults: [NearbyPlace] {
+        guard hasMap, liveScanID != nil, liveAnswersQuery else { return [] }
+        return Array(live.results.filter { $0.levelDelta != 0 }.prefix(5))
+    }
+
+    /// Left, right or ahead from where the person stands now, when their position is known.
+    private func liveDirection(_ result: NearbyPlace) -> String? {
+        guard controller.isPositionReliable, let position = controller.position else { return nil }
+        return result.relativeDirection(from: position, headingRadians: controller.heading)
+    }
 
     private func bounded(_ value: Double, in range: ClosedRange<Double>) -> Double {
         value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : range.lowerBound
     }
     private var points: [AccessPoint] {
         guard hasVisualFloor else { return [] }
-        let all = displayPoints
+        let local = (hasMap ? controller.map?.points ?? [] : []) + modelPoints
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? all : all.filter { $0.title.localizedCaseInsensitiveContains(text) || $0.kind.title.localizedCaseInsensitiveContains(text) }
+        let matched = text.isEmpty ? local : local.filter { $0.title.localizedCaseInsensitiveContains(text) || $0.kind.title.localizedCaseInsensitiveContains(text) }
+        // The server already matched live places against names, sign text and everyday words.
+        let served = liveAnswersQuery ? livePins : []
+        return matched + served.filter { pin in !matched.contains { $0.id == pin.id } }
     }
 
     var body: some View {
@@ -176,6 +208,10 @@ struct MapScreen: View {
             resetID += 1
         }
         .onChange(of: routePreference) { _, _ in routePreferenceChanged() }
+        .onChange(of: liveTrigger, initial: true) { _, trigger in
+            live.update(scanID: trigger.scanID, origin: trigger.origin, query: trigger.query,
+                        existing: controller.map?.points ?? [])
+        }
         .onChange(of: controller.phase) { _, phase in
             if phase == .locating { showsAR = true; panel = .directions }
             if phase == .navigating || phase == .arrived { panel = .directions; detent = .height(440) }
@@ -412,7 +448,9 @@ struct MapScreen: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if hasVisualFloor {
-                if points.isEmpty {
+                if live.isLoading, points.isEmpty {
+                    ProgressView("Finding nearby places…").frame(maxWidth: .infinity)
+                } else if points.isEmpty, otherFloorResults.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else {
                     VStack(spacing: 0) {
@@ -422,6 +460,28 @@ struct MapScreen: View {
                             if point.id != points.last?.id { Divider().padding(.leading, 52) }
                         }
                     }
+                }
+                if !otherFloorResults.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Other floors").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.bottom, 4)
+                        ForEach(otherFloorResults) { result in
+                            HStack(spacing: 14) {
+                                Image(systemName: result.levelDelta > 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                                    .font(.title2).foregroundStyle(.secondary).frame(width: 36)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(result.title).font(.body.weight(.medium))
+                                    Text(result.summary(direction: liveDirection(result))).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.vertical, 10)
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                }
+                if let message = live.message, hasMap, liveScanID != nil {
+                    Text(message).font(.footnote).foregroundStyle(.secondary)
                 }
                 if !showsModel {
                     Text(library.isReviewed(floor: selectedLevel) && localFloor == nil
@@ -511,7 +571,11 @@ struct MapScreen: View {
             KindBadge(kind: point.kind, size: 36)
             VStack(alignment: .leading, spacing: 3) {
                 Text(point.title).font(.body.weight(.medium)).foregroundStyle(.primary)
-                Text("Floor \(selectedLevel) · \(point.kind.title)").font(.caption).foregroundStyle(.secondary)
+                if let result = live.result(for: point), livePins.contains(where: { $0.id == point.id }) {
+                    Text(result.summary(direction: liveDirection(result))).font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Floor \(selectedLevel) · \(point.kind.title)").font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
@@ -563,6 +627,17 @@ struct MapScreen: View {
             Text("From your chosen starting point. Follow signs and check that the way is clear.")
                 .font(.subheadline).foregroundStyle(.secondary)
             if !library.isReviewed(floor: selectedLevel) { Text("This scan hasn’t been verified for accessibility.").font(.footnote).foregroundStyle(.secondary) }
+            if let routeCheck {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(routeCheck.headline, systemImage: routeCheck.symbol)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(routeCheck.isWarning ? Theme.color(for: .warning) : Color.primary)
+                    ForEach(routeCheck.details, id: \.self) { detail in
+                        Text(detail).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
             HStack {
                 Button("Change start") { beginChoosingStart() }.buttonStyle(.bordered)
                 Button("View in AR", action: enterAR).buttonStyle(.borderedProminent)
@@ -649,7 +724,9 @@ struct MapScreen: View {
 
     private func selectPlace(_ place: MapPlace) {
         guard panel != .chooseStart else { return }
-        let measured = hasMap ? controller.map?.points.first(where: { $0.id == place.id }) : nil
+        // Live pins sit on this floor's measured map, so the on-device planner can route to them.
+        let measured = hasMap ? controller.map?.points.first(where: { $0.id == place.id })
+            ?? livePins.first(where: { $0.id == place.id }) : nil
         let modeled = modelPoints.first(where: { $0.id == place.id })
         guard measured != nil || modeled != nil else { return }
         closeDestination()
@@ -665,7 +742,7 @@ struct MapScreen: View {
         mapStyle = .scan
         controller.endGuidance()
         showsAR = false
-        previewRoute = nil; previewStart = nil; routeMessage = nil
+        previewRoute = nil; previewStart = nil; routeMessage = nil; routeCheck = nil
         isFindingRoute = false
         routeGeneration += 1
         panel = .chooseStart; detent = .height(440)
@@ -679,6 +756,9 @@ struct MapScreen: View {
         let preference = routePreference
         previewRoute = nil
         routeMessage = nil
+        routeCheck = nil
+        let scanID = liveScanID
+        let placeID = live.result(for: destination).flatMap { $0.kind == "place" ? $0.sourceID : nil }
         Task {
             let route = await Task.detached(priority: .userInitiated) {
                 RoutePlanner(map: map).route(from: start, to: destination, conditions: preference.conditions())
@@ -686,6 +766,15 @@ struct MapScreen: View {
             guard generation == routeGeneration else { return }
             isFindingRoute = false
             previewRoute = route
+            // The device route is shown right away; the building map's check follows when it answers.
+            if let scanID, route != nil {
+                Task {
+                    let check = await ServerRouteCheck.run(scanID: scanID, map: map, start: start, destination: destination,
+                                                           placeID: placeID, preference: preference)
+                    guard generation == routeGeneration else { return }
+                    routeCheck = check
+                }
+            }
             routeMessage = route == nil
                 ? preference == .stepFree
                     ? "No step-free route was found within the mapped area. Your route preference hasn’t been relaxed."
@@ -716,7 +805,7 @@ struct MapScreen: View {
         controller.endGuidance()
         showsAR = false; panel = .explore
         routeGeneration += 1
-        previewRoute = nil; previewStart = nil; routeMessage = nil; isFindingRoute = false
+        previewRoute = nil; previewStart = nil; routeMessage = nil; routeCheck = nil; isFindingRoute = false
         selectedModelPlace = nil
         controller.selectDestination(nil)
         detent = .height(240)
@@ -845,4 +934,12 @@ private struct BuildingDetailsSheet: View {
             }
         }
     }
+}
+
+/// What a live nearby search depends on; the search itself skips moves under a few meters.
+private struct LiveSearchTrigger: Equatable {
+    var scanID: String?
+    var origin: SIMD3<Float>
+    var query: String
+    var pointCount: Int
 }
