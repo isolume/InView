@@ -38,6 +38,10 @@ for ip in $(ipconfig getiflist 2>/dev/null | xargs -n1 ipconfig getifaddr 2>/dev
 done
 echo "Data: $data_dir"
 echo "Check from the phone's network: curl -H 'Authorization: Bearer <token>' http://<ip>:$port/health"
+if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -q "enabled"; then
+  echo "macOS firewall is on. If the phone can't connect, allow incoming connections when macOS asks, or run:"
+  echo "  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add '$backend_dir/target/release/inview-backend' --unblockapp '$backend_dir/target/release/inview-backend'"
+fi
 echo
 
 exec cargo run --release --locked --manifest-path "$backend_dir/Cargo.toml"
