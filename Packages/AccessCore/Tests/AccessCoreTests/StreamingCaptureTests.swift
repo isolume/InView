@@ -66,6 +66,9 @@ private final class StreamTestServer: @unchecked Sendable {
     private var acceptsGzip = false
     private var resultData: Data?
     private var resultFailures: [(status: Int, code: String)] = []
+    private var attachments: [String: Data] = [:]
+    private var restartAtFinish = false
+    private var attachmentRejection: Int?
 
     var records: [Record] { lock.withLock { requests } }
     var frameCount: Int { lock.withLock { chunks.count } }
@@ -75,10 +78,12 @@ private final class StreamTestServer: @unchecked Sendable {
     func failRequests(_ value: Bool) { lock.withLock { failAll = value } }
     func wrongAcknowledgement() { lock.withLock { wrongMap = true } }
     func rejectUploads(status: Int) { lock.withLock { rejection = status } }
-    func restart() { lock.withLock { savedManifest = nil; chunks = [:]; finished = false } }
+    func restart() { lock.withLock { savedManifest = nil; chunks = [:]; attachments = [:]; finished = false } }
     func advertiseGzip() { lock.withLock { acceptsGzip = true } }
     func respondWithResult(_ data: Data?) { lock.withLock { resultData = data } }
     func failNextResults(_ failures: [(status: Int, code: String)]) { lock.withLock { resultFailures = failures } }
+    func restartBeforeNextFinish() { lock.withLock { restartAtFinish = true } }
+    func rejectAttachments(status: Int) { lock.withLock { attachmentRejection = status } }
 
     func reply(to request: URLRequest) throws -> Reply {
         let wireBody = streamRequestBody(request)
@@ -123,10 +128,18 @@ private final class StreamTestServer: @unchecked Sendable {
                 return try summary()
             }
             if method == "PUT", pieces.count == 4, pieces[2] == "assets" {
+                if let attachmentRejection { return error(attachmentRejection, "asset_limit") }
+                if attachments[pieces[3]] == body { return .http(204, Data()) }
                 guard !finished else { return error(409, "stream_finished") }
+                attachments[pieces[3]] = body
                 return .http(204, Data())
             }
             if method == "POST", pieces.count == 3, pieces[2] == "finish" {
+                if restartAtFinish {
+                    restartAtFinish = false
+                    self.savedManifest = nil; chunks = [:]; attachments = [:]; finished = false
+                    return error(404, "stream_not_found")
+                }
                 let json = try JSONSerialization.jsonObject(with: body) as? [String: Int]
                 guard json?["chunk_count"] == chunks.count, !chunks.isEmpty else { return error(409, "stream_incomplete") }
                 finished = true
@@ -779,5 +792,39 @@ struct StreamingCaptureTests {
         let finish = try #require(order.firstIndex { $0.hasSuffix("/finish") })
         let uploads = order.indices.filter { order[$0].hasPrefix("PUT assets/") }
         #expect(uploads.count == 2 && uploads.allSatisfy { $0 < finish })
+        try await queue.attach(Data(#"{"schema_version":1}"#.utf8), named: "semantics.json")
+        await #expect(throws: StreamingCaptureError.queueBusy) {
+            try await queue.attach(Data(#"{"schema_version":2}"#.utf8), named: "semantics.json")
+        }
+        await #expect(throws: StreamingCaptureError.queueBusy) {
+            try await queue.attach(Data("{}".utf8), named: "camera-track.json")
+        }
+    }
+
+    @Test func restartBetweenAttachmentsAndFinishResendsEvidenceBeforeSealing() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let queue = try StreamingCaptureQueue(root: streamRoot(), manifest: streamManifest(), backendURL: url, session: session)
+        try await queue.append(frame: streamFrame(), colorJPEG: streamJPEG())
+        try await queue.attach(Data(#"{"schema_version":1}"#.utf8), named: "semantics.json")
+        server.restartBeforeNextFinish()
+        #expect(try await queue.finish().finished)
+        let records = server.records
+        let finishes = records.indices.filter { records[$0].path.hasSuffix("/finish") }
+        #expect(finishes.count == 2)
+        let first = try #require(finishes.first), last = try #require(finishes.last)
+        #expect(records[(first + 1)..<last].contains { $0.method == "PUT" && $0.path.hasSuffix("/assets/semantics.json") })
+    }
+
+    @Test func rejectedEvidenceDoesNotFinishWithoutIt() async throws {
+        let (server, url, session) = streamServer()
+        defer { session.invalidateAndCancel() }
+        let queue = try StreamingCaptureQueue(root: streamRoot(), manifest: streamManifest(), backendURL: url, session: session)
+        try await queue.append(frame: streamFrame(), colorJPEG: streamJPEG())
+        try await queue.attach(Data("{}".utf8), named: "semantics.json")
+        server.rejectAttachments(status: 413)
+        await #expect(throws: BackendClientError.self) { try await queue.finish() }
+        #expect(!server.records.contains { $0.path.hasSuffix("/finish") })
+        #expect(!(await queue.snapshot()).finished)
     }
 }

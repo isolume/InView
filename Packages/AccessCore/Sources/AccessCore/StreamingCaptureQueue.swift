@@ -156,9 +156,14 @@ public actor StreamingCaptureQueue {
             throw StreamingCaptureError.invalidChunk
         }
         let directory = root.appendingPathComponent("attachments", isDirectory: true)
+        let destination = directory.appendingPathComponent(name)
+        if state.finished || finishTask != nil {
+            guard (try? Data(contentsOf: destination)) == data else { throw StreamingCaptureError.queueBusy }
+            return
+        }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+            try data.write(to: destination, options: .atomic)
         } catch { throw StreamingCaptureError.storageFailure }
     }
 
@@ -342,15 +347,12 @@ public actor StreamingCaptureQueue {
         do {
             try await synchronize()
             let backend = try client()
-            // Attachments are idempotent PUTs; an older server without the route skips them.
-            for attachment in savedAttachments() {
-                do { try await backend.putAttachment(attachment.data, named: attachment.name, manifest: manifest) }
-                catch let error as BackendClientError where error.isArchiveEndpointUnavailable { break }
-            }
+            try await uploadAttachments(to: backend)
             let summary: StreamSummary
             do { summary = try await backend.finish(manifest, chunkCount: captured) }
             catch let error as BackendClientError where error.isMissingStream {
                 try await synchronize()
+                try await uploadAttachments(to: backend)
                 summary = try await backend.finish(manifest, chunkCount: captured)
             }
             try reconcile(summary)
@@ -359,6 +361,18 @@ public actor StreamingCaptureQueue {
         } catch {
             if !(error is CancellationError) { lastError = error.localizedDescription }
             throw error
+        }
+    }
+
+    private func uploadAttachments(to backend: StreamingBackendClient) async throws {
+        for attachment in savedAttachments() {
+            try Task.checkCancellation()
+            do { try await backend.putAttachment(attachment.data, named: attachment.name, manifest: manifest) }
+            catch let error as BackendClientError {
+                // Older deployments may lack this route. Size/auth/conflict errors must retain evidence.
+                if case .http(let status, _, _) = error, status == 404 || status == 405 { return }
+                throw error
+            }
         }
     }
 

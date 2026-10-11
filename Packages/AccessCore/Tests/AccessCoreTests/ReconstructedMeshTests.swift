@@ -87,6 +87,22 @@ private func faceNormal(_ mesh: CaptureMesh, _ index: Int) -> SIMD3<Float> {
     try CaptureBundle(id: "scan", mapID: "map", meshes: [compacted.mesh]).validate()
 }
 
+@Test func compactionNeverReturnsTheFinalWeldWhenItExceedsTheTarget() throws {
+    // Sparse large faces survive even the coarsest weld. Keeping them all used to silently
+    // exceed the requested budget; optional detail must now fall back to the structural map.
+    let broad = horizontalGrid(cells: 30, spacing: 1, y: 0, label: "floor", facingUp: true)
+    #expect(try ReconstructedMesh.compact([broad], triangleTarget: 1_500) == nil)
+    #expect(try ReconstructedMesh.compact([broad], triangleTarget: 0) == nil)
+}
+
+@Test func compactionEnforcesTheVertexBudgetAsWellAsTheFaceBudget() throws {
+    let dense = horizontalGrid(cells: 100, spacing: 0.03, y: 0, label: "floor", facingUp: true)
+    let compacted = try #require(try ReconstructedMesh.compact([dense], triangleTarget: 5_000, vertexTarget: 128))
+    #expect(compacted.mesh.vertices.count <= 128)
+    #expect(compacted.mesh.triangles.count <= 5_000)
+    #expect(compacted.cellSize >= 0.32)
+}
+
 @Test func compactionDropsUnplaceableVerticesAndKeepsUnlabeledMeshesUnlabeled() throws {
     var patch = horizontalGrid(cells: 1, spacing: 1, y: 0, label: "floor", facingUp: true)
     patch.labels = nil
@@ -107,6 +123,30 @@ private func faceNormal(_ mesh: CaptureMesh, _ index: Int) -> SIMD3<Float> {
     #expect(abs(measured.elevation - 1.4) < 0.01)
     #expect(abs((measured.floorCoverage ?? 0) - 0.25) < 0.02)
     #expect(abs(measured.areaM2 - 4) < 0.3)
+}
+
+@Test func ceilingCoverageIsIndependentOfTheFloorAndCeilingTriangulation() throws {
+    let mesh = CaptureMesh(id: "opposite-diagonals",
+                          mapFromAnchor: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                          vertices: [[0, 0, 0], [4, 0, 0], [0, 0, 4], [4, 0, 4],
+                                     [0, 3, 0], [4, 3, 0], [0, 3, 4], [4, 3, 4]],
+                          triangles: [[0, 2, 1], [1, 2, 3], [4, 5, 7], [4, 7, 6]],
+                          classifications: ["floor", "floor", "ceiling", "ceiling"])
+    let measured = try #require(CeilingMeasurement.measure(mesh, floorY: 0))
+    #expect(abs((measured.floorCoverage ?? 0) - 1) < 0.0001)
+    #expect(abs(measured.areaM2 - 16) < 0.0001)
+    #expect(abs(measured.heightM - 3) < 0.0001)
+}
+
+@Test func ceilingCoverageCountsTheAreaOfEachCrossedCell() throws {
+    // A complete 4 m square floor has only a 1 m strip of ceiling, with a different mesh density.
+    let floor = horizontalGrid(cells: 1, spacing: 4, y: 0, label: "floor", facingUp: true)
+    var ceiling = horizontalGrid(cells: 8, spacing: 0.5, y: 3, label: "ceiling", facingUp: false)
+    ceiling.vertices = ceiling.vertices.map { SIMD3($0.x / 4, $0.y, $0.z) }
+    let compacted = try #require(try ReconstructedMesh.compact([floor, ceiling]))
+    let measured = try #require(CeilingMeasurement.measure(compacted.mesh, floorY: 0))
+    #expect(abs((measured.floorCoverage ?? 0) - 0.25) < 0.001)
+    #expect(abs(measured.areaM2 - 4) < 0.001)
 }
 
 @Test func ceilingIgnoresMislabeledWallsAndImplausibleHeights() throws {

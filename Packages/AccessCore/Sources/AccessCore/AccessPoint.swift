@@ -67,7 +67,7 @@ public struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
         return trimmed.isEmpty ? kind.title : trimmed
     }
 
-    /// Ramps steeper than the ADA limit are only routed to when nothing else is reachable.
+    /// Ramps above the supported incline are excluded from wheelchair routes.
     public var isTooSteep: Bool {
         guard kind == .ramp, let slopeDegrees else { return false }
         return slopeDegrees > Self.maximumRampSlope

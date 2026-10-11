@@ -1,0 +1,66 @@
+{
+  "file": "building.glb",
+  "sha256": "32207e95c5b2e0013a15cb39f76cf8c19f68065fd3d9f6a09d8509692d9dead2",
+  "bytes": 3198024,
+  "format": "glTF 2.0 binary",
+  "passed": true,
+  "errors": [],
+  "warnings": [],
+  "checks": [
+    "GLB header, chunk bounds and alignment",
+    "Embedded buffer and buffer view ranges",
+    "Accessor ranges, strides, component alignment and finite values",
+    "Accessor declared min/max",
+    "Vertex attribute counts and index bounds",
+    "Material references",
+    "Unit-length normals (absolute tolerance 0.0001)",
+    "Triangle degeneracy (doubled local-space area threshold 1e-12)",
+    "Scene graph references, cycles and finite transforms",
+    "Transformed scene bounds and triangle count match native USDZ"
+  ],
+  "counts": {
+    "scenes": 1,
+    "nodes": 438,
+    "meshes": 295,
+    "materials": 16,
+    "buffers": 1,
+    "bufferViews": 803,
+    "accessors": 803,
+    "textures": 0,
+    "images": 0,
+    "numeric_components_checked": 742716,
+    "mesh_primitives": 295,
+    "unique_mesh_vertices": 111780,
+    "indices_checked": 310284,
+    "unique_mesh_triangles": 103428,
+    "mesh_nodes": 438,
+    "instanced_triangles": 268836,
+    "scene_nodes_reached": 438,
+    "normals_checked": 111780,
+    "degenerate_triangles": 0
+  },
+  "normal_length_range": [
+    0.9999999227240595,
+    1.0000001404979417
+  ],
+  "minimum_triangle_area_local_m2": 7.220654331058343e-09,
+  "bounds_y_up_m": {
+    "min": [
+      -10.099000624267173,
+      -3.3888686159159622,
+      -10.899000190198421
+    ],
+    "max": [
+      9.349000960164314,
+      2.559999980032444,
+      7.098999999463558
+    ],
+    "dimensions": [
+      19.448001584431488,
+      5.948868595948406,
+      17.99800018966198
+    ]
+  },
+  "native_usdz_max_bound_difference_m": 9.830524980714017e-07,
+  "degenerate_triangle_examples": []
+}

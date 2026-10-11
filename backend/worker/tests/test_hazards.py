@@ -412,3 +412,15 @@ def test_profile_over_unmeasured_gap_is_not_step_free():
     profile = terrain.segment_profile(hm, [-1.8, 0.0], [1.8, 0.0])
     assert profile["known_fraction"] < 0.5 and profile["step_free"] is None and profile["meets_ramp_slope"] is None
     assert profile["max_level_change_m"] == 0
+
+
+def test_inpainted_surface_is_not_measured_route_evidence():
+    # No measured ceiling in the gap: there is simply a small patch the scan missed.
+    mesh = (Mesh().floor(-2, 2, -2, -0.1).floor(-2, 2, 0.1, 2)
+            .floor(-2, -0.1, -0.1, 0.1).floor(0.1, 2, -0.1, 0.1))
+    _, hm, _ = run(mesh.inputs(ROOM_TRACK))
+    assert np.isfinite(hm.sample(hm.elevation, [[0, 0]])[0])  # Useful for the screening visualization.
+    assert np.isnan(hm.sample(hm.measured_elevation(), [[0, 0]])[0])
+    profile = terrain.segment_profile(hm, [-1, 0], [1, 0])
+    assert 0.8 < profile["known_fraction"] < 1
+    assert profile["step_free"] is None and profile["meets_ramp_slope"] is None

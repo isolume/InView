@@ -139,3 +139,26 @@ private func coverageMaskFrame(timestamp: TimeInterval = 1, width: Int = 256, he
     gate.continuation.finish()
     #expect(await task.value == nil)
 }
+
+@Test func coverageMaskHasNoSeedGridGapsOnAContinuouslyMeasuredWall() throws {
+    var coverage = DepthScanCoverage()
+    coverage.recordSavedFrame(coverageMaskFrame())
+    let mask = try #require(coverage.snapshot().mask(for: coverageMaskFrame(timestamp: 2)))
+    for row in 1..<191 { for column in 1..<255 { #expect(mask.alpha[row * 256 + column] == 55) } }
+}
+
+@Test func coverageFeatherSoftensInwardAndPreservesUncapturedHoles() {
+    var alpha = [UInt8](repeating: 55, count: 15 * 15)
+    for i in 0..<15 {
+        alpha[i] = 0; alpha[14 * 15 + i] = 0
+        alpha[i * 15] = 0; alpha[i * 15 + 14] = 0
+    }
+    alpha[7 * 15 + 7] = 0
+    let mask = DepthScanCoverageMask(width: 15, height: 15, alpha: alpha).feathered()
+    #expect(mask.alpha[7 * 15 + 7] == 0)
+    #expect(mask.alpha[7 * 15 + 6] > 0 && mask.alpha[7 * 15 + 6] < mask.alpha[7 * 15 + 5])
+    #expect(mask.alpha[3 * 15 + 3] == 55)
+    #expect(mask.alpha[7 * 15 + 6] == mask.alpha[6 * 15 + 7])
+    #expect(mask.alpha[6 * 15 + 6] == mask.alpha[6 * 15 + 8])
+    for i in alpha.indices { #expect(mask.alpha[i] <= alpha[i]) }
+}

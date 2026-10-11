@@ -158,6 +158,7 @@ final class CameraTrackRecorder {
     private var timer: Timer?
     private var samples: [CameraTrack.Sample] = []
     private var unixOffset: Double?
+    private var sessionIdentity: ObjectIdentifier?
     private(set) var decimations = 0
 
     /// `rateHz` must be in (0, 60]; an invalid rate is a programming error.
@@ -173,6 +174,16 @@ final class CameraTrackRecorder {
     var count: Int { samples.count }
 
     func start(session: ARSession) {
+        let identity = ObjectIdentifier(session)
+        if sessionIdentity != identity {
+            timer?.invalidate()
+            timer = nil
+            samples.removeAll(keepingCapacity: true)
+            unixOffset = nil
+            sampling.reset()
+            decimations = 0
+            sessionIdentity = identity
+        }
         self.session = session
         if unixOffset == nil {
             // ARFrame.timestamp uses the same clock as systemUptime.

@@ -131,7 +131,8 @@ enum NavigationDemo {
                            // Public example placement; the floor plan is synthetic, not an Apple venue survey.
                            geographicReference: BuildingMapReference(latitude: 37.33285, longitude: -122.00537,
                                                                      headingDegrees: 0))
-        let route = RoutePlanner(map: map).route(from: startPosition, to: destination)
+        let route = RoutePlanner(map: map).route(from: startPosition, to: destination,
+                                               conditions: RoutePreference.stepFree.conditions())
         return Snapshot(scene: scene, map: map, startPosition: startPosition, route: route,
                         failureReason: route == nil ? "The example building has no clear route to its meeting room." : nil)
     }

@@ -9,12 +9,13 @@ public struct IndoorFloorContent: Sendable {
     public let isRouteFloor: Bool
 
     public init(scene: ProcessedScene?, map: VenueMap?, selectedFloorID: String?) {
-        guard let scene, let map else {
+        guard let scene else {
             self.scene = scene; self.map = map; floor = nil; isRouteFloor = true
             return
         }
         let floors = IndoorSceneFloors.floors(in: scene)
-        let routeFloor = floors.min { abs($0.elevation - map.floorY) < abs($1.elevation - map.floorY) }
+        let routeElevation = map?.floorY ?? floors.first?.elevation ?? 0
+        let routeFloor = floors.min { abs($0.elevation - routeElevation) < abs($1.elevation - routeElevation) }
         let selected = floors.first { $0.id == selectedFloorID } ?? routeFloor
         guard let selected else {
             self.scene = scene; self.map = map; floor = nil; isRouteFloor = true
@@ -23,6 +24,10 @@ public struct IndoorFloorContent: Sendable {
         floor = selected
         isRouteFloor = selected.id == routeFloor?.id
         var selectedScene = IndoorSceneFloors.scene(scene, on: selected)
+        guard let map else {
+            self.scene = selectedScene; self.map = nil
+            return
+        }
         // Use only geometry known to belong to this display floor. The original routing map
         // can contain flattened footprints from multiple captured levels.
         var footprints = selectedScene.surfaces.compactMap(Self.footprint) + selectedScene.objects.compactMap { object in

@@ -24,6 +24,7 @@ class GeojsonStage(Stage):
         signs = ctx.json(ProductName.SIGNS)
         collection, notices = geojson.build(
             projection, scan_id=ctx.scan_id, level_id=str(manifest.get("floor_id") or "ground"), georef=georef,
+            map_id=str(manifest.get("map_id") or ctx.scan_id),
             floor_map=ctx.json(ProductName.FLOOR_MAP), regions=ctx.json(ProductName.REGIONS),
             doors=ctx.json(ProductName.DOORS), places=ctx.json(ProductName.PLACES),
             hazards=ctx.json(ProductName.HAZARDS), signs=signs if isinstance(signs, list) else None,

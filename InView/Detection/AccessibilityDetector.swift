@@ -609,14 +609,7 @@ final class AccessibilityDetector: ObservableObject {
                     sighting.measurementTimestamp = camera.timestamp
                 }
             } else {
-                if AppConfig.continuousScanning {
-                    // A point belongs to a single observation's pose; averaging poses with drift
-                    // would prevent the backend correction from being applied consistently.
-                    sighting.position = position
-                    sighting.measurementTimestamp = camera.timestamp
-                } else {
-                    sighting.position += (position - sighting.position) / Float(sighting.frames + 1)
-                }
+                sighting.position += (position - sighting.position) / Float(sighting.frames + 1)
             }
         }
         let blended = sighting.facing * Float(sighting.frames) + facing

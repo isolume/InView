@@ -15,7 +15,9 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+import numpy as np
 
+from inview_worker import floor_map
 from test_nav_graph import build, suite
 
 pytestmark = pytest.mark.skipif(os.environ.get("INVIEW_BACKEND_E2E") != "1",
@@ -74,7 +76,9 @@ PLACES = [{"id": "a", "category": "information", "name": "Desk A", "position_m":
 
 
 def test_backend_accepts_graph_and_routes_across_rooms(backend):
-    _, result = build(suite(door_a=1.0, door_b=1.0), places=PLACES)
+    inputs = suite(door_a=1.0, door_b=1.0)
+    measured = {"measured": True, "elevation": np.zeros(floor_map.build(inputs).walkable.shape)}
+    _, result = build(inputs, places=PLACES, height_map=measured)
     graph = result.graph
     status, body = _call("PUT", f"{backend}/graphs/{graph['id']}", graph)
     assert status == 200, body

@@ -1,10 +1,10 @@
 # Open corridors and balconies
 
 RoomPlan fits rooms, which can stall or omit geometry in a long corridor with an
-open side. The app now saves each section automatically after its tracked span
-reaches 7 m or its duration reaches 120 seconds, with at least 15 seconds to settle.
-Processing briefly pauses capture; the next section retains the same AR session
-and coordinate space. Manual Next section still works.
+open side. One scan continues across confirmed doorway crossings in a shared AR
+session; elapsed time and distance do not split a room. RoomPlan processing
+briefly pauses room capture while measured floor observations continue. See
+[continuous scanning](continuous-scanning.md) for handoffs and interruptions.
 
 Alongside RoomPlan, the app samples nearby ARKit plane boundaries every 0.75 seconds
 during normal, recent tracking. It retains exact horizontal floor outlines and
@@ -21,10 +21,15 @@ up to 5,000 m² allow long corridors without a 40 m capture plateau. Barriers ar
 not retained for this supplement; full mesh copying remains disabled.
 
 Recovered floors are compared by their actual coverage. Partial overlap no longer
-discards a whole corridor extension. Saved maps and portable local/server scenes
+discards a whole corridor extension, and connected patches are reconsidered until
+no more coverage can be recovered regardless of anchor order. Saved maps and portable local/server scenes
 retain floor polygon corners; floor unions preserve concave cutouts and separate
 islands. New scans restrict routes to measured floor coverage, even if no floor
 was captured. Older floorless maps retain their legacy behavior.
+
+The finished scan review overlays the recorded walk on measured floor and marks
+missing coverage with dashes. It is a rescan cue, not evidence of a usable route;
+tracking gaps stay disconnected and unvisited areas cannot be checked this way.
 
 The provided map export had no floor surfaces and elevator pins about 4 m and
 6 m beyond the nearest captured footprint. It contains no raw evidence from

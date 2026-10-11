@@ -19,7 +19,7 @@ ELEVENLABS_API_KEY =
 ELEVENLABS_VOICE_ID = 21m00Tcm4TlvDq8ikWAM
 ELEVENLABS_MODEL = eleven_turbo_v2_5
 
-// Optional scan processing server; blank keeps processing on the device.
+// Community account, submission and published-map service; blank keeps browsing local.
 // Write URLs as http:/$()/host:3000 so xcconfig does not treat // as a comment.
 INVIEW_BACKEND_URL =
 

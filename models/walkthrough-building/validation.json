@@ -1,0 +1,24 @@
+{
+  "file": "building.usdz",
+  "bytes": 4477950,
+  "mesh_count": 438,
+  "up_axis": "Y",
+  "meters_per_unit": 1,
+  "entries": [
+    "building.usdc"
+  ],
+  "triangle_count": 268836,
+  "bounds_y_up_m": {
+    "min": [
+      -10.098999977111816,
+      -3.388868570327759,
+      -10.89900016784668
+    ],
+    "max": [
+      9.348999977111816,
+      2.559999942779541,
+      7.098999977111816
+    ]
+  },
+  "furniture_instances": 26
+}

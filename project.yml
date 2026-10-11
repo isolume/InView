@@ -66,6 +66,18 @@ targets:
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
+  InViewTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/InViewTests
+    dependencies:
+      - target: InView
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vedanta.accessnav.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
 schemes:
   InView:
     build:
@@ -75,6 +87,10 @@ schemes:
       config: Debug
       # RealityKit's own PBR shader (drawn by RoomCaptureView) trips Metal API Validation
       # with a tonemap LUT type mismatch, which crashes debug runs. Not our code.
+      enableGPUValidationMode: disabled
+    test:
+      targets:
+        - InViewTests
       enableGPUValidationMode: disabled
     archive:
       config: Release

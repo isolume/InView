@@ -109,18 +109,28 @@ extension ScanAnalysis {
         public var sources: [String]
         /// The worker's mapping onto `AccessPoint.Kind`; nil when absent or not a known kind.
         public var accessPointKind: AccessPoint.Kind?
+        public var sourceAccessPointID: UUID?
+        public var source: AccessPoint.Source?
+        public var slopeDegrees: Float?
+        public var requiresAssistance: Bool?
 
         public init(id: String, category: Category, name: String? = nil, names: [String: String] = [:],
                     position: SIMD3<Float>?, floorID: String? = nil, confidence: Float? = nil,
-                    sources: [String] = [], accessPointKind: AccessPoint.Kind? = nil) {
+                    sources: [String] = [], accessPointKind: AccessPoint.Kind? = nil,
+                    sourceAccessPointID: UUID? = nil, source: AccessPoint.Source? = nil,
+                    slopeDegrees: Float? = nil, requiresAssistance: Bool? = nil) {
             self.id = id; self.category = category; self.name = name; self.names = names
             self.position = position; self.floorID = floorID; self.confidence = confidence
             self.sources = sources; self.accessPointKind = accessPointKind
+            self.sourceAccessPointID = sourceAccessPointID; self.source = source
+            self.slopeDegrees = slopeDegrees; self.requiresAssistance = requiresAssistance
         }
 
         private enum CodingKeys: String, CodingKey {
             case id, category, name, names, positionM = "position_m", floorID = "floor_id"
             case confidence, sources, accessPointKind = "access_point_kind"
+            case sourceAccessPointID = "source_access_point_id", source
+            case slopeDegrees = "slope_degrees", requiresAssistance = "requires_assistance"
         }
 
         public init(from decoder: any Decoder) throws {
@@ -134,6 +144,10 @@ extension ScanAnalysis {
             confidence = container.lossy(Float.self, forKey: .confidence).flatMap { $0.isFinite ? $0 : nil }
             sources = container.lossy(LossyList<String>.self, forKey: .sources)?.elements ?? []
             accessPointKind = container.lossy(String.self, forKey: .accessPointKind).flatMap(AccessPoint.Kind.init(rawValue:))
+            sourceAccessPointID = container.lossy(UUID.self, forKey: .sourceAccessPointID)
+            source = container.lossy(AccessPoint.Source.self, forKey: .source)
+            slopeDegrees = container.lossy(Float.self, forKey: .slopeDegrees).flatMap { $0.isFinite ? $0 : nil }
+            requiresAssistance = container.lossy(Bool.self, forKey: .requiresAssistance)
         }
 
         /// The best name for the reader's languages: an exact or base-language match in `names`,
@@ -269,18 +283,23 @@ extension ScanAnalysis.Place {
     /// The map point for this place, or nil when it has no usable position.
     /// - Parameters:
     ///   - scanID: Namespaces the deterministic point ID, so equal place IDs from different scans differ.
-    ///   - floorY: When set, the point is placed on this floor height, like manually added points.
+    ///   - floorY: When set, rejects positions clearly outside this floor; never changes their elevation.
     public func accessPoint(scanID: String, floorY: Float? = nil,
+                            expectedFloorID: String? = nil,
                             preferredLanguages: [String] = Locale.preferredLanguages) -> AccessPoint? {
-        guard var position else { return nil }
-        if let floorY { position.y = floorY }
+        guard let position, position.x.isFinite, position.y.isFinite, position.z.isFinite else { return nil }
+        if let expectedFloorID, let floorID, floorID != expectedFloorID { return nil }
+        // Signage may be above the floor. Keep its measured height without admitting another story.
+        if let floorY, (!floorY.isFinite || position.y < floorY - 0.75 || position.y > floorY + 2.5) { return nil }
         return AccessPoint(
-            id: AccessPoint.detectedID(scanID: scanID, placeID: id),
+            id: sourceAccessPointID ?? AccessPoint.detectedID(scanID: scanID, placeID: id),
             kind: accessPointKind ?? category.accessPointKind,
             name: localizedName(preferredLanguages: preferredLanguages),
             position: position,
-            source: .detected,
-            confidence: min(max(confidence ?? 0.5, 0), 1)
+            source: source ?? .detected,
+            confidence: min(max(confidence ?? 0.5, 0), 1),
+            slopeDegrees: slopeDegrees,
+            requiresAssistance: requiresAssistance ?? false
         )
     }
 }

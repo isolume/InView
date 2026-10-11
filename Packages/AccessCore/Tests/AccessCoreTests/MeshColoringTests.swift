@@ -55,7 +55,7 @@ private func splitImage() throws -> ColorImage {
     try coloring.add(frame: overheadFrame(), image: splitImage())
     #expect(coloring.observationsUsed == 1)
     #expect(coloring.coverage == 1)
-    let colors = coloring.colors()
+    let colors = try coloring.colors()
     for (vertex, color) in zip(mesh.vertices, colors) {
         #expect(color == (vertex[0] < 0 ? 0xDC1E1E : 0x1E1EDC))
     }
@@ -65,13 +65,27 @@ private func splitImage() throws -> ColorImage {
     try CaptureBundle(id: "scan", mapID: "map", meshes: [colored]).validate()
 }
 
+@Test func uprightPhotoSamplingRotatesBackToTheCalibratedSensorFrame() throws {
+    // A 3x2 sensor image becomes a 2x3 upright image. Its sensor columns map to portrait rows;
+    // the two pixels in each row distinguish the other axis and catch mirrored rotation.
+    let portrait = try #require(ColorImage(width: 2, height: 3, rgba: [
+        255, 0, 0, 255, 0, 255, 0, 255,
+        0, 0, 255, 255, 255, 255, 0, 255,
+        255, 0, 255, 255, 0, 255, 255, 255,
+    ], orientation: .portraitClockwise))
+    #expect(simd_distance(portrait.color(at: SIMD2(1.0 / 6, 0.25)), SIMD3(0, 1, 0)) < 0.00001)
+    #expect(simd_distance(portrait.color(at: SIMD2(1.0 / 6, 0.75)), SIMD3(1, 0, 0)) < 0.00001)
+    #expect(simd_distance(portrait.color(at: SIMD2(0.5, 0.25)), SIMD3(1, 1, 0)) < 0.00001)
+    #expect(simd_distance(portrait.color(at: SIMD2(5.0 / 6, 0.75)), SIMD3(1, 0, 1)) < 0.00001)
+}
+
 @Test func somethingInFrontOfAVertexKeepsThatPhotoOffIt() throws {
     var coloring = try #require(MeshColoring(mesh: floorMesh()))
     // Depth says a surface 0.8 m from the camera hides the floor 2 m away.
     try coloring.add(frame: overheadFrame(depth: 0.8), image: splitImage())
     #expect(coloring.observationsUsed == 0)
     #expect(coloring.coverage == 0)
-    #expect(Set(coloring.colors()) == [MeshColoring.fallback])
+    #expect(Set(try coloring.colors()) == [MeshColoring.fallback])
 }
 
 @Test func aPhotoOfAFacesBackColorsNothing() throws {
@@ -86,8 +100,8 @@ private func splitImage() throws -> ColorImage {
     var coloring = try #require(MeshColoring(mesh: floorMesh()))
     try coloring.add(frame: frame, image: splitImage())
     #expect(coloring.coverage == 0.5)
-    #expect(Set(coloring.colors()) == [0xDC1E1E])
-    #expect(Set(coloring.colors(fillingRings: 0)) == [0xDC1E1E, MeshColoring.fallback])
+    #expect(Set(try coloring.colors()) == [0xDC1E1E])
+    #expect(Set(try coloring.colors(fillingRings: 0)) == [0xDC1E1E, MeshColoring.fallback])
 }
 
 @Test func coloredMeshesRejectMismatchedColorCounts() {
@@ -96,4 +110,36 @@ private func splitImage() throws -> ColorImage {
     #expect(throws: CaptureValidationError.self) { try CaptureBundle(id: "scan", mapID: "map", meshes: [mesh]).validate() }
     mesh.colors = Array(repeating: 0x100_0000, count: mesh.vertices.count)
     #expect(throws: CaptureValidationError.self) { try CaptureBundle(id: "scan", mapID: "map", meshes: [mesh]).validate() }
+}
+
+@Test func photoColoringBoundsAllProjectionWorkIncludingOccludedPhotos() throws {
+    let mesh = floorMesh()
+    var coloring = try #require(MeshColoring(mesh: mesh, maximumVertexVisits: mesh.vertices.count))
+    try coloring.add(frame: overheadFrame(depth: 0.8), image: splitImage())
+    #expect(coloring.observationsUsed == 0)
+    #expect(throws: CaptureValidationError.self) {
+        try coloring.add(frame: overheadFrame(), image: splitImage())
+    }
+    #expect(coloring.coverage == 0)
+    #expect(MeshColoring.photoLimit(vertexCount: ReconstructedMesh.maximumVertices)
+        * ReconstructedMesh.maximumVertices <= MeshColoring.maximumVertexVisits)
+    #expect(MeshColoring.photoLimit(vertexCount: ReconstructedMesh.maximumVertices + 1) == 0)
+}
+
+@Test func photoColoringRejectsMalformedGeometryAndImageDimensions() {
+    var mesh = floorMesh()
+    mesh.vertices[0][0] = .nan
+    #expect(MeshColoring(mesh: mesh) == nil)
+    #expect(ColorImage(width: Int.max, height: Int.max, rgba: []) == nil)
+}
+
+@Test func photoColorFillingHonorsCancellation() async throws {
+    let coloring = try #require(MeshColoring(mesh: floorMesh()))
+    let cancelled = await Task {
+        withUnsafeCurrentTask { $0?.cancel() }
+        do { _ = try coloring.colors(); return false }
+        catch is CancellationError { return true }
+        catch { return false }
+    }.value
+    #expect(cancelled)
 }

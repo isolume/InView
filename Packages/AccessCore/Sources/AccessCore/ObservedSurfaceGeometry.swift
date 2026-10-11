@@ -28,9 +28,10 @@ public enum ObservedSurfaceGeometry {
     public static let maximumFloorExtent: Float = 200
     public static let maximumFloorArea: Float = 5_000
     public static let maximumBarrierExtent: Float = 40
+    public static let maximumWallHeight: Float = 6
 
     /// A horizontal floor must agree with an independently established floor elevation.
-    /// A short vertical plane is retained at its measured height, without calling it a fence.
+    /// Classified walls retain their measured height; unclassified barriers remain conservative.
     public static func footprint(for plane: Plane, floorY: Float) -> Footprint? {
         guard floorY.isFinite, (3...maximumBoundaryVertices).contains(plane.boundary.count),
               plane.boundary.allSatisfy({ point in point.x.isFinite && point.y.isFinite && point.z.isFinite }),
@@ -52,9 +53,10 @@ public enum ObservedSurfaceGeometry {
             result.id = plane.id
             return result
         }
+        let maximumHeight: Float = plane.classification == .wall ? maximumWallHeight : 1.6
         guard plane.classification == .wall || plane.classification == .unclassified,
               abs(normal.y) <= 0.15, abs(bottom - floorY) <= 0.3,
-              top - bottom >= 0.35, top - bottom <= 1.6 else { return nil }
+              top - bottom >= 0.35, top - bottom <= maximumHeight else { return nil }
         let along = simd_normalize(SIMD2(normal.z, -normal.x))
         let across = SIMD2(-along.y, along.x)
         let points = plane.boundary.map { SIMD2($0.x, $0.z) }
@@ -62,7 +64,10 @@ public enum ObservedSurfaceGeometry {
         let v = points.map { simd_dot($0, across) }
         let lower = u.min()!, upper = u.max()!
         let near = v.min()!, far = v.max()!
-        guard upper - lower >= 0.3, upper - lower <= maximumBarrierExtent, far - near <= 0.12 else { return nil }
+        // An unclassified short vertical plane is often a chair, bag or table side.
+        // Classified walls can be short; generic barriers need a longer coherent span.
+        let minimumLength: Float = plane.classification == .wall ? 0.3 : 1.2
+        guard upper - lower >= minimumLength, upper - lower <= maximumBarrierExtent, far - near <= 0.12 else { return nil }
         return Footprint(kind: .wall,
                          center: along * ((lower + upper) / 2) + across * ((near + far) / 2),
                          size: SIMD2(upper - lower, 0.15), yaw: atan2(along.y, along.x),
@@ -127,11 +132,16 @@ public struct ObservedSurfaceAccumulator: Sendable {
             pending = pending.filter { timestamp - $0.value.timestamp <= 4 }
             lastPruneTimestamp = timestamp
         }
+        if let previous = pending[plane.id], timestamp <= previous.timestamp { return }
         guard let footprint = ObservedSurfaceGeometry.footprint(for: plane, floorY: floorY) else {
             pending.removeValue(forKey: plane.id)
-            // An explicit reclassification is evidence that the earlier interpretation was wrong.
-            if plane.classification == .other { confirmed.removeValue(forKey: plane.id) }
+            // A live refinement that no longer qualifies contradicts the old measurement.
+            // Missing anchors still retain coverage; explicitly invalid ones do not.
+            confirmed.removeValue(forKey: plane.id)
             return
+        }
+        if let saved = confirmed[plane.id], saved.kind != footprint.kind {
+            confirmed.removeValue(forKey: plane.id)
         }
         guard pending[plane.id] != nil || confirmed[plane.id] != nil || pending.count < maximumPlanes else { return }
         if let previous = pending[plane.id] {

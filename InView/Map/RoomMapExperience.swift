@@ -15,8 +15,10 @@ struct RoomMapExperience: View {
     var currentMapPosition: (() -> SIMD2<Float>?)? = nil
     var onPlaceBuilding: ((BuildingMapReference) throws -> Void)? = nil
     var error: Binding<String?> = .constant(nil)
+    var detailScene: ProcessedScene? = nil
 
     @State private var topDown = false
+    @State private var detailedScan = false
     @State private var resetID = 0
     @State private var showsReview = false
     @State private var showsScanData = false
@@ -28,12 +30,11 @@ struct RoomMapExperience: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
-                NavigationMapSurface(scene: floorContent.scene, map: floorContent.map, presentation: presentation,
+                NavigationMapSurface(scene: scene, map: map, selectedFloorID: selectedFloorID, presentation: presentation,
                                      topDown: topDown, resetID: resetID,
                                      bottomInset: 210 + geometry.safeAreaInsets.bottom,
                                      groundFloorY: map?.floorY,
-                                     destination: floorContent.isRouteFloor ? map?.points.first?.floorPoint : nil,
-                                     destinationTitle: floorContent.isRouteFloor ? map?.points.first?.title : nil) { showsPlacement = true }
+                                     detailedScan: detailedScan, detailScene: detailScene) { showsPlacement = true }
                     .ignoresSafeArea()
             }
             .overlay(alignment: .topTrailing) {
@@ -44,6 +45,16 @@ struct RoomMapExperience: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", systemImage: "xmark", role: .close, action: onClose)
+                }
+                if hasScanDetail {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Toggle("Scan detail", isOn: $detailedScan)
+                        } label: {
+                            Image(systemName: "cube")
+                        }
+                        .accessibilityLabel("Map appearance")
+                    }
                 }
                 MapToolbarItems(presentation: $presentation, topDown: $topDown,
                                 canPlaceBuilding: map != nil && onPlaceBuilding != nil,
@@ -93,18 +104,31 @@ struct RoomMapExperience: View {
                 )) { Button("OK", role: .cancel) {} } message: { Text(error.wrappedValue ?? "") }
             }
             .task {
+                #if DEBUG && targetEnvironment(simulator)
+                let arguments = ProcessInfo.processInfo.arguments
+                if arguments.contains("--map-top-down") { topDown = true }
+                if let index = arguments.firstIndex(of: "--map-floor-id"), index + 1 < arguments.count {
+                    selectedFloorID = arguments[index + 1]
+                }
+                #endif
                 if !showsSheet, map?.geographicReference != nil { presentation = .mapbox }
                 showsSheet = true
             }
         }
         .preferredColorScheme(.light)
+        .onChange(of: scene.sourceScanID) { _, _ in detailedScan = false }
     }
 
+    private var hasScanDetail: Bool {
+        guard let detailScene, detailScene.sourceScanID == scene.sourceScanID,
+              detailScene.mapID == scene.mapID, detailScene.floorID == scene.floorID else { return false }
+        return detailScene.meshes.contains { $0.sourceID == ReconstructedMesh.sourceID }
+    }
     private var floors: [IndoorSceneFloor] { IndoorSceneFloors.floors(in: scene) }
     private var floorSelection: Binding<String?> {
-        Binding(get: { floorContent.floor?.id }, set: { selectedFloorID = $0; resetID += 1 })
+        Binding(get: { floorChoice.floor?.id }, set: { selectedFloorID = $0; resetID += 1 })
     }
-    private var floorContent: IndoorFloorContent { IndoorFloorContent(scene: scene, map: map, selectedFloorID: selectedFloorID) }
+    private var floorChoice: MapFloorChoice { MapFloorChoice(scene: scene, map: map, selectedFloorID: selectedFloorID) }
 }
 
 enum RoomItemStyle {
