@@ -90,6 +90,14 @@ final class SignReader: ObservableObject {
         hint = nil
     }
 
+    #if DEBUG && targetEnvironment(simulator)
+    /// Simulator fixtures show a locked sign without a camera.
+    func preview(_ sighting: Sighting) {
+        focus = sighting
+        isLocked = true
+    }
+    #endif
+
     // MARK: Reading
 
     private func tick() {

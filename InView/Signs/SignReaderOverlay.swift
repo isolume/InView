@@ -287,3 +287,28 @@ extension AccessPoint {
         return point
     }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+/// The locked-sign card over a stand-in camera, bound to the navigation demo's doors.
+struct SignReaderPreview: View {
+    @StateObject private var reader = SignReader(session: ARSession())
+
+    var body: some View {
+        SignReaderOverlay(reader: reader, session: ARSession(), preview: { sighting in
+            NavigationDemo.map.map { map in
+                SignPlaceBinder.place(for: sighting.reading, text: sighting.text, sign: sighting.position,
+                                      viewer: sighting.viewer, in: map)
+            }
+        }, onAdd: { _ in "Door tagged · searchable and routable now" }, onClose: {})
+        .background(LinearGradient(colors: [Color(white: 0.35), Color(white: 0.15)], startPoint: .top, endPoint: .bottom))
+        .ignoresSafeArea()
+        .onAppear {
+            reader.preview(SignReader.Sighting(
+                reading: SignReading(category: .room, title: "Room 204", detail: "Meeting Room", roomNumber: "204"),
+                text: "204 MEETING ROOM", position: SIMD3(2.55, 1.5, -8.45), viewer: SIMD3(1.75, 1.4, -6.8),
+                box: CGRect(x: 0.35, y: 0.4, width: 0.3, height: 0.12), hits: 3, lastSeen: .distantFuture,
+                crop: nil, check: .corrected(from: "Room 2O4 · Meeting Room")))
+        }
+    }
+}
+#endif

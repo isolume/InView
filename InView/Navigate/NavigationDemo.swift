@@ -126,6 +126,7 @@ enum NavigationDemo {
             id: UUID(uuidString: "F424C907-4530-44DD-96D7-60E9EF3E01A3")!,
             kind: .ramp, position: SIMD3(1.75, floorY, -2.1), source: .manual, confidence: 1
         ))
+        points += signPlaces(capture: capture, footprints: footprints, floorY: floorY)
         let map = VenueMap(createdAt: Date(timeIntervalSince1970: 0), floorY: floorY,
                            footprints: footprints, points: points,
                            // Public example placement; the floor plan is synthetic, not an Apple venue survey.
@@ -135,6 +136,28 @@ enum NavigationDemo {
                                                conditions: RoutePreference.stepFree.conditions())
         return Snapshot(scene: scene, map: map, startPosition: startPosition, route: route,
                         failureReason: route == nil ? "The example building has no clear route to its meeting room." : nil)
+    }
+
+    /// Room plates beside the two doorways, as the sign reader would tag them from the hallway, so the
+    /// example shows labeled doors and rooms. Floor outlines are used only to find the rooms behind.
+    private static func signPlaces(capture: CaptureBundle, footprints: [Footprint], floorY: Float) -> [AccessPoint] {
+        let floors = capture.surfaces.filter { $0.kind == "floor" }.map { surface -> Footprint in
+            let pose = matrix(surface.mapFromSurface)
+            let half = SIMD2(surface.dimensionsM[0], surface.dimensionsM[2]) / 2
+            let center = SIMD2(pose.columns.3.x, pose.columns.3.z)
+            return Footprint(floor: [center - half, SIMD2(center.x + half.x, center.y - half.y),
+                                     center + half, SIMD2(center.x - half.x, center.y + half.y)], bottom: floorY)
+        }
+        let lookup = VenueMap(floorY: floorY, footprints: footprints + floors, points: [])
+        let plates: [(id: String, lines: [String], sign: SIMD3<Float>, viewer: SIMD3<Float>)] = [
+            ("C2A43E0B-6F1D-4C55-9C1E-2E1B8A1F0204", ["204", "MEETING ROOM"], SIMD3(2.55, 1.5, -8.45), SIMD3(1.75, 1.4, -6.8)),
+            ("C2A43E0B-6F1D-4C55-9C1E-2E1B8A1F0202", ["RM 202", "RECEPTION"], SIMD3(2.55, 1.5, -2.55), SIMD3(1.75, 1.4, -4.2)),
+        ]
+        return plates.compactMap { plate in
+            guard let reading = SignInterpreter.interpret(plate.lines), let id = UUID(uuidString: plate.id) else { return nil }
+            return SignPlaceBinder.place(for: reading, text: plate.lines.joined(separator: " "), sign: plate.sign,
+                                         viewer: plate.viewer, in: lookup, id: id, confidence: 1)
+        }
     }
 
     private struct Metadata: Decodable {
