@@ -44,7 +44,6 @@ final class ScanController: ObservableObject {
     /// Measured from ARKit's labeled mesh when a continuous scan finishes.
     @Published private(set) var ceiling: CeilingMeasurement?
     @Published private(set) var captureView: RoomCaptureView?
-    @Published private(set) var streamingView: ARView?
     @Published private(set) var streamStatus: StreamingCaptureStatus?
     @Published private(set) var scanCoverage = DepthScanCoverage().snapshot()
     @Published private(set) var hasSelectedLocalStreamMap = false
@@ -86,14 +85,26 @@ final class ScanController: ObservableObject {
     private var streamStatusTask: Task<Void, Never>?
     private var streamBackendURL: URL?
     private var streamAlignmentApplied = false
+    /// RoomPlan draws live outlines of walls, doors and furniture during a continuous scan. It only draws:
+    /// the stream, mesh and world map all come from the shared session RoomPlan runs on.
+    private var outlinesRunning = false
+    private var outlinesStarted = Date.now
+    private var outlineRestartTask: Task<Void, Never>?
 
     var streamStatusLine: String {
         guard let streamStatus else { return "Starting scan…" }
         if streamStatus.captured == 0 { return "Move slowly to start scanning" }
-        if streamStatus.lastError != nil { return "Upload paused · scan saved on phone" }
+        if streamStatus.uploadStopped { return "Upload failed · scan saved on phone" }
+        if streamStatus.lastError != nil { return "Upload retrying · scan saved on phone" }
         if streamBackendURL == nil { return "Scan saved on phone" }
         return streamStatus.pending > 0
             ? "Uploaded \(streamStatus.uploaded) of \(streamStatus.captured) samples" : "Scan uploaded"
+    }
+
+    /// Why the upload isn't progressing, so a volunteer isn't left guessing at a bare "paused".
+    var uploadNotice: String? {
+        guard let streamStatus, streamStatus.captured > 0, let error = streamStatus.lastError else { return nil }
+        return error
     }
 
     var sceneStatusLine: String {
@@ -158,9 +169,10 @@ final class ScanController: ObservableObject {
     private func makeCaptureView() -> RoomCaptureView {
         rawCapture.prepare(session: session)
         let view = RoomCaptureView(frame: .zero, arSession: session)
-        // Camera outlines still show scan coverage; avoid drawing the growing room a second time
-        // in a miniature preview hidden behind our controls. Navigation renders it after capture.
-        view.isModelEnabled = false
+        // A continuous scan shows RoomPlan's live outlines of walls, doors and furniture on the camera:
+        // that is the volunteer's feedback that the room is being picked up. A sectioned scan skips
+        // the second render of the growing room; navigation draws the processed room after capture.
+        view.isModelEnabled = isContinuous
         view.delegate = captureDelegate
         // Live updates too, as Apple's RoomPlan sample does alongside the view's own delegate.
         let id = scanID
@@ -170,8 +182,8 @@ final class ScanController: ObservableObject {
                 self?.liveRoomUpdated(room)
             },
             onEnd: { [weak self] data, error in
-                guard self?.scanID == id else { return }
-                self?.sectionEnded(data, error: error)
+                guard let self, self.scanID == id else { return }
+                if self.isContinuous { self.outlinesEnded(error) } else { self.sectionEnded(data, error: error) }
             }
         )
         view.captureSession.delegate = sessionDelegate
@@ -244,13 +256,10 @@ final class ScanController: ObservableObject {
                 let notice = shown ? "Tilt the phone up now and then to capture the ceiling." : nil
                 if self?.ceilingNotice != notice { self?.ceilingNotice = notice }
             }
-            rawCapture.prepare(session: session)
-            let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
-            view.session = session
-            view.environment.sceneUnderstanding.options = []
-            streamingView = view
+            captureView = makeCaptureView()
             streamBackendURL = AppConfig.backendURL
             beginStreamingCapture()
+            beginOutlines()
         } else {
             let view = makeCaptureView()
             captureView = view
@@ -282,6 +291,7 @@ final class ScanController: ObservableObject {
             rawCapture.pause()
             splatCapture.pause()
             detector.pause()
+            stopOutlines()
             saveWorldMap()
             return
         }
@@ -309,6 +319,7 @@ final class ScanController: ObservableObject {
             detector.resume()
             if streamingCapture != nil { streamingCapture?.resume() }
             else { beginStreamingCapture() }
+            beginOutlines()
         } else { startSection() }
     }
 
@@ -409,11 +420,13 @@ final class ScanController: ObservableObject {
         streamStatusTask?.cancel()
         sceneTask?.cancel()
         reportTask?.cancel()
+        outlineRestartTask?.cancel()
+        outlineRestartTask = nil
         captureView?.delegate = nil
         captureView?.captureSession.delegate = nil
-        if phase == .scanning || phase == .processing { captureView?.captureSession.stop() }
+        if phase == .scanning || phase == .processing || outlinesRunning { captureView?.captureSession.stop() }
+        outlinesRunning = false
         captureView = nil
-        streamingView = nil
         scanCoverage = DepthScanCoverage().snapshot()
         if phase != .unsupported { session.pause() }
     }
@@ -529,8 +542,10 @@ final class ScanController: ObservableObject {
 
     private func liveRoomUpdated(_ room: CapturedRoom) {
         guard isActive, phase == .scanning else { return }
-        memory.remember(room)
-        liveDoors = room.doors
+        if !isContinuous {
+            memory.remember(room)
+            liveDoors = room.doors
+        }
         let heights = room.floors.map { $0.transform.translation.y }.filter(\.isFinite).sorted()
         if !heights.isEmpty { rawCapture.floorY = heights[heights.count / 2] }
     }
@@ -666,7 +681,6 @@ final class ScanController: ObservableObject {
         captureView?.delegate = nil
         captureView?.captureSession.delegate = nil
         captureView = nil
-        streamingView = nil
         resourceTimer?.invalidate()
         resourceTimer = nil
         unconfirmed = detector.unconfirmedSightings()
@@ -799,6 +813,7 @@ final class ScanController: ObservableObject {
                 trackingNotice = nil
                 streamAlignmentApplied = false
                 hasSelectedLocalStreamMap = false
+                outlinesRunning = false
                 session.pause()
                 session = ARSession()
                 detector = AccessibilityDetector()
@@ -1120,6 +1135,43 @@ final class ScanController: ObservableObject {
         rawCapture.pause()
         splatCapture.pause()
         streamingCapture?.pause()
+        stopOutlines()
+    }
+
+    /// Starts RoomPlan drawing over the camera. RoomPlan keeps the world-tracking settings the session
+    /// was prepared with, so depth, planes and the classified mesh keep flowing to the stream.
+    private func beginOutlines() {
+        guard isContinuous, isActive, phase == .scanning, !outlinesRunning, let captureView else { return }
+        outlineRestartTask?.cancel()
+        outlineRestartTask = nil
+        outlinesRunning = true
+        outlinesStarted = .now
+        captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
+    }
+
+    /// Ends RoomPlan's drawing without pausing the shared session the scan still runs on.
+    private func stopOutlines() {
+        outlineRestartTask?.cancel()
+        outlineRestartTask = nil
+        guard outlinesRunning else { return }
+        outlinesRunning = false
+        captureView?.captureSession.stop(pauseARSession: false)
+    }
+
+    /// RoomPlan stopped drawing on its own: its scene size limit, heat, or lost tracking. The scan itself
+    /// continues, so start a fresh outline, unless RoomPlan gave up within seconds, which means it can't
+    /// run here right now and retrying would only loop.
+    private func outlinesEnded(_ error: Error?) {
+        guard outlinesRunning else { return }
+        outlinesRunning = false
+        Log.scan.notice("RoomPlan outlines ended: \(error?.localizedDescription ?? "scene complete", privacy: .public)")
+        guard isActive, phase == .scanning, ProcessInfo.processInfo.thermalState != .critical,
+              Date.now.timeIntervalSince(outlinesStarted) > 10 else { return }
+        outlineRestartTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.beginOutlines()
+        }
     }
 
     private func beginStreamingCapture() {

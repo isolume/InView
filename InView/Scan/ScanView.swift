@@ -8,7 +8,9 @@ struct ScanView: View {
     @Namespace private var glass
     @State private var marks = 0
     @State private var showsProcessingSettings = false
-    @State private var showsScanCoverage = true
+    /// Green highlights of saved surfaces, off by default: RoomPlan's live outlines are the scan feedback,
+    /// and the extra Metal layer competed with the camera view for drawables.
+    @State private var showsScanCoverage = false
 
     var body: some View {
         Group {
@@ -65,9 +67,7 @@ struct ScanView: View {
 
     private var captureScreen: some View {
         ZStack {
-            if let streamingView = controller.streamingView, controller.phase != .processingScene {
-                ViewContainer(view: streamingView).ignoresSafeArea()
-            } else if let captureView = controller.captureView, controller.phase != .processingScene {
+            if let captureView = controller.captureView, controller.phase != .processingScene {
                 ViewContainer(view: captureView).ignoresSafeArea()
             } else {
                 Color(.systemBackground).ignoresSafeArea()
@@ -295,6 +295,10 @@ struct ScanView: View {
             if let error = controller.errorMessage {
                 StatusPill(text: error, systemImage: Theme.symbol(for: .barrier), isCompact: true)
                     .foregroundStyle(Theme.color(for: .barrier))
+            } else if let notice = controller.uploadNotice {
+                StatusPill(text: notice, systemImage: "icloud.slash", isCompact: true)
+                    .foregroundStyle(Theme.color(for: .warning))
+                    .multilineTextAlignment(.center)
             }
         }
     }

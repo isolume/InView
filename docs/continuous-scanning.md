@@ -30,12 +30,24 @@ tracking behavior, memory, heat, and the accuracy of detected loop closures.
 - Each accepted RGB/depth sample is atomically saved before upload. A separate
   worker sends one immutable numbered chunk at a time. Retrying a lost response
   cannot create a duplicate frame. Original chunks remain available for reupload.
-- **Captured surfaces** highlights saved measurements in green directly over the
-  camera view. Tap it to hide or show coverage. Highlights use the surface currently
-  visible, so a nearer object hides captured geometry behind it; uncertain depth
-  and lost tracking hide the affected highlights. Green means captured on this
-  phone, not fully scanned or finished processing. The bounded preview can refresh
-  older highlights as an area is captured again; saved scan data is retained.
+- The camera view draws RoomPlan's live outlines of walls, doors, windows and
+  furniture as they are recognized. RoomPlan only draws here: the stream, the
+  classified mesh and the AR world map all come from the shared ARKit session it
+  runs on, and the scan is unaffected when RoomPlan reaches its scene size limit
+  or stops for heat. Outlines restart on their own in that case.
+- **Captured surfaces** can additionally highlight saved measurements in green
+  over the camera view. It is off by default because the extra Metal layer competes
+  with the camera view for drawables on a busy GPU. Tap it to show coverage.
+  Highlights use the surface currently visible, so a nearer object hides captured
+  geometry behind it; uncertain depth and lost tracking hide the affected
+  highlights. Green means captured on this phone, not fully scanned or finished
+  processing. The bounded preview can refresh older highlights as an area is
+  captured again; saved scan data is retained.
+- The status pill reports upload progress. **Upload retrying** means a connection
+  problem that will be retried; **Upload failed** means the server rejected the
+  scan (wrong address, outdated server without stream endpoints, plain `http://`
+  to a remote host). The reason appears under the controls, and capture continues
+  on the phone either way; resume from **Settings → Saved scans** afterwards.
 - Uploads use lossless gzip when the server advertises support. The phone retains
   the original JSON and measurements; older servers continue receiving ordinary
   JSON. The uploader reuses the established stream between samples and reconciles
