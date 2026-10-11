@@ -5,6 +5,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY preview.html ./preview.html
+COPY public ./public
 COPY studio ./studio
 COPY migrations ./migrations
 ARG CARGO_BUILD_JOBS=2
