@@ -373,6 +373,14 @@ def third_floor():
     poi("Restrooms",-15.3,-10.15)
 
 
+def restore_floor_exports(archive, floors):
+    OUT.mkdir(parents=True, exist_ok=True)
+    for floor in floors:
+        for suffix in (".glb", ".usdz", ".png", "-plan.png"):
+            name = f"floor-{floor}{suffix}"
+            (OUT / name).write_bytes(archive.read("floors-2-3/" + name))
+
+
 def exports(floors=(2, 3), floor_2_source=None):
     bpy.context.view_layer.update()
     for obj in B.MODEL:
@@ -380,11 +388,10 @@ def exports(floors=(2, 3), floor_2_source=None):
         for mod in list(obj.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)
     spec=importlib.util.spec_from_file_location("usd_check",ROOT/"scripts/render-photo-furniture.py")
     checker=importlib.util.module_from_spec(spec);spec.loader.exec_module(checker)
-    previous_validation = json.loads((OUT/"validation.json").read_text()) if (OUT/"validation.json").exists() else {}
     records=[]
     for name,objects in [("building",B.MODEL),("floor-2",[o for o in B.MODEL if o["floor"]==2]),("floor-3",[o for o in B.MODEL if o["floor"]==3])]:
         if name.startswith("floor-") and int(name[-1]) not in floors:
-            records.extend(record for record in previous_validation.get("native_packages", []) if Path(record["file"]).stem == name)
+            records.append(checker.validate_usdz(OUT/(name+".usdz"), len(objects)))
             continue
         bpy.ops.object.select_all(action="DESELECT")
         for obj in objects: obj.select_set(True)

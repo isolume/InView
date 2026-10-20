@@ -2,6 +2,8 @@
 
 A roofless, Apple Maps-inspired model of the section shown in `IMG_5436.MOV`. It reuses InView's custom furniture with pale walls, muted upholstery, warm neutral floors, softened edges, and simplified railings.
 
+The files listed below are generated locally and ignored by Git. Retained scan evidence and the required Floor 3 baseline are described in `../README.md`.
+
 The lounge opens onto a straight upper-floor balcony. The balcony leads toward double doors at one end and two lifts with adjacent stairs at the other. The open atrium includes a quiet suggestion of the seating below and the opposite glazed wall.
 
 ## Files

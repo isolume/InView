@@ -49,18 +49,6 @@
       "sha256": "2eb4f2ab8e71e7f4c572249ea74113df68349c4ef4233bb1fa247aec650c1a3d"
     },
     {
-      "filename": "navigation-validation.json",
-      "sha256": "5c54eccbf5e022fb36f5e4601218eb080bafdcbd652d3fe3701428c4a52d1a4f"
-    },
-    {
-      "filename": "preparation-validation.json",
-      "sha256": "d9ec56c8175de487c4410823bce6cc66b2ce070a731c4c8aba939b1ac7aee911"
-    },
-    {
-      "filename": "reconstruction.json",
-      "sha256": "aac5a05b6ef07e2da3459c72377bf8d87e4d0a011e626b6f0ef43399a9780925"
-    },
-    {
       "filename": "registration.json",
       "sha256": "576a2a267f280dc297475433c40474883be5705fc64b8b93b5c9687022212e63"
     },

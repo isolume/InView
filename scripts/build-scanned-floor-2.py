@@ -200,6 +200,7 @@ def main():
     display_floors = read(OUT / "illustration-floors.json")
     point, scale, angle = registration(venue)
     with zipfile.ZipFile(ARCHIVE) as archive, tempfile.TemporaryDirectory(prefix="inview-video-model-") as directory:
+        F.restore_floor_exports(archive, (3,))
         baseline = json.loads(archive.read("floors-2-3/layout.json"))
         source = Path(directory) / "building.blend"
         source.write_bytes(archive.read("floors-2-3/building.blend"))

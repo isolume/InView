@@ -282,7 +282,8 @@ def main():
     manifest["navigation_map_sha256"] = navigation_digest
     manifest["derived_files"] = [{"filename": path.name, "sha256": digest(path)}
                                  for path in sorted(EVIDENCE.glob("*.json"))
-                                 if path.name not in ("manifest.json", "native-load-validation.json")]
+                                 if path.name not in ("manifest.json", "native-load-validation.json", "reconstruction.json",
+                                                      "preparation-validation.json", "navigation-validation.json")]
     write(MANIFEST, manifest)
     print(f"Wrote {OUTPUT.relative_to(ROOT)}: {len(floors)} floor polygons, {retained.area:.3f} m² retained")
     print(f"Prior floor removed {report['removed_floor_area_m2']:.3f} m²; captured floor added {report['added_floor_area_m2']:.3f} m²")

@@ -8,6 +8,8 @@ The source audit covers 103 video segments and 9,936 frames. All referenced vide
 
 `reconstruction.json` is the editable visual specification. Completed floors cover occlusion beneath furniture and scanning gaps, with protected openings and explicit elevation transitions. Furniture and cutaway walls are simplified, and continuous floors are levelled to remove accumulated vertical tracking drift. Overlapping auditorium geometry is reconciled rather than drawn twice. The food court surface is continuous and the atrium void remains open.
 
+The specification, navigation validation and navigation source manifest are generated locally and ignored by Git. Compact source geometry and reviewed measurement files remain tracked. Historical UI screenshots and post-build receipts are omitted.
+
 Navigation uses measured floor support, observed passages and actual obstacles. It does not use visual completion as evidence. `navigation-source-manifest.json` records the generated resource and inputs; `navigation-validation.json` records checks on the actual bundled map. Auditorium seating and stage surfaces remain visual-only until their individual transitions are mapped. A map preview is not evidence of physical AR relocalization at the venue.
 
 Validation covers all 84 directed routes between the seven named places across both routing preferences, plus arbitrary points, transitions and expected failures: 380 cases and 1,602,246 route samples. The main connected network contains 98.0% of clear main-floor cells for Fastest and 89.3% for Step-free. A food court seating area has a measured Fastest connection but insufficient evidence for the wider Step-free clearance. Smaller disconnected pockets and sloped corridor interiors cannot be used as arbitrary route endpoints. `navigation-limitations.json` records these gaps; they do not establish physical inaccessibility.
@@ -23,4 +25,4 @@ blender --background --python scripts/build-floor-1-model.py -- \
 python3 scripts/build-floor-1-navigation.py
 ```
 
-`../floor-1/` contains the USDZ, GLB, editable Blender file, perspective and plan previews, and native mesh validation. The app bundles the USDZ and perspective PNG alongside its separate Floor 1 layout and navigation resources. `preserved-resources.json` records the pre-existing Floor 2 and Floor 3 visual resources for integrity checks.
+`../floor-1/` is generated locally and contains the USDZ, GLB, editable Blender file, perspective and plan previews, and native mesh validation. The app bundles separate copies of the USDZ and perspective PNG alongside its Floor 1 layout and navigation resources.

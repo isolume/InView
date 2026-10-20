@@ -172,6 +172,7 @@ private func run() throws {
     }
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
+    try FileManager.default.createDirectory(at: paths.output.deletingLastPathComponent(), withIntermediateDirectories: true)
     try encoder.encode(result).write(to: paths.output, options: .atomic)
     let excluded = capture.surfaces.filter { $0.kind == "floor" && UUID(uuidString: $0.id) == nil }.count
     print("Display-only floors: \(oldFloors.count) original + \(additions.count) uncovered native pieces; excluded \(excluded) observed floors.")

@@ -196,6 +196,7 @@ def main():
                       "rail":"#637890","metal":"#a4afad","dark":"#687577","door":"#a2adb2",
                       "glass":"#bdd1d0","accent":"#738cab","tile":"#e4e0d3"})
     with zipfile.ZipFile(ARCHIVE) as archive,tempfile.TemporaryDirectory(prefix="inview-baseline-") as directory:
+        F.restore_floor_exports(archive, (3,))
         source=Path(directory)/"building.blend"
         source.write_bytes(archive.read("floors-2-3/building.blend"))
         baseline=json.loads(archive.read("floors-2-3/layout.json"))

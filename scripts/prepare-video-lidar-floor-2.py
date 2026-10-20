@@ -266,7 +266,7 @@ def main():
                      "No routing map, clearance, AR localization or inter-floor connection is created."]}
     save("preparation-validation.json",report)
     manifest=read("manifest.json")
-    manifest["derived_files"]=[{"filename":p.name,"sha256":hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(OUT.glob("*.json")) if p.name not in ("manifest.json","native-load-validation.json")]
+    manifest["derived_files"]=[{"filename":p.name,"sha256":hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(OUT.glob("*.json")) if p.name not in ("manifest.json","native-load-validation.json","reconstruction.json","preparation-validation.json","navigation-validation.json")]
     save("manifest.json",manifest)
     print(json.dumps(report,indent=2))
 

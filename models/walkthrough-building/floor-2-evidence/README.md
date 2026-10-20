@@ -2,6 +2,8 @@
 
 The original Floor 2 map is preserved byte-for-byte in `original-floor-2.json`. The four user-supplied files are preserved byte-for-byte under `E3CF408C-680C-4ECF-B9EB-F09117308BD3/`. `manifest.json` records their SHA-256 hashes, registration residuals and every merge decision.
 
+Only the original map, four scan files and this guide are tracked. Run the merge script below to recreate the manifest, registration, projected geometry, merged map and optional PNG review plans; these outputs are ignored by Git.
+
 The new scan was taken outside the main lounge, starting at the far end of the balcony opposite the elevators and finishing near the restrooms. Two adjoining measured walls establish a rigid registration to the earlier scan: a 19.596 m wall matches the earlier 19.619 m wall, and its 5.266 m return matches the earlier 5.216 m return. The fit has 3.17 cm endpoint RMS error and 4.45 cm maximum error. Two held-out wall stubs agree within 8.85 cm of the original wall centerlines.
 
 The registration rotates the scan by 59.571186615570014 degrees, translates X/Z by `(15.206638123073265, 0.0752186592439541)` meters, and translates Y by `-0.3268485` meters. It preserves measured scale. Exact computed values and the transform convention are in `registration.json`.

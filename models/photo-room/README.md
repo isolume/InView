@@ -2,6 +2,8 @@
 
 Fourteen furniture and balcony assets based on the supplied room and balcony photos, rendered in InView's soft gray, rounded style. The large and small drum tables share one model family.
 
+Exports, previews, the gallery and delivery archive are generated locally and ignored by Git. The tracked Rust geometry and AccessCore catalog remain the sources; the files listed below appear after regeneration.
+
 Dimensions are approximate estimates in meters, in width × height × depth order. Back surfaces, internal construction, and other unseen details are inferred. These are display models; captured measurements remain the source of navigation and clearance information. Photo filenames record the references, and the photos themselves are not copied into this folder.
 
 - `photo-furniture.zip`: the complete model and preview set, preserving gallery links.
