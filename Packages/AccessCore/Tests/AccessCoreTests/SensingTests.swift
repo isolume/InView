@@ -109,3 +109,74 @@ private func staircase(steps: Int = 4) -> [SIMD3<Float>] {
 @Test func cannotTellFromTooFewSamples() {
     #expect(StairsCheck.classify(Array(staircase().prefix(3)), viewer: viewer) == .inconclusive)
 }
+
+// MARK: Elevated and lowered ground
+
+/// Floor points under a block, `drop` metres below `floorY`, so the block stands on lower ground.
+private func ground(under center: SIMD2<Float>, size: Float = 1.6, at y: Float) -> [SIMD3<Float>] {
+    var points: [SIMD3<Float>] = []
+    for x in stride(from: center.x - size / 2, through: center.x + size / 2, by: 0.05) {
+        for z in stride(from: center.y - size / 2, through: center.y + size / 2, by: 0.05) {
+            points.append([x, y, z])
+        }
+    }
+    return points
+}
+
+private func lifted(_ points: [SIMD3<Float>], by dy: Float) -> [SIMD3<Float>] {
+    points.map { SIMD3($0.x, $0.y + dy, $0.z) }
+}
+
+@Test func findsAChairStandingOnGroundBelowTheFloorEstimate() {
+    // The bottom of a down ramp, 0.6 m below where the floor plane was seen. The chair's top is still
+    // below floorY + 0.1, so a height test against floorY alone can never see it.
+    let chair = lifted(box(at: [0, -2], size: 0.4, height: 0.55), by: -0.6 - 0.15 + 0.15)
+    let points = chair + ground(under: [0, -2], at: -0.6)
+    let found = ObstacleFinder.obstacles(in: points, along: routeAhead, floorY: 0)
+    #expect(found.count == 1)
+    #expect(found.first.map { simd_distance($0, [0, -2]) < 0.25 } == true)
+}
+
+@Test func theLowerGroundItselfIsNotAnObstacle() {
+    #expect(ObstacleFinder.obstacles(in: ground(under: [0, -2], at: -0.6), along: routeAhead, floorY: 0).isEmpty)
+}
+
+@Test func results_doNotDependOnTheAbsoluteHeightOfTheFloor() {
+    let scene = box(at: [0, -2]) + ground(under: [0, -2], at: 0)
+    for dy: Float in [3.7, -2.8, 12.4] {
+        let found = ObstacleFinder.obstacles(in: lifted(scene, by: dy), along: routeAhead, floorY: dy)
+        #expect(found.count == 1)
+        #expect(found.first.map { simd_distance($0, [0, -2]) < 0.2 } == true)
+    }
+}
+
+@Test func anObstacleOnARaisedPlatformIsStillFound() {
+    // A 0.4 m platform ahead: a chair on it stands 0.4...1.0 m above floorY.
+    let chair = lifted(box(at: [0, -2], size: 0.4, height: 0.6), by: 0.4)
+    let found = ObstacleFinder.obstacles(in: chair + ground(under: [0, -2], at: 0.4), along: routeAhead, floorY: 0)
+    #expect(found.count == 1)
+}
+
+// MARK: Which floor plane is the floor
+
+@Test func floorPlaneComesFromTheLevelTheCameraIsOn() {
+    // ARKit keeps plane anchors from every level it has seen: the lobby 3.4 m below and this floor.
+    let height = FloorPlaneSelection.floorHeight(cameraY: 4.9, planeHeights: [0.0, 3.5])
+    #expect(height == 3.5)
+}
+
+@Test func floorPlaneIgnoresLevelsTooFarFromTheCamera() {
+    #expect(FloorPlaneSelection.floorHeight(cameraY: 1.4, planeHeights: [-3.6, 4.2]) == nil)
+    #expect(FloorPlaneSelection.floorHeight(cameraY: 1.4, planeHeights: []) == nil)
+}
+
+@Test func floorPlanePrefersTheLowestPlausibleSurfaceNearThePhone() {
+    // A raised platform and the room floor are both plausible; the room floor stays the reference.
+    #expect(FloorPlaneSelection.floorHeight(cameraY: 1.5, planeHeights: [0.15, 0.0]) == 0.0)
+}
+
+@Test func floorPlaneIsTheSameOnAnyLevel() {
+    for dy: Float in [0, 3.7, -2.8, 12.4] {
+        #expect(FloorPlaneSelection.floorHeight(cameraY: 1.4 + dy, planeHeights: [dy, dy - 3.6, dy + 3.4]) == dy)
+    }
+}

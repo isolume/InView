@@ -13,6 +13,8 @@ public enum ObstacleFinder {
         /// Height band above the floor that can block a wheelchair.
         public var minimumHeight: Float = 0.1
         public var maximumHeight: Float = 1.2
+        /// How far below the floor estimate ground still counts as the ground an obstacle stands on.
+        public var maximumDescent: Float = 1.0
         public var cellSize: Float = 0.1
         public var minimumPointsPerCell = 6
         /// Real obstacles stand up; a ramp or a floor bump spreads flat. Cells need at least this much vertical extent.
@@ -36,16 +38,40 @@ public enum ObstacleFinder {
         guard let start = route.first else { return [] }
         let ahead = Polyline.prefix(of: route, distance: settings.lookahead)
 
-        var stats: [Cell: (count: Int, low: Float, high: Float)] = [:]
+        // Obstacles are measured above the ground *they stand on*: the floor estimate, or lower where
+        // the scan sees lower ground (the foot of a ramp, a sunken area). The estimate alone would make
+        // a chair at the bottom of a ramp look like it sits below the height band.
+        func cell(of floor: SIMD2<Float>) -> Cell {
+            Cell(x: Int((floor.x / settings.cellSize).rounded(.down)), z: Int((floor.y / settings.cellSize).rounded(.down)))
+        }
+        let deepest = floorY - settings.maximumDescent
+        var inCorridor: [(point: SIMD3<Float>, cell: Cell)] = []
+        var lowest: [Cell: Float] = [:]
         for point in points {
-            let height = point.y - floorY
-            guard height > settings.minimumHeight, height < settings.maximumHeight else { continue }
+            guard point.y > deepest, point.y < floorY + settings.maximumHeight else { continue }
             let floor = SIMD2(point.x, point.z)
             guard simd_distance(floor, start) > settings.ignoreNear,
                   Polyline.distance(from: floor, to: ahead) < settings.corridor else { continue }
-            let cell = Cell(x: Int((floor.x / settings.cellSize).rounded(.down)), z: Int((floor.y / settings.cellSize).rounded(.down)))
-            let current = stats[cell] ?? (0, height, height)
-            stats[cell] = (current.count + 1, min(current.low, height), max(current.high, height))
+            let at = cell(of: floor)
+            inCorridor.append((point, at))
+            if point.y < floorY + settings.minimumHeight { lowest[at] = min(lowest[at] ?? point.y, point.y) }
+        }
+        func groundHeight(at cell: Cell) -> Float {
+            var ground = floorY
+            for dx in -1...1 {
+                for dz in -1...1 {
+                    if let low = lowest[Cell(x: cell.x + dx, z: cell.z + dz)] { ground = min(ground, low) }
+                }
+            }
+            return ground
+        }
+
+        var stats: [Cell: (count: Int, low: Float, high: Float)] = [:]
+        for (point, at) in inCorridor {
+            let height = point.y - groundHeight(at: at)
+            guard height > settings.minimumHeight, height < settings.maximumHeight else { continue }
+            let current = stats[at] ?? (0, height, height)
+            stats[at] = (current.count + 1, min(current.low, height), max(current.high, height))
         }
 
         let solid = Set(stats.filter {
