@@ -117,6 +117,8 @@ final class NavigationController: ObservableObject {
     private var routesWhenLocated = false
     /// The next route goes to the closest place of the destination's kind, like "the nearest elevator".
     private var prefersNearestOfKind = false
+    /// All eligible approaches for a floor handoff; choose using the rider's located position.
+    private var transferApproaches: [FloorTransferApproach] = []
     /// Find the rider as soon as a map that supports it has loaded, before they ask for directions.
     var locatesAutomatically = false
     /// Asked to find the rider while the map was still loading.
@@ -269,6 +271,7 @@ final class NavigationController: ObservableObject {
         unavailableReason = nil
         route = nil
         selectedDestination = nil
+        transferApproaches = []
         caption = nil
         position = nil
         heading = 0
@@ -298,6 +301,7 @@ final class NavigationController: ObservableObject {
         renderer = nil
         route = nil
         selectedDestination = nil
+        transferApproaches = []
         caption = nil
         position = nil
         heading = 0
@@ -529,6 +533,7 @@ final class NavigationController: ObservableObject {
     /// Directions to `destination`, or to the closest place of its kind. The camera only finds the rider;
     /// the route is drawn on the map.
     func navigate(to destination: AccessPoint, nearestOfKind: Bool) {
+        transferApproaches = []
         guard !isDemo else { selectDestination(destination); navigateToNearest(); return }
         if [.routing, .navigating, .noRoute, .arrived].contains(phase) { endNavigation() }
         selectedDestination = destination
@@ -536,9 +541,24 @@ final class NavigationController: ObservableObject {
         navigateToNearest()
     }
 
+    func navigate(to approaches: [FloorTransferApproach]) {
+        guard !approaches.isEmpty, !isDemo else { return }
+        if [.routing, .navigating, .noRoute, .arrived].contains(phase) { endNavigation() }
+        transferApproaches = approaches
+        selectedDestination = approaches.first?.destination
+        prefersNearestOfKind = false
+        navigateToNearest()
+    }
+
+    func announceFloorTransfer(to floorName: String, using kind: BuildingConnectorKind) {
+        guard phase == .arrived else { return }
+        say(Narrator.Line(text: "Take the \(kind.title.lowercased()) to \(floorName). Confirm when you’re on that floor to continue.", isUrgent: true))
+    }
+
     /// Ends any route and clears the destination. Once the camera has found the rider it keeps
     /// tracking them, so their position stays on the map.
     func clearDirections() {
+        transferApproaches = []
         if isDemo { selectDestination(nil); return }
         routesWhenLocated = false
         prefersNearestOfKind = false
@@ -555,6 +575,7 @@ final class NavigationController: ObservableObject {
     }
 
     func selectDestination(_ destination: AccessPoint?) {
+        transferApproaches = []
         if phase == .loading || phase == .browsing || phase == .locating {
             selectedDestination = destination
             return
@@ -814,9 +835,14 @@ final class NavigationController: ObservableObject {
         // "The nearest elevator" is decided by walking distance from where the rider actually is.
         let kind = fresh && prefersNearestOfKind ? destination?.kind : nil
         let candidates = kind.map { kind in planner.map.points.filter { $0.kind == kind } } ?? []
+        let approaches = fresh ? transferApproaches : []
         if fresh { prefersNearestOfKind = false }
         Task { [weak self] in
             let next = await Task.detached(priority: .userInitiated) {
+                if !approaches.isEmpty {
+                    return FloorTransferApproach.nearestRoute(from: position, planner: planner,
+                        candidates: approaches, conditions: conditions)
+                }
                 if !candidates.isEmpty {
                     return candidates.compactMap { planner.route(from: position, to: $0, conditions: conditions) }
                         .min { $0.length < $1.length }
@@ -829,7 +855,7 @@ final class NavigationController: ObservableObject {
                 return planner.reroute(current!, from: position, conditions: conditions)
             }.value
             guard let self, routingGeneration == generation, isActive else { return }
-            if !candidates.isEmpty, let chosen = next?.destination { selectedDestination = chosen }
+            if !candidates.isEmpty || !approaches.isEmpty, let chosen = next?.destination { selectedDestination = chosen }
             if isDemo, case .started = reason {
                 demoPath = next?.waypoints ?? []
                 demoDistance = 0
