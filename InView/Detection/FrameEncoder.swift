@@ -103,6 +103,16 @@ enum FrameEncoder {
         }
     }
 
+    /// A small camera preview rendered away from the UI and without retaining an ARKit buffer.
+    static func preview(from snapshot: Snapshot, orientation: CGImagePropertyOrientation,
+                        maxDimension: CGFloat = 320) -> CGImage? {
+        autoreleasepool {
+            guard !Task.isCancelled else { return nil }
+            return render(CIImage(cvPixelBuffer: snapshot.pixelBuffer).oriented(orientation),
+                          maxDimension: maxDimension)
+        }
+    }
+
     /// Reconstruction images stay in the sensor orientation shared by depth and intrinsics.
     static func sensorJPEG(from snapshot: Snapshot, maxDimension: CGFloat = 960) -> SensorEncoded? {
         autoreleasepool {

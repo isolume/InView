@@ -1,7 +1,7 @@
 import ARKit
 import AccessCore
 import Combine
-import CoreImage
+import ImageIO
 import RealityKit
 import UIKit
 
@@ -55,7 +55,7 @@ final class NavigationController: ObservableObject {
     /// Reading depth is the costliest tick; a newly moved chair can wait a second.
     private static let obstacleCheckInterval: TimeInterval = 1
     private static let arrivalDistance: Float = 1.2
-    /// After this long, show the photo of where the scan started: matching that view finds the rider fastest.
+    /// After this long, offer a retry; the saved view helps the rider from the start.
     private static let slowRelocalization: TimeInterval = 6
     /// Tracking must stay unusable this long before the rider is told their position is lost.
     private static let lostGrace: TimeInterval = 2
@@ -90,6 +90,8 @@ final class NavigationController: ObservableObject {
     private var routesWhenLocated = false
     /// The next route goes to the closest place of the destination's kind, like "the nearest elevator".
     private var prefersNearestOfKind = false
+    /// All eligible approaches for a floor handoff; choose using the rider's located position.
+    private var transferApproaches: [FloorTransferApproach] = []
     /// Find the rider as soon as a map that supports it has loaded, before they ask for directions.
     var locatesAutomatically = false
     /// Asked to find the rider while the map was still loading.
@@ -101,12 +103,17 @@ final class NavigationController: ObservableObject {
     private let relocalizer = SessionRelocalizer()
     private let haptics = TurnHaptics()
     private var lastPreviewAt = Date.distantPast
+    private var previewTask: Task<Void, Never>?
+    private var previewGeneration = 0
+    private var acquisitionStartedAt: TimeInterval = 0
+    private var loggedFirstFrame = false
+    private var loggedFirstNormalFrame = false
+    private var resumedSession = false
     private var lastFrameTimestamp: TimeInterval = 0
     private var lastFrameChangeAt = Date.now
     private var lastTrackingDescription = ""
     /// A running session that delivers no new frame for this long is restarted instead of left frozen.
     private static let stallTimeout: TimeInterval = 4
-    private static let previewContext = CIContext()
     private var sessionIsRunning = false
     private var placeEditSource: MapStore.PlaceEditSource?
     private var placeEditRequest: UUID?
@@ -145,6 +152,10 @@ final class NavigationController: ObservableObject {
         isActive = true
         guard phase == .loading else {
             if isDemo { begin() }
+            else if phase == .browsing, locatesAutomatically || locatesWhenLoaded {
+                locatesWhenLoaded = false
+                beginGuidance(thenRoute: false)
+            }
             return
         }
         guard !isLoading else { return }
@@ -196,6 +207,20 @@ final class NavigationController: ObservableObject {
         beginGuidance(thenRoute: false)
     }
 
+    /// Applies the browsing preference immediately without interrupting requested directions or AR.
+    func setAutomaticLocationEnabled(_ enabled: Bool, keepingARActive: Bool = false) {
+        guard !isDemo else { return }
+        locatesAutomatically = enabled
+        if enabled {
+            if phase == .browsing { findRider() }
+        } else {
+            locatesWhenLoaded = false
+            if !keepingARActive, !routesWhenLocated, [.locating, .ready, .arrived, .noRoute].contains(phase) {
+                endGuidance()
+            }
+        }
+    }
+
     /// Turns the camera on and finds the rider in the scanned space; then routes, when `thenRoute`.
     func beginGuidance(thenRoute: Bool) {
         guard !isDemo, !isSavingPlaces, isActive, canGuide, map?.requiresOptimizedLocalization != true,
@@ -223,6 +248,7 @@ final class NavigationController: ObservableObject {
         self.usesBundledMap = usesBundledMap
         worldMap = nil
         mapFromWorld = nil
+        sessionAlignment.invalidate()
         planner = nil
         startView = nil
         renderer = nil
@@ -230,6 +256,7 @@ final class NavigationController: ObservableObject {
         unavailableReason = nil
         route = nil
         selectedDestination = nil
+        transferApproaches = []
         caption = nil
         position = nil
         heading = 0
@@ -254,11 +281,13 @@ final class NavigationController: ObservableObject {
         map = newMap
         worldMap = nil
         mapFromWorld = nil
+        sessionAlignment.invalidate()
         planner = nil
         startView = nil
         renderer = nil
         route = nil
         selectedDestination = nil
+        transferApproaches = []
         caption = nil
         position = nil
         heading = 0
@@ -313,6 +342,7 @@ final class NavigationController: ObservableObject {
         if !isDemo, sessionIsRunning { arView.session.pause(); sessionIsRunning = false }
         cameraPreview = nil
         locatingHint = nil
+        cancelPreview()
         renderer?.remove()
         renderer = nil
         isPositionReliable = false
@@ -429,7 +459,7 @@ final class NavigationController: ObservableObject {
         guard phase == .locating, let worldMap else { return }
         isRelocalizationSlow = false
         locatingSince = .now
-        run(initialWorldMap: worldMap)
+        run(initialWorldMap: worldMap, forceReset: true)
     }
 
     func navigateToNearest() {
@@ -478,6 +508,7 @@ final class NavigationController: ObservableObject {
     /// Directions to `destination`, or to the closest place of its kind. The camera only finds the rider;
     /// the route is drawn on the map.
     func navigate(to destination: AccessPoint, nearestOfKind: Bool) {
+        transferApproaches = []
         guard !isDemo else { selectDestination(destination); navigateToNearest(); return }
         if [.routing, .navigating, .noRoute, .arrived].contains(phase) { endNavigation() }
         selectedDestination = destination
@@ -485,9 +516,24 @@ final class NavigationController: ObservableObject {
         navigateToNearest()
     }
 
+    func navigate(to approaches: [FloorTransferApproach]) {
+        guard !approaches.isEmpty, !isDemo else { return }
+        if [.routing, .navigating, .noRoute, .arrived].contains(phase) { endNavigation() }
+        transferApproaches = approaches
+        selectedDestination = approaches.first?.destination
+        prefersNearestOfKind = false
+        navigateToNearest()
+    }
+
+    func announceFloorTransfer(to floorName: String, using kind: BuildingConnectorKind) {
+        guard phase == .arrived else { return }
+        say(Narrator.Line(text: "Take the \(kind.title.lowercased()) to \(floorName). Confirm when you’re on that floor to continue.", isUrgent: true))
+    }
+
     /// Ends any route and clears the destination. Once the camera has found the rider it keeps
     /// tracking them, so their position stays on the map.
     func clearDirections() {
+        transferApproaches = []
         if isDemo { selectDestination(nil); return }
         routesWhenLocated = false
         prefersNearestOfKind = false
@@ -496,6 +542,7 @@ final class NavigationController: ObservableObject {
     }
 
     func selectDestination(_ destination: AccessPoint?) {
+        transferApproaches = []
         if phase == .loading || phase == .browsing || phase == .locating {
             selectedDestination = destination
             return
@@ -545,26 +592,42 @@ final class NavigationController: ObservableObject {
         phase = .ready
     }
 
-    /// Only floor planes and scene depth are needed. Navigation avoids reconstruction and occlusion.
-    private func run(initialWorldMap: ARWorldMap?) {
+    /// Matching the saved world gets the camera first; floor and obstacle sensing start once located.
+    static func configuration(isAcquiring: Bool, initialWorldMap: ARWorldMap? = nil) -> ARWorldTrackingConfiguration {
         let configuration = ARWorldTrackingConfiguration()
         configuration.initialWorldMap = initialWorldMap
-        configuration.planeDetection = [.horizontal]
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-            configuration.frameSemantics.insert(.sceneDepth)
+        if !isAcquiring {
+            configuration.planeDetection = [.horizontal]
+            if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                configuration.frameSemantics.insert(.sceneDepth)
+            }
         }
+        return configuration
+    }
+
+    private func run(initialWorldMap: ARWorldMap?, forceReset: Bool = false) {
+        acquisitionStartedAt = ProcessInfo.processInfo.systemUptime
+        resumedSession = sessionAlignment.start(startedAt: acquisitionStartedAt,
+                                                needsOriginChange: mapFromWorld != nil,
+                                                forceReset: forceReset)
+        let configuration = Self.configuration(isAcquiring: true,
+                                               initialWorldMap: resumedSession ? nil : initialWorldMap)
         // Preserve the captured coordinate system after interruptions.
         arView.session.delegate = relocalizer
-        sessionAlignment.reset(startedAt: ProcessInfo.processInfo.systemUptime,
-                               needsOriginChange: mapFromWorld != nil)
         obstacles.reset()
         renderer?.remove()
         renderer = nil
-        arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        arView.session.run(configuration, options: resumedSession ? [] : [.resetTracking, .removeExistingAnchors])
         sessionIsRunning = true
         unalignedSince = nil
         locatedAt = nil
         lastFrameChangeAt = .now
+        lastFrameTimestamp = 0
+        lastPreviewAt = .distantPast
+        loggedFirstFrame = false
+        loggedFirstNormalFrame = false
+        cancelPreview()
+        Log.navigation.info("AR acquisition started (\(self.resumedSession ? "resume" : "saved map", privacy: .public))")
     }
 
     private func tick() {
@@ -585,10 +648,18 @@ final class NavigationController: ObservableObject {
             lastTrackingDescription = tracking
             Log.navigation.info("tracking \(tracking, privacy: .public), \(self.phase == .locating ? "locating" : "located", privacy: .public)")
         }
-        updateLocatingFeedback(frame)
         guard phase != .locating else {
+            guard frame.timestamp > acquisitionStartedAt else { return }
+            if !loggedFirstFrame {
+                loggedFirstFrame = true
+                Log.navigation.info("first acquisition frame after \(String(format: "%.2f", frame.timestamp - self.acquisitionStartedAt), privacy: .public) s")
+            }
             let normal: Bool
             if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
+            if normal, !loggedFirstNormalFrame {
+                loggedFirstNormalFrame = true
+                Log.navigation.info("normal tracking after \(String(format: "%.2f", frame.timestamp - self.acquisitionStartedAt), privacy: .public) s")
+            }
             switch sessionAlignment.next(timestamp: frame.timestamp, trackingIsNormal: normal) {
             case .changeOrigin:
                 // ARKit expects the desired origin expressed in the captured world's coordinates.
@@ -601,8 +672,10 @@ final class NavigationController: ObservableObject {
             if phase == .locating, !isRelocalizationSlow, Date.now.timeIntervalSince(locatingSince) > Self.slowRelocalization {
                 isRelocalizationSlow = true
             }
+            updateLocatingFeedback(frame)
             return
         }
+        updateLocatingFeedback(frame)
         if Self.isAligned(frame.camera.trackingState) {
             unalignedSince = nil
         } else {
@@ -680,7 +753,7 @@ final class NavigationController: ObservableObject {
         }
         isRelocalizationSlow = false
         locatingSince = .now
-        run(initialWorldMap: worldMap)
+        run(initialWorldMap: worldMap, forceReset: true)
     }
 
     /// While the rider is being found, or has been lost, shows what the camera sees and what would help.
@@ -688,11 +761,24 @@ final class NavigationController: ObservableObject {
         let unaligned = phase == .locating || !Self.isAligned(frame.camera.trackingState)
         guard unaligned else {
             if cameraPreview != nil || locatingHint != nil { cameraPreview = nil; locatingHint = nil }
+            if previewTask != nil { cancelPreview() }
             return
         }
-        if Date.now.timeIntervalSince(lastPreviewAt) >= 0.2 {
+        if previewTask == nil, Date.now.timeIntervalSince(lastPreviewAt) >= 0.2,
+           let snapshot = FrameEncoder.snapshot(frame.capturedImage) {
             lastPreviewAt = .now
-            cameraPreview = Self.preview(of: frame)
+            let orientation = Self.previewOrientation
+            let generation = previewGeneration
+            previewTask = Task { [weak self] in
+                let preview = await Task.detached(priority: .utility) {
+                    FrameEncoder.preview(from: snapshot, orientation: orientation).map { UIImage(cgImage: $0) }
+                }.value
+                guard let self else { return }
+                previewTask = nil
+                guard generation == previewGeneration, !Task.isCancelled else { return }
+                guard sessionIsRunning, phase == .locating || !isPositionReliable else { return }
+                cameraPreview = preview
+            }
         }
         let hint = Self.hint(for: frame)
         if hint != locatingHint { locatingHint = hint }
@@ -718,24 +804,28 @@ final class NavigationController: ObservableObject {
         }
     }
 
-    /// A small upright picture of the camera image, oriented like the screen.
-    private static func preview(of frame: ARFrame) -> UIImage? {
+    private func cancelPreview() {
+        previewGeneration &+= 1
+        previewTask?.cancel()
+        // A Core Image render may already be running. Keep its slot until it finishes,
+        // including across retries, so camera previews never build a work queue.
+    }
+
+    private static var previewOrientation: CGImagePropertyOrientation {
         let scene = UIApplication.shared.connectedScenes.first { $0.activationState == .foregroundActive } as? UIWindowScene
-        let orientation: CGImagePropertyOrientation = switch scene?.effectiveGeometry.interfaceOrientation ?? .portrait {
+        return switch scene?.effectiveGeometry.interfaceOrientation ?? .portrait {
         case .portraitUpsideDown: .left
         case .landscapeLeft: .down
         case .landscapeRight: .up
         default: .right
         }
-        var image = CIImage(cvPixelBuffer: frame.capturedImage).oriented(orientation)
-        let scale = 320 / max(image.extent.width, image.extent.height)
-        image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        guard let cgImage = previewContext.createCGImage(image, from: image.extent.integral) else { return nil }
-        return UIImage(cgImage: cgImage)
     }
 
     private func didLocate() {
         guard let map else { return }
+        // Changing features without reset retains the already registered world origin.
+        arView.session.run(Self.configuration(isAcquiring: false), options: [])
+        Log.navigation.info("AR acquired in \(String(format: "%.2f", ProcessInfo.processInfo.systemUptime - self.acquisitionStartedAt), privacy: .public) s (\(self.resumedSession ? "resume" : "saved map", privacy: .public))")
         let translation = arView.session.currentFrame?.camera.transform.translation
         position = translation.map { SIMD2($0.x, $0.z) }
         isPositionReliable = true
@@ -772,9 +862,14 @@ final class NavigationController: ObservableObject {
         // "The nearest elevator" is decided by walking distance from where the rider actually is.
         let kind = fresh && prefersNearestOfKind ? destination?.kind : nil
         let candidates = kind.map { kind in planner.map.points.filter { $0.kind == kind } } ?? []
+        let approaches = fresh ? transferApproaches : []
         if fresh { prefersNearestOfKind = false }
         Task { [weak self] in
             let next = await Task.detached(priority: .userInitiated) {
+                if !approaches.isEmpty {
+                    return FloorTransferApproach.nearestRoute(from: position, planner: planner,
+                        candidates: approaches, conditions: conditions)
+                }
                 if !candidates.isEmpty {
                     return candidates.compactMap { planner.route(from: position, to: $0, conditions: conditions) }
                         .min { $0.length < $1.length }
@@ -787,7 +882,7 @@ final class NavigationController: ObservableObject {
                 return planner.reroute(current!, from: position, conditions: conditions)
             }.value
             guard let self, routingGeneration == generation, isActive else { return }
-            if !candidates.isEmpty, let chosen = next?.destination { selectedDestination = chosen }
+            if !candidates.isEmpty || !approaches.isEmpty, let chosen = next?.destination { selectedDestination = chosen }
             if isDemo, case .started = reason {
                 demoPath = next?.waypoints ?? []
                 demoDistance = 0

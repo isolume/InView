@@ -5,6 +5,7 @@ struct BackendSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("detailedScanning") private var detailedScanning = false
     @AppStorage("recordScanVideo") private var recordScanVideo = false
+    @AppStorage("navigation.findsMeAutomatically") private var findsMeAutomatically = true
     @State private var address = AppConfig.backendAddress
     @State private var token = AppConfig.backendToken(for: AppConfig.backendAddress) ?? ""
     @State private var usesLocalBackend = AppConfig.usesLocalBackend
@@ -14,6 +15,13 @@ struct BackendSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Find me automatically", isOn: $findsMeAutomatically)
+                } header: {
+                    Text("Navigation")
+                } footer: {
+                    Text("Turn off to browse with the camera off. You can still choose live location, directions or AR.")
+                }
                 Section {
                     Text("Maps are built on this device.")
                     Toggle("Detailed scan", isOn: $detailedScanning)
@@ -64,7 +72,7 @@ struct BackendSettingsView: View {
                     token = AppConfig.backendToken(for: newValue) ?? ""
                 }
             }
-            .navigationTitle("Scanning")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

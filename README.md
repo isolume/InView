@@ -80,7 +80,7 @@ Tip: rescan close to demo time, in the same lighting.
 ## Known limits
 
 - Multi-room scans, floor changes and relocalization still need testing on a real device.
-- Routes stay on one floor.
+- Destinations can be selected across floors. Switch floors to inspect the preview without clearing directions. On the arrival floor, choose an elevator or stair landing to preview the final walk where it is mapped. Directions ask you to confirm the new floor before continuing live navigation. Check building signs for which floors the connection serves; unmapped areas use sign-based instructions.
 - Generated landmarks are browse-only; directions need a measured scan.
 
 More detail: [product guide](docs/product-app.md), [continuous scanning](docs/continuous-scanning.md), [scan performance](docs/scan-performance.md). Team plans: [larp.md](larp.md), [photon.md](photon.md).

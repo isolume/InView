@@ -98,6 +98,7 @@ struct NavigationSessionAlignment {
     private var startedAt: TimeInterval = .infinity
     private var changedAt: TimeInterval?
     private var needsOriginChange = false
+    private var hasAlignedOrigin = false
     private(set) var isReady = false
 
     mutating func reset(startedAt: TimeInterval, needsOriginChange: Bool) {
@@ -105,6 +106,21 @@ struct NavigationSessionAlignment {
         self.needsOriginChange = needsOriginChange
         changedAt = nil
         isReady = false
+        hasAlignedOrigin = false
+    }
+
+    /// A paused session keeps its map origin. Reentry still needs a fresh, normal frame,
+    /// but must not load the captured map or apply its registration a second time.
+    @discardableResult
+    mutating func start(startedAt: TimeInterval, needsOriginChange: Bool, forceReset: Bool = false) -> Bool {
+        let resumes = hasAlignedOrigin && !forceReset
+        reset(startedAt: startedAt, needsOriginChange: needsOriginChange && !resumes)
+        hasAlignedOrigin = resumes
+        return resumes
+    }
+
+    mutating func invalidate() {
+        reset(startedAt: .infinity, needsOriginChange: false)
     }
 
     mutating func next(timestamp: TimeInterval, trackingIsNormal: Bool) -> Action {
@@ -115,6 +131,7 @@ struct NavigationSessionAlignment {
         }
         guard changedAt.map({ timestamp > $0 }) ?? true else { return .wait }
         isReady = true
+        hasAlignedOrigin = true
         return .ready
     }
 
