@@ -506,6 +506,15 @@ private struct MapReviewDetailsView: View {
                     } footer: {
                         Text("Find places sends this scan's photos, measurements and location to your scan server. Suggestions stay here until you keep them.")
                     }
+                    if let highlights = controller.analysisHighlights {
+                        Section {
+                            ScanHighlightsView(highlights: highlights)
+                        } header: {
+                            Text("Key findings")
+                        } footer: {
+                            Text("Ranked by what matters most for getting around: barriers, narrow doors and passages, then helpful features.")
+                        }
+                    }
                     if !controller.unconfirmed.isEmpty {
                         Section {
                             ForEach(controller.unconfirmed) { sighting in
