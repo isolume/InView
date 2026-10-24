@@ -3,5 +3,5 @@ ultralytics==8.4.175
 torch==2.14.1
 torchvision==0.29.1
 numpy==2.5.3
-Pillow==12.3.0
+Pillow==13.0.0
 clip @ https://github.com/ultralytics/CLIP/archive/7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40.zip
